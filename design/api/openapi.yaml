@@ -1,0 +1,1305 @@
+openapi: 3.1.0
+info:
+  title: Logiforge API
+  version: 0.1.0
+  description: |
+    Logiforge のバックエンドの API。
+    全体に共通する決まり（主体と認証、セッション ID、リビジョン、エラー、ページング）は design/api/README.md に書く。
+    要件は docs/ が正本である。
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /v1
+    description: forge を置いたホストからの相対パス
+security:
+  - bearerAuth: []
+tags:
+  - name: tree
+    description: 木の参照
+  - name: apply-request
+    description: apply request と論理レビュー
+  - name: work
+    description: 着手できる作業と、作業の終わりの判定
+  - name: evidence
+    description: blob、artifact、検証結果、レポート
+  - name: thread
+    description: スレッドと PVR
+  - name: history
+    description: 履歴とエクスポート
+  - name: webhook
+    description: webhook の登録
+
+paths:
+  /trees:
+    get:
+      tags: [tree]
+      operationId: listTrees
+      summary: 木の一覧
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 木の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tree' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [tree]
+      operationId: createTree
+      summary: 根の主文を作り、木を作る（user だけ）
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [statement]
+              properties:
+                statement: { $ref: '#/components/schemas/Statement' }
+                background: { type: string }
+      responses:
+        '201':
+          description: 作った木
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tree' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /trees/{treeId}:
+    get:
+      tags: [tree]
+      operationId: getTree
+      summary: 木の概要
+      parameters:
+        - $ref: '#/components/parameters/TreeId'
+        - $ref: '#/components/parameters/Revision'
+      responses:
+        '200':
+          description: 木の概要
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tree' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /trees/{treeId}/nodes:
+    get:
+      tags: [tree]
+      operationId: listNodes
+      summary: 木または部分木のノード
+      description: |
+        `root` を指定すると、そのノードを根とする部分木だけを返す。
+        `revision` を指定すると、そのリビジョンの木を返す。
+      parameters:
+        - $ref: '#/components/parameters/TreeId'
+        - $ref: '#/components/parameters/Revision'
+        - name: root
+          in: query
+          description: 部分木の根にするノード
+          schema: { $ref: '#/components/schemas/NodeId' }
+        - name: depth
+          in: query
+          description: 部分木の根から何段までを返すか。指定しなければすべて
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: ノードの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, nodes]
+                properties:
+                  revision: { $ref: '#/components/schemas/Revision' }
+                  nodes:
+                    type: array
+                    items: { $ref: '#/components/schemas/Node' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /trees/{treeId}/completion:
+    get:
+      tags: [work]
+      operationId: getCompletion
+      summary: 作業の終わりの判定
+      parameters:
+        - $ref: '#/components/parameters/TreeId'
+      responses:
+        '200':
+          description: 判定の結果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Completion' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /trees/{treeId}/export:
+    get:
+      tags: [history]
+      operationId: exportTree
+      summary: 木を JSON か Markdown で書き出す
+      parameters:
+        - $ref: '#/components/parameters/TreeId'
+        - $ref: '#/components/parameters/Revision'
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [json, markdown] }
+      responses:
+        '200':
+          description: 書き出した木
+          content:
+            application/json:
+              schema: { type: object }
+            text/markdown:
+              schema: { type: string }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /nodes/{nodeId}:
+    get:
+      tags: [tree]
+      operationId: getNode
+      summary: ノードの詳細
+      parameters:
+        - $ref: '#/components/parameters/NodeIdPath'
+        - $ref: '#/components/parameters/Revision'
+      responses:
+        '200':
+          description: ノードの詳細
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NodeDetail' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /nodes/{nodeId}/history:
+    get:
+      tags: [history]
+      operationId: getNodeHistory
+      summary: ノードの履歴
+      parameters:
+        - $ref: '#/components/parameters/NodeIdPath'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: そのノードに関わるイベント
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests:
+    get:
+      tags: [apply-request]
+      operationId: listApplyRequests
+      summary: apply request の一覧
+      parameters:
+        - name: tree_id
+          in: query
+          schema: { $ref: '#/components/schemas/TreeIdValue' }
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/ApplyRequestState' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: apply request の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApplyRequest' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [apply-request]
+      operationId: createApplyRequest
+      summary: apply request を作る（client だけ）
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tree_id, operations]
+              properties:
+                tree_id: { $ref: '#/components/schemas/TreeIdValue' }
+                description:
+                  type: string
+                  description: 説明欄。レビューの材料には含めない
+                operations:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/OperationInput' }
+      responses:
+        '201':
+          description: 作った apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests/{applyRequestId}:
+    get:
+      tags: [apply-request]
+      operationId: getApplyRequest
+      summary: apply request の詳細（差分、レビュー、反映の失敗）
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+      responses:
+        '200':
+          description: apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [apply-request]
+      operationId: updateApplyRequest
+      summary: apply request を更新する（opener だけ）
+      description: |
+        `operations` を指定すると、操作をすべて置き換え、`version` を 1 増やす。
+        それまでの approve は無効になる。
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+                operations:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/OperationInput' }
+      responses:
+        '200':
+          description: 更新した apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests/{applyRequestId}/operations:
+    post:
+      tags: [apply-request]
+      operationId: addOperation
+      summary: 操作を末尾に加える（opener だけ）
+      description: '`version` を 1 増やす。それまでの approve は無効になる。'
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OperationInput' }
+      responses:
+        '200':
+          description: 操作を加えた apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests/{applyRequestId}/reviews:
+    post:
+      tags: [apply-request]
+      operationId: reviewApplyRequest
+      summary: レビューを付ける（client だけ。opener と別のセッション）
+      description: |
+        `approve` で反映の条件を満たしたら、この要求の中で反映する。
+        反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, version]
+              properties:
+                kind: { $ref: '#/components/schemas/ReviewKind' }
+                version:
+                  type: integer
+                  description: レビューした差分の版。今の版と違えば受け付けない
+                body: { type: string }
+                prompt_revision:
+                  type: string
+                  description: 使ったプロンプトのリビジョン。approve では必須
+      responses:
+        '201':
+          description: 付けたレビューと、その後の apply request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [review, apply_request]
+                properties:
+                  review: { $ref: '#/components/schemas/Review' }
+                  apply_request: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests/{applyRequestId}/close:
+    post:
+      tags: [apply-request]
+      operationId: closeApplyRequest
+      summary: apply request を close する（却下または取り下げ）
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: close した apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /apply-requests/{applyRequestId}/review-material:
+    get:
+      tags: [apply-request]
+      operationId: getReviewMaterial
+      summary: レビューの材料
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+      responses:
+        '200':
+          description: 今の版の差分に対するレビューの材料。説明欄は含めない
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewMaterial' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /work:
+    get:
+      tags: [work]
+      operationId: listWork
+      summary: 着手できる作業
+      parameters:
+        - name: tree_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/TreeIdValue' }
+        - name: subtree
+          in: query
+          description: この部分木の中の作業だけを返す
+          schema: { $ref: '#/components/schemas/NodeId' }
+        - name: kind
+          in: query
+          description: 返す作業の種類。指定しなければすべて
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/WorkKind' }
+          style: form
+          explode: false
+        - name: include_claimed
+          in: query
+          description: 真なら、open の apply request が対象にしているノードの作業も返す
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 着手できる作業
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, counts, items, next_cursor]
+                properties:
+                  revision: { $ref: '#/components/schemas/Revision' }
+                  counts:
+                    type: object
+                    description: 種類ごとの件数（ページに関わらず全体）
+                    additionalProperties: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WorkItem' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /blobs:
+    post:
+      tags: [evidence]
+      operationId: uploadBlob
+      summary: ファイルの中身を置く
+      description: 同じ中身がすでにあれば、置かずに同じ結果を返す
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: 置いた blob
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Blob' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /blobs/{sha256}:
+    get:
+      tags: [evidence]
+      operationId: getBlob
+      summary: ファイルの中身を読む
+      parameters:
+        - name: sha256
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Sha256' }
+      responses:
+        '200':
+          description: 中身
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /artifacts:
+    post:
+      tags: [evidence]
+      operationId: createArtifact
+      summary: artifact を登録する
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { $ref: '#/components/schemas/ArtifactKind' }
+                sha256: { $ref: '#/components/schemas/Sha256' }
+                uri: { type: string, format: uri }
+                media_type: { type: string }
+      responses:
+        '201':
+          description: 登録した artifact
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artifact' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /artifacts/{artifactId}:
+    get:
+      tags: [evidence]
+      operationId: getArtifact
+      summary: artifact
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^art_' }
+      responses:
+        '200':
+          description: artifact
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artifact' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /verdicts/{verdictId}:
+    get:
+      tags: [evidence]
+      operationId: getVerdict
+      summary: 検証結果とレポート
+      parameters:
+        - name: verdictId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^ver_' }
+      responses:
+        '200':
+          description: 検証結果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Verdict' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /threads:
+    get:
+      tags: [thread]
+      operationId: listThreads
+      summary: スレッドの一覧
+      parameters:
+        - name: tree_id
+          in: query
+          schema: { $ref: '#/components/schemas/TreeIdValue' }
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/ThreadKind' }
+        - name: state
+          in: query
+          schema: { type: string, enum: [open, closed] }
+        - name: awaiting
+          in: query
+          description: 返信待ちの相手で絞り込む
+          schema: { type: string, enum: [opener, user] }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: スレッドの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Thread' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [thread]
+      operationId: createThread
+      summary: スレッドを作る
+      description: '`user` は依頼（request）だけを作れる。PVR は `client` が起票する'
+      parameters:
+        - $ref: '#/components/parameters/SessionIdOptional'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tree_id, kind, body_sha256]
+              properties:
+                tree_id: { $ref: '#/components/schemas/TreeIdValue' }
+                kind: { $ref: '#/components/schemas/ThreadKind' }
+                node_id: { $ref: '#/components/schemas/NodeId' }
+                body_sha256: { $ref: '#/components/schemas/Sha256' }
+      responses:
+        '201':
+          description: 作ったスレッド
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Thread' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /threads/{threadId}:
+    get:
+      tags: [thread]
+      operationId: getThread
+      summary: スレッドと書き込み
+      parameters:
+        - $ref: '#/components/parameters/ThreadId'
+      responses:
+        '200':
+          description: スレッド
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThreadDetail' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /threads/{threadId}/posts:
+    post:
+      tags: [thread]
+      operationId: createPost
+      summary: スレッドに書き込む（PVR への記入を含む）
+      parameters:
+        - $ref: '#/components/parameters/ThreadId'
+        - $ref: '#/components/parameters/SessionIdOptional'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body_sha256]
+              properties:
+                body_sha256: { $ref: '#/components/schemas/Sha256' }
+                attachment_artifact_ids:
+                  type: array
+                  items: { type: string, pattern: '^art_' }
+      responses:
+        '201':
+          description: 書き込み。PVR に user が書いたものは artifact_id が入る
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /threads/{threadId}/close:
+    post:
+      tags: [thread]
+      operationId: closeThread
+      summary: スレッドを閉じる（client だけ）
+      parameters:
+        - $ref: '#/components/parameters/ThreadId'
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 閉じたスレッド
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Thread' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /events:
+    get:
+      tags: [history]
+      operationId: listEvents
+      summary: イベントの一覧
+      parameters:
+        - name: tree_id
+          in: query
+          schema: { $ref: '#/components/schemas/TreeIdValue' }
+        - name: after
+          in: query
+          description: この seq より後のイベントだけを返す
+          schema: { type: integer, minimum: 0 }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: イベントの一覧
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /webhooks:
+    get:
+      tags: [webhook]
+      operationId: listWebhooks
+      summary: 登録した webhook
+      responses:
+        '200':
+          description: webhook の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Webhook' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [webhook]
+      operationId: createWebhook
+      summary: webhook を登録する（client だけ）
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                tree_id: { $ref: '#/components/schemas/TreeIdValue' }
+                events:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/WebhookEventType' }
+      responses:
+        '201':
+          description: 登録した webhook。秘密鍵はこの応答でだけ返す
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Webhook'
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret: { type: string }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /webhooks/{webhookId}:
+    delete:
+      tags: [webhook]
+      operationId: deleteWebhook
+      summary: webhook の登録を消す
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^whk_' }
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: 消した
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 主体（user または client）を示すトークン
+
+  parameters:
+    TreeId:
+      name: treeId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/TreeIdValue' }
+    NodeIdPath:
+      name: nodeId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/NodeId' }
+    ApplyRequestId:
+      name: applyRequestId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^apr_' }
+    ThreadId:
+      name: threadId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^thr_' }
+    Revision:
+      name: revision
+      in: query
+      description: 読むリビジョン。指定しなければ最新
+      schema: { $ref: '#/components/schemas/Revision' }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    SessionId:
+      name: Logiforge-Session-Id
+      in: header
+      required: true
+      description: client のセッション ID
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    SessionIdOptional:
+      name: Logiforge-Session-Id
+      in: header
+      description: client のときは必須。user のときは付けない
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema: { type: string, maxLength: 128 }
+
+  responses:
+    Problem:
+      description: エラー
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Revision:
+      type: integer
+      minimum: 0
+      description: イベントの seq
+    NextCursor:
+      type: [string, 'null']
+    TreeIdValue:
+      type: string
+      pattern: '^tre_'
+    NodeId:
+      type: string
+      pattern: '^(hyp|sto)_'
+    Sha256:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    TruthValue:
+      type: [boolean, 'null']
+      description: true、false、null（未決）
+    Statement:
+      type: string
+      description: 主文。NFC に正規化したあとのコードポイント数で 50 以下
+    Title:
+      type: string
+      description: タイトル。NFC に正規化したあとのコードポイント数で 50 以下
+    Summary:
+      type: string
+      description: 概要。NFC に正規化したあとのコードポイント数で 300 以下
+
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open]
+
+    Tree:
+      type: object
+      required: [id, root_hypothesis_id, root_value, revision]
+      properties:
+        id: { $ref: '#/components/schemas/TreeIdValue' }
+        root_hypothesis_id: { type: string, pattern: '^hyp_' }
+        root_value: { $ref: '#/components/schemas/TruthValue' }
+        revision: { $ref: '#/components/schemas/Revision' }
+
+    Node:
+      oneOf:
+        - $ref: '#/components/schemas/Hypothesis'
+        - $ref: '#/components/schemas/Story'
+      discriminator:
+        propertyName: node_type
+        mapping:
+          hypothesis: '#/components/schemas/Hypothesis'
+          story: '#/components/schemas/Story'
+    Hypothesis:
+      type: object
+      required: [node_type, id, parent_story_id, statement, value, leaf, needs_reconsideration, inactive, open_apply_request_ids, open_thread_ids]
+      properties:
+        node_type: { type: string, const: hypothesis }
+        id: { type: string, pattern: '^hyp_' }
+        parent_story_id:
+          type: [string, 'null']
+          description: 根のときだけ null
+        statement: { $ref: '#/components/schemas/Statement' }
+        background: { type: string }
+        value: { $ref: '#/components/schemas/TruthValue' }
+        valid_verdict_id: { type: [string, 'null'] }
+        leaf:
+          type: boolean
+          description: active な子ストーリーを持たない
+        needs_reconsideration:
+          type: boolean
+          description: 要再検討
+        inactive:
+          type: boolean
+          description: 祖先に inactive なストーリーがある
+        open_apply_request_ids:
+          type: array
+          description: このノードを対象にした open の apply request
+          items: { type: string }
+        open_thread_ids:
+          type: array
+          description: このノードを対象にした open のスレッド
+          items: { type: string }
+    Story:
+      type: object
+      required: [node_type, id, parent_hypothesis_id, title, summary, state, value, inactive, open_apply_request_ids, open_thread_ids]
+      properties:
+        node_type: { type: string, const: story }
+        id: { type: string, pattern: '^sto_' }
+        parent_hypothesis_id: { type: string, pattern: '^hyp_' }
+        title: { $ref: '#/components/schemas/Title' }
+        summary: { $ref: '#/components/schemas/Summary' }
+        state: { type: string, enum: [active, inactive] }
+        reason:
+          type: [string, 'null']
+          description: inactive にした理由
+        value: { $ref: '#/components/schemas/TruthValue' }
+        inactive:
+          type: boolean
+          description: 自分か祖先が inactive
+        open_apply_request_ids:
+          type: array
+          items: { type: string }
+        open_thread_ids:
+          type: array
+          items: { type: string }
+    NodeDetail:
+      type: object
+      required: [revision, node, children, cited_by]
+      properties:
+        revision: { $ref: '#/components/schemas/Revision' }
+        node: { $ref: '#/components/schemas/Node' }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/Node' }
+        verdict:
+          oneOf:
+            - $ref: '#/components/schemas/Verdict'
+            - type: 'null'
+        cited_by:
+          type: array
+          description: このノードの部分木を引用しているレポート
+          items: { type: string, pattern: '^rep_' }
+
+    Verdict:
+      type: object
+      required: [id, hypothesis_id, value, report, submitted_revision]
+      properties:
+        id: { type: string, pattern: '^ver_' }
+        hypothesis_id: { type: string, pattern: '^hyp_' }
+        value: { type: boolean }
+        report: { $ref: '#/components/schemas/Report' }
+        apply_request_id: { type: string, pattern: '^apr_' }
+        submitted_revision: { $ref: '#/components/schemas/Revision' }
+        superseded_revision:
+          type: [integer, 'null']
+          description: 差し替えられたリビジョン。有効な間は null
+    Report:
+      type: object
+      required: [id, body_sha256, artifact_ids, citations]
+      properties:
+        id: { type: string, pattern: '^rep_' }
+        body_sha256: { $ref: '#/components/schemas/Sha256' }
+        artifact_ids:
+          type: array
+          items: { type: string, pattern: '^art_' }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+    ReportInput:
+      type: object
+      required: [body_sha256]
+      properties:
+        body_sha256: { $ref: '#/components/schemas/Sha256' }
+        artifact_ids:
+          type: array
+          items: { type: string, pattern: '^art_' }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+    Citation:
+      oneOf:
+        - type: object
+          required: [target_kind, artifact_id]
+          properties:
+            target_kind: { type: string, const: artifact }
+            artifact_id: { type: string, pattern: '^art_' }
+        - type: object
+          required: [target_kind, node_id, revision]
+          properties:
+            target_kind: { type: string, const: subtree }
+            node_id: { $ref: '#/components/schemas/NodeId' }
+            revision: { $ref: '#/components/schemas/Revision' }
+    Artifact:
+      type: object
+      required: [id, kind]
+      properties:
+        id: { type: string, pattern: '^art_' }
+        kind: { $ref: '#/components/schemas/ArtifactKind' }
+        sha256: { $ref: '#/components/schemas/Sha256' }
+        uri: { type: string }
+        media_type: { type: string }
+    ArtifactKind:
+      type: string
+      enum: [file, link, citation, program, output, human_entry]
+    Blob:
+      type: object
+      required: [sha256, size]
+      properties:
+        sha256: { $ref: '#/components/schemas/Sha256' }
+        size: { type: integer }
+
+    OperationInput:
+      oneOf:
+        - $ref: '#/components/schemas/StoryCreate'
+        - $ref: '#/components/schemas/StoryInactivate'
+        - $ref: '#/components/schemas/VerdictSubmit'
+        - $ref: '#/components/schemas/NodeEdit'
+      discriminator:
+        propertyName: kind
+        mapping:
+          story.create: '#/components/schemas/StoryCreate'
+          story.inactivate: '#/components/schemas/StoryInactivate'
+          verdict.submit: '#/components/schemas/VerdictSubmit'
+          node.edit: '#/components/schemas/NodeEdit'
+    StoryCreate:
+      type: object
+      required: [kind, parent_hypothesis_id, title, summary, hypotheses]
+      properties:
+        kind: { type: string, const: story.create }
+        parent_hypothesis_id:
+          type: string
+          description: 親仮説の識別子か、同じ apply request で作る仮説の ref
+        title: { $ref: '#/components/schemas/Title' }
+        summary: { $ref: '#/components/schemas/Summary' }
+        hypotheses:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [statement]
+            properties:
+              ref:
+                type: string
+                description: 同じ apply request のほかの操作から、この仮説を指す名前
+              statement: { $ref: '#/components/schemas/Statement' }
+              background: { type: string }
+    StoryInactivate:
+      type: object
+      required: [kind, story_id, reason]
+      properties:
+        kind: { type: string, const: story.inactivate }
+        story_id: { type: string, pattern: '^sto_' }
+        reason: { type: string, minLength: 1 }
+    VerdictSubmit:
+      type: object
+      required: [kind, hypothesis, value, report]
+      properties:
+        kind: { type: string, const: verdict.submit }
+        hypothesis:
+          type: string
+          description: 仮説の識別子か、同じ apply request で作る仮説の ref
+        value: { type: boolean }
+        report: { $ref: '#/components/schemas/ReportInput' }
+    NodeEdit:
+      type: object
+      required: [kind, hypothesis_id, append_background]
+      properties:
+        kind: { type: string, const: node.edit }
+        hypothesis_id: { type: string, pattern: '^hyp_' }
+        append_background:
+          type: string
+          minLength: 1
+          description: 背景情報の末尾に加える文章
+    Operation:
+      allOf:
+        - $ref: '#/components/schemas/OperationInput'
+        - type: object
+          required: [position, base_revision]
+          properties:
+            position: { type: integer }
+            base_revision:
+              type: [integer, 'null']
+              description: 操作を加えたときの対象ノードの last_changed_revision。新しく作るノードが対象なら null
+
+    ApplyRequestState:
+      type: string
+      enum: [open, merged, closed]
+    ApplyRequest:
+      type: object
+      required: [id, tree_id, state, version, opener_session_id, operations, reviews, merge_failures, awaiting]
+      properties:
+        id: { type: string, pattern: '^apr_' }
+        tree_id: { $ref: '#/components/schemas/TreeIdValue' }
+        state: { $ref: '#/components/schemas/ApplyRequestState' }
+        version:
+          type: integer
+          description: 差分の版
+        opener_session_id: { type: string }
+        description: { type: string }
+        operations:
+          type: array
+          items: { $ref: '#/components/schemas/Operation' }
+        reviews:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        merge_failures:
+          type: array
+          items: { $ref: '#/components/schemas/MergeFailure' }
+        awaiting:
+          type: [string, 'null']
+          enum: [review, fix, null]
+          description: open のとき、レビュー待ち（review）か修正待ち（fix）か
+        closed_reason: { type: [string, 'null'] }
+        merged_revision: { type: [integer, 'null'] }
+    ReviewKind:
+      type: string
+      enum: [approve, request_changes, comment]
+    Review:
+      type: object
+      required: [id, kind, version, reviewer_session_id, valid]
+      properties:
+        id: { type: string, pattern: '^rev_' }
+        kind: { $ref: '#/components/schemas/ReviewKind' }
+        version: { type: integer }
+        body: { type: string }
+        reviewer_session_id: { type: string }
+        prompt_revision: { type: string }
+        valid:
+          type: boolean
+          description: 今の版に対するレビューなら真
+    MergeFailure:
+      type: object
+      required: [version, reason, detail]
+      properties:
+        version: { type: integer }
+        reason: { type: string, enum: [stale_target, invariant_violation] }
+        detail: { type: string }
+    ReviewMaterial:
+      type: object
+      required: [apply_request_id, version, revision, operations, targets, ancestors, siblings, citations]
+      properties:
+        apply_request_id: { type: string, pattern: '^apr_' }
+        version: { type: integer }
+        revision: { $ref: '#/components/schemas/Revision' }
+        operations:
+          type: array
+          description: 差分そのもの
+          items: { $ref: '#/components/schemas/Operation' }
+        targets:
+          type: array
+          description: 操作の対象ノードの、現在の状態と値
+          items: { $ref: '#/components/schemas/Node' }
+        ancestors:
+          type: array
+          description: 対象ノードの親仮説から根までの仮説（主文を含む）
+          items: { $ref: '#/components/schemas/Hypothesis' }
+        siblings:
+          type: array
+          description: 兄弟ストーリー（タイトル、概要、値）
+          items: { $ref: '#/components/schemas/Story' }
+        citations:
+          type: array
+          description: 引用している部分木（固定したリビジョンのもの）と artifact
+          items:
+            type: object
+            required: [citation]
+            properties:
+              citation: { $ref: '#/components/schemas/Citation' }
+              nodes:
+                type: array
+                items: { $ref: '#/components/schemas/Node' }
+              artifact: { $ref: '#/components/schemas/Artifact' }
+
+    WorkKind:
+      type: string
+      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, thread_awaiting_opener, citation_changed]
+    WorkItem:
+      type: object
+      required: [kind, subject_id]
+      description: |
+        review_waiting は、最後の更新のあと、有効な approve も request_changes もない apply request。
+        fix_waiting は、最後のレビューが request_changes か、反映に失敗して open に戻った apply request。
+      properties:
+        kind: { $ref: '#/components/schemas/WorkKind' }
+        subject_id:
+          type: string
+          description: ノード、apply request、スレッド、引用のいずれかの識別子
+        node_id: { $ref: '#/components/schemas/NodeId' }
+    Completion:
+      type: object
+      required: [revision, root_value, decided, remaining_work, done]
+      properties:
+        revision: { $ref: '#/components/schemas/Revision' }
+        root_value: { $ref: '#/components/schemas/TruthValue' }
+        decided:
+          type: boolean
+          description: 根の値が true か false
+        remaining_work:
+          type: integer
+          description: 根拠部分木で着手できる作業の件数（レビュー待ちと修正待ちの apply request を含む）
+        done:
+          type: boolean
+          description: decided が真で、remaining_work が 0
+
+    ThreadKind:
+      type: string
+      enum: [request, pvr]
+    Thread:
+      type: object
+      required: [id, tree_id, kind, state, awaiting]
+      properties:
+        id: { type: string, pattern: '^thr_' }
+        tree_id: { $ref: '#/components/schemas/TreeIdValue' }
+        kind: { $ref: '#/components/schemas/ThreadKind' }
+        node_id: { type: [string, 'null'] }
+        state: { type: string, enum: [open, closed] }
+        awaiting:
+          type: [string, 'null']
+          enum: [opener, user, null]
+          description: open のとき、返信待ちの相手
+    ThreadDetail:
+      allOf:
+        - $ref: '#/components/schemas/Thread'
+        - type: object
+          required: [posts]
+          properties:
+            posts:
+              type: array
+              items: { $ref: '#/components/schemas/Post' }
+    Post:
+      type: object
+      required: [id, author_kind, body_sha256]
+      properties:
+        id: { type: string, pattern: '^pst_' }
+        author_kind: { type: string, enum: [user, client] }
+        session_id: { type: [string, 'null'] }
+        body_sha256: { $ref: '#/components/schemas/Sha256' }
+        artifact_id:
+          type: [string, 'null']
+          description: PVR に user が書いた本文を登録した artifact
+        attachment_artifact_ids:
+          type: array
+          items: { type: string }
+
+    Event:
+      type: object
+      required: [seq, kind, occurred_at]
+      properties:
+        seq: { $ref: '#/components/schemas/Revision' }
+        tree_id: { type: [string, 'null'] }
+        kind: { type: string }
+        subject_id: { type: string }
+        actor_session_id: { type: [string, 'null'] }
+        apply_request_id: { type: [string, 'null'] }
+        payload: { type: object }
+        occurred_at: { type: string, format: date-time }
+    EventPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        next_cursor: { $ref: '#/components/schemas/NextCursor' }
+
+    WebhookEventType:
+      type: string
+      enum:
+        - apply_request.opened
+        - apply_request.updated
+        - apply_request.reviewed
+        - apply_request.merge_failed
+        - apply_request.merged
+        - apply_request.closed
+        - thread.created
+        - thread.posted
+        - citation.changed
+    Webhook:
+      type: object
+      required: [id, url, events]
+      properties:
+        id: { type: string, pattern: '^whk_' }
+        url: { type: string, format: uri }
+        tree_id: { type: [string, 'null'] }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/WebhookEventType' }
