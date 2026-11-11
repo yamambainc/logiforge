@@ -6,8 +6,8 @@ Logiforge が持つデータの形と、要件の不変条件をデータでど�
 
 Logiforge のデータは、次の 2 つに分かれる。
 
-- 構造化データ：木、検証結果、apply request、スレッド、履歴。DB に置く。
-  - レポートの本文と、スレッドの書き込みの本文も、DB の行に置く。
+- 構造化データ：木、検証結果、apply request、人への依頼、履歴。DB に置く。
+  - レポートの本文と、人への依頼の本文も、DB の行に置く。
 - ファイル：artifact の中身。ファイルシステムに置く（[ファイル](files.md)）。
 
 1 つの forge が持つ木は 1 つである（[木の形](../../docs/tree/README.md)）。
@@ -40,7 +40,8 @@ erDiagram
   APPLY_REQUEST ||--|{ APPLY_REQUEST_VERSION : "版"
   APPLY_REQUEST_VERSION ||--|{ OPERATION : "操作"
   APPLY_REQUEST ||--o{ REVIEW : "レビュー"
-  THREAD ||--|{ POST : "書き込み"
+  HYPOTHESIS ||--o{ HUMAN_REQUEST : "人への依頼"
+  HUMAN_REQUEST ||--o| HUMAN_REQUEST_ANSWER : "回答（1 回）"
   ARTIFACT }o--o| BLOB : "中身"
 ```
 
@@ -49,7 +50,7 @@ erDiagram
 1. [木](tree.md)：仮説、背景情報、ストーリー
 2. [検証結果と根拠](verdict.md)：検証結果、artifact、引用
 3. [apply request](apply-request.md)：apply request、版、操作、レビュー
-4. [スレッド](thread.md)：スレッド、書き込み
+4. [人への依頼](human-request.md)：人への依頼、回答
 5. [リビジョンとイベントログ](history.md)
 6. [ファイル](files.md)：artifact の中身
 7. [不変条件の守り方](invariants.md)

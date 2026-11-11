@@ -15,7 +15,7 @@
 | 種類 | 送るとき |
 |---|---|
 | `apply_request.changed` | apply request が作られた、更新された、レビューが付いた、反映された、反映に失敗した、close された |
-| `thread.changed` | スレッドが作られた、書き込みがあった、閉じられた |
+| `human_request.changed` | 人への依頼が起票された、回答された |
 | `citation.changed` | 有効な検証結果が引用している部分木で、引用元が変化した（[引用元の変化](../../docs/tree/verdict.md)） |
 
 - 細かい種類に分けない。

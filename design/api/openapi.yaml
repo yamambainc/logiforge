@@ -24,8 +24,8 @@ tags:
     description: 着手できる作業と、作業の終わりの判定
   - name: evidence
     description: blob、artifact、検証結果、レポート
-  - name: thread
-    description: スレッドと PVR
+  - name: human-request
+    description: 人への依頼（PVR と判断の依頼）
   - name: history
     description: 履歴とエクスポート
   - name: webhook
@@ -498,27 +498,26 @@ paths:
               schema: { $ref: '#/components/schemas/Verdict' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /threads:
+  /human-requests:
     get:
-      tags: [thread]
-      operationId: listThreads
-      summary: スレッドの一覧
+      tags: [human-request]
+      operationId: listHumanRequests
+      summary: 人への依頼の一覧
       parameters:
         - name: kind
           in: query
-          schema: { $ref: '#/components/schemas/ThreadKind' }
+          schema: { $ref: '#/components/schemas/HumanRequestKind' }
         - name: state
           in: query
-          schema: { type: string, enum: [open, closed] }
-        - name: awaiting
+          schema: { $ref: '#/components/schemas/HumanRequestState' }
+        - name: node_id
           in: query
-          description: 返信待ちの相手で絞り込む
-          schema: { type: string, enum: [opener, user] }
+          schema: { $ref: '#/components/schemas/NodeId' }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: スレッドの一覧
+          description: 人への依頼の一覧
           content:
             application/json:
               schema:
@@ -527,16 +526,15 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/Thread' }
+                    items: { $ref: '#/components/schemas/HumanRequest' }
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
     post:
-      tags: [thread]
-      operationId: createThread
-      summary: スレッドを作る
-      description: '`user` は依頼（request）だけを作れる。PVR は `client` が起票する'
+      tags: [human-request]
+      operationId: createHumanRequest
+      summary: 人への依頼を起票する（client だけ）
       parameters:
-        - $ref: '#/components/parameters/SessionIdOptional'
+        - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -544,42 +542,44 @@ paths:
           application/json:
             schema:
               type: object
-              required: [kind, body]
+              required: [node_id, kind, body]
               properties:
-                kind: { $ref: '#/components/schemas/ThreadKind' }
                 node_id: { $ref: '#/components/schemas/NodeId' }
-                body: { type: string, minLength: 1 }
+                kind: { $ref: '#/components/schemas/HumanRequestKind' }
+                body:
+                  type: string
+                  minLength: 1
+                  description: 検証手順、または問い
       responses:
         '201':
-          description: 作ったスレッド
+          description: 起票した人への依頼
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Thread' }
+              schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /threads/{threadId}:
+  /human-requests/{humanRequestId}:
     get:
-      tags: [thread]
-      operationId: getThread
-      summary: スレッドと書き込み
+      tags: [human-request]
+      operationId: getHumanRequest
+      summary: 人への依頼と、その回答
       parameters:
-        - $ref: '#/components/parameters/ThreadId'
+        - $ref: '#/components/parameters/HumanRequestId'
       responses:
         '200':
-          description: スレッド
+          description: 人への依頼
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ThreadDetail' }
+              schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /threads/{threadId}/posts:
+  /human-requests/{humanRequestId}/answer:
     post:
-      tags: [thread]
-      operationId: createPost
-      summary: スレッドに書き込む（PVR への記入を含む）
+      tags: [human-request]
+      operationId: answerHumanRequest
+      summary: 人への依頼に回答する（user だけ。1 回だけ）
       parameters:
-        - $ref: '#/components/parameters/ThreadId'
-        - $ref: '#/components/parameters/SessionIdOptional'
+        - $ref: '#/components/parameters/HumanRequestId'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
@@ -595,26 +595,10 @@ paths:
                   items: { type: string, pattern: '^art_' }
       responses:
         '201':
-          description: 書き込み。PVR に user が書いたものは artifact_id が入る
+          description: 回答した人への依頼。回答は artifact としても登録される
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Post' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /threads/{threadId}/close:
-    post:
-      tags: [thread]
-      operationId: closeThread
-      summary: スレッドを閉じる（client だけ）
-      parameters:
-        - $ref: '#/components/parameters/ThreadId'
-        - $ref: '#/components/parameters/SessionId'
-      responses:
-        '200':
-          description: 閉じたスレッド
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Thread' }
+              schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /events:
@@ -722,11 +706,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^apr_' }
-    ThreadId:
-      name: threadId
+    HumanRequestId:
+      name: humanRequestId
       in: path
       required: true
-      schema: { type: string, pattern: '^thr_' }
+      schema: { type: string, pattern: '^hrq_' }
     Revision:
       name: revision
       in: query
@@ -745,11 +729,6 @@ components:
       in: header
       required: true
       description: client のセッション ID
-      schema: { type: string, minLength: 1, maxLength: 128 }
-    SessionIdOptional:
-      name: Logiforge-Session-Id
-      in: header
-      description: client のときは必須。user のときは付けない
       schema: { type: string, minLength: 1, maxLength: 128 }
     IdempotencyKey:
       name: Idempotency-Key
@@ -820,7 +799,7 @@ components:
           story: '#/components/schemas/Story'
     Hypothesis:
       type: object
-      required: [node_type, id, parent_story_id, statement, value, leaf, needs_reconsideration, inactive, open_apply_request_ids, open_thread_ids]
+      required: [node_type, id, parent_story_id, statement, value, leaf, needs_reconsideration, inactive, open_apply_request_ids, open_human_request_ids]
       properties:
         node_type: { type: string, const: hypothesis }
         id: { type: string, pattern: '^hyp_' }
@@ -844,13 +823,13 @@ components:
           type: array
           description: このノードを対象にした open の apply request
           items: { type: string }
-        open_thread_ids:
+        open_human_request_ids:
           type: array
-          description: このノードを対象にした open のスレッド
+          description: このノードを対象にした open の人への依頼
           items: { type: string }
     Story:
       type: object
-      required: [node_type, id, parent_hypothesis_id, title, summary, state, value, inactive, open_apply_request_ids, open_thread_ids]
+      required: [node_type, id, parent_hypothesis_id, title, summary, state, value, inactive, open_apply_request_ids, open_human_request_ids]
       properties:
         node_type: { type: string, const: story }
         id: { type: string, pattern: '^sto_' }
@@ -868,7 +847,7 @@ components:
         open_apply_request_ids:
           type: array
           items: { type: string }
-        open_thread_ids:
+        open_human_request_ids:
           type: array
           items: { type: string }
     NodeDetail:
@@ -1119,7 +1098,7 @@ components:
 
     WorkKind:
       type: string
-      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, thread_awaiting_opener, citation_changed]
+      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
     WorkItem:
       type: object
       required: [kind, subject_id]
@@ -1128,7 +1107,7 @@ components:
         kind: { $ref: '#/components/schemas/WorkKind' }
         subject_id:
           type: string
-          description: ノード、apply request、スレッド、引用のいずれかの識別子
+          description: ノード、apply request、人への依頼、引用のいずれかの識別子
         node_id: { $ref: '#/components/schemas/NodeId' }
     Completion:
       type: object
@@ -1146,44 +1125,37 @@ components:
           type: boolean
           description: decided が真で、remaining_work が 0
 
-    ThreadKind:
+    HumanRequestKind:
       type: string
-      enum: [request, pvr]
-    Thread:
+      enum: [pvr, decision]
+    HumanRequestState:
+      type: string
+      enum: [open, answered]
+    HumanRequest:
       type: object
-      required: [id, kind, state, awaiting]
+      required: [id, node_id, kind, body, state]
+      description: 決まりは https://github.com/yamambainc/logiforge/blob/main/docs/human-requests/README.md に従う
       properties:
-        id: { type: string, pattern: '^thr_' }
-        kind: { $ref: '#/components/schemas/ThreadKind' }
-        node_id: { type: [string, 'null'] }
-        state: { type: string, enum: [open, closed] }
-        awaiting:
-          type: [string, 'null']
-          enum: [opener, user, null]
-          description: open のとき、返信待ちの相手
-    ThreadDetail:
-      allOf:
-        - $ref: '#/components/schemas/Thread'
-        - type: object
-          required: [posts]
-          properties:
-            posts:
-              type: array
-              items: { $ref: '#/components/schemas/Post' }
-    Post:
-      type: object
-      required: [id, author_kind, body]
-      properties:
-        id: { type: string, pattern: '^pst_' }
-        author_kind: { type: string, enum: [user, client] }
-        session_id: { type: [string, 'null'] }
+        id: { type: string, pattern: '^hrq_' }
+        node_id: { $ref: '#/components/schemas/NodeId' }
+        kind: { $ref: '#/components/schemas/HumanRequestKind' }
         body: { type: string }
-        artifact_id:
-          type: [string, 'null']
-          description: PVR に user が書いた本文を登録した artifact
-        attachment_artifact_ids:
-          type: array
-          items: { type: string }
+        state: { $ref: '#/components/schemas/HumanRequestState' }
+        answer:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [body, artifact_id, answered_at]
+              properties:
+                body: { type: string }
+                artifact_id:
+                  type: string
+                  pattern: '^art_'
+                  description: 回答を登録した artifact（human_entry）
+                attachment_artifact_ids:
+                  type: array
+                  items: { type: string, pattern: '^art_' }
+                answered_at: { type: string, format: date-time }
 
     Event:
       type: object
@@ -1208,7 +1180,7 @@ components:
     WebhookEventType:
       type: string
       description: 種類と送る条件は design/api/webhook.md に書く
-      enum: [apply_request.changed, thread.changed, citation.changed]
+      enum: [apply_request.changed, human_request.changed, citation.changed]
     Webhook:
       type: object
       required: [id, url, events]

@@ -20,7 +20,7 @@ Logiforge が何を満たすかを確かめるときに読む。
 10. [論理レビューの審査観点](apply-request/review-criteria.md)
 11. [役割](roles/README.md)
 12. [着手できる作業と通知](work/README.md)
-13. [スレッド（依頼と PVR）](threads/README.md)
+13. [人への依頼（PVR と判断の依頼）](human-requests/README.md)
 14. [CLI](cli/README.md)
 15. [WebUI](webui/README.md)
 16. [全体構成](architecture/README.md)

@@ -10,7 +10,7 @@ flowchart TB
   R["reviewer"] -- CLI --> S
   U["利用者"] -- WebUI --> S
   subgraph S["forge"]
-    T["構造化された木、apply request、スレッド"]
+    T["構造化された木、apply request、人への依頼"]
     F["ファイルと artifact"]
     L["履歴"]
   end

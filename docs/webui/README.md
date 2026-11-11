@@ -6,7 +6,7 @@ WebUI を使うのは利用者である。利用者ができることは、[役�
 ## 画面
 
 - [木のビューア](tree-viewer.md)：木と、各ノードの詳細を見る。
-- [スレッド](threads.md)：依頼を出し、PVR に結果を記入する。
+- [人への依頼](human-requests.md)：人への依頼を一覧し、回答する。
 - [apply request と履歴](history.md)：apply request の差分と議論を見る。過去の時点の木を見る。
 - [ダッシュボード](dashboard.md)：作業の状況を見る。
 

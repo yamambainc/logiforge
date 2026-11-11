@@ -22,7 +22,7 @@ reviewer が [apply request](README.md) を審査するときに、何を確か�
 - 根拠が、値を支えているか。
 - プログラムによる検証なら、再現できるか（[artifact](../tree/verdict.md)）。
 - 引用が正しいか。
-- 人の記入から作った検証結果なら、記入の内容に忠実か（[PVR](../threads/README.md)）。
+- 人への依頼の回答から作った検証結果なら、回答の内容に忠実か（[人への依頼](../human-requests/README.md)）。
 
 ## inactive 化
 

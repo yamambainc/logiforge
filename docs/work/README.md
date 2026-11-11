@@ -20,7 +20,8 @@ GitHub の `gh pr list --search review-requested` に相当する。
   - 最後のレビューが `request_changes` の apply request をいう。
   - 反映に失敗して `open` に戻った apply request も含める（[反映](../apply-request/README.md)）。
   - 修正待ちは、その apply request の opener の作業である。
-- opener の返信待ちのスレッド（[返信待ち](../threads/README.md)）
+- 回答済みの人への依頼（[人への依頼](../human-requests/README.md)）
+  - 回答を検証結果に変えるのは、opener の作業である。
 - 引用元が変化した検証結果（[検証結果と引用](../tree/verdict.md)）
 
 問い合わせの範囲は、次のとおり。
@@ -29,9 +30,8 @@ GitHub の `gh pr list --search review-requested` に相当する。
   - なぜ：inactive な部分木は、伝播に関与しないから（[inactive 化](../tree/inactive.md)）。
 - 木のノードについての作業（未決の葉、要再検討の仮説、引用元が変化した検証結果）は、そのノードを対象にした open の apply request があれば、既定では返さない。
   - なぜ：同じ作業に、複数の主体が同時に手を付けないようにするため。
-- 利用者の返信待ちのスレッド（PVR の記入待ちを含む）は、返さない。
-- その仮説を対象にした open のスレッドがあり、利用者の返信待ちになっている要再検討の仮説は、着手できる作業に含めない。
-  - なぜ：利用者の判断を待っている仮説だから。
+- open の人への依頼がある葉と仮説は、着手できる作業に含めない。
+  - なぜ：人の回答を待っているノードだから。
 - 部分木を指定して、その中の作業だけを問い合わせられる。
 
 ## 作業の終わりの判定
