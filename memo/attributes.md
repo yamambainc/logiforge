@@ -23,7 +23,7 @@
 | `title` | タイトル |
 | `summary` | 概要 |
 | `state` | `active` または `inactive` |
-| `inactive_note` | inactive にした理由（自由記述） |
+| `reason` | inactive にした理由（自由記述） |
 
 ## 検証結果とレポート
 

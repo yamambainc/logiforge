@@ -12,7 +12,7 @@ hv node view <node>
 hv node history <node>
 
 hv story create --parent <hypothesis> --file story.yaml [--ar <ar>]
-hv story inactivate <story> --note "..." [--ar <ar>]
+hv story inactivate <story> --reason "..." [--ar <ar>]
 hv verdict submit <hypothesis> --value false --report report.md \
                   [--artifact ./out/result.csv] [--cite <artifact>] \
                   [--cite-subtree <node>@<revision>] [--ar <ar>]

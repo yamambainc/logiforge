@@ -1,36 +1,37 @@
 # 用語
 
-仕様を読むときに、言葉の意味を引くために使う。
-各語の決まりは、リンク先のページが正本である。
+仕様を読むときに、言葉の正本のページを引くために使う。
+正本のページがある語は、リンクだけを示す。
 
 ## 木
 
-- **仮説**: 真偽を問える命題。→ [仮説とストーリーの木](../tree/README.md)
-- **ストーリー**: 「子仮説がすべて真なら、親仮説は真になる」ことを保証する論理的なつながり。→ [仮説とストーリーの木](../tree/README.md)
-- **親・子・孫**: ノードどうしの相対的な関係。木の中の絶対的な位置ではない。
-- **葉**: active な子ストーリーを持たない仮説。終端仮説とも呼ぶ。
-- **未決の葉**: 検証結果を持たない葉。
-- **要再検討**: active な子ストーリーがあり、そのすべてが false である仮説の見え方。→ [真偽値の伝播](../tree/propagation.md)
-- **inactive**: ストーリーを計算から外した状態。→ [inactive 化](../tree/inactive.md)
-- **根拠部分木**: 根の値を支えている部分木。→ [スケジューラ](../agents/scheduler.md)
+- 仮説 → [仮説とストーリーの木](../tree/README.md)
+- ストーリー → [仮説とストーリーの木](../tree/README.md)
+- 親・子・孫 → [仮説とストーリーの木](../tree/README.md)
+- 葉、未決の葉 → [仮説とストーリーの木](../tree/README.md)
+- 要再検討 → [真偽値の伝播](../tree/propagation.md)
+- 根拠部分木 → [真偽値の伝播](../tree/propagation.md)
+- inactive → [inactive 化](../tree/inactive.md)
 
 ## 根拠
 
-- **検証結果**: 葉の仮説の真偽値と、レポートの 1 対 1 の組。→ [検証結果と引用](../tree/verdict.md)
-- **レポート**: 検証結果の根拠を書いた文書。
-- **artifact**: レポートが参照する根拠物。引用、リンク、プログラム、実行結果、データ、人による記入など。
-- **引用**: レポートから、ほかの artifact や、リビジョンを固定した部分木を参照すること。
+- 検証結果、レポート、artifact、引用、流用 → [検証結果と引用](../tree/verdict.md)
 
 ## 変更とやりとり
 
-- **Apply Request（AR）**: 木と検証結果への変更提案。→ [Apply Request](../apply-request/README.md)
-- **opener / reviewer**: AR を出す主体と、審査する主体。
-- **スレッド**: 人とエージェントのやりとり。→ [スレッド](../threads/README.md)
-- **PVR（物理検証リクエスト）**: 人による検証手順を書き下し、人間に物理検証を依頼するスレッド。
+- Apply Request（AR）、opener、reviewer → [Apply Request](../apply-request/README.md)
+- スレッド、PVR（物理検証リクエスト）→ [スレッド](../threads/README.md)
 
 ## 主体
 
-- **Builder**: 木を作り、葉を検証するエージェント。→ [役割](../agents/README.md)
-- **Reviewer**: AR を審査するエージェント。
-- **owner**: 問いを持ち込む人間。
-- **ハーネス**: このシステム全体。validator、伝播エンジン、スケジューラなどを含む。
+- Builder、Reviewer、利用者 → [役割とハーネスの機能](../agents/README.md)
+
+## この用語集で定義する語
+
+- **ハーネス**：このシステム全体。
+  - 次のものを含む。
+    - ストア
+    - API
+    - [ハーネスの機能](../agents/README.md)（validator、伝播エンジン、スケジューラなど）
+    - [CLI](../cli/README.md)
+    - [WebUI](../webui/README.md)
