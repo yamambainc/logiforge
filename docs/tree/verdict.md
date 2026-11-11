@@ -14,7 +14,7 @@
 - inactive な部分木の中では、inactive になる前に葉だった仮説にだけ、検証結果を出せる。
   - なぜ：inactive にされた時点で進行中だった作業を、記録として残すため。
   - その値は、伝播しない（[inactive 化](inactive.md)）。
-- 葉を直接検証してよいかの判断は、[論理レビュー](../apply-request/review.md) に書く。
+- 葉を直接検証してよいかの判断は、[論理レビューの審査観点](../apply-request/review-criteria.md) に書く。
 
 ## レポート
 

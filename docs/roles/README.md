@@ -23,14 +23,7 @@ opener は、[apply request](../apply-request/README.md) を出す主体であ�
 ## reviewer
 
 reviewer は、apply request を審査する主体である。
-
-- どのエージェントでも、人でも reviewer になれる。
-- opener と reviewer は、別のコンテキスト（別のセッション）でなければならない。
-  - forge は、opener と reviewer のセッション ID が違うことを確かめる。
-  - GitHub の「作成者以外のレビューを必須にする」と同じ扱いである。
-  - なぜ：論理の検証を、ほかの作業とは別のコンテキストで行うため。それさえ満たせば十分である。
-
-論理レビューの起動と審査の観点は、[論理レビュー](../apply-request/review.md) に書く。
+reviewer の決まりは、[論理レビュー](../apply-request/review.md) に書く。
 
 ## 利用者
 

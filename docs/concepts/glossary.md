@@ -20,8 +20,8 @@
 ## 変更とやりとり
 
 - apply request → [apply request](../apply-request/README.md)
-- 論理レビュー → [論理レビュー](../apply-request/review.md)
-- スレッド、PVR（物理検証リクエスト）→ [スレッド](../threads/README.md)
+- 論理レビュー、反映の条件、レビューの材料 → [論理レビュー](../apply-request/review.md)
+- スレッド、返信待ち、PVR（物理検証リクエスト）→ [スレッド](../threads/README.md)
 - 着手できる作業、通知 → [着手できる作業と通知](../work/README.md)
 
 ## 主体

@@ -29,8 +29,9 @@ apply request 自体は種類を持たない。
 ## opener と reviewer
 
 apply request には、opener と reviewer がいる。
-それぞれの決まりは、[役割](../roles/README.md) に書く。
-審査の起動と観点は、[論理レビュー](review.md) に書く。
+
+- 役割の説明は、[役割](../roles/README.md) に書く。
+- 反映の条件と論理レビューの仕組みは、[論理レビュー](review.md) に書く。
 
 ## 状態
 
@@ -46,7 +47,7 @@ stateDiagram-v2
 
 - apply request の状態は、`open`、`merged`、`closed` の 3 つである。
 - レビューの種類は、`approve`、`request_changes`、`comment` の 3 つである。
-- reviewer が `approve` すると、apply request は反映される。
+- [反映の条件](review.md) を満たすと、apply request は反映される。
 - reviewer の却下と、opener の取り下げは、どちらも `closed` にする。
   - どちらの場合も、理由を書く。
 
@@ -57,5 +58,7 @@ stateDiagram-v2
 - 不変条件は、apply request が反映されるたびに、常に成り立つ。
   - 反映すると不変条件を満たさなくなる apply request は、反映しない。
   - 不変条件は、[仮説とストーリーの木](../tree/README.md) と [inactive 化](../tree/inactive.md) に書く。
-- 反映に失敗したら、理由を残して `open` に戻す。
-  - 例：同時に別の apply request が反映され、不変条件を満たさなくなった。
+- apply request を作ったあとに、その操作の対象ノードが別の apply request によって変わっていたら、反映しない。
+  - その apply request は、理由を残して `open` に戻す。
+  - なぜ：古い状態を前提にした変更を、気づかないまま反映しないため。
+- 反映すると不変条件を満たさなくなった場合も、理由を残して `open` に戻す。

@@ -15,6 +15,7 @@
 ## 並行性
 
 - apply request には、`base_revision` による楽観ロックをかける。
+  - [反映](../docs/apply-request/README.md) の「対象ノードが変わっていたら反映しない」を実現する案である。
 - 反映は、トランザクションで行う。
 - API への重複した要求は、idempotency key で 1 回分として扱う。
 

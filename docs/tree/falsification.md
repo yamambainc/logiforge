@@ -29,7 +29,6 @@ flowchart TD
 - 代わりのストーリーが尽きたが、直接の反証はない場合は、利用者宛ての[スレッド](../threads/README.md)に状況を書く。
   - P は `null` のまま残る。
 
-これは、opener が行う（[役割](../roles/README.md)）。
 
 ## 偽になったストーリー
 
@@ -48,4 +47,4 @@ flowchart TD
 - P は、検証結果を持つ葉になる（[葉と検証結果](README.md)）。
 - P の false は、P の親ストーリーへ、通常どおり伝わる。
 
-偽と結論してよいかの審査は、[論理レビュー](../apply-request/review.md) に書く。
+偽と結論してよいかの審査は、[論理レビューの審査観点](../apply-request/review-criteria.md) に書く。
