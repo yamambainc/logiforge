@@ -15,23 +15,20 @@
 
 ## 根拠
 
-- 検証結果、レポート、artifact、引用、流用 → [検証結果と引用](../tree/verdict.md)
+- 検証結果、レポート、artifact、引用、流用、引用元の変化 → [検証結果と引用](../tree/verdict.md)
 
 ## 変更とやりとり
 
-- Apply Request（AR）、opener、reviewer → [Apply Request](../apply-request/README.md)
+- apply request → [apply request](../apply-request/README.md)
+- 論理レビュー → [論理レビュー](../apply-request/review.md)
 - スレッド、PVR（物理検証リクエスト）→ [スレッド](../threads/README.md)
+- 着手できる作業、通知 → [着手できる作業と通知](../work/README.md)
 
 ## 主体
 
-- Builder、Reviewer、利用者 → [役割とハーネスの機能](../agents/README.md)
+- opener、reviewer、利用者 → [役割](../roles/README.md)
 
 ## この用語集で定義する語
 
-- **ハーネス**：このシステム全体。
-  - 次のものを含む。
-    - ストア
-    - API
-    - [ハーネスの機能](../agents/README.md)（validator、伝播エンジン、スケジューラなど）
-    - [CLI](../cli/README.md)
-    - [WebUI](../webui/README.md)
+- **仮説検証 forge**（hypothesis verification forge）：この仕様が定めるシステム全体。単に forge とも呼ぶ。
+  - 位置づけは、[目的と範囲](README.md) に書く。

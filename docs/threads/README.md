@@ -26,14 +26,14 @@
 ## 依頼
 
 - 利用者は、自由記述の依頼をスレッドで出す。
-- Builder は、依頼に応える。
-- Builder は、代わりのストーリーが尽きた仮説について、利用者宛てのスレッドに状況を書く（[仮説が偽になったとき](../tree/falsification.md)）。
+- opener は、依頼に応える。
+- opener は、代わりのストーリーが尽きた仮説について、利用者宛てのスレッドに状況を書く（[仮説が偽になったとき](../tree/falsification.md)）。
 
 ## PVR
 
 PVR は、計算機の中だけでは検証できない物理的な問いを、人間に検証してもらうためのスレッドである。
 
-- Builder は、葉の仮説を対象に、PVR を起票する。
+- opener は、葉の仮説を対象に、PVR を起票する。
   - 本文には、人による検証手順を書き下す。
 - 利用者は、手順に沿って検証し、結果を自由記述で記入する。
   - ファイルや写真も添付できる。
@@ -45,16 +45,16 @@ PVR は、計算機の中だけでは検証できない物理的な問いを、�
 ```mermaid
 sequenceDiagram
   actor U as 利用者
-  participant B as Builder
-  participant H as ハーネス
-  participant R as Reviewer
-  B->>H: PVR を起票する（検証手順）
+  participant O as opener
+  participant H as forge
+  participant R as reviewer
+  O->>H: PVR を起票する（検証手順）
   H->>U: 通知する
   U->>H: 結果を自由記述で記入する
-  H->>B: 対応のタスクを渡す
-  B->>H: 記入を引用したレポートで verdict.submit を出す
-  H->>R: 審査のタスクを渡す
+  H->>O: 返信を通知する（webhook）
+  O->>H: 記入を引用したレポートで verdict.submit の apply request を出す
+  H->>R: 論理レビューを起動する
   R->>H: approve する
-  H->>H: 適用して、値を計算し直す
-  B->>H: PVR を閉じる
+  H->>H: 反映して、値を計算し直す
+  O->>H: PVR を閉じる
 ```

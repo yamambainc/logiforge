@@ -8,13 +8,13 @@
   - レポートのない値は出せない。
   - なぜ：すべての値を、根拠から辿れるようにするため。
 - 検証結果を出せるのは、葉の仮説だけである（[葉と検証結果](README.md)）。
-- 検証結果は、[Apply Request](../apply-request/README.md) の `verdict.submit` で出す。
+- 検証結果は、[apply request](../apply-request/README.md) の `verdict.submit` で出す。
 - 検証結果は差し替えられる。
   - 古い検証結果は、履歴に残る。
 - inactive な部分木の中では、inactive になる前に葉だった仮説にだけ、検証結果を出せる。
   - なぜ：inactive にされた時点で進行中だった作業を、記録として残すため。
   - その値は、伝播しない（[inactive 化](inactive.md)）。
-- 葉を直接検証してよいかの判断は、[Reviewer の審査観点](../apply-request/review.md) に書く。
+- 葉を直接検証してよいかの判断は、[論理レビュー](../apply-request/review.md) に書く。
 
 ## レポート
 
@@ -35,7 +35,6 @@ artifact は、レポートが参照する根拠物である。次のような�
 
 artifact の扱いは、次のとおり。
 
-- artifact は、中身のハッシュで識別する。
 - artifact は、変更しない。
   - なぜ：検証をあとから再現できるようにするため。
 - プログラムによる検証では、次のものを artifact として残す。

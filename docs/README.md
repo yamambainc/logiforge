@@ -1,6 +1,6 @@
-# 仮説検証ハーネスの仕様
+# 仮説検証 forge の仕様
 
-仮説検証ハーネスが何を満たすかを確かめるときに読む。
+仮説検証 forge が何を満たすかを確かめるときに読む。
 設計と実装の判断は、ここに書いた決まりに従う。
 
 - 仕様の入口は、このページである。
@@ -15,10 +15,10 @@
 5. [検証結果と引用](tree/verdict.md)
 6. [仮説が偽になったとき](tree/falsification.md)
 7. [inactive 化](tree/inactive.md)
-8. [Apply Request](apply-request/README.md)
-9. [Reviewer の審査観点](apply-request/review.md)
-10. [役割とハーネスの機能](agents/README.md)
-11. [スケジューラ](agents/scheduler.md)
+8. [apply request](apply-request/README.md)
+9. [論理レビュー](apply-request/review.md)
+10. [役割](roles/README.md)
+11. [着手できる作業と通知](work/README.md)
 12. [スレッド（依頼と PVR）](threads/README.md)
 13. [CLI](cli/README.md)
 14. [WebUI](webui/README.md)

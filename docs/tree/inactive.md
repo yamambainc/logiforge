@@ -24,7 +24,7 @@
 
 ## 操作
 
-- [Apply Request](../apply-request/README.md) の `story.inactivate` で行う。
+- [apply request](../apply-request/README.md) の `story.inactivate` で行う。
 - inactive にする理由（reason）を、自由記述で必ず書く。
   - なぜ：欠陥の重さを審査し、あとから経緯を辿れるようにするため。
 

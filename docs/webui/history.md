@@ -1,32 +1,32 @@
-# AR と履歴の画面
+# apply request と履歴の画面
 
 利用者が、木がどう変わってきたかを確かめるときに使う画面。
-AR の決まりは、[Apply Request](../apply-request/README.md) に書く。
+apply request の決まりは、[apply request](../apply-request/README.md) に書く。
 
 ## ワイヤフレーム
 
 ```
 +-----------------------------------------------------------------+
-| AR と履歴    状態: [open ▼]       時点: [最新 ▼]                |
+| apply request と履歴    状態: [open ▼]     時点: [最新 ▼]       |
 +------------------------------+----------------------------------+
-| AR  S2 の作成         open   | 差分                             |
-| AR  H2 の検証         merged |  + story.create   S2 ストーリー2 |
-| AR  S0 の inactive 化 merged |  + verdict.submit H3 true        |
+| S2 の作成            open    | 差分                             |
+| H2 の検証            merged  |  + story.create   S2 ストーリー2 |
+| S0 の inactive 化    merged  |  + verdict.submit H3 true        |
 |                              | レビュー                         |
-|                              |  Reviewer: request_changes ...   |
-|                              |  Builder:  修正しました ...      |
+|                              |  reviewer: request_changes ...   |
+|                              |  opener:   修正しました ...      |
 +------------------------------+----------------------------------+
 ```
 
-## AR の閲覧
+## apply request の閲覧
 
-- AR を、状態（open、merged、closed）で絞り込める。
-- 選んだ AR について、次のものを示す。
+- apply request を、状態（open、merged、closed）で絞り込める。
+- 選んだ apply request について、次のものを示す。
   - 差分
   - レビュー
   - コメント
-- WebUI からは、AR を審査しない。
-  - なぜ：審査は Reviewer の役割だから（[役割](../agents/README.md)）。
+- WebUI からは、apply request を審査しない。
+  - なぜ：審査は reviewer の役割で、reviewer は CLI を使うから（[役割](../roles/README.md)）。
 
 ## 過去の時点の木
 

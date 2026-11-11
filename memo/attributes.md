@@ -29,17 +29,17 @@
 
 | 対象 | 属性 |
 |---|---|
-| 検証結果 | `id`、`hypothesis_id`、`value`、`report_id`、`ar_id` |
+| 検証結果 | `id`、`hypothesis_id`、`value`、`report_id`、`apply_request_id` |
 | レポート | `id`、`body`、`artifact_refs`、`citations` |
 | artifact | `id`、`kind`、`sha256`、`uri` |
 
 - `citations` には、artifact か、`{node_id, revision}` を入れる。
 - artifact の `kind` は、file、link、citation、program、output、human_entry とする。
 
-## AR、スレッド、履歴
+## apply request、スレッド、履歴
 
 | 対象 | 属性 |
 |---|---|
-| AR | `id`、`operations`、`opener`、`reviewer`、`state`、`base_revision`、`reviews`、`comments` |
+| apply request | `id`、`operations`、`opener_session_id`、`reviewer_session_id`、`state`、`base_revision`、`reviews`、`comments` |
 | スレッド | `id`、`kind`、`node_id`、`body`、`replies`、`state` |
-| 履歴のイベント | `seq`、`at`、`actor`、`kind`、`subject_id`、`before`、`after`、`ar_id` |
+| 履歴のイベント | `seq`、`at`、`actor`、`kind`、`subject_id`、`before`、`after`、`apply_request_id` |

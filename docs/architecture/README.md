@@ -1,42 +1,34 @@
 # 全体構成
 
-ハーネスを作る前に、構成要素と、全体が満たすべき性質を確かめるときに読む。
+forge を作る前に、外から見た構成と、全体が満たすべき性質を確かめるときに読む。
 
-## 構成要素
+## 構成
 
 ```mermaid
 flowchart TB
-  B["Builder"] -- CLI --> API
-  R["Reviewer"] -- CLI --> API
-  U["利用者"] -- WebUI --> API
-  subgraph API["ハーネスの API"]
-    V["validator"]
-    AR["AR エンジン"]
-    P["伝播エンジン"]
-    S["スケジューラ"]
-    N["通知"]
-  end
-  API --> Store
-  subgraph Store["ストア"]
-    T["構造化された木、AR、スレッド"]
+  O["opener"] -- CLI --> S
+  R["reviewer"] -- CLI --> S
+  U["利用者"] -- WebUI --> S
+  subgraph S["forge"]
+    T["構造化された木、apply request、スレッド"]
     F["ファイルと artifact"]
     L["履歴"]
   end
+  S -- webhook --> X["外の仕組み（ループ）"]
 ```
 
-- [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じ API を使う。
+- [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。
   - なぜ：エージェントと人間が、同じ規則で同じデータを扱うため。
-- ストアは、GitHub に近い情報管理基盤である。
+- forge は、GitHub に近い情報管理基盤である。
   - 構造化された木を、規則付きで管理する。
   - ファイルと artifact を保存する（[artifact](../tree/verdict.md)）。
   - 履歴を残す。
-
-各機能の役割は、[ハーネスの機能](../agents/README.md) に書く。
+- 作業のループは、forge の外の仕組みで回す（[着手できる作業と通知](../work/README.md)）。
 
 ## 監査
 
 - すべての変更を履歴に残す。
-- 履歴には、誰が、いつ、どの AR で変えたかを記録する。
+- 履歴には、誰が、いつ、どの apply request で変えたかを記録する。
 - 履歴は append-only にする。
   - 書き換えも削除もしない。
 - ノードごとの履歴を表示できる。
@@ -48,16 +40,13 @@ flowchart TB
 
 ## 並行性
 
-- 複数の Builder と Reviewer が同時に動いても、不変条件が常に成り立つ。
-  - 不変条件は、[仮説とストーリーの木](../tree/README.md) と [inactive 化](../tree/inactive.md) に書く。
-- タスクの割り当ては、[スケジューラ](../agents/scheduler.md) に書く。
+- 複数の主体が同時に apply request を出しても、不変条件が常に成り立つ（[反映](../apply-request/README.md)）。
 
 ## 権限
 
-- 役割（Builder、Reviewer、利用者）ごとに、使える操作を分ける。
-  - 各役割の操作は、[役割](../agents/README.md) に書く。
+- 役割（opener、reviewer、利用者）ごとに、使える操作を分ける（[役割](../roles/README.md)）。
 
 ## エクスポート
 
 - データを JSON と Markdown でエクスポートできる。
-  - なぜ：ハーネスの外でも、木と根拠を読めるようにするため。
+  - なぜ：forge の外でも、木と根拠を読めるようにするため。

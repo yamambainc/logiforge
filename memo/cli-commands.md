@@ -6,7 +6,7 @@ CLI の決まりは [CLI](../docs/cli/README.md) が正本である。
 ## コマンド
 
 ```
-hv auth login --role builder
+hv auth login
 hv tree view [<node>] [--depth 3] [--json]
 hv node view <node>
 hv node history <node>
@@ -33,10 +33,8 @@ hv thread view <thread>
 hv thread reply <thread> --body "..."
 hv thread close <thread>
 
-hv task next --role builder --wait
-hv task done <task>
-hv task release <task>
-hv watch
+hv work list [--subtree <node>]        # 着手できる作業
+hv work done-check <root>              # 作業の終わりの判定
 ```
 
-- `--ar` を付けると、既存の AR に操作を加える。付けないと、新しい AR を作る。
+- `--ar` を付けると、既存の apply request に操作を加える。付けないと、新しい apply request を作る。
