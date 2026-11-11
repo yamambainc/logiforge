@@ -30,5 +30,5 @@
 
 ## この用語集で定義する語
 
-- **仮説検証 forge**（hypothesis verification forge）：この仕様が定めるシステム全体。単に forge とも呼ぶ。
+- **Logical Forge**：この仕様が定めるシステム全体。単に forge とも呼ぶ。
   - 位置づけは、[目的と範囲](README.md) に書く。
