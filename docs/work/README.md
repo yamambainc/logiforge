@@ -14,7 +14,12 @@ GitHub の `gh pr list --search review-requested` に相当する。
 
 - 未決の葉（[葉と検証結果](../tree/README.md)）
 - 要再検討の仮説（[真偽値の伝播](../tree/propagation.md)）
-- レビュー待ちの apply request（[apply request](../apply-request/README.md)）
+- レビュー待ちの apply request
+  - 最後の更新のあと、まだレビューが 1 件もない apply request をいう。
+- 修正待ちの apply request
+  - 最後のレビューが `request_changes` の apply request をいう。
+  - 反映に失敗して `open` に戻った apply request も含める（[反映](../apply-request/README.md)）。
+  - 修正待ちは、その apply request の opener の作業である。
 - opener の返信待ちのスレッド（[返信待ち](../threads/README.md)）
 - 引用元が変化した検証結果（[検証結果と引用](../tree/verdict.md)）
 
@@ -22,8 +27,9 @@ GitHub の `gh pr list --search review-requested` に相当する。
 
 - 返すのは、active なノードに関わる作業だけである。
   - なぜ：inactive な部分木は、伝播に関与しないから（[inactive 化](../tree/inactive.md)）。
-- その作業を対象にした open の apply request がある作業は、既定では返さない。
+- 木のノードについての作業（未決の葉、要再検討の仮説、引用元が変化した検証結果）は、そのノードを対象にした open の apply request があれば、既定では返さない。
   - なぜ：同じ作業に、複数の主体が同時に手を付けないようにするため。
+- 利用者の返信待ちのスレッド（PVR の記入待ちを含む）は、返さない。
 - その仮説を対象にした open のスレッドがあり、利用者の返信待ちになっている要再検討の仮説は、着手できる作業に含めない。
   - なぜ：利用者の判断を待っている仮説だから。
 - 部分木を指定して、その中の作業だけを問い合わせられる。
@@ -37,6 +43,7 @@ forge は、1 つの木の作業が終わったかどうかを判定する、専
   - 根の値が決まるとは、true か false になることをいう。
 - 根拠部分木で、着手できる作業が 0 件である。
   - 根拠部分木は、[真偽値の伝播](../tree/propagation.md) に定義がある。
+  - 根拠部分木のノードを対象にした、レビュー待ちと修正待ちの apply request も、数に含める。
   - なぜ：引用元が変化しても値は自動では変えないので、根拠部分木の見直しを終えるまでは結論を確定できないから。
 
 ## 通知

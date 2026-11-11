@@ -22,10 +22,8 @@
 ## 返信待ち
 
 - open のスレッドで、最後の書き込みが利用者のものなら、そのスレッドは opener の返信待ちである。
-  - opener の返信待ちのスレッドは、opener の[着手できる作業](../work/README.md)になる。
 - open のスレッドで、最後の書き込みが opener のものなら、そのスレッドは利用者の返信待ちである。
   - PVR の記入待ちも、利用者の返信待ちである。
-  - 利用者の返信待ちのスレッドは、opener の着手できる作業には含めない。
 
 本文と返信は、自由記述にする。
 
@@ -60,7 +58,8 @@ sequenceDiagram
   O->>H: PVR を起票する（検証手順）
   H->>U: 通知する
   U->>H: 結果を自由記述で記入する
-  H->>O: 返信を通知する（webhook）
+  H->>X: 返信を通知する（webhook）
+  X->>O: opener を動かす
   O->>H: 記入を引用したレポートで verdict.submit の apply request を出す
   H->>X: apply request が open になったことを通知する（webhook）
   X->>R: 論理レビューを起動する

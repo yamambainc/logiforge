@@ -26,7 +26,7 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - レビュー
   - コメント
 - WebUI からは、apply request を審査しない。
-  - なぜ：人は reviewer にならないから（[反映の条件](../apply-request/review.md)）。
+  - なぜ：論理レビューは CLI を使う主体が行い、WebUI は閲覧、依頼、PVR に絞るから（[反映の条件](../apply-request/review.md)）。
 
 ## 過去の時点の木
 

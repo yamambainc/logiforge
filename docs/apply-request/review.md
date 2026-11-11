@@ -5,11 +5,18 @@ apply request が、どういう条件で反映され、論理レビューがど
 
 ## 反映の条件
 
-- [apply request](README.md) は、opener と別のセッションによる `approve` が 1 件あれば反映される。
-  - GitHub の required status check のたとえは、この条件のことを指す。
-- 人は reviewer にならない。
-  - なぜ：人の操作は、[利用者](../roles/README.md) の 3 つに限るから。
-  - WebUI には、`approve` の操作を置かない。
+[apply request](README.md) は、次の条件をすべて満たすと反映される。
+
+- opener と別のセッションによる `approve` がある。
+- `approve` が有効なのは、`approve` した時点の差分に対してだけである。
+  - apply request が更新されたら、それまでの `approve` は無効になる。
+- 最新の差分に対するレビューのうち、最後のものが `approve` である。
+
+この条件は、GitHub の「承認を必須にする」（required review）に相当する。
+
+- 論理レビューは、CLI を使う主体が行う。人も reviewer になれる。
+- WebUI には、`approve` の操作を置かない。
+  - なぜ：WebUI は、閲覧、依頼、PVR に絞るため。
 
 ## 通知
 
