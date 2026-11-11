@@ -58,7 +58,7 @@
 
 - 履歴は append-only
   - 正本の表とイベントログの、UPDATE と DELETE をトリガーで拒む（[append-only](history.md)）。
-  - 無効になったリビジョンの列を 1 度埋める更新だけを許す。
+  - 例外として許す更新は、[append-only](history.md) に書く。
   - blob を書き換えない（[ファイル](files.md)）。
 - 任意の時点の木を再現できる
   - [リビジョン r の時点で有効な行](history.md)を選び、値を計算し直す。

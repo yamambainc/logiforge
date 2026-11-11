@@ -46,4 +46,6 @@
 - イベントログには、行を加えるだけにする。
   - DB のトリガーで、UPDATE と DELETE を拒む。
 - 正本の表も、作った行を変えない（[保存の方式](README.md)）。
-  - DB のトリガーで、無効になったリビジョンの列を 1 度埋める更新だけを許す。
+  - DB のトリガーで、次の更新だけを許す。
+    - `story` の `inactivated_revision` と `reason` を、同時に 1 度だけ埋める。
+    - `verdict` の `superseded_revision` を、1 度だけ埋める。
