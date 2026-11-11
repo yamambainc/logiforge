@@ -15,7 +15,7 @@ GitHub の `gh pr list --search review-requested` に相当する。
 - 未決の葉（[葉と検証結果](../tree/README.md)）
 - 要再検討の仮説（[真偽値の伝播](../tree/propagation.md)）
 - レビュー待ちの apply request
-  - 最後の更新のあと、まだレビューが 1 件もない apply request をいう。
+  - 最後の更新のあと、有効な `approve` も `request_changes` もない apply request をいう。
 - 修正待ちの apply request
   - 最後のレビューが `request_changes` の apply request をいう。
   - 反映に失敗して `open` に戻った apply request も含める（[反映](../apply-request/README.md)）。
