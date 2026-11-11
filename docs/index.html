@@ -53,7 +53,7 @@ ol.points li{margin:6px 0}
   <rect x="480" y="16" width="150" height="74" rx="10" fill="#fff" stroke="#424a53" stroke-width="1.5"/>
   <text class="k1" x="494" y="42">apply request</text><text class="k2" x="494" y="62">操作をまとめた</text><text class="k2" x="494" y="80">変更の差分</text>
   <rect x="680" y="16" width="200" height="74" rx="10" fill="#ffeff7" stroke="#bf3989" stroke-width="1.5"/>
-  <text class="k1" x="694" y="42">reviewer</text><text class="k2" x="694" y="62">opener と別のセッション</text><text class="k2" x="694" y="80">論理と根拠を審査する</text>
+  <text class="k1" x="694" y="42">reviewer</text><text class="k2" x="694" y="62">差分を書いたのと別のセッション</text><text class="k2" x="694" y="80">論理と根拠を審査する</text>
   <rect x="240" y="160" width="640" height="84" rx="10" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
   <text class="k1" x="256" y="186">正式な木 ＋ レポートと artifact ＋ 履歴（Logiforge）</text>
   <text class="k2" x="256" y="208">ストーリー＝子仮説の AND、仮説＝子ストーリーの OR で、真偽を自動で計算する</text>
@@ -71,7 +71,7 @@ ol.points li{margin:6px 0}
 <ol class="points">
   <li>究極の問いを根にして、仮説とストーリーが交互に並ぶ木を作る。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md">仮説とストーリーの木</a></li>
   <li>値を入れるのは、葉の仮説の検証結果だけ。上位の値は、すべて自動で計算する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/propagation.md">真偽値の伝播</a></li>
-  <li>木への変更は、すべて apply request を通す。opener とは別のセッションの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
+  <li>木への変更は、すべて apply request を通す。差分を書いたのとは別のセッションの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
   <li>偽が出ても、親の仮説は自動では棄却しない。別のストーリーを探す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/falsification.md">仮説が偽になったとき</a></li>
   <li>作業は「着手できる作業」の問い合わせで見つけ、ループは外の仕組みで回す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md">着手できる作業と通知</a></li>
 </ol>

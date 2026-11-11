@@ -7,7 +7,8 @@ apply request が、どういう条件で反映され、論理レビューがど
 
 [apply request](README.md) は、次の条件をすべて満たすと反映される。
 
-- opener と別のセッションによる `approve` がある。
+- 差分を書いたどのセッションとも別のセッションによる `approve` がある。
+  - 差分は、どの版も、書いたセッションが記録される。
 - `approve` が有効なのは、`approve` した時点の差分に対してだけである。
   - apply request が更新されたら、それまでの `approve` は無効になる。
 - 最新の差分に対するレビューのうち、最後のものが `approve` である。
@@ -20,8 +21,7 @@ apply request が、どういう条件で反映され、論理レビューがど
 
 ## 通知
 
-- forge は、apply request が open になったときに、webhook で通知する。
-- forge は、apply request が更新されたときに、webhook で通知する。
+- forge は、apply request が open になったとき、または更新されたときに、webhook で通知する（[通知](../work/README.md)）。
 - 論理レビューを起動するのは、forge の外の仕組み（GitHub Actions など）である。
   - forge は、論理レビューを起動しない。
 
@@ -68,7 +68,7 @@ apply request の説明欄は、材料に含めない。
 
 forge が確かめること：
 
-- opener と reviewer のセッション ID が違うこと。
+- reviewer のセッション ID が、差分を書いたどのセッション ID とも違うこと。
 
 forge が記録すること：
 

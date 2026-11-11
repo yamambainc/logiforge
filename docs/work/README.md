@@ -48,15 +48,8 @@ forge は、1 つの木の作業が終わったかどうかを判定する、専
 
 ## 通知
 
-forge は、次のイベントを webhook で通知する。
-
-- apply request が open になった。
-- apply request が更新された。
-- apply request が反映された。
-- apply request が close された。
-- スレッドが作られた。
-- スレッドに返信が来た。
-- 引用元が変化した。
+- 着手できる作業が変わりうる変化があったら、forge は webhook で通知する。
+- 通知には、変化した対象の種類と識別子だけを入れる。
 
 webhook は、着手できる作業を問い合わせ直す合図である。
 

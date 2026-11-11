@@ -6,49 +6,52 @@ Logiforge が持つデータの形と、要件の不変条件をデータでど�
 
 Logiforge のデータは、次の 2 つに分かれる。
 
-- 構造化データ：木、apply request、スレッド、履歴など。DB に置く。
-- ファイル：レポートの本文、artifact、スレッドの書き込みの本文。ファイルシステムに置く。
+- 構造化データ：木、検証結果、apply request、スレッド、履歴。DB に置く。
+  - レポートの本文と、スレッドの書き込みの本文も、DB の行に置く。
+- ファイル：artifact の中身。ファイルシステムに置く（[ファイル](files.md)）。
+
+1 つの forge が持つ木は 1 つである（[木の形](../../docs/tree/README.md)）。
 
 ## 保存の方式
 
-- 正本は、append-only のイベントログにする（[履歴](history.md)）。
-  - なぜ：要件の「履歴は append-only」と「任意の時点の木を表示できる」（[監査](../../docs/architecture/README.md)）を、同じ仕組みで満たせるから。
-- 現在の木と apply request は、イベントログから作る投影（projection）として持つ。
-  - なぜ：参照のたびにイベントを再生すると遅いから。
+- 正本は、通常の表に置く。各行は、どのリビジョンから有効かを持つ（[リビジョン](history.md)）。
+  - なぜ：「リビジョン r の時点で有効な行」を選ぶだけで、任意の時点の木を作れるから（[監査](../../docs/architecture/README.md)）。
+- 作った行は、変えない。
+  - 例外は、無効になったリビジョンを 1 度だけ埋める列（`inactivated_revision`、`superseded_revision`）である。
+- 値と、葉・要再検討・inactive などの状態は、保存せずに計算する。
+  - なぜ：保存すると、正本との食い違いを防ぐ仕組みが要るから。
+- 監査用に、append-only のイベントログを別に持つ（[イベントログ](history.md)）。正本にはしない。
 - DB は RDB にする。既定は SQLite とする。
   - なぜ：不変条件の確認と反映を、1 つのトランザクションで行えるから。
   - なぜ：反映はもともと 1 件ずつ順に行うので、書き込みが 1 本の SQLite で足りるから。
-- ファイルは、中身のハッシュで名前を決める CAS に置く（[ファイル](files.md)）。
+- artifact の中身は、中身のハッシュで名前を決めて置く（[ファイル](files.md)）。
   - なぜ：artifact を変更しないこと（[artifact](../../docs/tree/verdict.md)）を、名前の付け方で守れるから。
 
 ## 全体の関係
 
 ```mermaid
 erDiagram
-  TREE ||--|| HYPOTHESIS : "根"
   HYPOTHESIS ||--o{ STORY : "子ストーリー"
   STORY ||--|{ HYPOTHESIS : "子仮説"
+  HYPOTHESIS ||--|{ BACKGROUND : "背景情報"
   HYPOTHESIS ||--o{ VERDICT : "検証結果（有効なものは 1 件）"
-  VERDICT ||--|| REPORT : "1 対 1"
-  REPORT }o--o{ ARTIFACT : "参照"
-  REPORT ||--o{ CITATION : "引用"
-  APPLY_REQUEST ||--|{ OPERATION : "操作"
+  VERDICT }o--o{ ARTIFACT : "参照"
+  VERDICT ||--o{ CITATION : "引用"
+  APPLY_REQUEST ||--|{ APPLY_REQUEST_VERSION : "版"
+  APPLY_REQUEST_VERSION ||--|{ OPERATION : "操作"
   APPLY_REQUEST ||--o{ REVIEW : "レビュー"
   THREAD ||--|{ POST : "書き込み"
-  EVENT }o--|| TREE : "履歴"
-  ARTIFACT }o--|| BLOB : "中身"
-  REPORT }o--|| BLOB : "本文"
-  POST }o--|| BLOB : "本文"
+  ARTIFACT }o--o| BLOB : "中身"
 ```
 
 ## ページ
 
-1. [木](tree.md)：木、仮説、ストーリー
-2. [検証結果と根拠](verdict.md)：検証結果、レポート、artifact、引用
-3. [apply request](apply-request.md)：apply request、操作、レビュー
+1. [木](tree.md)：仮説、背景情報、ストーリー
+2. [検証結果と根拠](verdict.md)：検証結果、artifact、引用
+3. [apply request](apply-request.md)：apply request、版、操作、レビュー
 4. [スレッド](thread.md)：スレッド、書き込み
-5. [履歴](history.md)：イベントログ、リビジョン、投影、任意の時点の再現
-6. [ファイル](files.md)：ディレクトリ、命名、構造化データとの対応
+5. [リビジョンとイベントログ](history.md)
+6. [ファイル](files.md)：artifact の中身
 7. [不変条件の守り方](invariants.md)
 
 ## 識別子

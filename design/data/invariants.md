@@ -7,10 +7,8 @@
 ## 木の形
 
 - 根は 1 つ
-  - `tree.root_hypothesis_id` を一意にする。
-  - 根の仮説は、木を作るときにだけ作る。
-- 根だけが親を持たない
-  - `hypothesis.parent_story_id` が null の仮説は、`tree.root_hypothesis_id` と一致するものだけにする（反映時）。
+  - `hypothesis.parent_story_id` が null の行を、1 行だけにする（部分一意の制約）。
+  - 根は、根の主文の作成でだけ作る。
 - 仮説とストーリーが交互に並ぶ
   - [仮説とストーリーを別の表](tree.md)にし、親の列が相手の表を指す外部キーにする。
 - ストーリーの子仮説は 1 つ以上
@@ -20,13 +18,13 @@
 
 ## 文字数
 
-- 主文、タイトル、概要の上限を、操作を受け付けたときと反映時に確かめる（[仮説](../../docs/tree/README.md)）。
-- 文字数は、Unicode NFC に正規化したあとのコードポイント数で数える。
+- 主文、タイトル、概要の上限を、操作を受け付けたときと反映時に確かめる。
+  - 上限と数え方は、[仮説とストーリーの木](../../docs/tree/README.md) に従う。
 
 ## 葉と検証結果
 
 - 検証結果とレポートは 1 対 1
-  - `verdict.report_id` を一意にし、null を許さない。
+  - 1 つの `verdict` の行に、値とレポートの本文を持たせる。
 - 有効な検証結果は 1 件まで
   - `verdict` に、`superseded_revision` が null の行についての部分一意の制約を付ける。
 - 有効な検証結果と active な子ストーリーを同時に持たない
@@ -37,29 +35,30 @@
 ## inactive
 
 - inactive にできるのはストーリーだけ
-  - `state` と `reason` の列は、`story` にだけ置く。
+  - `inactivated_revision` と `reason` の列は、`story` にだけ置く。
 - 仮説の inactive は導かれる状態
-  - `hypothesis.inactive` は投影で、ストーリーの inactive 化のたびに子孫へ広げる。
+  - 祖先のストーリーの `inactivated_revision` から計算する（[計算で求めるもの](tree.md)）。
 - inactive な部分木の下にストーリーを作らない
-  - 反映時に、親仮説の `inactive` を確かめる。
+  - 反映時に、親仮説が inactive でないかを確かめる。
 - inactive な葉への検証結果は、inactive になる前に葉だった仮説だけ
-  - 反映時に `leaf_when_inactivated` を確かめる。
+  - 反映時に、inactive になったリビジョンの 1 つ前の状態で確かめる。
 
 ## 反映
 
 - 操作は全部まとめて反映する
   - 反映を 1 つのトランザクションで行う。
 - 対象ノードが変わっていたら反映しない
-  - `operation.base_revision` と、対象ノードの `last_changed_revision` を比べる。
-- opener と reviewer は別のセッション
-  - `review.reviewer_session_id` と `apply_request.opener_session_id` が同じレビューを拒む。
+  - `operation.base_revision` と、対象ノードの[最後の変更](tree.md)のリビジョンを比べる。
+- 差分を書いたどのセッションとも別のセッションによる承認
+  - `review.reviewer_session_id` が、どれかの版の `author_session_id` と同じなら拒む。
 - 反映の条件
-  - 今の `version` に対する最後のレビューが `approve` かを確かめる。
+  - 今の版に対する最後のレビューが `approve` かを確かめる。
 
 ## 履歴
 
 - 履歴は append-only
-  - `event` 表への UPDATE と DELETE をトリガーで拒む。
+  - 正本の表とイベントログの、UPDATE と DELETE をトリガーで拒む（[append-only](history.md)）。
+  - 無効になったリビジョンの列を 1 度埋める更新だけを許す。
   - blob を書き換えない（[ファイル](files.md)）。
 - 任意の時点の木を再現できる
-  - [スナップショットとイベントの再生](history.md)で作る。
+  - [リビジョン r の時点で有効な行](history.md)を選び、値を計算し直す。

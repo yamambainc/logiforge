@@ -1,13 +1,14 @@
 # ファイル
 
-レポートの本文、artifact、書き込みの本文を、ファイルシステムにどう置くかを確かめるときに読む。
+artifact の中身を、ファイルシステムにどう置くかを確かめるときに読む。
+レポートの本文とスレッドの書き込みの本文は、ファイルではなく DB の行に置く（[保存の方式](README.md)）。
 
 ## ディレクトリ
 
 ```
 <データのディレクトリ>/
   db/logiforge.sqlite        構造化データ
-  blobs/sha256/<先頭 2 文字>/<残りの 62 文字>   中身
+  blobs/sha256/<先頭 2 文字>/<残りの 62 文字>   artifact の中身
   tmp/                        受け取り途中のファイル
 ```
 
@@ -23,7 +24,6 @@
 | `sha256` | 文字列 | 中身のハッシュ。主キー |
 | `size` | 整数 | バイト数 |
 | `media_type` | 文字列 | 受け取ったときの形式 |
-| `created_at` | 時刻 | 最初に受け取った時刻 |
 
 ## 書き込みの手順
 
@@ -34,22 +34,16 @@
 5. `blob` 表に行を加える。
 
 - 一度置いたファイルは、書き換えも削除もしない。
-  - なぜ：artifact を変えないこと（[artifact](../../docs/tree/verdict.md)）と、append-only の履歴（[監査](../../docs/architecture/README.md)）を守るため。
+  - なぜ：artifact を変えないこと（[artifact](../../docs/tree/verdict.md)）を守るため。
 
 ## 構造化データとの対応
 
-| 構造化データ | 列 | 指す blob |
-|---|---|---|
-| [report](verdict.md) | `body_sha256` | レポートの本文 |
-| [artifact](verdict.md) | `sha256` | artifact の中身 |
-| [post](thread.md) | `body_sha256` | 書き込みの本文 |
-| [snapshot](history.md) | `blob_sha256` | ある時点の木 |
-
-- 1 つの blob を、複数の行から指してよい。
-- blob を指す行がなくなっても、blob は消さない。
+- [artifact](verdict.md) の `sha256` が、blob を指す。
+- PVR への記入を artifact にするときは、書き込みの本文を blob に置く（[スレッド](thread.md)）。
+- 1 つの blob を、複数の artifact から指してよい。
 
 ## リビジョンを固定した引用
 
 - 部分木の引用は、`node_id` と `revision` の組で記録する（[citation](verdict.md)）。
-- 引用先を読むときは、[任意の時点の再現](history.md) で、リビジョン r の部分木を作る。
-- 部分木の中のレポートと artifact は、blob の名前で指しているので、r のときと同じ中身が読める。
+- 引用先を読むときは、[任意の時点の木](history.md) の手順で、リビジョン r の部分木を作る。
+- 部分木の中の artifact は blob の名前で指しているので、r のときと同じ中身が読める。
