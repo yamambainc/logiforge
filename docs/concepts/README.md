@@ -1,6 +1,6 @@
 # 目的と範囲
 
-Logical Forge が何のためにあり、どこまでを扱うかを確かめるときに読む。
+Logiforge が何のためにあり、どこまでを扱うかを確かめるときに読む。
 
 ## 解く課題
 
@@ -36,7 +36,7 @@ Logical Forge が何のためにあり、どこまでを扱うかを確かめる
 
 ## 位置づけ
 
-- Logical Forge は、仮説と根拠を記録する正本（system of record）である。
+- Logiforge は、仮説と根拠を記録する正本（system of record）である。
   - GitHub がコードの forge であるのと同じ位置づけである。
   - エージェントを包んで動かす仕組みではない。
 
