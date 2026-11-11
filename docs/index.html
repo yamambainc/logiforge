@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>仮説検証ハーネス 要件定義（概要）</title>
+<meta name="description" content="研究など不確実性の高い問いのための、エージェント常駐型・仮説検証ハーネスの要件定義の概要">
+<style>
+:root{
+  --fg:#1f2328; --muted:#59636e; --line:#d1d9e0; --bg:#ffffff; --soft:#f6f8fa; --accent:#0969da;
+  --t-fill:#e6f4ea; --t-line:#1a7f37; --f-fill:#ffebe9; --f-line:#cf222e; --n-fill:#f2f4f6; --n-line:#818b98;
+  --warn:#9a6700; --warn-fill:#fff8c5;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",Meiryo,system-ui,sans-serif;color:var(--fg);background:var(--bg);line-height:1.75;font-size:16px}
+header.hero{background:linear-gradient(135deg,#0b1f3a,#123b6d);color:#fff;padding:56px 24px 40px}
+header.hero .wrap{max-width:1040px;margin:0 auto}
+header.hero h1{margin:0 0 8px;font-size:2rem;line-height:1.3}
+header.hero p{margin:4px 0;color:#c9d6ea}
+header.hero .meta{font-size:.85rem;margin-top:16px;color:#9fb3d1}
+.layout{max-width:1040px;margin:0 auto;padding:0 24px 80px}
+nav.toc{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:28px 0}
+nav.toc strong{display:block;margin-bottom:6px}
+nav.toc ol{columns:2;margin:0;padding-left:1.4em;font-size:.95rem}
+nav.toc a{color:var(--accent);text-decoration:none}
+nav.toc a:hover{text-decoration:underline}
+section{padding-top:24px;border-top:1px solid var(--line);margin-top:40px}
+section.summary{border-top:none;margin-top:28px;padding:22px 24px;background:#f3f8ff;border:1px solid #b6d4fb;border-radius:12px}
+h2{font-size:1.5rem;margin:0 0 12px}
+h2 .num{color:var(--accent);margin-right:.4em}
+h3{font-size:1.12rem;margin:26px 0 8px}
+p{margin:8px 0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.93rem}
+th,td{border:1px solid var(--line);padding:7px 10px;vertical-align:top;text-align:left}
+th{background:var(--soft);font-weight:600}
+code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+pre{background:#0d1117;color:#e6edf3;border-radius:8px;padding:14px 16px;overflow:auto;font-size:.85rem;line-height:1.55}
+pre code{background:none;border:none;padding:0;color:inherit}
+pre .c{color:#8b949e}
+figure{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff;overflow-x:auto}
+figure svg{width:100%;min-width:720px;height:auto;display:block}
+figcaption{font-size:.85rem;color:var(--muted);margin-top:8px}
+.callout{border-left:4px solid var(--accent);background:#ddf4ff;padding:10px 14px;border-radius:6px;margin:14px 0}
+.callout.decided{border-color:var(--t-line);background:var(--t-fill)}
+.callout.open{border-color:var(--warn);background:var(--warn-fill)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:6px;vertical-align:1px;white-space:nowrap}
+.tag.decided{background:var(--t-line);color:#fff}
+.tag.open{background:var(--warn);color:#fff}
+.tag.solved{background:#57606a;color:#fff}
+.v{display:inline-block;min-width:3.4em;text-align:center;font-family:ui-monospace,Menlo,monospace;font-size:.85em;border-radius:4px;padding:0 6px;border:1px solid}
+.v.t{background:var(--t-fill);border-color:var(--t-line);color:var(--t-line)}
+.v.f{background:var(--f-fill);border-color:var(--f-line);color:var(--f-line)}
+.v.n{background:var(--n-fill);border-color:var(--n-line);color:#424a53}
+table.truth{width:auto;min-width:360px}
+table.truth td,table.truth th{text-align:center;padding:6px 14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 18px;background:#fff}
+.card h4{margin:0 0 6px;font-size:1.02rem}
+.card.builder{border-top:4px solid #8250df}
+.card.reviewer{border-top:4px solid #bf3989}
+.card.harness{border-top:4px solid #57606a}
+.card.human{border-top:4px solid #0969da}
+.card ul{margin:6px 0;padding-left:1.2em}
+ol.points{margin:10px 0;padding-left:1.4em}
+ol.points li{margin:4px 0}
+ol.steps{list-style:none;padding:0;margin:14px 0;counter-reset:s}
+ol.steps li{position:relative;padding:10px 14px 10px 52px;border:1px solid var(--line);border-radius:8px;margin:8px 0;background:#fff}
+ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:14px;top:10px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;text-align:center;line-height:26px;font-size:.85rem}
+details{border:1px solid var(--line);border-radius:10px;margin:12px 0;background:#fff}
+details>summary{cursor:pointer;padding:10px 16px;font-weight:600;background:var(--soft);border-radius:10px;list-style-position:inside}
+details[open]>summary{border-bottom:1px solid var(--line);border-radius:10px 10px 0 0}
+details>.inner{padding:4px 16px 12px}
+.small{font-size:.85rem;color:var(--muted)}
+footer{max-width:1040px;margin:0 auto;padding:24px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line)}
+@media (max-width:760px){nav.toc ol{columns:1}.grid2{grid-template-columns:1fr}header.hero h1{font-size:1.5rem}section.summary{padding:16px}}
+@media print{header.hero{background:#123b6d;-webkit-print-color-adjust:exact;print-color-adjust:exact}figure{break-inside:avoid}details>.inner{display:block}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>仮説検証ハーネス 要件定義（概要）</h1>
+    <p>問いを「仮説—ストーリー」の木に分解し、エージェントが検証を回し続けるための、GitHub に近い情報管理基盤</p>
+    <p class="meta">版 v0.2（レビューを反映したドラフト） ・ 2026-11-11 ・ 詳細版（正本）: <a href="requirements.md" style="color:#9fd0ff">requirements.md</a></p>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- 3分でわかる要点 -->
+<section class="summary" id="summary">
+<h2>3 分でわかる要点</h2>
+<figure>
+<svg viewBox="0 0 900 260" role="img" aria-label="仮説検証ハーネスの概念図">
+  <defs><marker id="m0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424a53"/></marker></defs>
+  <style>.k1{font-size:14px;font-weight:700;fill:#1f2328}.k2{font-size:12px;fill:#59636e}.ka{stroke:#424a53;stroke-width:1.5;fill:none;marker-end:url(#m0)}.kl{font-size:11px;fill:#0969da}</style>
+  <rect x="20" y="80" width="160" height="90" rx="10" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+  <text class="k1" x="34" y="106">人間（owner）</text><text class="k2" x="34" y="128">WebUI で閲覧・依頼</text><text class="k2" x="34" y="148">物理検証の結果を記入</text>
+  <rect x="240" y="16" width="190" height="74" rx="10" fill="#fbefff" stroke="#8250df" stroke-width="1.5"/>
+  <text class="k1" x="254" y="42">Builder / Verifier</text><text class="k2" x="254" y="62">木の分解・終端の検証</text><text class="k2" x="254" y="80">変更を提案（opener）</text>
+  <rect x="480" y="16" width="150" height="74" rx="10" fill="#fff" stroke="#424a53" stroke-width="1.5"/>
+  <text class="k1" x="494" y="42">Apply Request</text><text class="k2" x="494" y="62">変更の一時データ</text><text class="k2" x="494" y="80">（PR に相当）</text>
+  <rect x="680" y="16" width="200" height="74" rx="10" fill="#ffeff7" stroke="#bf3989" stroke-width="1.5"/>
+  <text class="k1" x="694" y="42">Story Reviewer</text><text class="k2" x="694" y="62">論理・終端判定・レポート</text><text class="k2" x="694" y="80">を審査（reviewer）</text>
+  <rect x="240" y="160" width="640" height="84" rx="10" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="k1" x="256" y="186">正式な木 ＋ レポート / artifacts ＋ 履歴（ハーネス）</text>
+  <text class="k2" x="256" y="208">ストーリー＝子仮説の AND、仮説＝子ストーリーの OR で真偽を自動伝播</text>
+  <text class="k2" x="256" y="228">スケジューラが次のタスクを生成し、ループを回し続ける</text>
+  <path class="ka" d="M430,53 L478,53"/><path class="ka" d="M630,53 L678,53"/>
+  <path class="ka" d="M780,92 L780,158"/><text class="kl" x="788" y="130">承認で適用</text>
+  <path class="ka" d="M330,158 L330,92"/><text class="kl" x="338" y="130">次のタスク</text>
+  <path class="ka" d="M182,104 L238,66" style="marker-start:url(#m0)"/><text class="kl" x="150" y="70">依頼 ⇄ PVR</text>
+  <path class="ka" d="M182,150 L238,190"/><text class="kl" x="150" y="196">閲覧</text>
+</svg>
+</figure>
+<ol class="points">
+  <li>究極の問いを根にして、<strong>仮説とストーリーが交互に並ぶ木</strong>を作る。ストーリーは子仮説の AND、仮説は子ストーリーの OR。</li>
+  <li>人やエージェントが値を入れるのは<strong>終端仮説だけ</strong>で、値は必ずレポートと 1 対 1 の組で入れる。上位の値はすべて自動で計算される。</li>
+  <li>木への変更はすべて <strong>Apply Request</strong>（Builder が提案し、Reviewer が承認する）を通して正式なデータになり、履歴が残る。</li>
+  <li>偽が出ても、<strong>親仮説は自動では棄却しない</strong>。要再検討として代替ストーリーを探す。偽と結論するのは、直接の反証があるときだけ。</li>
+  <li>エージェントは <strong>CLI</strong> で常駐ループを回し、人間は <strong>WebUI</strong> で閲覧・依頼・物理検証の結果の記入を行う。ループを回すスケジューラはハーネスの機能。</li>
+</ol>
+
+<h3>具体例</h3>
+<figure>
+<svg viewBox="0 0 860 500" role="img" aria-label="真偽値伝播の具体例の木">
+  <defs>
+    <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8250df"/></marker>
+  </defs>
+  <style>
+    .lbl{font-size:13px;fill:#1f2328}
+    .id{font-size:11px;fill:#59636e;font-family:ui-monospace,Menlo,monospace}
+    .op{font-size:11px;font-weight:700;fill:#0969da}
+    .pill{font-size:11px;font-family:ui-monospace,Menlo,monospace}
+    .edge{stroke:#818b98;stroke-width:1.5;fill:none}
+  </style>
+  <path class="edge" d="M430,76 L220,120"/><path class="edge" d="M430,76 L640,120"/>
+  <path class="edge" d="M220,176 L115,230"/><path class="edge" d="M220,176 L325,230"/>
+  <path class="edge" d="M640,176 L535,230"/><path class="edge" d="M640,176 L745,230"/>
+  <path class="edge" d="M745,286 L745,330"/><path class="edge" d="M745,386 L745,430"/>
+  <text class="op" x="438" y="98">OR</text>
+  <text class="op" x="228" y="200">AND</text>
+  <text class="op" x="648" y="200">AND</text>
+  <text class="op" x="753" y="312">OR</text>
+  <text class="op" x="753" y="412">AND</text>
+  <path d="M535,286 C535,370 115,370 115,286" fill="none" stroke="#8250df" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar1)"/>
+  <text x="250" y="362" font-size="12" fill="#8250df">H3 は H1 を流用（新しいノード＋引用だけのレポート）</text>
+
+  <rect x="335" y="20" width="190" height="56" rx="12" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="id" x="347" y="40">H0 仮説（根）</text><text class="lbl" x="347" y="62">究極的な問い</text>
+  <rect x="470" y="28" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="493" y="41" fill="#fff" text-anchor="middle">true</text>
+  <rect x="125" y="120" width="190" height="56" rx="2" fill="#ffebe9" stroke="#cf222e" stroke-width="1.5"/>
+  <text class="id" x="137" y="140">S1 ストーリー</text><text class="lbl" x="137" y="162">当初の道筋（棄却）</text>
+  <rect x="260" y="128" width="46" height="18" rx="4" fill="#cf222e"/><text class="pill" x="283" y="141" fill="#fff" text-anchor="middle">false</text>
+  <rect x="545" y="120" width="190" height="56" rx="2" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="id" x="557" y="140">S2（新設）</text><text class="lbl" x="557" y="162">代替の道筋</text>
+  <rect x="680" y="128" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="703" y="141" fill="#fff" text-anchor="middle">true</text>
+  <rect x="20" y="230" width="190" height="56" rx="12" fill="#e6f4ea" stroke="#1a7f37" stroke-width="2.5"/>
+  <text class="id" x="32" y="250">H1 終端仮説</text><text class="lbl" x="32" y="272">検証済み（入力）</text>
+  <rect x="155" y="238" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="178" y="251" fill="#fff" text-anchor="middle">true</text>
+  <rect x="230" y="230" width="190" height="56" rx="12" fill="#ffebe9" stroke="#cf222e" stroke-width="2.5"/>
+  <text class="id" x="242" y="250">H2 終端仮説</text><text class="lbl" x="242" y="272">偽と判明（入力）</text>
+  <rect x="365" y="238" width="46" height="18" rx="4" fill="#cf222e"/><text class="pill" x="388" y="251" fill="#fff" text-anchor="middle">false</text>
+  <rect x="440" y="230" width="190" height="56" rx="12" fill="#e6f4ea" stroke="#1a7f37" stroke-width="2.5"/>
+  <text class="id" x="452" y="250">H3 終端仮説</text><text class="lbl" x="452" y="272">H1 の流用（入力）</text>
+  <rect x="575" y="238" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="598" y="251" fill="#fff" text-anchor="middle">true</text>
+  <rect x="650" y="230" width="190" height="56" rx="12" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="id" x="662" y="250">H4 仮説</text><text class="lbl" x="662" y="272">さらに分解（計算）</text>
+  <rect x="785" y="238" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="808" y="251" fill="#fff" text-anchor="middle">true</text>
+  <rect x="650" y="330" width="190" height="56" rx="2" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
+  <text class="id" x="662" y="350">S3 ストーリー</text><text class="lbl" x="662" y="372">サブストーリー</text>
+  <rect x="785" y="338" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="808" y="351" fill="#fff" text-anchor="middle">true</text>
+  <rect x="650" y="430" width="190" height="56" rx="12" fill="#e6f4ea" stroke="#1a7f37" stroke-width="2.5"/>
+  <text class="id" x="662" y="450">H5 終端仮説</text><text class="lbl" x="662" y="472">検証済み（入力）</text>
+  <rect x="785" y="438" width="46" height="18" rx="4" fill="#1a7f37"/><text class="pill" x="808" y="451" fill="#fff" text-anchor="middle">true</text>
+  <g transform="translate(20,410)">
+    <rect x="0" y="0" width="34" height="20" rx="8" fill="#fff" stroke="#59636e" stroke-width="1.5"/><text x="42" y="15" font-size="12" fill="#59636e">仮説（角丸）</text>
+    <rect x="0" y="28" width="34" height="20" rx="2" fill="#fff" stroke="#59636e" stroke-width="1.5"/><text x="42" y="43" font-size="12" fill="#59636e">ストーリー（角）</text>
+    <rect x="0" y="56" width="34" height="20" rx="8" fill="#fff" stroke="#59636e" stroke-width="3"/><text x="42" y="71" font-size="12" fill="#59636e">太枠＝終端仮説（値は入力）</text>
+  </g>
+</svg>
+<figcaption>H2 が偽になったため、S1 は自動的に false になりました。S2 を作る前の H0 は、子ストーリーが S1 だけで、それが false なので <span class="v n">null</span>＋要再検討でした。Builder が S2（H1 を流用した H3 と、さらに分解した H4 を含む）を作り、それが承認・検証された結果、H0 は <span class="v t">true</span> になりました。なお、S2 を作った直後の H4 は「未展開（unexpanded）」で、要再検討ではありません。</figcaption>
+</figure>
+</section>
+
+<nav class="toc" aria-label="目次">
+  <strong>目次</strong>
+  <ol>
+    <li><a href="#bg">背景と目的</a></li>
+    <li><a href="#terms">用語</a></li>
+    <li><a href="#model">データモデル</a></li>
+    <li><a href="#propagation">真偽値の伝播</a></li>
+    <li><a href="#ar">Apply Request のライフサイクル</a></li>
+    <li><a href="#false">仮説が偽になったときのフロー</a></li>
+    <li><a href="#inactive">inactive 化</a></li>
+    <li><a href="#agents">エージェントの責務分担</a></li>
+    <li><a href="#cli">CLI</a></li>
+    <li><a href="#webui">WebUI</a></li>
+    <li><a href="#arch">全体アーキテクチャ</a></li>
+    <li><a href="#req">機能要件・非機能要件</a></li>
+    <li><a href="#decisions">未決事項と設計判断</a></li>
+  </ol>
+</nav>
+
+<!-- 1 -->
+<section id="bg">
+<h2><span class="num">1</span>背景と目的</h2>
+<p>研究のように答えが分からない問いに取り組むとき、人もエージェントも「問いを仮説に分ける → 検証できる大きさまで分ける → 検証する → 外れたら別の道を探す」を繰り返しています。ただ、この過程は普通、会話やメモの中に散らばっていて、<strong>どの仮説がどの論理で問いを支えているのか</strong>、<strong>どの結論がどの根拠に基づくのか</strong>、<strong>偽になった仮説の影響がどこまで及ぶのか</strong>を後から辿れません。</p>
+<p>本プロジェクトでは、<strong>構造化データ（仮説とストーリーの木）と非構造化データ（レポート・artifacts）を組み合わせ、再帰的に回し続けられる環境</strong>を作り、そこにエージェントを常駐させます。</p>
+<div class="grid2">
+  <div class="card"><h4>目的</h4>
+    <ul>
+      <li>究極的な問いを根とする「仮説—ストーリー」の木を、規則付きのデータとして管理する</li>
+      <li>末端の仮説だけを検証すれば、上位の真偽が自動的に決まるようにする</li>
+      <li>すべての変更を Apply Request（opener / reviewer）で審査し、履歴に残す</li>
+      <li>エージェントは CLI、人間は WebUI で同じ基盤を操作する。計算機の中で検証できない問いは、人間に物理検証を依頼できる</li>
+    </ul>
+  </div>
+  <div class="card"><h4>GitHub との違い</h4>
+    <p>変更履歴が残り、ファイル（レポート・artifacts）をコミットでき、変更提案に opener / reviewer がいる、という点は GitHub と同じです。違うのは、管理対象がファイルだけでなく<strong>規則付きの木構造</strong>であり、その木の上で<strong>真偽値が自動的に伝わる</strong>点です。</p>
+    <p class="small">対象外: LLM の選定、プロンプトの詳細、プログラム実行サンドボックスの実装、認証基盤の実装方式</p>
+  </div>
+</div>
+</section>
+
+<!-- 2 -->
+<section id="terms">
+<h2><span class="num">2</span>用語</h2>
+<table>
+<tr><th style="width:24%">用語</th><th>定義</th></tr>
+<tr><td><strong>仮説</strong> (Hypothesis)</td><td>真偽を問える命題。<strong>50 字以下の主文</strong>と、<strong>文字数に上限のない背景情報</strong>からなる。木の根は常に仮説（＝究極的な問い）。</td></tr>
+<tr><td><strong>ストーリー</strong> (Story)</td><td>「子仮説がすべて真なら親仮説は真になる」ことを保証する論理的なつながり。<strong>50 字以下のタイトル</strong>と<strong>300 字以下の概要</strong>からなる。</td></tr>
+<tr><td><strong>親 / 子 / 孫</strong>、ストーリー / サブストーリー</td><td><strong>相対的な</strong>関係を指す言葉で、木の中の絶対的な位置を表すものではない。子仮説は孫仮説から見れば親仮説になる。どの階層でも同じ規則（文字数制限など）が適用される。</td></tr>
+<tr><td><strong>終端仮説</strong></td><td>active な子ストーリーを持たず、文献検索やプログラムの実装・実行などで直接真偽を確かめる仮説。終端であるという判定も Apply Request で承認されて初めて確定する。</td></tr>
+<tr><td><strong>unexpanded</strong>（未展開）</td><td>終端でもなく、子ストーリーをまだ一度も持ったことがない仮説の状態。作ったばかりの子仮説はこの状態から始まる。</td></tr>
+<tr><td><strong>レポート</strong></td><td>検証結果の根拠を書いた文書。終端仮説の真偽値と常に 1 対 1 の組になる（この組を<strong>検証結果 / Verdict</strong> と呼ぶ）。非終端仮説には不要。</td></tr>
+<tr><td><strong>artifacts</strong></td><td>レポートが参照する根拠物の総称。参考文献からの引用とリンク、プログラムとその実行結果、データ、人による記入など。他の仮説の artifacts も参照・引用できる。</td></tr>
+<tr><td><strong>Apply Request</strong> (AR)</td><td>木やその検証結果への変更提案。opener が作り、opener とは別の reviewer が承認したときだけ正式なデータに反映される。GitHub の Pull Request にあたる。</td></tr>
+<tr><td><strong>物理検証リクエスト</strong> (PVR)</td><td>Physical Verification Request。計算機の中だけでは検証できない物理的な問いについて、「人による検証手順」を書き下して人間に依頼するもの。</td></tr>
+<tr><td><strong>inactive</strong></td><td>論理構造に重大な欠陥があるなどの理由で、ノードを計算から外した状態。inactive なノードとその子孫からは新しいノードを作れない。</td></tr>
+<tr><td><strong>要再検討フラグ</strong></td><td>子ストーリーを 1 つ以上持ったことがあり、今はそれがすべて inactive か false になっている非終端仮説に立つフラグ。代替ストーリーの検討を促す。</td></tr>
+<tr><td><strong>exhausted バッジ</strong></td><td>代わりの道筋が尽きたと Builder が判断し、owner に判断を委ねた仮説に付く印。</td></tr>
+</table>
+</section>
+
+<!-- 3 -->
+<section id="model">
+<h2><span class="num">3</span>データモデル</h2>
+<h3>3.1 木の形</h3>
+<ul>
+  <li>根は<strong>仮説</strong>。仮説の子は必ず<strong>ストーリー</strong>、ストーリーの子は必ず<strong>仮説</strong>。H → S → H → S … と交互に並ぶ（<a href="#summary">冒頭の具体例</a>を参照）。</li>
+  <li>1 つの仮説の下にストーリーは 0 個以上（複数ありうる）。1 つのストーリーの下に仮説は 1 個以上。</li>
+  <li>DAG ではなく厳密な木とする。既存の仮説を別のストーリーで使いたいときは、新しいノードを作って引用する（<a href="#false">§6</a>）。</li>
+</ul>
+
+<h3>3.2 ノード種別と属性</h3>
+<table>
+<tr><th style="width:16%">種別</th><th style="width:46%">主な属性</th><th>制約</th></tr>
+<tr><td><strong>仮説</strong></td><td><code>statement</code> 主文 / <code>background</code> 背景 / <code>is_terminal</code> / <code>expansion</code>（unexpanded / expanded / terminal） / <code>value</code> / <code>verdict_id</code> / <code>needs_reconsideration</code> / <code>exhausted</code> / <code>state</code> / <code>inactive_reason</code> / <code>derived_from</code>（ノードとリビジョン）</td><td>主文は <strong>50 字以下</strong>、背景は<strong>上限なし</strong>。<code>value</code> は、終端なら入力、非終端なら計算結果</td></tr>
+<tr><td><strong>ストーリー</strong></td><td><code>title</code> / <code>summary</code> / <code>value</code>（常に計算結果） / <code>state</code> / <code>inactive_reason</code> / <code>supersedes</code>（任意。置き換えた inactive な旧ストーリーを指す記録で、計算には使わない）</td><td>タイトルは <strong>50 字以下</strong>、概要は <strong>300 字以下</strong>。子仮説を 1 つ以上持つ</td></tr>
+<tr><td><code>inactive_reason</code></td><td><code>logic_flaw</code>（論理の欠陥。子仮説の欠陥で親ストーリーごと外す場合を含む） / <code>concluded_false</code>（<code>conclude_false</code> で外した） / <code>other</code>、と理由の本文</td><td>inactive にするときは必須</td></tr>
+<tr><td>検証結果 (Verdict)</td><td><code>hypothesis_id</code> / <code>value</code>（true / false） / <code>report_id</code> / <code>ar_id</code> / <code>status</code>（valid / revoked） / <code>propagates</code></td><td>終端仮説 1 つにつき valid なものは 1 件。レポートと 1 対 1。inactive な終端仮説に出したものは <code>propagates = false</code></td></tr>
+<tr><td>レポート</td><td><code>body</code>（Markdown） / <code>artifact_refs[]</code> / <code>citations[]</code>（artifact か、リビジョンで固定した部分木）</td><td>必ず 1 つの Verdict に属する</td></tr>
+<tr><td>Artifact</td><td><code>kind</code>（file / link / citation / program / output / human_entry） / <code>sha256</code> / <code>uri</code></td><td>中身のハッシュで識別し、変更しない。他の仮説からも引用できる</td></tr>
+<tr><td>Apply Request</td><td><code>type</code> / <code>opener</code> / <code>reviewer</code> / <code>state</code> / <code>base_revision</code> / <code>payload</code>（差分）</td><td>opener ≠ reviewer</td></tr>
+<tr><td>PVR</td><td><code>hypothesis_id</code> / <code>procedure</code> / <code>state</code> / <code>human_entries[]</code> / <code>resulting_ar_id</code></td><td>対象は終端と承認された仮説</td></tr>
+<tr><td>HumanRequest</td><td><code>author</code> / <code>body</code>（自由記述） / <code>target_node_id</code>（任意） / <code>state</code> / <code>replies[]</code></td><td>人間からエージェントへの依頼。Builder から owner への上申（exhausted）もこの形で記録する</td></tr>
+<tr><td>Event（履歴）</td><td><code>seq</code> / <code>at</code> / <code>actor</code> / <code>kind</code> / <code>before</code> / <code>after</code> / <code>ar_id</code></td><td>追記のみ</td></tr>
+</table>
+
+<h3>3.3 制約（不変条件）</h3>
+<table>
+<tr><th style="width:9%">ID</th><th>制約</th></tr>
+<tr><td>C-01</td><td>根は仮説で、1 つの木に根は 1 つ。</td></tr>
+<tr><td>C-02</td><td>仮説の子はストーリー、ストーリーの子は仮説（交互）。</td></tr>
+<tr><td>C-03</td><td>ストーリーは、子仮説を 1 つ以上含めた AR で作る（子仮説のないストーリーは作れない）。</td></tr>
+<tr><td>C-04</td><td>終端仮説は <strong>active な</strong>子ストーリーを持たない（inactive な子ストーリーは記録として残ってよい。<code>conclude_false</code> で終端化した場合など）。</td></tr>
+<tr><td>C-05</td><td>value を直接入力できるのは、終端仮説の Verdict だけ。非終端仮説とストーリーの value は常に計算で決まる。</td></tr>
+<tr><td>C-06</td><td>Verdict とレポートは常に 1 対 1。非終端仮説にはレポートは要らない。</td></tr>
+<tr><td>C-07</td><td>文字数: 仮説の主文は 50 字以下、ストーリーのタイトルは 50 字以下、概要は 300 字以下。数え方は <strong>Unicode NFC に正規化したあとのコードポイント数</strong>（全角・半角を区別しない）。提出時と適用時に機械的に確認する。</td></tr>
+<tr><td>C-08</td><td>inactive なノードとその子孫の下には、新しいノードを作れない。</td></tr>
+<tr><td>C-09</td><td>正式なデータを変更できるのは、承認された AR の適用だけ。<strong>例外</strong>として、owner（人間）の記録付きの直接操作（根の作成、直接の inactive 化）を認める。</td></tr>
+<tr><td>C-10</td><td>AR の opener と reviewer は別の主体でなければならない。owner の直接操作は AR ではないので、この制約の対象外とする。</td></tr>
+<tr><td><strong>C-11</strong></td><td><strong>仮説を inactive にするとき、その親ストーリーが active なら、同じ操作（AR でも owner の直接操作でも）の中で親ストーリーも必ず inactive にする</strong>。親ストーリーの子孫全体（兄弟の子仮説を含む）も、まとめて inactive になる。その結果、<strong>active なストーリーの子仮説はすべて active</strong> という状態が常に成り立つ。validator が提出時と適用時に強制する（根の仮説には親ストーリーがないので対象外）。</td></tr>
+</table>
+<p class="small">C-11 により、active なストーリーの下に inactive な子仮説があるという状態は起こりません。そのため、ストーリーの AND の条件が知らないうちに緩むことはありません。子仮説を差し替えたいときは、ストーリーごと作り直します（§7）。</p>
+</section>
+
+<!-- 4 -->
+<section id="propagation">
+<h2><span class="num">4</span>真偽値の伝播</h2>
+<p>すべてのノードの値は 3 値で、<span class="v t">true</span> <span class="v f">false</span> <span class="v n">null</span>（未決）のいずれかです。<strong>終端仮説の値は入力変数</strong>、それ以外の値は<strong>自動的に計算される結果</strong>です。</p>
+<div class="grid2">
+  <div class="card"><h4>ストーリー ＝ 子仮説の AND</h4>
+    <ul>
+      <li>1 つでも false があれば <span class="v f">false</span></li>
+      <li>すべて true なら <span class="v t">true</span></li>
+      <li>それ以外は <span class="v n">null</span></li>
+      <li>C-11 により、active なストーリーの子仮説はすべて active。AND は常に子仮説全体に対して計算する</li>
+    </ul>
+    <p class="small">兄弟仮説どうしは、親ストーリーに対して AND の関係</p>
+  </div>
+  <div class="card"><h4>非終端仮説 ＝ active な子ストーリーの OR（false は伝わらない）</h4>
+    <ul>
+      <li>1 つでも true があれば <span class="v t">true</span></li>
+      <li>それ以外は <span class="v n">null</span>（すべて false でも false にはしない）</li>
+      <li><strong>inactive な子ストーリーは OR から外す</strong>（親仮説から見て存在しないものとして扱う）</li>
+    </ul>
+    <p class="small">兄弟ストーリーどうしは、親仮説に対して OR の関係</p>
+  </div>
+</div>
+<p>inactive なノード（とその子孫）は伝播に関わりません。inactive なノード自身の値と、inactive な終端仮説に出された Verdict の値は記録として表示しますが、親には伝えません。</p>
+
+<div class="callout decided"><span class="tag decided">決定</span>子ストーリーがすべて偽になった非終端仮説は<strong>自動では false にしません</strong>。<span class="v n">null</span>（未決）のまま要再検討フラグを立て、Builder に代替ストーリーを検討させます。原文の「親仮説まで棄却されるかはわからない（新たに兄弟ストーリーを作れば検証できる可能性が残る）」に基づく判断です。偽と結論するのは、直接の反証があるときだけです（<a href="#conclude">§6.2</a>）。</div>
+
+<h3>4.1 真理値表</h3>
+<div class="grid2">
+<div>
+<table class="truth">
+<caption class="small" style="caption-side:top;text-align:left">ストーリー：子仮説 A AND B</caption>
+<tr><th>A ＼ B</th><th>true</th><th>null</th><th>false</th></tr>
+<tr><th>true</th><td><span class="v t">true</span></td><td><span class="v n">null</span></td><td><span class="v f">false</span></td></tr>
+<tr><th>null</th><td><span class="v n">null</span></td><td><span class="v n">null</span></td><td><span class="v f">false</span></td></tr>
+<tr><th>false</th><td><span class="v f">false</span></td><td><span class="v f">false</span></td><td><span class="v f">false</span></td></tr>
+</table>
+</div>
+<div>
+<table class="truth">
+<caption class="small" style="caption-side:top;text-align:left">非終端仮説：子ストーリー S1 OR S2</caption>
+<tr><th>S1 ＼ S2</th><th>true</th><th>null</th><th>false</th></tr>
+<tr><th>true</th><td><span class="v t">true</span></td><td><span class="v t">true</span></td><td><span class="v t">true</span></td></tr>
+<tr><th>null</th><td><span class="v t">true</span></td><td><span class="v n">null</span></td><td><span class="v n">null</span></td></tr>
+<tr><th>false</th><td><span class="v t">true</span></td><td><span class="v n">null</span></td><td><span class="v n">null</span><br><span class="small">＋要再検討</span></td></tr>
+</table>
+</div>
+</div>
+<p class="small">子が 3 つ以上でも考え方は同じです。ストーリーの AND は 3 値論理（Kleene）の AND そのものです。仮説の OR は、Kleene の OR から「false の結果を null に置き換える」変更を加えたものです。</p>
+
+<h3>4.2 要再検討フラグと unexpanded</h3>
+<div class="grid2">
+  <div class="card"><h4>要再検討フラグ</h4>
+    <p>次の条件をすべて満たす仮説に立ちます（計算で決まります）。</p>
+    <ol>
+      <li>非終端で active である</li>
+      <li>子ストーリーを 1 つ以上<strong>持ったことがある</strong></li>
+      <li>今の子ストーリーが<strong>すべて inactive か false</strong> である</li>
+    </ol>
+    <p class="small">フラグが立つと、スケジューラが Builder に代替ストーリーの検討タスクを渡します（exhausted の仮説は除きます）。</p>
+  </div>
+  <div class="card"><h4>unexpanded（未展開）</h4>
+    <p>非終端で、子ストーリーを一度も持ったことがない状態です。作ったばかりの子仮説は、終端と判定されるか子ストーリーを持つまでこの状態にあります。要再検討とは別の「展開待ち」として扱います。</p>
+  </div>
+</div>
+
+<h3>4.3 再計算のタイミング</h3>
+<p>Verdict の適用、inactive 化、ストーリーの追加などがあるたびに、変更されたノードから根までの経路を再計算します。再計算は AR の適用と同じトランザクションの中で行い（途中の状態は外から見えない）、値が変わったノードごとに <code>value_changed</code> イベントを記録します。</p>
+</section>
+
+<!-- 5 -->
+<section id="ar">
+<h2><span class="num">5</span>Apply Request のライフサイクル</h2>
+<p>木は、Story Reviewer に承認されて初めて正式なものになります。それまでの変更は Apply Request（AR）という一時データとして保持します。opener（普段は Builder/Verifier）が作り、opener とは別の reviewer（普段は Story Reviewer）が審査します。人間（owner）はどちらの役にもなれ、C-09 の例外として記録付きの直接操作もできます。</p>
+
+<h3>5.1 種別</h3>
+<table>
+<tr><th style="width:28%">種別</th><th>内容</th><th style="width:30%">主な審査観点</th></tr>
+<tr><td><code>story.create</code></td><td>仮説の下にストーリーを新しく作る。子仮説（流用分を含む）もまとめて作る</td><td>十分性（子仮説がすべて真なら親仮説が真になるか）、兄弟ストーリーとの整合性</td></tr>
+<tr><td><code>story.add_hypothesis</code></td><td>既存のストーリーに子仮説を追加する</td><td>追加後も論理が成り立つか</td></tr>
+<tr><td><code>node.edit</code></td><td>背景情報の追記、軽微な文言の修正</td><td>意味が変わっていないか</td></tr>
+<tr><td><code>hypothesis.mark_terminal</code></td><td>終端仮説であると判定する（<span class="tag decided">決定</span>この判定も AR を通す）</td><td>単一の検証で真偽を決められる大きさか</td></tr>
+<tr><td><code>hypothesis.unmark_terminal</code></td><td>終端の判定を外す。<strong>同じ AR の中で有効な Verdict を失効（revoked）させ、値を null に戻す</strong>（履歴には残す）</td><td>終端を外す理由</td></tr>
+<tr><td><code>verdict.submit</code></td><td>終端仮説に検証結果（値＋レポート＋artifacts）を出す。inactive な終端仮説にも出せるが、その場合は伝播しない</td><td>根拠が値を支えているか、再現できるか、引用は正しいか</td></tr>
+<tr><td><code>verdict.revise</code></td><td>検証結果を差し替える（古いものは revoked として残る）</td><td>差し替える理由</td></tr>
+<tr><td><code>node.inactivate</code></td><td>ノードを inactive にする（理由が必須）。対象が仮説で、その親ストーリーが active なら、親ストーリーとその子孫全体も同じ AR で inactive にする（C-11）</td><td>論理の欠陥が本当に重大か</td></tr>
+<tr><td><code>hypothesis.conclude_false</code></td><td>非終端仮説を積極的に偽と結論する。<strong>直接の反証レポートがあるときに限る</strong>（<a href="#conclude">§6.2</a>）</td><td>反証レポートの妥当性</td></tr>
+</table>
+<p class="small">1 つの AR に複数の操作をまとめられます（例: <code>story.create</code> の中で、子仮説の作成・終端判定・流用した仮説の Verdict を同時に行う）。適用は全部まとめて行い、一部だけ反映されることはありません。</p>
+
+<h3>5.2 状態遷移</h3>
+<figure>
+<svg viewBox="0 0 820 360" role="img" aria-label="Apply Request の状態遷移図">
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424a53"/></marker></defs>
+  <style>
+    .st{fill:#fff;stroke:#424a53;stroke-width:1.5}
+    .stt{font-size:13px;font-family:ui-monospace,Menlo,monospace;fill:#1f2328}
+    .tr{stroke:#424a53;stroke-width:1.4;fill:none;marker-end:url(#ar2)}
+    .tl{font-size:11px;fill:#59636e}
+  </style>
+  <rect x="180" y="16" width="230" height="244" rx="14" fill="#f6f8fa" stroke="#818b98" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="192" y="36" font-size="12" font-weight="700" fill="#59636e">審査中</text>
+  <rect class="st" x="205" y="44" width="180" height="44" rx="22" style="stroke:#0969da;stroke-width:2"/><text class="stt" x="295" y="71" text-anchor="middle">open</text>
+  <rect class="st" x="205" y="190" width="180" height="44" rx="22"/><text class="stt" x="295" y="217" text-anchor="middle">changes_requested</text>
+  <rect class="st" x="20" y="44" width="120" height="44" rx="22"/><text class="stt" x="80" y="71" text-anchor="middle">draft</text>
+  <rect class="st" x="470" y="44" width="130" height="44" rx="22"/><text class="stt" x="535" y="71" text-anchor="middle">approved</text>
+  <rect class="st" x="670" y="44" width="130" height="44" rx="22" style="fill:#e6f4ea;stroke:#1a7f37;stroke-width:2.5"/><text class="stt" x="735" y="71" text-anchor="middle">applied</text>
+  <rect class="st" x="470" y="190" width="130" height="44" rx="22" style="fill:#fff8c5;stroke:#9a6700"/><text class="stt" x="535" y="217" text-anchor="middle">conflict</text>
+  <rect class="st" x="175" y="300" width="120" height="44" rx="22" style="fill:#ffebe9;stroke:#cf222e"/><text class="stt" x="235" y="327" text-anchor="middle">rejected</text>
+  <rect class="st" x="325" y="300" width="110" height="44" rx="22" style="fill:#f2f4f6"/><text class="stt" x="380" y="327" text-anchor="middle">closed</text>
+
+  <path class="tr" d="M140,66 L203,66"/><text class="tl" x="146" y="58">submit</text>
+  <path class="tr" d="M385,62 L468,62"/><text class="tl" x="398" y="54">approve</text>
+  <path class="tr" d="M600,66 L668,66"/><text class="tl" x="604" y="58">apply（自動）</text>
+  <path class="tr" d="M240,88 L240,188"/><text class="tl" x="246" y="128">request_changes</text>
+  <path class="tr" d="M350,188 L350,90"/><text class="tl" x="356" y="160">revise</text>
+  <path class="tr" d="M535,88 L535,188"/><text class="tl" x="543" y="140">適用時の検証失敗</text>
+  <path class="tr" d="M470,212 L440,212 L440,78 L387,78"/><text class="tl" x="446" y="150">rebase</text>
+  <path class="tr" d="M235,260 L235,298"/><text class="tl" x="241" y="284">reject</text>
+  <path class="tr" d="M380,260 L380,298"/><text class="tl" x="386" y="284">withdraw</text>
+</svg>
+<figcaption><code>reject</code>（reviewer）と <code>withdraw</code>（opener）は、点線で囲んだ「審査中」の 2 状態（<code>open</code> と <code>changes_requested</code>）のどちらからでも出られます。<code>approve</code> できるのは <code>open</code> からだけです。<code>approved</code> になるとハーネスが自動で適用します。適用の直前に制約（§3.3）と <code>base_revision</code> との衝突をもう一度確認し、失敗したら <code>conflict</code> にします（審査中に対象のノードが inactive になった場合など。ただし、終端仮説への <code>verdict.submit</code> / <code>revise</code> は除きます）。</figcaption>
+</figure>
+
+<h3>5.3 変更履歴</h3>
+<ul>
+  <li>正式なデータへの変更は、すべて AR か owner の直接操作のどちらかに対応づきます。コメントもレビューもイベントとして残ります。</li>
+  <li>ノードごとの履歴（作成、編集、終端判定、Verdict、inactive 化、値の変化）を時系列で見られます。</li>
+  <li>イベントソーシングにより、任意のリビジョン時点の木を再現できます。</li>
+</ul>
+</section>
+
+<!-- 6 -->
+<section id="false">
+<h2><span class="num">6</span>仮説が偽になったときのフロー</h2>
+<ol class="steps">
+  <li>Builder が終端仮説 H に <code>verdict.submit(false)</code> を出し、Reviewer が承認して適用される。</li>
+  <li>H の<strong>親ストーリー S は自動的に false（棄却）</strong>になる（AND の規則）。</li>
+  <li>S の<strong>親仮説 P については棄却を確定させない</strong>。true の兄弟ストーリーがあれば P は true のまま。なければ P は <span class="v n">null</span> のままで、子ストーリーがすべて inactive か false なら<strong>要再検討フラグ</strong>が立つ。</li>
+  <li>スケジューラ（ハーネスの機能）が Builder に「P の再検討」タスクを渡す。</li>
+  <li>Builder は次のどれかを行う。<br>(a) <strong>兄弟ストーリーを新しく作る</strong>（兄弟ストーリーがもともとない場合でも作れる）<br>(b) 既存の兄弟ストーリーの検証を先に進める<br>(c) <strong>P を直接否定する証拠がある</strong>なら、反証レポートを付けて <code>conclude_false</code> を出す（<a href="#conclude">§6.2</a>）<br>(d) 代わりの道筋が尽きたが、直接の反証はない場合: P は <span class="v n">null</span> のままにし、要再検討フラグも残したまま、owner に上申して <strong>exhausted バッジ</strong>を付ける。そのあとの方針は owner が決める</li>
+  <li>Reviewer が審査する。<code>conclude_false</code> を除き、偽の結果は親へ連鎖して伝わらない。そのため、再検討の範囲は P とそのすぐ下に限られる。</li>
+</ol>
+<p>偽になったストーリーは削除も inactive 化もせず、そのまま残します（棄却された道筋も記録として価値があるため）。inactive にするのは、<strong>論理の欠陥があるとき（<a href="#inactive">§7</a>）か、<code>conclude_false</code> のとき</strong>だけです。</p>
+
+<h3>6.1 検証済みの仮説を流用する</h3>
+<div class="callout">新しい兄弟ストーリーで、すでに真と検証された仮説 X を使いたい場合でも、データ構造としては<strong>新しい仮説ノード X′</strong> を作ります（<code>derived_from = X とそのリビジョン</code>）。X′ を終端仮説とし、<strong>引用するだけのレポート</strong>を付けて <span class="v t">true</span> を入れます。引用の対象は「<strong>その時点のリビジョンで固定した X の部分木</strong>」です。
+<ul>
+  <li>X が終端なら、X の Verdict とレポート、artifacts を引用します。</li>
+  <li>X が非終端なら、<strong>X を true にしている子ストーリーの配下にある Verdict 群</strong>を引用します。</li>
+</ul>
+この一連の操作は 1 つの <code>story.create</code> AR にまとめ、Reviewer が承認します。固定した部分木の中で変更（Verdict の差し替え、inactive 化、終端解除）が起きたら、X′ に「引用元変更」の通知とバッジを付け、再検討タスクを作ります。X′ の値は自動では変えません（<a href="#decisions">D-06</a>）。</div>
+
+<h3 id="conclude">6.2 積極的に偽と結論する（<code>hypothesis.conclude_false</code>）</h3>
+<ul>
+  <li><strong>前提</strong>: P を直接否定する反証レポートがあること。「代わりの道筋が見つからない」だけでは使えません。その場合は上の (d)（exhausted）にします。</li>
+  <li><strong>中身</strong>（1 つの AR でまとめて適用する）: ① P の active な子ストーリーをすべて inactive にする（理由は <code>concluded_false</code>）、② P を終端にする（C-04 は active な子ストーリーがないので満たされる）、③ 反証レポートを付けて <span class="v f">false</span> の Verdict を出す。</li>
+  <li><strong>結果</strong>: P は false になり、その結果は P の親ストーリーへ通常どおり伝わります。</li>
+</ul>
+</section>
+
+<!-- 7 -->
+<section id="inactive">
+<h2><span class="num">7</span>inactive 化</h2>
+<ul>
+  <li><strong>いつ使うか</strong>: 論理構造に重大な欠陥が見つかったとき（<code>logic_flaw</code>。十分性が成り立たない、主文が曖昧で真偽を決められない、など）。<code>conclude_false</code> で子ストーリーを外すとき（<code>concluded_false</code>）。</li>
+  <li><strong>手続き</strong>: <code>node.inactivate</code> AR に理由を必ず書き、Reviewer が承認する。owner は WebUI から直接 inactive にすることもできる（C-09 の例外で、C-10 の対象外。操作は記録される）。どちらの経路でも C-11 が適用される。</li>
+  <li><strong>仮説を inactive にする場合（C-11）</strong>: その親ストーリーが active なら、<strong>親ストーリーごと inactive にする</strong>。同じ AR に、ストーリーとその子孫全体（兄弟の子仮説を含む）が含まれる。子仮説だけを差し替える操作はない。</li>
+  <li><strong>効果</strong>: そのノードと子孫全体を伝播から外す（inactive なストーリーは親仮説の OR から外れる）。そのノードと子孫からは<strong>新しいノードを作れない</strong>し、編集もできない。そこに向けた審査中の AR は <code>conflict</code> になる（終端仮説への <code>verdict.submit</code> / <code>revise</code> は除く）。データは消さず、閲覧も引用もできる。</li>
+  <li><strong>inactive な終端仮説への検証結果の提出</strong>: 認める（祖先が inactive の場合を含む）。レポートと値の 1 対 1 の組を通常どおり AR で審査し、記録として残す。ただし伝播はしない。</li>
+  <li><strong>作り直し</strong>: inactive にしたストーリーの親仮説（もとの仮説から見ると親の親）の下に、<strong>新しい兄弟ストーリーを立てる</strong>（OR に選択肢を足す）。もとのストーリーで有効だった他の子仮説を使い回したいときは、流用の手順（<a href="#false">§6.1</a>。新しいノードを作り、引用だけのレポートで true を入れる）を使う。新しいストーリーの <code>supersedes</code> に旧ストーリーを記録してもよい（任意）。inactive からの復帰は認めない（<a href="#decisions">D-10</a>）。</li>
+</ul>
+<figure>
+<svg viewBox="0 0 720 320" role="img" aria-label="仮説の inactive 化（ストーリーごと）と、兄弟ストーリーでの作り直しの図">
+  <defs>
+    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0969da"/></marker>
+    <marker id="ar3c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8250df"/></marker>
+  </defs>
+  <style>.i1{font-size:11px;font-family:ui-monospace,Menlo,monospace}.i2{font-size:12px}</style>
+  <rect x="28" y="100" width="264" height="172" rx="10" fill="none" stroke="#afb8c1" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="36" y="94" font-size="11" fill="#59636e">同じ AR で inactive（C-11）</text>
+  <path d="M360,62 L160,110" stroke="#c4c9cf" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path d="M360,62 L560,110" stroke="#818b98" stroke-width="1.5"/>
+  <path d="M160,160 L97,210" stroke="#c4c9cf" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path d="M160,160 L222,210" stroke="#c4c9cf" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <path d="M560,160 L497,210" stroke="#818b98" stroke-width="1.5"/>
+  <path d="M560,160 L622,210" stroke="#818b98" stroke-width="1.5"/>
+  <rect x="265" y="10" width="190" height="52" rx="12" fill="#f2f4f6" stroke="#818b98" stroke-width="1.5"/>
+  <text class="i1" x="277" y="30" fill="#59636e">H 親の親仮説</text><text class="i2" x="277" y="51" fill="#1f2328">OR に S′ を足す</text>
+  <rect x="40" y="110" width="240" height="50" rx="2" fill="#fafbfc" stroke="#afb8c1" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text class="i1" x="52" y="130" fill="#8c959f">S 旧ストーリー</text><text class="i2" x="52" y="150" fill="#8c959f">inactive（logic_flaw）</text>
+  <rect x="440" y="110" width="240" height="50" rx="2" fill="#fff" stroke="#0969da" stroke-width="1.8"/>
+  <text class="i1" x="452" y="130" fill="#0969da">S′ 新しい兄弟ストーリー</text><text class="i2" x="452" y="150" fill="#1f2328">story.create で追加</text>
+  <path d="M438,135 L283,135" stroke="#0969da" stroke-width="1.4" stroke-dasharray="5 3" fill="none" marker-end="url(#ar3)"/>
+  <text x="360" y="127" font-size="11" fill="#0969da" text-anchor="middle">supersedes（任意）</text>
+  <rect x="40" y="210" width="115" height="50" rx="12" fill="#fafbfc" stroke="#afb8c1" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text class="i1" x="50" y="230" fill="#8c959f">Ha 子仮説</text><text class="i2" x="50" y="250" fill="#8c959f">欠陥あり</text>
+  <rect x="165" y="210" width="115" height="50" rx="12" fill="#fafbfc" stroke="#afb8c1" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text class="i1" x="175" y="230" fill="#8c959f">Hb 子仮説</text><text class="i2" x="175" y="250" fill="#8c959f">有効だった</text>
+  <rect x="440" y="210" width="115" height="50" rx="12" fill="#fff" stroke="#8250df" stroke-width="1.8"/>
+  <text class="i1" x="450" y="230" fill="#8250df">Hb′ 流用</text><text class="i2" x="450" y="250" fill="#1f2328">引用で true</text>
+  <rect x="565" y="210" width="115" height="50" rx="12" fill="#fff" stroke="#818b98" stroke-width="1.5"/>
+  <text class="i1" x="575" y="230" fill="#59636e">Hc 子仮説</text><text class="i2" x="575" y="250" fill="#1f2328">新たに検証</text>
+  <path d="M497,262 C497,305 222,305 222,264" fill="none" stroke="#8250df" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar3c)"/>
+  <text x="360" y="314" font-size="11" fill="#8250df" text-anchor="middle">Hb を引用するレポート（§6.1 の流用）</text>
+</svg>
+<figcaption>子仮説 Ha に欠陥が見つかったら、親ストーリー S ごと inactive にします（C-11）。有効だった兄弟の Hb も一緒に inactive になります。そのため、active なストーリーの子仮説は常にすべて active です。作り直すときは、親の親にあたる H の下に新しい兄弟ストーリー S′ を立て（OR に足す）、Hb は流用の手順で Hb′ として使い回します（新しいノード＋引用レポートで true）。S′ から S への <code>supersedes</code> は任意の記録です。</figcaption>
+</figure>
+</section>
+
+<!-- 8 -->
+<section id="agents">
+<h2><span class="num">8</span>エージェントの責務分担</h2>
+<p>「仮説とストーリーを考えて検証する役」と「それを審査する役」の opener / reviewer 構造を基本にします。終端仮説の検証は、木を作るエージェントが兼ねても問題が生じないため、両者を 1 つの役割にまとめます。判断を伴わない機械的な処理は<strong>エージェントではなくハーネスの機能</strong>として切り出します。</p>
+<div class="grid2">
+  <div class="card builder"><h4>① Builder / Verifier（木を作り、検証する役。AR の opener）</h4>
+    <ul>
+      <li>問いを仮説とストーリーに分解して木を作る。終端判定を提案する</li>
+      <li>終端仮説を検証する（文献検索、プログラムの実装・実行）。レポートと artifacts を作り、検証結果の AR を出す</li>
+      <li>偽が出たときや要再検討フラグが立ったときに、代替ストーリーを検討する（流用を含む）。道筋が尽きたら owner に上申する（exhausted）</li>
+      <li>計算機の中で検証できない終端仮説について PVR を起票する。人が記入した結果を AR に変換する</li>
+      <li>人間からのフリーフォーマットのリクエストに応える。論理の欠陥に気づいたら inactive 化を提案する（親ストーリーごと外し、新しい兄弟ストーリーで作り直す）</li>
+    </ul>
+  </div>
+  <div class="card reviewer"><h4>② Story Reviewer（審査する役。AR の reviewer）</h4>
+    <ul>
+      <li><strong>論理的な妥当性</strong>: 子仮説がすべて真なら親仮説が真になるか（十分性）、隠れた前提がないか</li>
+      <li><strong>整合性</strong>: 兄弟ストーリーや祖先との矛盾、子仮説どうしの重複や循環がないか</li>
+      <li><strong>終端判定</strong>: 単一の検証で真偽を決められるか、検証手段は明確か</li>
+      <li><strong>検証レポートの妥当性</strong>: 根拠が値を支えているか、引用は正確か、実行は再現できるか</li>
+      <li>PVR の結果を変換した AR が人の記入に忠実か。inactive 化と <code>conclude_false</code>（直接の反証があるか）が妥当か</li>
+    </ul>
+  </div>
+  <div class="card harness"><h4>ハーネスの機能（エージェントではない）</h4>
+    <ul>
+      <li><strong>スケジューラ / オーケストレータ</strong>: タスクキューの管理、優先度付け、担当の割り当てとリース、ループを回し続けること、停止条件と予算の管理</li>
+      <li><strong>検証ルール</strong>: 文字数、木の形、終端・inactive・C-11 の制約、opener ≠ reviewer を機械的に確認する</li>
+      <li><strong>伝播エンジン</strong>（真偽値、要再検討、unexpanded）、<strong>AR エンジン</strong>、<strong>通知</strong>（引用元の変更を含む）、<strong>履歴</strong></li>
+    </ul>
+  </div>
+  <div class="card human"><h4>人間（owner）</h4>
+    <ul>
+      <li>根の仮説（究極の問い）を作る</li>
+      <li>エージェントへフリーフォーマットのリクエストを出す。PVR に結果をフリーフォーマットで記入する</li>
+      <li>exhausted として上申された仮説の扱いを決める</li>
+      <li>必要に応じて AR の承認・却下や直接の inactive 化を行う（すべて記録される）</li>
+    </ul>
+  </div>
+</div>
+<h3>8.1 スケジューラのタスク優先度と停止条件</h3>
+<p class="small">優先度は推奨の初期値です（owner が設定で変えられます）。</p>
+<ol>
+  <li>審査待ちの AR の審査（Reviewer）</li>
+  <li>差し戻された AR と conflict の対応（Builder）</li>
+  <li>人間のリクエストと、PVR に記入された結果の取り込み（Builder）</li>
+  <li>引用元が変わったことへの対応（Builder）</li>
+  <li>要再検討フラグへの対応（Builder。exhausted のものは除く）</li>
+  <li>値が null の終端仮説の検証（Builder）</li>
+  <li>unexpanded な仮説の展開（終端判定か、ストーリーの作成）（Builder。根に近いものから）</li>
+</ol>
+<div class="callout decided"><span class="tag decided">決定</span><strong>停止条件</strong>（どれか 1 つを満たしたら止める）: ① 根の値が決まり、<strong>かつ</strong>、引用元の変更への対応と要再検討の未処理タスクが残っていない、② 予算（トークン数・時間・タスク数）を使い切った、③ owner が一時停止した。D-06 で引用元が変わっても値を自動では変えないとしているため、①では未処理のタスクがないことも条件に含めています。</div>
+<p class="small">Builder も Reviewer も複数のインスタンスを同時に動かせます（タスクはリースで排他します）。</p>
+</section>
+
+<!-- 9 -->
+<section id="cli">
+<h2><span class="num">9</span>CLI</h2>
+<p>gh に似たコマンド体系の CLI を用意します（コマンド名は仮に <code>hv</code>）。すべてのコマンドに <code>--json</code> を付けられます。各エージェントは計算機の中の特定のディレクトリ（ワークスペース）に常駐し、<code>hv task next</code> でタスクを受け取って処理する、を繰り返して検証を回し続けます。<code>hv verdict submit</code> は <code>verdict.submit</code> の AR を作るコマンドで、Reviewer が承認したときに初めて値が確定します。他の仮説の artifact や部分木を引用するときは <code>--cite</code> を使います。</p>
+<details>
+<summary>コマンド例を開く</summary>
+<div class="inner">
+<pre><code><span class="c"># 閲覧</span>
+hv tree view [&lt;node&gt;] [--depth 3] [--json]
+hv node view H-12
+hv node history H-12
+
+<span class="c"># Apply Request</span>
+hv ar create --type story.create --parent H-12 --file story.yaml
+hv ar list --state open [--reviewer @me]
+hv ar view AR-88        |  hv ar diff AR-88
+hv ar review AR-88 --approve | --request-changes | --reject --body "..."
+hv ar comment AR-88 --body "..."
+hv ar rebase AR-88      |  hv ar withdraw AR-88
+
+<span class="c"># 検証結果（verdict.submit の AR を作る。Reviewer の承認で適用される）</span>
+hv verdict submit H-34 --value false --report report.md --artifact ./out/result.csv \
+                       [--cite H-7:A-301] [--cite-subtree H-9@r120]
+hv artifact upload ./run.py ./run.log         <span class="c"># sha256 で登録し、ID を返す</span>
+
+<span class="c"># 物理検証リクエスト / 人間とのやりとり</span>
+hv pvr create H-50 --procedure procedure.md
+hv pvr list --state answered
+hv pvr convert PVR-3                          <span class="c"># 人の記入から verdict.submit の AR を作る</span>
+hv request list --state open
+hv request reply RQ-9 --body "..."
+hv escalate H-12 --body "..."                 <span class="c"># 道筋が尽きたことを owner に上申する（exhausted）</span>
+
+<span class="c"># 常駐ループ用</span>
+hv task next --role builder --wait            <span class="c"># スケジューラから次のタスクを受け取る（リース）</span>
+hv task done T-120  |  hv task release T-120
+hv watch                                      <span class="c"># イベントを流し続けて表示</span></code></pre>
+<pre><code><span class="c"># 常駐ループの例（エージェントのワークスペースで実行）</span>
+while true; do
+  task=$(hv task next --role builder --wait --json)
+  <span class="c"># エージェントが task.kind に応じて hv ar create / hv verdict submit などを行う</span>
+  hv task done "$(jq -r .id &lt;&lt;&lt;"$task")"
+done</code></pre>
+</div>
+</details>
+<p>PVR の状態: <code>open</code> → <code>in_progress</code> → <code>answered</code>（人が記入済み）→ <code>converted</code>（Builder が AR にした）→ <code>closed</code>（AR が適用された）。手順に不備があって人が実施できない場合は <code>blocked</code> として差し戻します。</p>
+</section>
+
+<!-- 10 -->
+<section id="webui">
+<h2><span class="num">10</span>WebUI（人間向け）</h2>
+<table>
+<tr><th style="width:24%">画面</th><th>機能</th></tr>
+<tr><td>木のビューア</td><td>木を折りたたんで表示する。値を色で、inactive をグレーで示す。要再検討・unexpanded・exhausted・引用元変更・審査中 AR・PVR 待ちをバッジで示す。絞り込みと検索ができる</td></tr>
+<tr><td>ノード詳細</td><td>主文と背景、ストーリーの概要、Verdict とレポート（失効したものと、伝播しない記録用のものを含む）、artifacts、引用関係、履歴</td></tr>
+<tr><td>エージェントへのリクエスト</td><td><strong>フリーフォーマット</strong>で依頼を書く（対象ノードは任意で指定）。エージェントの返信をスレッド表示する。exhausted の上申もここに届く</td></tr>
+<tr><td>PVR 受付箱</td><td>検証手順を読み、結果を<strong>フリーフォーマット</strong>で記入する（ファイル・写真も添付可）。記入内容は <code>human_entry</code> artifact として保存する</td></tr>
+<tr><td>AR 一覧と差分</td><td>審査中の AR とその差分、議論を見る。owner は承認・却下もできる</td></tr>
+<tr><td>履歴 / タイムライン</td><td>イベントを時系列で見る。任意の時点の木を表示する</td></tr>
+<tr><td>ダッシュボード</td><td>根の状態、検証が済んだ割合。要再検討・unexpanded・exhausted・引用元変更の未処理の数（別々に表示）。PVR 待ちの数。停止条件をどこまで満たしているか。予算の消化状況</td></tr>
+</table>
+<div class="callout decided"><span class="tag decided">決定</span><strong>PVR の結果の取り込み</strong>: 人間が WebUI にフリーフォーマットで記入する → Builder がそれをレポート＋真偽値の <code>verdict.submit</code> AR に変換する（人の記入は artifact として引用する）→ Reviewer が承認する。人の記入内容がそのまま真偽値になるわけではありません。</div>
+</section>
+
+<!-- 11 -->
+<section id="arch">
+<h2><span class="num">11</span>全体アーキテクチャ</h2>
+<figure>
+<svg viewBox="0 0 900 470" role="img" aria-label="全体アーキテクチャ図">
+  <defs><marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424a53"/></marker></defs>
+  <style>
+    .bx{stroke-width:1.5}
+    .t1{font-size:14px;font-weight:700;fill:#1f2328}
+    .t2{font-size:12px;fill:#59636e}
+    .ln{stroke:#424a53;stroke-width:1.5;fill:none;marker-end:url(#ar4);marker-start:url(#ar4)}
+  </style>
+  <rect class="bx" x="40" y="16" width="220" height="74" rx="10" fill="#fbefff" stroke="#8250df"/>
+  <text class="t1" x="56" y="42">Builder / Verifier</text><text class="t2" x="56" y="62">常駐ディレクトリ（workspace/）</text><text class="t2" x="56" y="80">文献検索・プログラム実行</text>
+  <rect class="bx" x="290" y="16" width="220" height="74" rx="10" fill="#ffeff7" stroke="#bf3989"/>
+  <text class="t1" x="306" y="42">Story Reviewer</text><text class="t2" x="306" y="62">常駐ディレクトリ（workspace/）</text><text class="t2" x="306" y="80">別のセッション・コンテキスト</text>
+  <rect class="bx" x="640" y="16" width="220" height="74" rx="10" fill="#ddf4ff" stroke="#0969da"/>
+  <text class="t1" x="656" y="42">人間（owner）</text><text class="t2" x="656" y="62">ブラウザ</text><text class="t2" x="656" y="80">リクエスト・PVR 記入・閲覧</text>
+  <path class="ln" d="M150,92 L150,138"/><path class="ln" d="M400,92 L400,138"/><path class="ln" d="M750,92 L750,138"/>
+  <text class="t2" x="158" y="120">hv CLI（JSON）</text><text class="t2" x="408" y="120">hv CLI（JSON）</text><text class="t2" x="758" y="120">WebUI</text>
+  <rect class="bx" x="20" y="140" width="860" height="140" rx="12" fill="#f6f8fa" stroke="#57606a"/>
+  <text class="t1" x="36" y="164">Harness API（CLI と WebUI が同じ API を使う。役割はトークンで判別）</text>
+  <g font-size="12" fill="#1f2328">
+    <rect x="36" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="48" y="204" font-weight="700">検証ルール</text><text x="48" y="224" fill="#59636e">文字数・木の形</text><text x="48" y="242" fill="#59636e">inactive・C-11</text>
+    <rect x="176" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="188" y="204" font-weight="700">AR エンジン</text><text x="188" y="224" fill="#59636e">状態遷移・審査</text><text x="188" y="242" fill="#59636e">まとめて適用・衝突</text>
+    <rect x="316" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="328" y="204" font-weight="700">伝播エンジン</text><text x="328" y="224" fill="#59636e">AND / OR の 3 値</text><text x="328" y="242" fill="#59636e">要再検討・未展開</text>
+    <rect x="456" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="468" y="204" font-weight="700">スケジューラ</text><text x="468" y="224" fill="#59636e">タスク・リース</text><text x="468" y="242" fill="#59636e">停止条件・予算</text>
+    <rect x="596" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="608" y="204" font-weight="700">通知</text><text x="608" y="224" fill="#59636e">イベント購読</text><text x="608" y="242" fill="#59636e">引用元の変更</text>
+    <rect x="736" y="180" width="130" height="80" rx="8" fill="#fff" stroke="#afb8c1"/><text x="748" y="204" font-weight="700">PVR / リクエスト</text><text x="748" y="224" fill="#59636e">人とのやりとり</text><text x="748" y="242" fill="#59636e">自由記述・上申</text>
+  </g>
+  <path class="ln" d="M450,282 L450,318"/>
+  <rect class="bx" x="20" y="320" width="860" height="136" rx="12" fill="#fff" stroke="#1a7f37"/>
+  <text class="t1" x="36" y="344">Store（GitHub に近い情報管理基盤）</text>
+  <g font-size="12" fill="#1f2328">
+    <rect x="36" y="358" width="270" height="84" rx="8" fill="#e6f4ea" stroke="#1a7f37"/><text x="50" y="382" font-weight="700">構造化された木</text><text x="50" y="402" fill="#424a53">仮説・ストーリー・Verdict・AR・PVR</text><text x="50" y="422" fill="#424a53">規則（制約）付きで管理</text>
+    <rect x="316" y="358" width="270" height="84" rx="8" fill="#e6f4ea" stroke="#1a7f37"/><text x="330" y="382" font-weight="700">ファイル / artifacts</text><text x="330" y="402" fill="#424a53">レポート・コード・実行結果・人の記入</text><text x="330" y="422" fill="#424a53">sha256 で管理（CAS）、変更不可</text>
+    <rect x="596" y="358" width="270" height="84" rx="8" fill="#e6f4ea" stroke="#1a7f37"/><text x="610" y="382" font-weight="700">履歴</text><text x="610" y="402" fill="#424a53">追記のみのイベントログ</text><text x="610" y="422" fill="#424a53">スナップショット・任意時点の再現</text>
+  </g>
+</svg>
+<figcaption>Store の構成（<strong>推奨・初期値。設計時に確定</strong>）: 初期は SQLite（あとで Postgres）＋ローカルの CAS ディレクトリ（あとで S3 互換ストレージ）。木の制約を確実に守らせるため、git をそのまま使う方式は採りません（必要なら git 形式へのエクスポートを付けます。<a href="#decisions">D-13</a>）。</figcaption>
+</figure>
+</section>
+
+<!-- 12 -->
+<section id="req">
+<h2><span class="num">12</span>機能要件・非機能要件</h2>
+<p>機能要件は FR-01〜28、非機能要件は NFR-01〜10 です。主な追加: C-11 の強制（FR-25）、<code>conclude_false</code> の条件（FR-26）、exhausted（FR-27）、inactive な終端仮説への Verdict（FR-28）。</p>
+<details>
+<summary>機能要件（FR-01〜28）を開く</summary>
+<div class="inner">
+<table>
+<tr><th style="width:9%">ID</th><th>要件</th></tr>
+<tr><td>FR-01</td><td>仮説（主文 50 字以下、背景は無制限）とストーリー（タイトル 50 字以下、概要 300 字以下）を作成・保存できる</td></tr>
+<tr><td>FR-02</td><td>仮説とストーリーが交互に並び、根が仮説である木構造を強制する</td></tr>
+<tr><td>FR-03</td><td>1 つの仮説の下に複数のストーリーを作れる</td></tr>
+<tr><td>FR-04</td><td>根の仮説（究極の問い）は owner が作る</td></tr>
+<tr><td>FR-05</td><td>終端仮説の判定・判定解除を AR で行う。判定を外すときは、同じ AR で Verdict を失効させ、値を null に戻す</td></tr>
+<tr><td>FR-06</td><td>終端仮説に、検証結果（値＋レポート＋artifacts、1 対 1）を AR で提出できる</td></tr>
+<tr><td>FR-07</td><td>3 値（true / false / null）を、ストーリーは AND、仮説は OR で自動計算して伝播する</td></tr>
+<tr><td>FR-08</td><td>子ストーリーを持ったことがあり、今はそれがすべて inactive か false の非終端仮説は null のままにし、要再検討フラグを立てる。子ストーリーを一度も持っていない仮説は unexpanded として区別する</td></tr>
+<tr><td>FR-09</td><td>inactive なノードとその子孫を伝播から外す。inactive な子ストーリーは、親仮説の OR から外す（ストーリーの AND は、C-11 によりすべて active な子仮説に対して計算する）</td></tr>
+<tr><td>FR-10</td><td>AR を作成・審査（承認・差し戻し・却下）・コメント・取り下げ・rebase できる。却下と取り下げは open と changes_requested のどちらからでもできる</td></tr>
+<tr><td>FR-11</td><td>承認された AR を自動で適用する。適用は全部まとめて行い、適用時に制約をもう一度確認する</td></tr>
+<tr><td>FR-12</td><td>opener と reviewer が同じ主体になることを禁止する</td></tr>
+<tr><td>FR-13</td><td>ノードを inactive にできる（理由は必須）。inactive なノードとその子孫の下には新しいノードを作れない</td></tr>
+<tr><td>FR-14</td><td>検証済みの仮説を流用できる（新しいノード＋引用するだけのレポート＋true）。引用の対象は、リビジョンで固定した部分木（非終端なら、それを true にしている子ストーリー配下の Verdict 群）とする</td></tr>
+<tr><td>FR-15</td><td>artifacts（ファイル・リンク・引用・プログラム・実行結果）を中身のハッシュで登録し、他の仮説から参照・引用できる</td></tr>
+<tr><td>FR-16</td><td>PVR の起票、人による結果の自由記入、Builder による AR への変換ができる</td></tr>
+<tr><td>FR-17</td><td>人間がエージェントへフリーフォーマットのリクエストを出し、返信を受け取れる</td></tr>
+<tr><td>FR-18</td><td>スケジューラがタスクを生成し、優先度を付け、リースで割り当てる。停止条件（根の値が決まり、かつ、引用元の変更と要再検討の未処理がないこと／予算／owner による停止）と予算を管理する</td></tr>
+<tr><td>FR-19</td><td>すべての変更をイベントとして記録し、ノードごとの履歴と任意の時点の木を見られる</td></tr>
+<tr><td>FR-20</td><td>gh に似た CLI を提供する（全コマンドで JSON 出力に対応）</td></tr>
+<tr><td>FR-21</td><td>WebUI を提供する（木のビューア、ノード詳細、リクエスト、PVR、AR、履歴、ダッシュボード）</td></tr>
+<tr><td>FR-22</td><td>イベントを購読できる（<code>hv watch</code>、WebUI での通知）</td></tr>
+<tr><td>FR-23</td><td>固定した引用元の部分木が変わったら、引用している仮説に通知とバッジを付け、再検討タスクを作る</td></tr>
+<tr><td>FR-24</td><td>審査中の AR の対象が inactive になったら、その AR を conflict にする（終端仮説への verdict.submit / revise は除く）</td></tr>
+<tr><td>FR-25</td><td>仮説を inactive にするとき、親ストーリーが active なら、同じ操作で親ストーリーとその子孫全体も inactive にすることを validator で強制する（C-11）。これにより、active なストーリーの子仮説は常にすべて active になる</td></tr>
+<tr><td>FR-26</td><td>直接の反証レポートがある場合に限り、<code>hypothesis.conclude_false</code> で非終端仮説を偽と結論できる（子ストーリーの inactive 化、終端化、false の Verdict をまとめて適用する）</td></tr>
+<tr><td>FR-27</td><td>代わりの道筋が尽きたことを owner に上申し、exhausted バッジを付けられる。exhausted の仮説には、再検討タスクを自動では作らない</td></tr>
+<tr><td>FR-28</td><td>inactive な終端仮説にも verdict.submit を出せる。値は記録として残し、伝播はしない</td></tr>
+</table>
+</div>
+</details>
+<details>
+<summary>非機能要件（NFR-01〜10）を開く</summary>
+<div class="inner">
+<table>
+<tr><th style="width:9%">ID</th><th style="width:15%">区分</th><th>要件</th></tr>
+<tr><td>NFR-01</td><td>監査可能性</td><td>正式なデータの変更は、すべて「誰が・いつ・どの AR（または owner の直接操作）で・なぜ」まで追える。イベントログは追記のみ</td></tr>
+<tr><td>NFR-02</td><td>再現性</td><td>artifacts は変更不可で、中身のハッシュで管理する。プログラムによる検証では、コード、入力、実行環境の情報、出力を残す。任意の時点の木を再現できる</td></tr>
+<tr><td>NFR-03</td><td>並行性</td><td>複数の Builder と Reviewer が同時に動ける。AR は <code>base_revision</code> による楽観ロック、タスクはリースで排他する。適用はトランザクションで行う</td></tr>
+<tr><td>NFR-04</td><td>整合性</td><td>§3.3 の制約は、どの経路で変更しても常に成り立つ</td></tr>
+<tr><td>NFR-05</td><td>耐障害性</td><td>エージェントやハーネスが途中で止まっても、リースが切れればタスクは別の担当に回り、処理を再開できる。API は同じ要求を何度送っても結果が変わらないようにする（実現方式は<strong>推奨・初期値</strong>として idempotency key を想定。設計時に確定）</td></tr>
+<tr><td>NFR-06</td><td>性能</td><td>想定規模の木に対して、木の表示と再計算が対話的に使える応答時間で終わる（規模と目標値は設計時に確定）</td></tr>
+<tr><td>NFR-07</td><td>セキュリティ</td><td>役割ごとに権限を分ける（builder / reviewer / owner）。エージェントのトークンは役割に紐づける</td></tr>
+<tr><td>NFR-08</td><td>可観測性</td><td>タスクの処理量、AR の滞留数、要再検討・unexpanded・exhausted の数、予算の消化状況を見られる</td></tr>
+<tr><td>NFR-09</td><td>コスト管理</td><td>スケジューラに予算の上限と停止条件を設定できる</td></tr>
+<tr><td>NFR-10</td><td>移植性</td><td>データを JSON や Markdown でエクスポートできる。読み取り専用のビューは静的ホスティングでも出せる</td></tr>
+</table>
+</div>
+</details>
+</section>
+
+<!-- 13 -->
+<section id="decisions">
+<h2><span class="num">13</span>未決事項と設計判断</h2>
+<p><span class="tag decided">決定</span>は leader が決めた方針、<span class="tag open">未決</span>は推奨案を付けた検討事項、<span class="tag solved">解消</span>は他の決定によって論点でなくなったものです。主な決定: 偽を自動で親に伝えない（D-01）、inactive な終端仮説にも Verdict を出せる（D-03）、C-11（D-18）、要再検討と unexpanded の区別（D-19）、停止条件（D-16）。</p>
+<details>
+<summary>一覧（D-01〜20）を開く</summary>
+<div class="inner">
+<table>
+<tr><th style="width:7%">ID</th><th style="width:20%">論点</th><th style="width:10%">状態</th><th>推奨案・判断</th></tr>
+<tr><td>D-01</td><td>子ストーリーがすべて偽の非終端仮説の値</td><td><span class="tag decided">決定</span></td><td>自動で false にしない。null＋要再検討フラグにして、Builder に代替ストーリーを検討させる</td></tr>
+<tr id="d02"><td>D-02</td><td>仮説を積極的に偽と結論する手段</td><td><span class="tag open">未決</span><br><span class="small">方針は決定</span></td><td><strong>決定済みの範囲</strong>: <code>conclude_false</code> は、直接の反証レポートがあるときに限る。代わりの道筋が尽きただけなら、null のまま要再検討フラグを残し、owner に上げて exhausted バッジを付ける。<strong>推奨</strong>: 中身は既存の操作の組み合わせとする（子ストーリーを <code>concluded_false</code> として inactive にする、終端にする、反証レポート付きで false の Verdict を出す）。「反証ストーリー」（子仮説がすべて真なら親が偽になるストーリー）は AND/OR の意味を複雑にするため初期版では採らず、将来の検討とする</td></tr>
+<tr id="d03"><td>D-03</td><td>inactive なノードに検証結果を出せるか</td><td><span class="tag decided">決定</span></td><td>inactive な終端仮説（祖先が inactive の場合を含む）にも verdict.submit（レポートと値の 1 対 1）を認める。値は記録として残し、伝播はしない。原文の「inactive にもレポートの追加はできても良さそう」に合わせた。v0.1 の推奨案だった「Verdict なしの artifact 添付」は取り下げた</td></tr>
+<tr><td>D-04</td><td>PVR の結果の取り込み</td><td><span class="tag decided">決定</span></td><td>人間が WebUI に自由に記入する → Builder がレポート＋真偽値の AR に変換する → Reviewer が承認する。人の記入は <code>human_entry</code> artifact として扱う</td></tr>
+<tr><td>D-05</td><td>終端判定の手続き</td><td><span class="tag decided">決定</span></td><td>AR（Builder が提案し、Reviewer が承認する）を通す。判定を外すときは、同じ AR で Verdict を失効させ、値を null に戻す</td></tr>
+<tr><td>D-06</td><td>流用元が変わったときの扱い</td><td><span class="tag decided">決定</span></td><td>引用はリビジョンで固定した部分木を対象とする。固定した部分木が変わったら、流用した仮説に通知とバッジを付け、Builder の再検討タスクを作る。値は自動では変えない。その代わり、未処理の対応は停止条件に含める</td></tr>
+<tr><td>D-07</td><td>PVR の起票に審査が必要か</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: 不要。ただし対象は、終端と承認された仮説に限る。手順の妥当性は人間が実施時に確かめ（不備があれば <code>blocked</code> で差し戻す）、結果は変換された AR の審査で担保する</td></tr>
+<tr><td>D-08</td><td>人間（owner）の権限</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: owner はすべての操作ができる（AR の承認、直接の inactive 化、根の作成）。直接操作は C-09 の例外で、C-10 の対象外。C-11 は owner にも適用する。操作はすべて記録する</td></tr>
+<tr><td>D-09</td><td>有効な子仮説がないストーリー</td><td><span class="tag solved">解消</span></td><td>C-03 と C-11 により、active なストーリーは常に 1 つ以上の子仮説を持ち、それらはすべて active</td></tr>
+<tr><td>D-10</td><td>inactive からの復帰</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: 認めない。必要なら新しいノードとして作り直す（履歴を単純に保つため）</td></tr>
+<tr><td>D-11</td><td>検証結果の差し替え</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: <code>verdict.revise</code> AR で行う。古い Verdict とレポートは revoked として履歴に残る。値が変わったら伝播を再計算する</td></tr>
+<tr><td>D-12</td><td>文字数の数え方</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: Unicode NFC に正規化したあとのコードポイント数で数える（全角・半角を区別しない）</td></tr>
+<tr><td>D-13</td><td>ストアの実装</td><td><span class="tag open">未決</span></td><td><strong>推奨・初期値（設計時に確定）</strong>: DB（イベントソーシング）＋ CAS。木の制約を確実に守らせたいので、git をそのまま使う方式は採らない。git 形式へのエクスポートは任意で付ける</td></tr>
+<tr><td>D-14</td><td>Reviewer の独立性</td><td><span class="tag open">未決</span></td><td><strong>推奨・初期値（設計時に確定）</strong>: Builder とは別のセッション・コンテキストで動かす。可能なら別のモデルやプロンプトにする。承認は 1 件で足りるが、件数は設定で変えられるようにする</td></tr>
+<tr><td>D-15</td><td>適用済みノードの文言の編集</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: 子ノードや Verdict がついたあとは、主文とタイトルの意味を変える編集を禁止する（変える場合は inactive にして、§7 の手順で作り直す）。背景は追記のみ認める</td></tr>
+<tr><td>D-16</td><td>スケジューラの優先度と停止条件</td><td><span class="tag decided">決定</span><br><span class="small">停止条件</span></td><td>停止条件は §8.1 のとおり（根の値が決まり、かつ、引用元の変更と要再検討の未処理がない／予算／owner による停止）。優先度は §8.1 を推奨・初期値とし、owner が設定で変えられるようにする</td></tr>
+<tr><td>D-17</td><td>複数の木（複数の問い）への対応</td><td><span class="tag open">未決</span></td><td><strong>推奨・初期値（設計時に確定）</strong>: 1 つのストアで複数のプロジェクト（＝木）を扱えるようにする。プロジェクトをまたぐ引用は artifact の引用として認める</td></tr>
+<tr><td>D-18</td><td>子仮説の inactive 化と AND の整合</td><td><span class="tag decided">決定</span></td><td>（customer 決定）C-11: 仮説を inactive にするときは、親ストーリーごと inactive にする。置き換えの子仮説を足す方式は採らない。作り直しは、親の親にあたる仮説の下に新しい兄弟ストーリーを立てて行い、使い回したい子仮説は流用の手順（新しいノード＋引用レポートで true）を使う。validator で強制する</td></tr>
+<tr><td>D-19</td><td>要再検討の範囲</td><td><span class="tag decided">決定</span></td><td>「子ストーリーを持ったことがあり、今はそれがすべて inactive か false」に限る。未展開の仮説は unexpanded として分ける</td></tr>
+<tr><td>D-20</td><td>exhausted 後の扱い</td><td><span class="tag open">未決</span></td><td><strong>推奨</strong>: owner が次のどれかを選ぶ。① 新しい切り口を Builder にリクエストする（バッジを外して再開）、② 保留する（null のまま）、③ owner が反証レポートを付けて <code>conclude_false</code> を opener として出す。バッジは、新しい子ストーリーが適用されたら自動で外す</td></tr>
+</table>
+</div>
+</details>
+</section>
+
+</div>
+
+<footer>仮説検証ハーネス 要件定義（概要） v0.2 ・ 2026-11-11 ・ 改訂は <a href="requirements.md">requirements.md</a> を正とします。</footer>
+</body>
+</html>
