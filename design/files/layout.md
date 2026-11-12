@@ -6,7 +6,7 @@
 ## ディレクトリ
 
 ```
-logiforge.yaml                       設定（artifact の置き場所など）
+logiforge.yaml                       設定（artifact を git リポジトリに入れる大きさの境目など）
 tree/
   h-7k3m9q2x4p/                      根の仮説
     hypothesis.md                    主文
@@ -20,7 +20,7 @@ tree/
         hypothesis.md
         ...
 artifacts/
-  sha256/<先頭 2 文字>/<残りの 62 文字>   リポジトリに置く artifact の中身
+  sha256/<先頭 2 文字>/<残りの 62 文字>   git リポジトリに入れる artifact の中身
 ```
 
 - 仮説は `h-`、ストーリーは `s-`、検証結果は `v-` で始まるディレクトリかファイルにする。

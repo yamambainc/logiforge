@@ -6,7 +6,7 @@ info:
     Logiforge のバックエンドの API。
     全体に共通する決まり（主体と認証、セッション ID、リビジョン、エラー、ページング）は design/api/README.md に書く。
     要件は docs/ が正本である。
-    主文・タイトル・概要の文字数の上限と数え方は、https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md に従う。
+    主文・タイトル・概要の文字数の上限と数え方は、../../docs/tree/README.md に従う。
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
@@ -30,8 +30,6 @@ tags:
     description: 人への依頼（PVR と判断の依頼）
   - name: history
     description: 履歴とエクスポート
-  - name: webhook
-    description: webhook の登録
 
 paths:
   /repositories:
@@ -61,9 +59,8 @@ paths:
       operationId: createRepository
       summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
-        プロバイダの「repository を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/backend/provider-interface.md）。
-        GitHub アダプタのときは、人が作った空の GitHub リポジトリの名前を `github_full_name` で受け取って登録する。
-        独自プロバイダのときは、`github_full_name` を受け取らず、bare の git リポジトリを作る。
+        やりとりのポートの「repository を用意する」を呼ぶ（../../design/backend/ports/interaction.md）。
+        `provider_ref` は、プロバイダが解釈する不透明な文字列で、そのまま渡す。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -75,10 +72,9 @@ paths:
               required: [name, statement]
               properties:
                 name: { $ref: '#/components/schemas/RepositoryNameValue' }
-                github_full_name:
+                provider_ref:
                   type: string
-                  pattern: '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'
-                  description: GitHub アダプタのときだけ使う。owner/name の形
+                  description: プロバイダが解釈する不透明な参照
                 statement: { $ref: '#/components/schemas/Statement' }
                 background: { type: string }
       responses:
@@ -310,7 +306,7 @@ paths:
       description: |
         `operations` を指定すると、操作をすべて置き換えた新しい版を作る。
         新しい版には、更新したセッションを `author_session_id` として記録する。
-        それまでの approve の扱いは、[反映の条件](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md) に従う。
+        それまでの approve の扱いは、[反映の条件](../../docs/apply-request/review.md) に従う。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
         - $ref: '#/components/parameters/SessionId'
@@ -711,77 +707,6 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/webhooks:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    get:
-      tags: [webhook]
-      operationId: listWebhooks
-      summary: 登録した webhook
-      responses:
-        '200':
-          description: webhook の一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/Webhook' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-    post:
-      tags: [webhook]
-      operationId: createWebhook
-      summary: webhook を登録する（client だけ）
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [url, events]
-              properties:
-                url: { type: string, format: uri }
-                events:
-                  type: array
-                  minItems: 1
-                  items: { $ref: '#/components/schemas/WebhookEventType' }
-      responses:
-        '201':
-          description: 登録した webhook。秘密鍵はこの応答でだけ返す
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Webhook'
-                  - type: object
-                    required: [secret]
-                    properties:
-                      secret: { type: string }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /repositories/{repository}/webhooks/{webhookId}:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    delete:
-      tags: [webhook]
-      operationId: deleteWebhook
-      summary: webhook の登録を消す
-      parameters:
-        - name: webhookId
-          in: path
-          required: true
-          schema: { type: string, pattern: '^whk_' }
-        - $ref: '#/components/parameters/SessionId'
-      responses:
-        '204':
-          description: 消した
-        '4XX': { $ref: '#/components/responses/Problem' }
-
 components:
   securitySchemes:
     bearerAuth:
@@ -848,20 +773,15 @@ components:
       description: repository の名前。forge の中で一意
     Repository:
       type: object
-      required: [name, provider, root_hypothesis_id]
+      required: [name, root_hypothesis_id]
       properties:
         name: { $ref: '#/components/schemas/RepositoryNameValue' }
-        provider:
-          type: string
-          enum: [github, native]
-          readOnly: true
-          description: サーバの設定で決まるプロバイダ
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
     Revision:
       type: string
-      pattern: '^[0-9a-f]{40}$'
-      description: main のコミットの SHA（https://github.com/yamambainc/logiforge/blob/main/design/files/revisions.md）
+      minLength: 1
+      description: リビジョン。不透明な文字列として扱う
     NextCursor:
       type: [string, 'null']
     NodeId:
@@ -893,6 +813,15 @@ components:
         detail: { type: string }
         code:
           type: string
+          description: |
+            validation_failed：文字数や形が正しくない。
+            unauthenticated：トークンがない、または正しくない。
+            forbidden：主体の種類が、その操作を使えない。
+            session_required：Logiforge-Session-Id がない。
+            not_found：対象がない。
+            same_session：差分を書いたどれかのセッションと同じセッションでレビューした。
+            not_open：open でない apply request を変えようとした。
+            repository_exists：同じ名前の repository がすでにある。
           enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, repository_exists]
 
     Tree:
@@ -904,7 +833,7 @@ components:
         revision: { $ref: '#/components/schemas/Revision' }
         warnings:
           type: array
-          description: main に、反映の手順によらないコミットがあるときの警告（https://github.com/yamambainc/logiforge/blob/main/design/providers/github.md）
+          description: 反映の手順によらない変更が木にあるときの警告
           items: { type: string }
 
     Node:
@@ -931,13 +860,13 @@ components:
         valid_verdict_id: { type: [string, 'null'] }
         leaf:
           type: boolean
-          description: 葉かどうか（https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md）
+          description: 葉かどうか（../../docs/tree/README.md）
         needs_reconsideration:
           type: boolean
-          description: 要再検討かどうか（https://github.com/yamambainc/logiforge/blob/main/docs/tree/propagation.md）
+          description: 要再検討かどうか（../../docs/tree/propagation.md）
         inactive:
           type: boolean
-          description: inactive かどうか（https://github.com/yamambainc/logiforge/blob/main/docs/tree/inactive.md）
+          description: inactive かどうか（../../docs/tree/inactive.md）
         open_apply_request_ids:
           type: array
           description: このノードを対象にした open の apply request
@@ -962,7 +891,7 @@ components:
         value: { $ref: '#/components/schemas/TruthValue' }
         inactive:
           type: boolean
-          description: inactive かどうか（https://github.com/yamambainc/logiforge/blob/main/docs/tree/inactive.md）
+          description: inactive かどうか（../../docs/tree/inactive.md）
         open_apply_request_ids:
           type: array
           items: { type: string }
@@ -1131,10 +1060,10 @@ components:
           description: 版ごとの、差分を書いたセッション
           items:
             type: object
-            required: [version, head_commit, author_session_id]
+            required: [version, revision, author_session_id]
             properties:
               version: { type: integer }
-              head_commit: { type: string, pattern: '^[0-9a-f]{40}$' }
+              revision: { $ref: '#/components/schemas/Revision' }
               author_session_id: { type: string }
         description: { type: string }
         operations:
@@ -1178,7 +1107,7 @@ components:
         detail: { type: string }
     ReviewMaterial:
       type: object
-      description: 材料に含めるものは https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md に従う
+      description: 材料に含めるものは ../../docs/apply-request/review.md に従う
       required: [apply_request_id, version, revision, operations, targets, ancestors, siblings, citations]
       properties:
         apply_request_id: { type: string, pattern: '^apr_' }
@@ -1220,7 +1149,7 @@ components:
       type: object
       required: [kind, subject_id]
       description: |
-        各種類の定義は https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md に従う。
+        各種類の定義は ../../docs/work/README.md に従う。
         human_request_answered は、回答の artifact を引用した apply request が open になるか反映されたとき、
         または回答のあとに対象ノードについての apply request が反映されたときに、作業から外れる。
       properties:
@@ -1240,7 +1169,7 @@ components:
           description: 根の値が true か false
         remaining_work:
           type: integer
-          description: 根拠部分木で着手できる作業の件数。数え方は https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md に従う
+          description: 根拠部分木で着手できる作業の件数。数え方は ../../docs/work/README.md に従う
         done:
           type: boolean
           description: decided が真で、remaining_work が 0
@@ -1254,7 +1183,7 @@ components:
     HumanRequest:
       type: object
       required: [id, node_id, kind, body, state]
-      description: 決まりは https://github.com/yamambainc/logiforge/blob/main/docs/human-requests/README.md に従う
+      description: 決まりは ../../docs/human-requests/README.md に従う
       properties:
         id: { type: string, pattern: '^hrq_' }
         node_id: { $ref: '#/components/schemas/NodeId' }
@@ -1296,17 +1225,3 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Event' }
         next_cursor: { $ref: '#/components/schemas/NextCursor' }
-
-    WebhookEventType:
-      type: string
-      description: 種類と送る条件は design/api/webhook.md に書く
-      enum: [apply_request.changed, human_request.changed, citation.changed]
-    Webhook:
-      type: object
-      required: [id, url, events]
-      properties:
-        id: { type: string, pattern: '^whk_' }
-        url: { type: string, format: uri }
-        events:
-          type: array
-          items: { $ref: '#/components/schemas/WebhookEventType' }

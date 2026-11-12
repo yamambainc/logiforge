@@ -61,9 +61,3 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 ## イベント
 
 - [イベントの一覧を読む](event/list.md) → `GET /repositories/{repository}/events`
-
-## webhook
-
-- [webhook の登録を読む](webhook/list.md) → `GET /repositories/{repository}/webhooks`
-- [webhook を登録する](webhook/create.md) → `POST /repositories/{repository}/webhooks`
-- [webhook の登録を消す](webhook/delete.md) → `DELETE /repositories/{repository}/webhooks/{webhookId}`

@@ -1,14 +1,13 @@
 # 独自プロバイダ
 
-GitHub を使わずに Logiforge を動かすときに、[プロバイダのインターフェース](../backend/provider-interface.md) をどう実装するかを確かめるために読む。
-提案・レビュー・人への依頼・イベントは、自前の DB の表に置く。
+GitHub を使わずに Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
+提案・レビュー・人への依頼は、自前の DB の表に置く。
+木のリポジトリは、[git アダプタ](git.md) のローカルの bare リポジトリで扱う。
 
 ## 置き場所
 
-- 木と小さな artifact は、repository ごとの bare の git リポジトリに置く（[木のファイル配置](../files/README.md)）。
-  - 提案のブランチは、`refs/logiforge/apply-requests/<識別子>` に置く。
-- 提案・レビュー・人への依頼・イベントは、DB に置く。既定は SQLite とする。
-  - なぜ：反映は repository ごとに 1 件ずつ直列に行うので、書き込みが 1 本の SQLite で足りるから。
+- 提案・レビュー・人への依頼は、DB に置く。既定は SQLite とする。
+  - なぜ：書き込みが少ないので、1 本の書き込みで足りるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
 
@@ -18,9 +17,9 @@ GitHub を使わずに Logiforge を動かすときに、[プロバイダのイ�
 |---|---|---|
 | `repository_name` | 文字列 | repository の名前。主キー |
 | `git_path` | 文字列 | bare の git リポジトリのパス |
-| `created_at` | 時刻 | 作った時刻 |
 
-ほかの表は、すべて `repository_name` を持つ。
+- provider_ref には、`git_path` を作る場所の名前を使う。
+- ほかの表は、すべて `repository_name` を持つ。
 
 ## apply_request
 
@@ -38,7 +37,7 @@ GitHub を使わずに Logiforge を動かすときに、[プロバイダのイ�
 |---|---|---|
 | `apply_request_id` | 識別子 | 属する提案 |
 | `version` | 整数 | 1 から順に増える版 |
-| `head_commit` | 文字列 | 版の head のコミット |
+| `revision` | 文字列 | 版のリビジョン（木のリポジトリの参照） |
 
 - 版を書いたセッションは、コミットの trailer から読む。表には持たない。
 
@@ -73,16 +72,3 @@ GitHub を使わずに Logiforge を動かすときに、[プロバイダのイ�
 
 - `human_request_answer` の主キーで、回答を 1 回だけにする。
 - 人への依頼の状態は保存しない。回答の行があれば `answered` である。
-
-## event
-
-| 列 | 型 | 内容 |
-|---|---|---|
-| `seq` | 整数 | repository ごとに 1 から順に増える番号 |
-| `kind` | 文字列 | 変化の種類（例：`apply_request.reviewed`） |
-| `subject_id` | 識別子 | 変化した対象 |
-| `actor_session_id` | 文字列 | 起こしたセッション |
-| `occurred_at` | 時刻 | 起きた時刻 |
-
-- 行を加えるだけにする。DB のトリガーで、UPDATE と DELETE を拒む。
-- バックエンドは、この表を読んで [webhook](../api/webhook.md) を送る。

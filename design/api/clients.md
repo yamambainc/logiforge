@@ -15,7 +15,7 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | 論理レビューを行う | [レビューの材料を読む](endpoints/apply-request/review-material.md)、[レビューする](endpoints/apply-request/review.md) |
 | 検証結果に添えるファイルを置く | [ファイルの中身を置く](endpoints/blob/upload.md)、[artifact を登録する](endpoints/artifact/create.md) |
 | 人への依頼を起票する | [人への依頼を起票する](endpoints/human-request/create.md) |
-| 外の仕組みで通知を受ける | [webhook を登録する](endpoints/webhook/create.md)、[イベントの一覧を読む](endpoints/event/list.md) |
+| 外の仕組みが変化を知る | [イベントの一覧を読む](endpoints/event/list.md)、[着手できる作業を読む](endpoints/work/list.md) |
 
 ## WebUI
 
@@ -36,5 +36,5 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 ## WebUI に置かない操作
 
 - WebUI は、`user` のトークンで API を使う。
-- `user` は、apply request を作る API と、レビューする API を使えない（[主体と認証](README.md)）。
+- `user` は、apply request を作る API と、レビューする API を使えない（[認可](../backend/README.md)）。
   - そのため、WebUI からは、木の変更も `approve` もできない（[反映の条件](../../docs/apply-request/review.md)）。

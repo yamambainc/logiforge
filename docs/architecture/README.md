@@ -16,7 +16,7 @@ flowchart TB
     F["artifact"]
     L["履歴"]
   end
-  S -- webhook --> X["外の仕組み"]
+  X["外の仕組み"] -- 問い合わせ --> S
 ```
 
 - [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。
@@ -25,7 +25,7 @@ flowchart TB
   - 構造化された木を、規則付きで管理する。
   - ファイルと artifact を保存する（[artifact](../tree/verdict.md)）。
   - 履歴を残す。
-- 作業のループは、forge の外の仕組みで回す（[着手できる作業と通知](../work/README.md)）。
+- 作業のループは、forge の外の仕組みで回す（[着手できる作業とイベント](../work/README.md)）。
 
 ## 監査
 

@@ -50,19 +50,19 @@ sequenceDiagram
   participant X as 外の仕組み
   participant R as reviewer
   O->>H: PVR を起票
-  H->>U: 起票を通知
   U->>H: 回答
-  H->>X: 回答を通知
+  X->>H: 着手できる作業を問い合わせ
   X->>O: opener を起動
   O->>H: verdict.submit を提出
-  H->>X: apply request を通知
+  X->>H: 着手できる作業を問い合わせ
   X->>R: 論理レビューを起動
   R->>H: レビューの材料を取得
   R->>H: approve
   H->>H: 反映
 ```
 
-- forge から外の仕組みへの通知は、webhook で送る。
+- 外の仕組みは、[着手できる作業](../work/README.md) の問い合わせで、回答済みの依頼とレビュー待ちの apply request を見つける。
+- 利用者は、WebUI の人への依頼の画面で、open の依頼を見つける。
 - opener は、回答の artifact を引用したレポートで、`verdict.submit` の apply request を出す。
 - forge は、反映するときに値を計算し直す。
 

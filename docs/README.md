@@ -19,7 +19,7 @@ Logiforge が何を満たすかを確かめるときに読む。
 9. [論理レビュー](apply-request/review.md)
 10. [論理レビューの審査観点](apply-request/review-criteria.md)
 11. [役割](roles/README.md)
-12. [着手できる作業と通知](work/README.md)
+12. [着手できる作業とイベント](work/README.md)
 13. [人への依頼（PVR と判断の依頼）](human-requests/README.md)
 14. [CLI](cli/README.md)
 15. [WebUI](webui/README.md)
@@ -27,4 +27,4 @@ Logiforge が何を満たすかを確かめるときに読む。
 
 ## 仕様の外にあるもの
 
-- 決まっていない論点は、このリポジトリの GitHub issue で扱う。
+- 決まっていない論点は、この GitHub リポジトリの issue で扱う。
