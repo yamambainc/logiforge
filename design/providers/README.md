@@ -60,8 +60,4 @@
 - 木は、どちらの実装でも git リポジトリに置く（[木のファイル配置](../files/README.md)）。
 - 版を書いたセッションは、どちらの実装でもコミットの trailer に残る（[セッション ID の記録](../backend/README.md)）。
 
-## 対応しないこと
-
-- project を作れる利用者を制限すること（issue #10 で扱う）
-- project の削除
-- project の名前の変更
+project について対応しないことは、[木の形](../../docs/tree/README.md) に書く。
