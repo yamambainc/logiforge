@@ -1,11 +1,10 @@
 # GitHub アダプタ
 
-GitHub を使って Logiforge を動かすときに、何を何に対応づけるかを確かめるために読む。
-インターフェースは、[プロバイダ](README.md) が正本である。
+GitHub を使って Logiforge を動かすときに、[プロバイダのインターフェース](../backend/provider-interface.md) をどう実装するかを確かめるために読む。
 
 ## 対応
 
-| インターフェース | GitHub |
+| インターフェースの操作 | GitHub での実装 |
 |---|---|
 | repository | GitHub のリポジトリ（1 つの repository に 1 つ） |
 | 提案 | pull request |

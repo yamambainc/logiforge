@@ -61,7 +61,7 @@ paths:
       operationId: createRepository
       summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
-        プロバイダの「repository を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/providers/README.md）。
+        プロバイダの「repository を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/backend/provider-interface.md）。
         GitHub アダプタのときは、人が作った空の GitHub リポジトリの名前を `github_full_name` で受け取って登録する。
         独自プロバイダのときは、`github_full_name` を受け取らず、bare の git リポジトリを作る。
       parameters:
