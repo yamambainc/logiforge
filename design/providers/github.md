@@ -17,10 +17,19 @@ GitHub を使って Logiforge を動かすときに、何を何に対応づけ�
 | 回答 | バックエンドの App が、利用者の回答として書いたコメント |
 | イベント | GitHub の webhook（`pull_request`、`pull_request_review`、`issues`、`issue_comment`、`push`） |
 
+## project を用意する
+
+1. 人が、空の GitHub リポジトリを作る。
+2. 人が、そのリポジトリにバックエンドの App を入れる。
+3. 人が、書き込み権限を App だけに与え、ほかの主体を read にする（下の「main への書き込みを守る」）。
+4. 利用者が、そのリポジトリの名前を指定して project を作る。
+5. バックエンドは、リポジトリが空であることと、App が書き込めることを確かめて、根の仮説を最初のコミットとして書き込む。
+
 ## バックエンドの App が作ったものだけを数える
 
 - バックエンドは、GitHub App として動く。
-  - project を作るときは、App が organization にリポジトリを作り、App をそこに入れる。
+  - App は、organization にリポジトリを作らない。
+    - なぜ：App に、organization の Administration write という強い権限を持たせないため。
 - 版は、作者がバックエンドの App のコミットだけで作る。
   - ほかの主体のコミットがブランチに入ったら、その版は無効にする。無効な版は反映しない。
 - レビューは、作者がバックエンドの App のものだけを数える。

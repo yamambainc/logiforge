@@ -60,6 +60,10 @@ paths:
       tags: [project]
       operationId: createProject
       summary: project を作る（user だけ。根の仮説の主文を一緒に受け取る）
+      description: |
+        プロバイダの「project を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/providers/README.md）。
+        GitHub アダプタのときは、人が作った空の GitHub リポジトリの名前を `github_repository` で受け取って登録する。
+        独自プロバイダのときは、`github_repository` を受け取らず、bare の git リポジトリを作る。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -71,6 +75,10 @@ paths:
               required: [name, statement]
               properties:
                 name: { $ref: '#/components/schemas/ProjectNameValue' }
+                github_repository:
+                  type: string
+                  pattern: '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'
+                  description: GitHub アダプタのときだけ使う。owner/name の形
                 statement: { $ref: '#/components/schemas/Statement' }
                 background: { type: string }
       responses:
@@ -846,6 +854,8 @@ components:
         provider:
           type: string
           enum: [github, native]
+          readOnly: true
+          description: サーバの設定で決まるプロバイダ
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
     Revision:

@@ -47,6 +47,8 @@ apply request の差分を、バックエンドがどう検査するかを確か
 - inactive な部分木の下に、新しいストーリーを作らない。
 - inactive な部分木の中の検証結果は、inactive になる前に葉だった仮説にだけ出す。
   - inactive になる前の状態は、`inactivated.md` を加えたコミットの 1 つ前の木で確かめる。
+- 部分木の引用：commit SHA が、この project の `main` の first-parent の並びにある。かつ、その commit の `tree/` に、指定した識別子のノードがある。
+- artifact の引用：sha256 が、この project の `artifacts/` か、この project の外部 CAS にある。
 - artifact のファイル名が、中身のハッシュと一致する。
 - 加えた artifact は、加えた検証結果のどれかから参照されている。
 - 保存しない値（真偽値など）が、ファイルに書かれていない。
