@@ -6,7 +6,7 @@
 ## ディレクトリ
 
 ```
-logiforge.yaml                       repository の名前と設定（artifact を git リポジトリに入れる大きさの境目など）
+logiforge.yaml                       設定（artifact を git リポジトリに入れる大きさの境目など）
 tree/
   h-7k3m9q2x4p/                      根の仮説
     hypothesis.md                    主文
@@ -31,10 +31,10 @@ artifacts/
 
 | 項目 | 内容 |
 |---|---|
-| `name` | repository の名前。正本である |
 | `artifact_inline_limit` | artifact を git リポジトリに入れる大きさの境目（[artifact の置き方](artifacts.md)） |
 
-- `logiforge.yaml` は、最初のリビジョンで作り、あとから `name` を変えない。
+- `logiforge.yaml` は、最初のリビジョンで作る。
+- repository の名前は、`logiforge.yaml` には書かない（[repository の登録](../adapters/README.md)）。
 
 ## 識別子
 

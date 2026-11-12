@@ -33,7 +33,7 @@
 
 利用者が repository の名前と根の主文を送ったら、バックエンドは次の順に処理する。
 
-1. サーバの設定から、その名前の provider_ref を読む。
+1. アダプタから、その名前の provider_ref を読む（[repository の登録](../adapters/README.md)）。
 2. 木のリポジトリの「用意する」と「最初のリビジョンで main を作る」を呼ぶ。
    - 最初のリビジョンには、`logiforge.yaml` と根の仮説を入れる。
 3. やりとりの「repository の、やりとりの側を用意する」を呼ぶ。

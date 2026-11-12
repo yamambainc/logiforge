@@ -11,7 +11,9 @@ artifact の決まりは、[artifact](../../docs/tree/verdict.md) が正本で�
 - 1 MiB を超える artifact は、CAS にだけ置き、git リポジトリにはハッシュだけを書く。
   - なぜ：大きなデータや画像を git に入れると、クローンが遅くなるから。
   - CAS の場所と認証情報は、サーバの設定に置く（[設定と秘密情報](../adapters/README.md)）。
-- 1 MiB の境目は、`logiforge.yaml` で変えられる。
+- 1 MiB の境目は、`logiforge.yaml` に書く。
+  - 境目は、repository を用意するときに決め、あとから変えない。
+  - なぜ：境目が変わると、同じ大きさの artifact が git リポジトリにあるかないかが、時期によって変わってしまうから。
 - リンクの artifact は、中身を置かず、URI だけを書く。
 
 ## 検証結果からの参照
@@ -21,7 +23,7 @@ artifact の決まりは、[artifact](../../docs/tree/verdict.md) が正本で�
 | 項目 | 内容 |
 |---|---|
 | `kind` | `file`、`link`、`reference`、`program`、`output`、`human_entry` |
-| `sha256` | 中身のハッシュ。`link` のときはない |
+| `sha256` | 中身のハッシュ。`link` のときは任意で、書いてあれば検証のときに照合する |
 | `uri` | `link` のときの参照先 |
 | `media_type` | 中身の形式 |
 

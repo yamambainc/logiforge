@@ -23,16 +23,21 @@
 
 ## repository の登録
 
-- 管理者が、repository ごとに、名前と provider_ref をサーバの設定に登録する。
-  - GitHub アダプタ：管理者が GitHub リポジトリを作って App を入れ、`owner/name` を provider_ref として登録する（[GitHub アダプタ](github.md)）。
-  - 独自プロバイダ：bare リポジトリを置くディレクトリを設定する。名前を登録しなくても、利用者が作るときに bare リポジトリを作る（[git アダプタ](git.md)）。
+repository の名前の正本は、アダプタごとに次のとおりである。
+
+- GitHub アダプタ：サーバの設定（repository の名前と `owner/name` の組）
+  - 管理者が GitHub リポジトリを作り、書き込み主体を入れて、この組を登録する（[GitHub アダプタ](github.md)）。
+- 独自プロバイダ：bare リポジトリのディレクトリ名
+  - 管理者は、bare リポジトリを置くディレクトリだけを設定する。利用者が作るときに、bare リポジトリを作る（[git アダプタ](git.md)）。
+
+状態ストアの登録は、これらから作り直すキャッシュである（[状態ストア](../backend/ports/state-store.md)）。
 - 利用者は、名前と根の主文だけで repository を作る。
 
 ## 設定と秘密情報
 
 次のものは、サーバの設定ファイルか環境変数に置く。git リポジトリには置かない。
 
-- GitHub App の秘密鍵
+- GitHub の書き込み主体の認証情報（GitHub App の秘密鍵など）
 - GitHub の webhook の secret
 - SQLite ファイルのパス（状態ストアと独自プロバイダで同じファイル）
 - CAS の場所と認証情報

@@ -15,7 +15,7 @@
 | 操作 | git での実装 |
 |---|---|
 | 用意する | ローカル：`git init --bare`。GitHub：空であることを API で確かめる |
-| 列挙する | ローカル：ディレクトリの中を列挙する。GitHub：サーバの設定に登録した GitHub リポジトリを列挙する。どちらも `logiforge.yaml` を読む |
+| 列挙する | ローカル：ディレクトリの中を列挙し、ディレクトリ名を repository の名前とする。GitHub：サーバの設定に登録した組を列挙する |
 | 最初のリビジョンで main を作る | `git commit-tree`（親なし）のあと、ローカルは `git update-ref refs/heads/main <新しいコミット> ""`、GitHub は `POST /repos/{owner}/{repo}/git/refs` |
 | 木を読む | `git ls-tree` と `git cat-file`（リビジョンを指定する） |
 | 変更を列挙する | `git log <a>..<b> --first-parent -- <パス>` |
