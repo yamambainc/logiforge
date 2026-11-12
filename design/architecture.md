@@ -7,79 +7,31 @@ Logiforge のバックエンドを、どのレイヤーとポートに分ける�
 
 ```mermaid
 flowchart TB
-  subgraph US["利用する主体"]
-    AGT["エージェント"]
-    EXT["外の仕組み"]
-    HUM["人"]
-  end
+  US["利用する主体"]
   subgraph CL["Client"]
     CLI["CLI"]
     WEB["WebUI"]
   end
-  subgraph AP["Logiforge API"]
-    API["API"]
-  end
+  API["Logiforge API"]
   subgraph BE["バックエンド"]
     RULE["ルール判定"]
-    MERGE["反映"]
-    subgraph PT["ポート"]
-      P1["木の読み書き"]
-      P2["やりとり"]
-      P3["サーバの状態"]
-      P4["ファイルの保管"]
-    end
+    PORT["ポート"]
   end
-  subgraph AD["アダプタ"]
-    GITR["git アダプタ（GitHub）"]
-    GITL["git アダプタ（bare）"]
-    GH["GitHub アダプタ"]
-    NA["独自プロバイダ"]
-    SQ["SQLite アダプタ"]
-    CA["CAS アダプタ"]
-  end
-  subgraph DS["データストア"]
-    GHR[("git リポジトリ（GitHub）")]
-    BARE[("git リポジトリ（bare）")]
-    GHS[("GitHub の PR と issue")]
-    DB[("SQLite ファイル")]
-    OBJ[("CAS（ローカル / S3 互換）")]
-  end
-  AGT --> CLI
-  EXT --> CLI
-  HUM --> WEB
-  CLI --> API
-  WEB --> API
-  API --> RULE
-  RULE --> MERGE
-  RULE --> P1
-  RULE --> P2
-  RULE --> P3
-  RULE --> P4
-  MERGE --> P1
-  MERGE --> P2
-  MERGE --> P3
-  GITR -.-> P1
-  GITL -.-> P1
-  GH -.-> P2
-  NA -.-> P2
-  SQ -.-> P3
-  CA -.-> P4
-  GITR ==> GHR
-  GITL ==> BARE
-  GH ==> GHS
-  NA ==> DB
-  SQ ==> DB
-  CA ==> OBJ
-  GH -->|イベント| P2
-  NA -->|イベント| P2
+  AD["アダプタ"]
+  DS[("データストア")]
+  US --> CL
+  CL --> API
+  API --> BE
+  AD -.->|実装| PORT
+  AD ==> DS
 ```
 
-バックエンドの中にあるのはポート（何をしてほしいかの約束）だけで、実体はアダプタとデータストアにある。
+バックエンドの中にあるのは、ルール判定とポート（何をしてほしいかの約束）だけで、保存の実体はアダプタとデータストアにある。
 
 矢印は 3 種類である。
 
 - `-->`：呼び出し
-- `-.->`：実装（アダプタがポートを実装する）
+- `-.->`：実装。依存が逆向きで、アダプタがバックエンドのポートを実装する
 - `==>`：データの読み書き
 
 ## レイヤー
@@ -87,10 +39,12 @@ flowchart TB
 - **利用する主体**：エージェントと外の仕組みは CLI を、人は WebUI を使う。クライアントではない。
 - **Client**：CLI と WebUI。API だけを使う（[クライアントの要件との対応](api/clients.md)）。
 - **Logiforge API**：どのアダプタでも同じ API（[API](api/README.md)）。
-- **バックエンド（core）**：ルールと 4 つのポートを持ち、複数の repository を扱う（[バックエンド](backend/README.md)、[ポート](backend/ports/README.md)）。
-- **アダプタ**：ポートを実装する。やりとりのアダプタをプロバイダと呼ぶ（[アダプタ](adapters/README.md)）。
-- **データストア**：アダプタが読み書きする先。サーバの状態と独自プロバイダは、同じ SQLite ファイルに置く（[SQLite アダプタ](adapters/sqlite.md)）。
-  - CAS（内容アドレス方式のストレージ）は、ファイルの保管の実体である（[CAS アダプタ](adapters/cas.md)）。
+- **バックエンド（core）**：ルールと 4 つのポートを持ち、複数の repository を扱う（[バックエンド](backend/README.md)）。
+  - ポートと、それを実装するアダプタの図は、[ポート](backend/ports/README.md) にある。
+  - 反映の流れの図は、[反映の手順](backend/merge.md) にある。
+- **アダプタ**：ポートを実装する。やりとりのアダプタをプロバイダと呼ぶ。
+  - アダプタとデータストアの対応の図は、[アダプタ](adapters/README.md) にある。
+- **データストア**：アダプタが読み書きする先（git リポジトリ、GitHub、SQLite ファイル、CAS（内容アドレス方式のストレージ））。
 
 ## 決まり
 

@@ -3,6 +3,19 @@
 apply request を main に反映するとき、バックエンドが何を確かめ、どう書き込むかを確かめるために読む。
 要件は、[反映](../../docs/apply-request/README.md) と [反映の条件](../../docs/apply-request/review.md) が正本である。
 
+## 流れ
+
+```mermaid
+flowchart LR
+  RULE["ルール判定"] --> MERGE["反映"]
+  MERGE --> P1["木の読み書き"]
+  MERGE --> P2["やりとり"]
+  MERGE --> P3["サーバの状態"]
+```
+
+- 反映は、ルール判定のあとに行う。
+- 反映は、木の読み書きで `main` を進め、やりとりとサーバの状態に記録する（下の「手順」）。
+
 ## 手順
 
 `approve` を受け付けたら、バックエンドは次の順に処理する。

@@ -14,6 +14,26 @@
 
 ## 組み合わせ
 
+```mermaid
+flowchart TB
+  subgraph G["GitHub を使う場合"]
+    G1["git アダプタ（GitHub）"] ==> G1D[("git リポジトリ（GitHub）")]
+    G2["GitHub アダプタ"] ==> G2D[("GitHub の PR と issue")]
+    G3["SQLite アダプタ"] ==> G3D[("SQLite ファイル")]
+    G4["CAS アダプタ"] ==> G4D[("CAS")]
+  end
+  subgraph N["GitHub を使わない場合"]
+    N1["git アダプタ（bare）"] ==> N1D[("git リポジトリ（bare）")]
+    N2["独自プロバイダ"] ==> N3D[("SQLite ファイル")]
+    N3["SQLite アダプタ"] ==> N3D
+    N4["CAS アダプタ"] ==> N4D[("CAS")]
+  end
+```
+
+- 太い矢印は、アダプタがデータストアを読み書きすることを表す。
+- GitHub を使わない場合は、独自プロバイダとサーバの状態が、同じ SQLite ファイルに表を分けて置く。
+
+
 - やりとりのアダプタ（プロバイダ）は、サーバの設定で 1 つに決める。
   - なぜ：repository ごとにプロバイダを選べると、組み合わせが増えて単純さを失うから。
 - GitHub アダプタを使うときは、木の読み書きに git（GitHub のリモート）を使う。
