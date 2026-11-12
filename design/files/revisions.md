@@ -20,7 +20,7 @@
 ## 任意の時点の木
 
 - リビジョン r の木は、commit r を checkout したときの `tree/` である。
-- 値は、その `tree/` から core が計算し直す（[真偽値の伝播](../../docs/tree/propagation.md)）。
+- 値は、その `tree/` から バックエンドが計算し直す（[真偽値の伝播](../../docs/tree/propagation.md)）。
 - そのため、時点ごとのスナップショットや、別の履歴の表は要らない。
 
 ## 誰が、いつ、どの apply request で
@@ -29,4 +29,4 @@
 - いつ：コミットの時刻
 - どの apply request で：コミットメッセージに、apply request の識別子を書く
 
-セッション ID と論理レビューの記録は、協調のバックエンドが持つ。
+版を書いたセッションはコミットの trailer に残る。レビューの記録は、プロバイダが持つ（[プロバイダ](../providers/README.md)）。

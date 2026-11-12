@@ -489,7 +489,7 @@ paths:
         - name: verdictId
           in: path
           required: true
-          schema: { type: string, pattern: '^ver_' }
+          schema: { type: string, pattern: '^v-' }
       responses:
         '200':
           description: 検証結果
@@ -744,14 +744,14 @@ components:
 
   schemas:
     Revision:
-      type: integer
-      minimum: 0
-      description: イベントの seq
+      type: string
+      pattern: '^[0-9a-f]{40}$'
+      description: main のコミットの SHA（https://github.com/yamambainc/logiforge/blob/main/design/files/revisions.md）
     NextCursor:
       type: [string, 'null']
     NodeId:
       type: string
-      pattern: '^(hyp|sto)_'
+      pattern: '^[hs]-'
     Sha256:
       type: string
       pattern: '^[0-9a-f]{64}$'
@@ -778,15 +778,19 @@ components:
         detail: { type: string }
         code:
           type: string
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, root_exists]
 
     Tree:
       type: object
-      required: [root_hypothesis_id, root_value, revision]
+      required: [root_hypothesis_id, root_value, revision, warnings]
       properties:
-        root_hypothesis_id: { type: string, pattern: '^hyp_' }
+        root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         revision: { $ref: '#/components/schemas/Revision' }
+        warnings:
+          type: array
+          description: main に、反映の手順によらないコミットがあるときの警告（https://github.com/yamambainc/logiforge/blob/main/design/providers/github.md）
+          items: { type: string }
 
     Node:
       oneOf:
@@ -802,7 +806,7 @@ components:
       required: [node_type, id, parent_story_id, statement, value, leaf, needs_reconsideration, inactive, open_apply_request_ids, open_human_request_ids]
       properties:
         node_type: { type: string, const: hypothesis }
-        id: { type: string, pattern: '^hyp_' }
+        id: { type: string, pattern: '^h-' }
         parent_story_id:
           type: [string, 'null']
           description: 根のときだけ null
@@ -832,8 +836,8 @@ components:
       required: [node_type, id, parent_hypothesis_id, title, summary, state, value, inactive, open_apply_request_ids, open_human_request_ids]
       properties:
         node_type: { type: string, const: story }
-        id: { type: string, pattern: '^sto_' }
-        parent_hypothesis_id: { type: string, pattern: '^hyp_' }
+        id: { type: string, pattern: '^s-' }
+        parent_hypothesis_id: { type: string, pattern: '^h-' }
         title: { $ref: '#/components/schemas/Title' }
         summary: { $ref: '#/components/schemas/Summary' }
         state: { type: string, enum: [active, inactive] }
@@ -866,14 +870,14 @@ components:
         cited_by:
           type: array
           description: このノードの部分木を引用している検証結果
-          items: { type: string, pattern: '^ver_' }
+          items: { type: string, pattern: '^v-' }
 
     Verdict:
       type: object
       required: [id, hypothesis_id, value, report_body, artifact_ids, citations, submitted_revision]
       properties:
-        id: { type: string, pattern: '^ver_' }
-        hypothesis_id: { type: string, pattern: '^hyp_' }
+        id: { type: string, pattern: '^v-' }
+        hypothesis_id: { type: string, pattern: '^h-' }
         value: { type: boolean }
         report_body: { type: string }
         artifact_ids:
@@ -885,7 +889,7 @@ components:
         apply_request_id: { type: string, pattern: '^apr_' }
         submitted_revision: { $ref: '#/components/schemas/Revision' }
         superseded_revision:
-          type: [integer, 'null']
+          type: [string, 'null']
           description: 差し替えられたリビジョン。有効な間は null
     Citation:
       oneOf:
@@ -959,7 +963,7 @@ components:
       required: [kind, story_id, reason]
       properties:
         kind: { type: string, const: story.inactivate }
-        story_id: { type: string, pattern: '^sto_' }
+        story_id: { type: string, pattern: '^s-' }
         reason: { type: string, minLength: 1 }
     VerdictSubmit:
       type: object
@@ -982,7 +986,7 @@ components:
       required: [kind, hypothesis_id, append_background]
       properties:
         kind: { type: string, const: node.edit }
-        hypothesis_id: { type: string, pattern: '^hyp_' }
+        hypothesis_id: { type: string, pattern: '^h-' }
         append_background:
           type: string
           minLength: 1
@@ -991,22 +995,23 @@ components:
       allOf:
         - $ref: '#/components/schemas/OperationInput'
         - type: object
-          required: [position, base_revision]
+          required: [position]
           properties:
             position: { type: integer }
-            base_revision:
-              type: [integer, 'null']
-              description: 操作を加えたときの対象ノードの last_changed_revision。新しく作るノードが対象なら null
 
     ApplyRequestState:
       type: string
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, version, versions, operations, reviews, merge_failures, awaiting]
+      required: [id, state, base_commit, version, versions, operations, reviews, merge_failures, awaiting]
       properties:
         id: { type: string, pattern: '^apr_' }
         state: { $ref: '#/components/schemas/ApplyRequestState' }
+        base_commit:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+          description: ブランチを切った main のコミット
         version:
           type: integer
           description: 今の差分の版
@@ -1015,9 +1020,10 @@ components:
           description: 版ごとの、差分を書いたセッション
           items:
             type: object
-            required: [version, author_session_id]
+            required: [version, head_commit, author_session_id]
             properties:
               version: { type: integer }
+              head_commit: { type: string, pattern: '^[0-9a-f]{40}$' }
               author_session_id: { type: string }
         description: { type: string }
         operations:
@@ -1035,7 +1041,7 @@ components:
           description: open のとき、レビュー待ち（review）か修正待ち（fix）か
         closed_reason: { type: [string, 'null'] }
         closed_by_session_id: { type: [string, 'null'] }
-        merged_revision: { type: [integer, 'null'] }
+        merged_revision: { type: [string, 'null'] }
     ReviewKind:
       type: string
       enum: [approve, request_changes, comment]
@@ -1161,7 +1167,7 @@ components:
       type: object
       required: [seq, kind, occurred_at]
       properties:
-        seq: { $ref: '#/components/schemas/Revision' }
+        seq: { type: integer, minimum: 1 }
         kind: { type: string }
         subject_id: { type: string }
         actor_session_id: { type: [string, 'null'] }

@@ -10,6 +10,7 @@ Logiforge のバックエンドの API を実装するときと、クライア�
 - 外の仕組み（ループ、論理レビューの起動）は、[webhook](webhook.md) を受けて、この API を問い合わせ直す。
 
 API が CLI と WebUI の要件を満たすかは、[クライアントの要件との対応](clients.md) で確かめる。
+API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 
 ## 主体と認証
 
@@ -37,7 +38,7 @@ API が CLI と WebUI の要件を満たすかは、[クライアントの要件
 - 木を読むエンドポイントは、`revision` を指定できる。
   - 指定しなければ、最新のリビジョンを返す。
 - 応答には、読んだリビジョンを含める。
-- リビジョンの意味は、[履歴](../data/history.md) に書く。
+- リビジョンは、`main` のコミットの SHA である（[リビジョンとコミット](../files/revisions.md)）。
 
 ## エラー
 
@@ -53,10 +54,11 @@ API が CLI と WebUI の要件を満たすかは、[クライアントの要件
 | `not_found` | 404 | 対象がない |
 | `same_session` | 409 | opener と同じセッションでレビューした |
 | `not_open` | 409 | `open` でない apply request を変えようとした |
+| `root_exists` | 409 | 根がすでにあるのに、根の主文を作ろうとした |
 
 - 反映の失敗は、エラーにしない。
   - レビューの応答で、apply request が `open` のままであることと、失敗の理由を返す。
-  - なぜ：`approve` 自体は受け付けており、失敗は apply request の状態だから（[反映の判定](../data/apply-request.md)）。
+  - なぜ：`approve` 自体は受け付けており、失敗は apply request の状態だから（[反映の手順](../backend/merge.md)）。
 
 ## 同じ要求の繰り返し
 

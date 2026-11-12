@@ -1,0 +1,33 @@
+# apply request を作る
+
+opener が、木や検証結果を変えたいときに呼ぶ。
+ストーリーの作成、inactive 化、検証結果の提出、背景情報への追加は、すべてこれで出す。
+
+## 呼び出し
+
+- `POST /apply-requests`
+- operationId：`createApplyRequest`
+
+## すること
+
+- 操作を並べた差分を受け取り、ブランチのコミットにして版 1 とする。
+- 差分を書いたセッションを記録する。
+- ブランチを切った main のコミット（base）を記録する。
+- apply request を open にし、外の仕組みに通知する。
+
+## 失敗する主な場合
+
+- `validation_failed`（文字数、操作の形）
+- `session_required`
+- `forbidden`（user から呼んだ）
+
+エラーの形は、[エラー](../../README.md) に書く。
+
+## 関係する要件
+
+- [apply request](../../../../docs/apply-request/README.md)
+- [論理レビュー](../../../../docs/apply-request/review.md)
+
+## 詳細
+
+パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `createApplyRequest` に書く。
