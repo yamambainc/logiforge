@@ -7,51 +7,51 @@ Logiforge のバックエンドを、どのレイヤーに分けるかを確か�
 
 ```mermaid
 flowchart TB
-  subgraph US["利用する主体（クライアントの外）"]
-    AGT["エージェント<br/>opener / reviewer"]
-    EXT["外の仕組み<br/>論理レビューの起動など"]
-    HUM["人<br/>利用者"]
+  subgraph US["利用する主体"]
+    AGT["エージェント"]
+    EXT["外の仕組み"]
+    HUM["人"]
   end
   subgraph CL["Client"]
     CLI["CLI"]
     WEB["WebUI"]
   end
+  subgraph AP["Logiforge API"]
+    API["API"]
+  end
+  subgraph BE["バックエンド"]
+    RULE["ルール判定"]
+    MERGE["反映"]
+  end
+  subgraph PR["プロバイダ"]
+    IF["インターフェース"]
+    GH["GitHub アダプタ"]
+    NA["独自プロバイダ"]
+  end
+  subgraph DS["データストア"]
+    GIT[("git リポジトリ")]
+    CAS[("外部の CAS")]
+    GHS[("GitHub")]
+    DB[("DB")]
+  end
   AGT --> CLI
   EXT --> CLI
   HUM --> WEB
-  subgraph AP["Logiforge API（OpenAPI）"]
-    API["どのプロバイダでも同じ API"]
-  end
-  subgraph BE["バックエンド（core）"]
-    RULE["ルールはここにだけある<br/>不変条件・反映の条件・値の計算<br/>着手できる作業・作業の終わり・対象ノードの変化"]
-    MERGE["main への反映<br/>1 件ずつ直列に行う"]
-  end
-  subgraph PR["プロバイダ（差し替えられる）"]
-    IF["インターフェース<br/>提案と版・レビュー・人への依頼・イベント"]
-    GH["GitHub アダプタ<br/>PR とコミット・PR review と check<br/>issue・webhook"]
-    NA["独自プロバイダ<br/>自前の DB"]
-  end
-  subgraph DS["データストア"]
-    GIT[("git リポジトリ<br/>木と小さな artifact")]
-    CAS[("外部の CAS<br/>大きな artifact")]
-    GHS[("GitHub<br/>PR・review・issue")]
-    DB[("DB<br/>提案・レビュー・人への依頼")]
-  end
   CLI --> API
   WEB --> API
   API --> RULE
   RULE --> MERGE
   RULE --> IF
-  MERGE ==>|"main への書き込みは、この 1 本だけ"| IF
-  IF ==>|"反映"| GH
-  IF ==>|"反映"| NA
+  MERGE ==>|反映| IF
+  IF ==>|反映| GH
+  IF ==>|反映| NA
   GH ==> GIT
   NA ==> GIT
   GH --> GHS
   NA --> DB
   RULE --> CAS
-  GH -. "イベント" .-> RULE
-  NA -. "イベント" .-> RULE
+  GH -.->|イベント| RULE
+  NA -.->|イベント| RULE
 ```
 
 ## レイヤー
@@ -68,7 +68,10 @@ flowchart TB
 - **プロバイダ**：提案と版、レビュー、人への依頼、イベントを置く場所を、差し替えられるようにするアダプタ。
   - [プロバイダ](providers/README.md)（[GitHub アダプタ](providers/github.md)、[独自プロバイダ](providers/native.md)）
 - **データストア**：木は、どのプロバイダでも git リポジトリに置く。
-  - 木の置き方は、[木のファイル配置](files/README.md) に書く。
+  - git リポジトリ：木と、小さな artifact（[木のファイル配置](files/README.md)）
+  - 外部の CAS：大きな artifact（[artifact の置き方](files/artifacts.md)）
+  - GitHub：GitHub アダプタのときの、提案・レビュー・人への依頼
+  - DB：独自プロバイダのときの、提案・レビュー・人への依頼
 
 ## 2 つの決まり
 

@@ -44,11 +44,22 @@
 
 ```mermaid
 graph TD
-  H["H 親仮説"] -->|OR| S["S 旧ストーリー（inactive）"]
-  H -->|OR| S2["S′ 新しい兄弟ストーリー"]
-  S --> Ha["Ha 欠陥のあった子仮説（inactive）"]
-  S --> Hb["Hb 有効だった子仮説（inactive）"]
-  S2 --> Hb2["Hb′ Hb を引用して true"]
-  S2 --> Hc["Hc 新しい子仮説"]
+  H["H"] -->|OR| S["S"]
+  H -->|OR| S2["S′"]
+  S --> Ha["Ha"]
+  S --> Hb["Hb"]
+  S2 --> Hb2["Hb′"]
+  S2 --> Hc["Hc"]
   Hb2 -. 引用 .-> Hb
+  classDef inactive fill:#e5e7eb,stroke:#9ca3af,color:#6b7280
+  class S,Ha,Hb inactive
 ```
+
+- H は、親仮説である。
+- S は、旧ストーリーである。S を inactive にしたので、Ha と Hb も inactive になる。
+- 灰色のノードは、inactive である。
+- Ha は、欠陥のあった子仮説である。
+- Hb は、有効だった子仮説である。
+- S′ は、H の下に立てた新しい兄弟ストーリーである。
+- Hb′ は、Hb を引用して true にした子仮説である。
+- Hc は、新しい子仮説である。

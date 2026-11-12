@@ -82,17 +82,20 @@ inactive なストーリーは、親仮説の OR の計算から外れる。
 
 ```mermaid
 graph TD
-  H0["H0 究極の問い: true"] -->|OR| S1["S1: false"]
+  H0["H0: true"] -->|OR| S1["S1: false"]
   H0 -->|OR| S2["S2: true"]
-  S1 --> H1["H1 葉: true"]
-  S1 --> H2["H2 葉: false"]
-  S2 --> H3["H3 葉（H1 を引用）: true"]
+  S1 --> H1["H1: true"]
+  S1 --> H2["H2: false"]
+  S2 --> H3["H3: true"]
   S2 --> H4["H4: true"]
   H4 --> S3["S3: true"]
-  S3 --> H5["H5 葉: true"]
+  S3 --> H5["H5: true"]
   H3 -. 引用 .-> H1
 ```
 
+- H0 は根（究極の問い）である。
+- H1、H2、H3、H5 は葉である。
+- H3 は、H1 を引用して true にした葉である。
 - H2 が false なので、S1 は false になる。
 - S2 がないときの H0 は `null` で、要再検討である。
 - S2 が作られて検証されると、H0 は true になる。

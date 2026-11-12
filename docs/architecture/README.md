@@ -10,11 +10,13 @@ flowchart TB
   R["reviewer"] -- CLI --> S
   U["利用者"] -- WebUI --> S
   subgraph S["forge"]
-    T["構造化された木、apply request、人への依頼"]
-    F["ファイルと artifact"]
+    T1["木"]
+    T2["apply request"]
+    T3["人への依頼"]
+    F["artifact"]
     L["履歴"]
   end
-  S -- webhook --> X["外の仕組み（ループ）"]
+  S -- webhook --> X["外の仕組み"]
 ```
 
 - [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。

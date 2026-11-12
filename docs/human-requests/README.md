@@ -49,17 +49,21 @@ sequenceDiagram
   participant H as forge
   participant X as 外の仕組み
   participant R as reviewer
-  O->>H: PVR を起票する（検証手順）
-  H->>U: 通知する
-  U->>H: 結果を回答する
-  H->>X: 回答を通知する（webhook）
-  X->>O: opener を動かす
-  O->>H: 回答を引用したレポートで verdict.submit の apply request を出す
-  H->>X: apply request が open になったことを通知する（webhook）
-  X->>R: 論理レビューを起動する
-  R->>H: レビューの材料を問い合わせる
-  R->>H: approve する
-  H->>H: 反映して、値を計算し直す
+  O->>H: PVR を起票
+  H->>U: 起票を通知
+  U->>H: 回答
+  H->>X: 回答を通知
+  X->>O: opener を起動
+  O->>H: verdict.submit を提出
+  H->>X: apply request を通知
+  X->>R: 論理レビューを起動
+  R->>H: レビューの材料を取得
+  R->>H: approve
+  H->>H: 反映
 ```
+
+- forge から外の仕組みへの通知は、webhook で送る。
+- opener は、回答の artifact を引用したレポートで、`verdict.submit` の apply request を出す。
+- forge は、反映するときに値を計算し直す。
 
 エージェントへの自由記述の依頼（会話）は、扱わない（[対応しないこと](../concepts/README.md)）。
