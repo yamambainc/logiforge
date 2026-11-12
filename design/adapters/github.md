@@ -1,7 +1,7 @@
 # GitHub アダプタ
 
 GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-木のリポジトリは、[git アダプタ](git.md) の GitHub のリモートで扱う。
+木の読み書きは、[git アダプタ](git.md) の GitHub のリモートで扱う。
 
 ## 書き込み主体
 

@@ -2,12 +2,12 @@
 
 GitHub を使わずに Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
 提案・レビュー・人への依頼は、自前の DB（データベース）の表に置く。
-木のリポジトリは、[git アダプタ](git.md) のローカルの bare リポジトリで扱う。
+木の読み書きは、[git アダプタ](git.md) のローカルの bare リポジトリで扱う。
 
 ## 置き場所
 
 - 提案・レビュー・人への依頼は、SQLite に置く。
-  - ファイルは、[状態ストア](sqlite.md) と同じ SQLite ファイルにする。表は分ける。
+  - ファイルは、[サーバの状態](sqlite.md) と同じ SQLite ファイルにする。表は分ける。
   - なぜ：論理的には別のポートだが、置き場所を 1 つにすると運用が単純になるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
@@ -15,7 +15,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 ## repository_name
 
 - すべての表は、`repository_name` を持つ。
-- repository の一覧の表は持たない。repository は、木のリポジトリの「列挙する」で得る。
+- repository の一覧の表は持たない。repository は、木の読み書きの「列挙する」で得る。
 
 ## apply_request
 
@@ -33,7 +33,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 |---|---|---|
 | `apply_request_id` | 識別子 | 属する提案 |
 | `version` | 整数 | 1 から順に増える版 |
-| `revision` | 文字列 | 版のリビジョン（木のリポジトリの参照） |
+| `revision` | 文字列 | 版のリビジョン（木の読み書きの参照） |
 
 - 版を書いたセッションは、コミットの trailer から読む。表には持たない。
 

@@ -1,6 +1,6 @@
 # git アダプタ
 
-[木のリポジトリ](../backend/ports/tree-repository.md) のポートを、git でどう実装するかを確かめるときに読む。
+[木の読み書き](../backend/ports/tree-read-write.md) のポートを、git でどう実装するかを確かめるときに読む。
 ファイルの形式は、[木のファイル配置](../files/README.md) に従う。
 
 ## 2 つの実装

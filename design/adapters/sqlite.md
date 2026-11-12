@@ -1,10 +1,10 @@
 # SQLite アダプタ
 
-[状態ストア](../backend/ports/state-store.md) のポートを、SQLite でどう実装するかを確かめるときに読む。
+[サーバの状態](../backend/ports/server-state.md) のポートを、SQLite でどう実装するかを確かめるときに読む。
 
 ## 選んだ理由
 
-- 状態ストアの既定は、SQLite とする。
+- サーバの状態の既定は、SQLite とする。
   - なぜ：反映は repository ごとに直列に行い、書き込みが少ないので、1 本の書き込みで足りるから。
 - 独自プロバイダを使うときは、その表も同じ SQLite ファイルに置く（[独自プロバイダ](native.md)）。
 
@@ -20,7 +20,7 @@
 | `occurred_at` | 時刻 | 起きた時刻 |
 
 - 行を加えるだけにする。DB（データベース）のトリガーで、UPDATE と DELETE を拒む。
-- 作り直すときだけ、表ごと消して入れ直す（[状態ストア](../backend/ports/state-store.md)）。
+- 作り直すときだけ、表ごと消して入れ直す（[サーバの状態](../backend/ports/server-state.md)）。
 
 ## そのほかの表
 

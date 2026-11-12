@@ -48,7 +48,7 @@ apply request の差分を、バックエンドがどう検査するかを確か
 - inactive な部分木の中の検証結果は、inactive になる前に葉だった仮説にだけ出す。
   - inactive になる前の状態は、`inactivated.md` が加わったリビジョンの 1 つ前の木で確かめる（「木を読む」）。
 - 部分木の引用：引用したリビジョンが、この repository の「リビジョンの並び」にある。かつ、そのリビジョンの `tree/` に、指定した識別子のノードがある。
-- artifact の引用：sha256 が、この repository の `artifacts/` か、[CAS（内容アドレス方式のストレージ）](ports/cas.md) にある。
+- artifact の引用：sha256 が、この repository の `artifacts/` か、[ファイルの保管](ports/file-storage.md) にある。
 - artifact のファイル名が、中身のハッシュと一致する。
 - 加えた artifact は、加えた検証結果のどれかから参照されている。
 - 保存しない値（真偽値など）が、ファイルに書かれていない。

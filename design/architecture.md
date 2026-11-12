@@ -22,25 +22,27 @@ flowchart TB
   subgraph BE["バックエンド"]
     RULE["ルール判定"]
     MERGE["反映"]
-    P1["木のリポジトリ"]
-    P2["やりとり"]
-    P3["状態ストア"]
-    P4["CAS"]
+    subgraph PT["ポート"]
+      P1["木の読み書き"]
+      P2["やりとり"]
+      P3["サーバの状態"]
+      P4["ファイルの保管"]
+    end
   end
   subgraph AD["アダプタ"]
-    GITR["git（GitHub）"]
-    GITL["git（bare）"]
+    GITR["git アダプタ（GitHub）"]
+    GITL["git アダプタ（bare）"]
     GH["GitHub アダプタ"]
     NA["独自プロバイダ"]
-    SQ["SQLite"]
+    SQ["SQLite アダプタ"]
     CA["CAS アダプタ"]
   end
   subgraph DS["データストア"]
-    GHR[("GitHub リポジトリ")]
-    BARE[("bare の git リポジトリ")]
+    GHR[("git リポジトリ（GitHub）")]
+    BARE[("git リポジトリ（bare）")]
     GHS[("GitHub の PR と issue")]
     DB[("SQLite ファイル")]
-    OBJ[("オブジェクト")]
+    OBJ[("CAS（ローカル / S3 互換）")]
   end
   AGT --> CLI
   EXT --> CLI
@@ -72,6 +74,8 @@ flowchart TB
   NA -->|イベント| P2
 ```
 
+バックエンドの中にあるのはポート（何をしてほしいかの約束）だけで、実体はアダプタとデータストアにある。
+
 矢印は 3 種類である。
 
 - `-->`：呼び出し
@@ -85,7 +89,8 @@ flowchart TB
 - **Logiforge API**：どのアダプタでも同じ API（[API](api/README.md)）。
 - **バックエンド（core）**：ルールと 4 つのポートを持ち、複数の repository を扱う（[バックエンド](backend/README.md)、[ポート](backend/ports/README.md)）。
 - **アダプタ**：ポートを実装する。やりとりのアダプタをプロバイダと呼ぶ（[アダプタ](adapters/README.md)）。
-- **データストア**：アダプタが読み書きする先。状態ストアと独自プロバイダは、同じ SQLite ファイルに置く（[SQLite アダプタ](adapters/sqlite.md)）。
+- **データストア**：アダプタが読み書きする先。サーバの状態と独自プロバイダは、同じ SQLite ファイルに置く（[SQLite アダプタ](adapters/sqlite.md)）。
+  - CAS（内容アドレス方式のストレージ）は、ファイルの保管の実体である（[CAS アダプタ](adapters/cas.md)）。
 
 ## 決まり
 
@@ -94,7 +99,7 @@ flowchart TB
 - ルールはバックエンドにだけある。
   - なぜ：アダプタを差し替えても、同じルールで判定されるようにするため。
   - アダプタは、ルールを判定しない。
-- 木のリポジトリのポートは、git の形式で実装する（[木のファイル配置](files/README.md)）。
+- 木の読み書きのポートは、git の形式で実装する（[木のファイル配置](files/README.md)）。
   - なぜ：変更の履歴、差分、任意の時点の木を、git の仕組みでそのまま扱えるから。
 - `main` を進めるのは、バックエンドの [反映の手順](backend/merge.md) だけである。
   - なぜ：不変条件を確かめずに木が変わることを防ぐため。
