@@ -5,7 +5,7 @@ reviewer が、論理レビューの結果を付けるときに、CLI から呼�
 
 ## 呼び出し
 
-- `POST /projects/{project}/apply-requests/{applyRequestId}/reviews`
+- `POST /repositories/{repository}/apply-requests/{applyRequestId}/reviews`
 - operationId：`reviewApplyRequest`
 
 ## すること

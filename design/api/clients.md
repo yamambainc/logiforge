@@ -21,8 +21,8 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 
 | 画面 | 要件 | API |
 |---|---|---|
-| [project の一覧](../../docs/webui/projects.md) | project を一覧し、選ぶ | [project の一覧を読む](endpoints/project/list.md) |
-| project の一覧 | project を作る（根の主文を含む） | [project を作る](endpoints/project/create.md) |
+| [repository の一覧](../../docs/webui/repositories.md) | repository を一覧し、選ぶ | [repository の一覧を読む](endpoints/repository/list.md) |
+| repository の一覧 | repository を作る（根の主文を含む） | [repository を作る](endpoints/repository/create.md) |
 | [木のビューア](../../docs/webui/tree-viewer.md) | 木とバッジを表示する | [木のノードを読む](endpoints/tree/list-nodes.md) |
 | 木のビューア | ノードの詳細 | [ノードの詳細を読む](endpoints/node/get.md)、[検証結果を読む](endpoints/verdict/get.md)、[artifact を読む](endpoints/artifact/get.md)、[ファイルの中身を読む](endpoints/blob/get.md) |
 | 木のビューア | ノードの履歴 | [ノードの履歴を読む](endpoints/node/history.md) |

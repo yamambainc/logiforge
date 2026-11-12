@@ -5,7 +5,7 @@ opener や reviewer が、次にする作業を探すときに、CLI から呼�
 
 ## 呼び出し
 
-- `GET /projects/{project}/work`
+- `GET /repositories/{repository}/work`
 - operationId：`listWork`
 
 ## すること

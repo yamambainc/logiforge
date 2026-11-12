@@ -7,7 +7,7 @@ GitHub を使って Logiforge を動かすときに、何を何に対応づけ�
 
 | インターフェース | GitHub |
 |---|---|
-| project | GitHub のリポジトリ（1 つの project に 1 つ） |
+| repository | GitHub のリポジトリ（1 つの repository に 1 つ） |
 | 提案 | pull request |
 | 版 | pull request の head のコミット |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
@@ -17,12 +17,12 @@ GitHub を使って Logiforge を動かすときに、何を何に対応づけ�
 | 回答 | バックエンドの App が、利用者の回答として書いたコメント |
 | イベント | GitHub の webhook（`pull_request`、`pull_request_review`、`issues`、`issue_comment`、`push`） |
 
-## project を用意する
+## repository を用意する
 
 1. 人が、空の GitHub リポジトリを作る。
 2. 人が、そのリポジトリにバックエンドの App を入れる。
 3. 人が、書き込み権限を App だけに与え、ほかの主体を read にする（下の「main への書き込みを守る」）。
-4. 利用者が、そのリポジトリの名前を指定して project を作る。
+4. 利用者が、そのリポジトリの名前を指定して repository を作る。
 5. バックエンドは、リポジトリが空であることと、App が書き込めることを確かめて、根の仮説を最初のコミットとして書き込む。
 
 ## バックエンドの App が作ったものだけを数える

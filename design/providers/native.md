@@ -5,22 +5,22 @@ GitHub を使わずに Logiforge を動かすときに、提案・レビュー�
 
 ## 置き場所
 
-- 木と小さな artifact は、project ごとの bare の git リポジトリに置く（[木のファイル配置](../files/README.md)）。
+- 木と小さな artifact は、repository ごとの bare の git リポジトリに置く（[木のファイル配置](../files/README.md)）。
   - 提案のブランチは、`refs/logiforge/apply-requests/<識別子>` に置く。
 - 提案・レビュー・人への依頼・イベントは、DB に置く。既定は SQLite とする。
-  - なぜ：反映は project ごとに 1 件ずつ直列に行うので、書き込みが 1 本の SQLite で足りるから。
+  - なぜ：反映は repository ごとに 1 件ずつ直列に行うので、書き込みが 1 本の SQLite で足りるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
 
-## project
+## repository
 
 | 列 | 型 | 内容 |
 |---|---|---|
-| `project_name` | 文字列 | project の名前。主キー |
+| `repository_name` | 文字列 | repository の名前。主キー |
 | `git_path` | 文字列 | bare の git リポジトリのパス |
 | `created_at` | 時刻 | 作った時刻 |
 
-ほかの表は、すべて `project_name` を持つ。
+ほかの表は、すべて `repository_name` を持つ。
 
 ## apply_request
 
@@ -78,7 +78,7 @@ GitHub を使わずに Logiforge を動かすときに、提案・レビュー�
 
 | 列 | 型 | 内容 |
 |---|---|---|
-| `seq` | 整数 | project ごとに 1 から順に増える番号 |
+| `seq` | 整数 | repository ごとに 1 から順に増える番号 |
 | `kind` | 文字列 | 変化の種類（例：`apply_request.reviewed`） |
 | `subject_id` | 識別子 | 変化した対象 |
 | `actor_session_id` | 文字列 | 起こしたセッション |

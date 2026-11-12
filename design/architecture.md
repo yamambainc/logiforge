@@ -63,13 +63,13 @@ flowchart TB
   - クライアントの仕様は書かない。API との対応だけを [クライアントの要件との対応](api/clients.md) に書く。
 - **Logiforge API**：どのプロバイダを使っても同じ API。
   - 正本は [openapi.yaml](api/openapi.yaml)。概要は [API](api/README.md) と [API の一覧](api/endpoints/README.md)。
-- **バックエンド（core）**：ルールを持つ、ただ 1 つのレイヤー。main への反映も、ここが project ごとに 1 件ずつ行う。
-  - 1 つのバックエンドが、複数の project を扱う。
+- **バックエンド（core）**：ルールを持つ、ただ 1 つのレイヤー。main への反映も、ここが repository ごとに 1 件ずつ行う。
+  - 1 つのバックエンドが、複数の repository を扱う。
   - [バックエンド](backend/README.md)
 - **プロバイダ**：提案と版、レビュー、人への依頼、イベントを置く場所を、差し替えられるようにするアダプタ。
   - [プロバイダ](providers/README.md)（[GitHub アダプタ](providers/github.md)、[独自プロバイダ](providers/native.md)）
 - **データストア**：木は、どのプロバイダでも git リポジトリに置く。
-  - git リポジトリ：木と、小さな artifact（[木のファイル配置](files/README.md)）。project ごとに 1 つ。
+  - git リポジトリ：木と、小さな artifact（[木のファイル配置](files/README.md)）。repository ごとに 1 つ。
   - 外部の CAS：大きな artifact（[artifact の置き方](files/artifacts.md)）
   - GitHub：GitHub アダプタのときの、提案・レビュー・人への依頼
   - DB：独自プロバイダのときの、提案・レビュー・人への依頼

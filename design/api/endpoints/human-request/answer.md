@@ -5,7 +5,7 @@ WebUI の人への依頼の画面が使う。
 
 ## 呼び出し
 
-- `POST /projects/{project}/human-requests/{humanRequestId}/answer`
+- `POST /repositories/{repository}/human-requests/{humanRequestId}/answer`
 - operationId：`answerHumanRequest`
 
 ## すること

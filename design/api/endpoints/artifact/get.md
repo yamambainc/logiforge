@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/artifacts/{artifactId}`
+- `GET /repositories/{repository}/artifacts/{artifactId}`
 - operationId：`getArtifact`
 
 ## すること

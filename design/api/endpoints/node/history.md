@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/nodes/{nodeId}/history`
+- `GET /repositories/{repository}/nodes/{nodeId}/history`
 - operationId：`getNodeHistory`
 
 ## すること

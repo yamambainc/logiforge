@@ -5,7 +5,7 @@ WebUI のダッシュボードや、CLI で状況をつかむときの最初の�
 
 ## 呼び出し
 
-- `GET /projects/{project}/tree`
+- `GET /repositories/{repository}/tree`
 - operationId：`getTree`
 
 ## すること

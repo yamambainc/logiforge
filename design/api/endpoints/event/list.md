@@ -5,7 +5,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/events`
+- `GET /repositories/{repository}/events`
 - operationId：`listEvents`
 
 ## すること

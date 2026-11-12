@@ -5,7 +5,7 @@ opener が、request_changes を受けたあとや、反映に失敗したあと
 
 ## 呼び出し
 
-- `PATCH /projects/{project}/apply-requests/{applyRequestId}`
+- `PATCH /repositories/{repository}/apply-requests/{applyRequestId}`
 - operationId：`updateApplyRequest`
 
 ## すること

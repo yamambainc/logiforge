@@ -5,7 +5,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/tree/completion`
+- `GET /repositories/{repository}/tree/completion`
 - operationId：`getCompletion`
 
 ## すること

@@ -5,7 +5,7 @@ opener が、レビューの結果や反映の失敗を確かめるときに、C
 
 ## 呼び出し
 
-- `GET /projects/{project}/apply-requests/{applyRequestId}`
+- `GET /repositories/{repository}/apply-requests/{applyRequestId}`
 - operationId：`getApplyRequest`
 
 ## すること

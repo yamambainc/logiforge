@@ -5,65 +5,65 @@ API ごとの概要を引くときに使う。
 
 API を呼ぶのは、CLI と WebUI だけである。エージェント、外の仕組み、人は、CLI か WebUI を通して API を使う（[レイヤー構成](../../architecture.md)）。
 
-## project
+## repository
 
-- [project の一覧を読む](project/list.md) → `GET /projects`
-- [project を作る](project/create.md) → `POST /projects`
-- [project を読む](project/get.md) → `GET /projects/{project}`
+- [repository の一覧を読む](repository/list.md) → `GET /repositories`
+- [repository を作る](repository/create.md) → `POST /repositories`
+- [repository を読む](repository/get.md) → `GET /repositories/{repository}`
 
 ## 木
 
-- [木の概要を読む](tree/get.md) → `GET /projects/{project}/tree`
-- [木のノードを読む](tree/list-nodes.md) → `GET /projects/{project}/tree/nodes`
-- [作業の終わりを判定する](tree/completion.md) → `GET /projects/{project}/tree/completion`
-- [木を書き出す](tree/export.md) → `GET /projects/{project}/tree/export`
+- [木の概要を読む](tree/get.md) → `GET /repositories/{repository}/tree`
+- [木のノードを読む](tree/list-nodes.md) → `GET /repositories/{repository}/tree/nodes`
+- [作業の終わりを判定する](tree/completion.md) → `GET /repositories/{repository}/tree/completion`
+- [木を書き出す](tree/export.md) → `GET /repositories/{repository}/tree/export`
 
 ## ノード
 
-- [ノードの詳細を読む](node/get.md) → `GET /projects/{project}/nodes/{nodeId}`
-- [ノードの履歴を読む](node/history.md) → `GET /projects/{project}/nodes/{nodeId}/history`
+- [ノードの詳細を読む](node/get.md) → `GET /repositories/{repository}/nodes/{nodeId}`
+- [ノードの履歴を読む](node/history.md) → `GET /repositories/{repository}/nodes/{nodeId}/history`
 
 ## apply request
 
-- [apply request の一覧を読む](apply-request/list.md) → `GET /projects/{project}/apply-requests`
-- [apply request を作る](apply-request/create.md) → `POST /projects/{project}/apply-requests`
-- [apply request の詳細を読む](apply-request/get.md) → `GET /projects/{project}/apply-requests/{applyRequestId}`
-- [apply request を更新する](apply-request/update.md) → `PATCH /projects/{project}/apply-requests/{applyRequestId}`
-- [apply request をレビューする](apply-request/review.md) → `POST /projects/{project}/apply-requests/{applyRequestId}/reviews`
-- [apply request を close する](apply-request/close.md) → `POST /projects/{project}/apply-requests/{applyRequestId}/close`
-- [レビューの材料を読む](apply-request/review-material.md) → `GET /projects/{project}/apply-requests/{applyRequestId}/review-material`
+- [apply request の一覧を読む](apply-request/list.md) → `GET /repositories/{repository}/apply-requests`
+- [apply request を作る](apply-request/create.md) → `POST /repositories/{repository}/apply-requests`
+- [apply request の詳細を読む](apply-request/get.md) → `GET /repositories/{repository}/apply-requests/{applyRequestId}`
+- [apply request を更新する](apply-request/update.md) → `PATCH /repositories/{repository}/apply-requests/{applyRequestId}`
+- [apply request をレビューする](apply-request/review.md) → `POST /repositories/{repository}/apply-requests/{applyRequestId}/reviews`
+- [apply request を close する](apply-request/close.md) → `POST /repositories/{repository}/apply-requests/{applyRequestId}/close`
+- [レビューの材料を読む](apply-request/review-material.md) → `GET /repositories/{repository}/apply-requests/{applyRequestId}/review-material`
 
 ## 着手できる作業
 
-- [着手できる作業を読む](work/list.md) → `GET /projects/{project}/work`
+- [着手できる作業を読む](work/list.md) → `GET /repositories/{repository}/work`
 
 ## ファイルの中身
 
-- [ファイルの中身を置く](blob/upload.md) → `POST /projects/{project}/blobs`
-- [ファイルの中身を読む](blob/get.md) → `GET /projects/{project}/blobs/{sha256}`
+- [ファイルの中身を置く](blob/upload.md) → `POST /repositories/{repository}/blobs`
+- [ファイルの中身を読む](blob/get.md) → `GET /repositories/{repository}/blobs/{sha256}`
 
 ## artifact
 
-- [artifact を登録する](artifact/create.md) → `POST /projects/{project}/artifacts`
-- [artifact を読む](artifact/get.md) → `GET /projects/{project}/artifacts/{artifactId}`
+- [artifact を登録する](artifact/create.md) → `POST /repositories/{repository}/artifacts`
+- [artifact を読む](artifact/get.md) → `GET /repositories/{repository}/artifacts/{artifactId}`
 
 ## 検証結果
 
-- [検証結果を読む](verdict/get.md) → `GET /projects/{project}/verdicts/{verdictId}`
+- [検証結果を読む](verdict/get.md) → `GET /repositories/{repository}/verdicts/{verdictId}`
 
 ## 人への依頼
 
-- [人への依頼の一覧を読む](human-request/list.md) → `GET /projects/{project}/human-requests`
-- [人への依頼を起票する](human-request/create.md) → `POST /projects/{project}/human-requests`
-- [人への依頼を読む](human-request/get.md) → `GET /projects/{project}/human-requests/{humanRequestId}`
-- [人への依頼に回答する](human-request/answer.md) → `POST /projects/{project}/human-requests/{humanRequestId}/answer`
+- [人への依頼の一覧を読む](human-request/list.md) → `GET /repositories/{repository}/human-requests`
+- [人への依頼を起票する](human-request/create.md) → `POST /repositories/{repository}/human-requests`
+- [人への依頼を読む](human-request/get.md) → `GET /repositories/{repository}/human-requests/{humanRequestId}`
+- [人への依頼に回答する](human-request/answer.md) → `POST /repositories/{repository}/human-requests/{humanRequestId}/answer`
 
 ## イベント
 
-- [イベントの一覧を読む](event/list.md) → `GET /projects/{project}/events`
+- [イベントの一覧を読む](event/list.md) → `GET /repositories/{repository}/events`
 
 ## webhook
 
-- [webhook の登録を読む](webhook/list.md) → `GET /projects/{project}/webhooks`
-- [webhook を登録する](webhook/create.md) → `POST /projects/{project}/webhooks`
-- [webhook の登録を消す](webhook/delete.md) → `DELETE /projects/{project}/webhooks/{webhookId}`
+- [webhook の登録を読む](webhook/list.md) → `GET /repositories/{repository}/webhooks`
+- [webhook を登録する](webhook/create.md) → `POST /repositories/{repository}/webhooks`
+- [webhook の登録を消す](webhook/delete.md) → `DELETE /repositories/{repository}/webhooks/{webhookId}`

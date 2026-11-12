@@ -16,8 +16,8 @@ servers:
 security:
   - bearerAuth: []
 tags:
-  - name: project
-    description: project の作成と参照
+  - name: repository
+    description: repository の作成と参照
   - name: tree
     description: 木の参照
   - name: apply-request
@@ -34,17 +34,17 @@ tags:
     description: webhook の登録
 
 paths:
-  /projects:
+  /repositories:
     get:
-      tags: [project]
-      operationId: listProjects
-      summary: project の一覧
+      tags: [repository]
+      operationId: listRepositories
+      summary: repository の一覧
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: project の一覧
+          description: repository の一覧
           content:
             application/json:
               schema:
@@ -53,17 +53,17 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/Project' }
+                    items: { $ref: '#/components/schemas/Repository' }
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
     post:
-      tags: [project]
-      operationId: createProject
-      summary: project を作る（user だけ。根の仮説の主文を一緒に受け取る）
+      tags: [repository]
+      operationId: createRepository
+      summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
-        プロバイダの「project を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/providers/README.md）。
-        GitHub アダプタのときは、人が作った空の GitHub リポジトリの名前を `github_repository` で受け取って登録する。
-        独自プロバイダのときは、`github_repository` を受け取らず、bare の git リポジトリを作る。
+        プロバイダの「repository を用意する」を呼んで、git リポジトリを用意する（https://github.com/yamambainc/logiforge/blob/main/design/providers/README.md）。
+        GitHub アダプタのときは、人が作った空の GitHub リポジトリの名前を `github_full_name` で受け取って登録する。
+        独自プロバイダのときは、`github_full_name` を受け取らず、bare の git リポジトリを作る。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -74,8 +74,8 @@ paths:
               type: object
               required: [name, statement]
               properties:
-                name: { $ref: '#/components/schemas/ProjectNameValue' }
-                github_repository:
+                name: { $ref: '#/components/schemas/RepositoryNameValue' }
+                github_full_name:
                   type: string
                   pattern: '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$'
                   description: GitHub アダプタのときだけ使う。owner/name の形
@@ -83,30 +83,30 @@ paths:
                 background: { type: string }
       responses:
         '201':
-          description: 作った project
+          description: 作った repository
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Project' }
+              schema: { $ref: '#/components/schemas/Repository' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}:
+  /repositories/{repository}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
-      tags: [project]
-      operationId: getProject
-      summary: project
+      tags: [repository]
+      operationId: getRepository
+      summary: repository
       responses:
         '200':
-          description: project
+          description: repository
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Project' }
+              schema: { $ref: '#/components/schemas/Repository' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/tree:
+  /repositories/{repository}/tree:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [tree]
       operationId: getTree
@@ -120,9 +120,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Tree' }
         '4XX': { $ref: '#/components/responses/Problem' }
-  /projects/{project}/tree/nodes:
+  /repositories/{repository}/tree/nodes:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [tree]
       operationId: listNodes
@@ -155,9 +155,9 @@ paths:
                     items: { $ref: '#/components/schemas/Node' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/tree/completion:
+  /repositories/{repository}/tree/completion:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [work]
       operationId: getCompletion
@@ -170,9 +170,9 @@ paths:
               schema: { $ref: '#/components/schemas/Completion' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/tree/export:
+  /repositories/{repository}/tree/export:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [history]
       operationId: exportTree
@@ -193,9 +193,9 @@ paths:
               schema: { type: string }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/nodes/{nodeId}:
+  /repositories/{repository}/nodes/{nodeId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [tree]
       operationId: getNode
@@ -211,9 +211,9 @@ paths:
               schema: { $ref: '#/components/schemas/NodeDetail' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/nodes/{nodeId}/history:
+  /repositories/{repository}/nodes/{nodeId}/history:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [history]
       operationId: getNodeHistory
@@ -230,9 +230,9 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/apply-requests:
+  /repositories/{repository}/apply-requests:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [apply-request]
       operationId: listApplyRequests
@@ -287,9 +287,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/apply-requests/{applyRequestId}:
+  /repositories/{repository}/apply-requests/{applyRequestId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [apply-request]
       operationId: getApplyRequest
@@ -334,9 +334,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/apply-requests/{applyRequestId}/reviews:
+  /repositories/{repository}/apply-requests/{applyRequestId}/reviews:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     post:
       tags: [apply-request]
       operationId: reviewApplyRequest
@@ -376,9 +376,9 @@ paths:
                   apply_request: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/apply-requests/{applyRequestId}/close:
+  /repositories/{repository}/apply-requests/{applyRequestId}/close:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     post:
       tags: [apply-request]
       operationId: closeApplyRequest
@@ -406,9 +406,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/apply-requests/{applyRequestId}/review-material:
+  /repositories/{repository}/apply-requests/{applyRequestId}/review-material:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [apply-request]
       operationId: getReviewMaterial
@@ -423,9 +423,9 @@ paths:
               schema: { $ref: '#/components/schemas/ReviewMaterial' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/work:
+  /repositories/{repository}/work:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [work]
       operationId: listWork
@@ -469,9 +469,9 @@ paths:
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/blobs:
+  /repositories/{repository}/blobs:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     post:
       tags: [evidence]
       operationId: uploadBlob
@@ -490,9 +490,9 @@ paths:
               schema: { $ref: '#/components/schemas/Blob' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/blobs/{sha256}:
+  /repositories/{repository}/blobs/{sha256}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [evidence]
       operationId: getBlob
@@ -510,9 +510,9 @@ paths:
               schema: { type: string, format: binary }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/artifacts:
+  /repositories/{repository}/artifacts:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     post:
       tags: [evidence]
       operationId: createArtifact
@@ -540,9 +540,9 @@ paths:
               schema: { $ref: '#/components/schemas/Artifact' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/artifacts/{artifactId}:
+  /repositories/{repository}/artifacts/{artifactId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [evidence]
       operationId: getArtifact
@@ -560,9 +560,9 @@ paths:
               schema: { $ref: '#/components/schemas/Artifact' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/verdicts/{verdictId}:
+  /repositories/{repository}/verdicts/{verdictId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [evidence]
       operationId: getVerdict
@@ -580,9 +580,9 @@ paths:
               schema: { $ref: '#/components/schemas/Verdict' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/human-requests:
+  /repositories/{repository}/human-requests:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [human-request]
       operationId: listHumanRequests
@@ -642,9 +642,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/human-requests/{humanRequestId}:
+  /repositories/{repository}/human-requests/{humanRequestId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [human-request]
       operationId: getHumanRequest
@@ -659,9 +659,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/human-requests/{humanRequestId}/answer:
+  /repositories/{repository}/human-requests/{humanRequestId}/answer:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     post:
       tags: [human-request]
       operationId: answerHumanRequest
@@ -689,9 +689,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/events:
+  /repositories/{repository}/events:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [history]
       operationId: listEvents
@@ -711,9 +711,9 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/webhooks:
+  /repositories/{repository}/webhooks:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [webhook]
       operationId: listWebhooks
@@ -764,9 +764,9 @@ paths:
                       secret: { type: string }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /projects/{project}/webhooks/{webhookId}:
+  /repositories/{repository}/webhooks/{webhookId}:
     parameters:
-      - $ref: '#/components/parameters/ProjectName'
+      - $ref: '#/components/parameters/RepositoryName'
     delete:
       tags: [webhook]
       operationId: deleteWebhook
@@ -790,11 +790,11 @@ components:
       description: 主体（user または client）を示すトークン
 
   parameters:
-    ProjectName:
-      name: project
+    RepositoryName:
+      name: repository
       in: path
       required: true
-      schema: { $ref: '#/components/schemas/ProjectNameValue' }
+      schema: { $ref: '#/components/schemas/RepositoryNameValue' }
     NodeIdPath:
       name: nodeId
       in: path
@@ -842,15 +842,15 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
-    ProjectNameValue:
+    RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
-      description: project の名前。forge の中で一意
-    Project:
+      description: repository の名前。forge の中で一意
+    Repository:
       type: object
       required: [name, provider, root_hypothesis_id]
       properties:
-        name: { $ref: '#/components/schemas/ProjectNameValue' }
+        name: { $ref: '#/components/schemas/RepositoryNameValue' }
         provider:
           type: string
           enum: [github, native]
@@ -893,7 +893,7 @@ components:
         detail: { type: string }
         code:
           type: string
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, project_exists]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, repository_exists]
 
     Tree:
       type: object

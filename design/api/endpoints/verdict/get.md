@@ -5,7 +5,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/verdicts/{verdictId}`
+- `GET /repositories/{repository}/verdicts/{verdictId}`
 - operationId：`getVerdict`
 
 ## すること

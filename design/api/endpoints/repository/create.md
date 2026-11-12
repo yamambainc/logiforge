@@ -1,20 +1,20 @@
-# project を作る
+# repository を作る
 
 利用者が、forge に新しい問いを持ち込むときに、WebUI から呼ぶ。
 
 ## 呼び出し
 
-- `POST /projects`
-- operationId：`createProject`
+- `POST /repositories`
+- operationId：`createRepository`
 
 ## すること
 
-- project の名前と、根の仮説の主文を受け取る。
-- プロバイダの「project を用意する」を呼ぶ。
+- repository の名前と、根の仮説の主文を受け取る。
+- プロバイダの「repository を用意する」を呼ぶ。
 - GitHub アダプタなら、人が作った空の GitHub リポジトリを登録する。
 - 独自プロバイダなら、bare の git リポジトリを作る。
 - 根の仮説を、最初のコミットとして書き込む。
-- 同じ名前の project があれば作らない。
+- 同じ名前の repository があれば作らない。
 
 ## 関係する要件
 
@@ -23,4 +23,4 @@
 
 ## 詳細
 
-パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `createProject` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `createRepository` に書く。

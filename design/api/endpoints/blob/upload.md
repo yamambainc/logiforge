@@ -5,7 +5,7 @@ opener が、プログラムや実行結果などのファイルを artifact に
 
 ## 呼び出し
 
-- `POST /projects/{project}/blobs`
+- `POST /repositories/{repository}/blobs`
 - operationId：`uploadBlob`
 
 ## すること

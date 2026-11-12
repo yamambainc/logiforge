@@ -5,7 +5,7 @@ opener が、木や検証結果を変えたいときに、CLI から呼ぶ。
 
 ## 呼び出し
 
-- `POST /projects/{project}/apply-requests`
+- `POST /repositories/{repository}/apply-requests`
 - operationId：`createApplyRequest`
 
 ## すること

@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `POST /projects/{project}/webhooks`
+- `POST /repositories/{repository}/webhooks`
 - operationId：`createWebhook`
 
 ## すること

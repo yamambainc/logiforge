@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/human-requests/{humanRequestId}`
+- `GET /repositories/{repository}/human-requests/{humanRequestId}`
 - operationId：`getHumanRequest`
 
 ## すること

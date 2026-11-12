@@ -29,7 +29,7 @@ reviewer の決まりは、[論理レビュー](../apply-request/review.md) に�
 利用者は、[WebUI](../webui/README.md) を使う人間である。
 利用者ができることは、次の 2 つだけである。
 
-- project を作る（根の仮説の主文を書く）。
+- repository を作る（根の仮説の主文を書く）。
 - [人への依頼](../human-requests/README.md) に回答する（PVR の結果の記入、判断の記入）。
 
 人への依頼には、問いを持ち込んだ人とは別の利用者（実験の担当者など）も回答できる。

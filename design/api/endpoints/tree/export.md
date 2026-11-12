@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/tree/export`
+- `GET /repositories/{repository}/tree/export`
 - operationId：`exportTree`
 
 ## すること

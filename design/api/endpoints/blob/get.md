@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /projects/{project}/blobs/{sha256}`
+- `GET /repositories/{repository}/blobs/{sha256}`
 - operationId：`getBlob`
 
 ## すること
