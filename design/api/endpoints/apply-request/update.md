@@ -1,6 +1,6 @@
 # apply request を更新する
 
-opener が、request_changes を受けたあとや、反映に失敗したあとに差分を直すときに呼ぶ。
+opener が、request_changes を受けたあとや、反映に失敗したあとに差分を直すときに、CLI から呼ぶ。
 どの client のセッションからでも更新できる。
 
 ## 呼び出し

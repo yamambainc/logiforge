@@ -7,11 +7,18 @@ Logiforge のバックエンドを、どのレイヤーに分けるかを確か�
 
 ```mermaid
 flowchart TB
+  subgraph US["利用する主体（クライアントの外）"]
+    AGT["エージェント<br/>opener / reviewer"]
+    EXT["外の仕組み<br/>論理レビューの起動など"]
+    HUM["人<br/>利用者"]
+  end
   subgraph CL["Client"]
     CLI["CLI"]
     WEB["WebUI"]
-    AGT["エージェント"]
   end
+  AGT --> CLI
+  EXT --> CLI
+  HUM --> WEB
   subgraph AP["Logiforge API（OpenAPI）"]
     API["どのプロバイダでも同じ API"]
   end
@@ -32,7 +39,6 @@ flowchart TB
   end
   CLI --> API
   WEB --> API
-  AGT --> API
   API --> RULE
   RULE --> MERGE
   RULE --> IF
@@ -50,7 +56,10 @@ flowchart TB
 
 ## レイヤー
 
-- **Client**：CLI、WebUI、エージェント。API だけを使う。
+- **利用する主体**：クライアントを使う側であり、クライアントではない。
+  - エージェント（opener と reviewer）と、外の仕組み（論理レビューの起動など）は、CLI を使う。
+  - 人（利用者）は、WebUI を使う。
+- **Client**：CLI と WebUI の 2 つ。API だけを使う。
   - クライアントの仕様は書かない。API との対応だけを [クライアントの要件との対応](api/clients.md) に書く。
 - **Logiforge API**：どのプロバイダを使っても同じ API。
   - 正本は [openapi.yaml](api/openapi.yaml)。概要は [API](api/README.md) と [API の一覧](api/endpoints/README.md)。

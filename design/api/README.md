@@ -7,7 +7,9 @@ Logiforge のバックエンドの API を実装するときと、クライア�
 
 - CLI は、opener と reviewer がこの API を使うためのクライアントである（[CLI](../../docs/cli/README.md)）。
 - WebUI は、利用者がこの API を使うためのクライアントである（[WebUI](../../docs/webui/README.md)）。
-- 外の仕組み（ループ、論理レビューの起動）は、[webhook](webhook.md) を受けて、この API を問い合わせ直す。
+- 外の仕組み（ループ、論理レビューの起動）は、[webhook](webhook.md) を受けて、CLI で問い合わせ直す。
+- エージェントと外の仕組みは、この API を直接は呼ばない。
+  - CLI を通して使う（[レイヤー構成](../architecture.md)）。
 
 API が CLI と WebUI の要件を満たすかは、[クライアントの要件との対応](clients.md) で確かめる。
 API ごとの概要は、[API の一覧](endpoints/README.md) にある。

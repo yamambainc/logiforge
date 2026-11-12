@@ -1,6 +1,6 @@
 # ファイルの中身を読む
 
-利用者や reviewer が、artifact の中身を読むときに呼ぶ。
+利用者は WebUI から、reviewer は CLI から、artifact の中身を読むときに呼ぶ。
 
 ## 呼び出し
 

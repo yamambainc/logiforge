@@ -1,6 +1,6 @@
 # apply request を close する
 
-opener が取り下げるとき、または reviewer が却下するときに呼ぶ。
+opener が取り下げるとき、または reviewer が却下するときに、CLI から呼ぶ。
 
 ## 呼び出し
 

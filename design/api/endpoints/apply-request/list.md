@@ -1,7 +1,7 @@
 # apply request の一覧を読む
 
-利用者が、審査中や反映済みの apply request を見るときに呼ぶ。
-opener や reviewer が、自分の関わる apply request を探すときにも使う。
+利用者が、審査中や反映済みの apply request を見るときに、WebUI から呼ぶ。
+opener や reviewer が、自分の関わる apply request を探すときにも、CLI から使う。
 
 ## 呼び出し
 

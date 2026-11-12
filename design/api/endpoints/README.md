@@ -3,6 +3,9 @@
 API ごとの概要を引くときに使う。
 各エンドポイントの詳細は、[openapi.yaml](../openapi.yaml) が正本である。
 
+API を呼ぶのは、CLI と WebUI だけである。
+各ページの「〜から呼ぶ」は、主体がどちらのクライアントを通すかを表す（[レイヤー構成](../../architecture.md)）。
+
 ## 木
 
 - [木の概要を読む](tree/get.md) → `GET /tree`
