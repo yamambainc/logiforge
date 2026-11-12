@@ -15,16 +15,10 @@ opener が、レビューの結果や反映の失敗を確かめるときに呼�
 - レビューと、それが今の版に有効かを返す。
 - 反映の失敗と、その理由を返す。
 
-## 失敗する主な場合
-
-- `not_found`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [apply request](../../../../docs/apply-request/README.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `getApplyRequest` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `getApplyRequest` に書く。

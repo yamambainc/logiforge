@@ -14,12 +14,6 @@
 - 指定した番号より後のイベントだけを返せる。
 - 一覧はページに分けて返す。
 
-## 失敗する主な場合
-
-- `validation_failed`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [監査](../../../../docs/architecture/README.md)
@@ -27,4 +21,4 @@
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `listEvents` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `listEvents` に書く。

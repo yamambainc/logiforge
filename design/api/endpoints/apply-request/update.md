@@ -15,15 +15,6 @@ opener が、request_changes を受けたあとや、反映に失敗したあと
 - それまでの approve は、新しい版には効かない。
 - 外の仕組みに通知する。
 
-## 失敗する主な場合
-
-- `not_open`
-- `validation_failed`
-- `session_required`
-- `forbidden`（user から呼んだ）
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [反映の条件](../../../../docs/apply-request/review.md)
@@ -31,4 +22,4 @@ opener が、request_changes を受けたあとや、反映に失敗したあと
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `updateApplyRequest` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `updateApplyRequest` に書く。

@@ -15,14 +15,6 @@ WebUI の木のビューアから使う。
 - 最初のコミットとして、main に書き込む。
 - 根は 1 つだけなので、根がすでにあれば作らない。
 
-## 失敗する主な場合
-
-- `root_exists`
-- `validation_failed`（主文の文字数）
-- `forbidden`（client から呼んだ）
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [仮説とストーリーの木](../../../../docs/tree/README.md)
@@ -30,4 +22,4 @@ WebUI の木のビューアから使う。
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `createRoot` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `createRoot` に書く。

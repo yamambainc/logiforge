@@ -15,17 +15,10 @@ opener や reviewer が、次にする作業を探すときに呼ぶ。
 - 部分木を指定して絞り込める。
 - open の apply request や、open の人への依頼があるノードの作業は、既定では返さない。
 
-## 失敗する主な場合
-
-- `validation_failed`（種類の指定が正しくない）
-- `not_found`（部分木の根がない）
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [着手できる作業と通知](../../../../docs/work/README.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `listWork` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `listWork` に書く。

@@ -14,16 +14,10 @@ opener が、回答済みの依頼を探すときにも使う。
 - 対象のノードで絞り込める。
 - 一覧はページに分けて返す。
 
-## 失敗する主な場合
-
-- `validation_failed`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [人への依頼](../../../../docs/human-requests/README.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `listHumanRequests` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `listHumanRequests` に書く。

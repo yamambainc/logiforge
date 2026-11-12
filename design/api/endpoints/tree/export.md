@@ -13,17 +13,10 @@
 - リビジョンを指定すると、その時点の木を書き出す。
 - 検証結果のレポートと引用も含める。
 
-## 失敗する主な場合
-
-- `validation_failed`（形式の指定が正しくない）
-- `not_found`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [エクスポート](../../../../docs/architecture/README.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `exportTree` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `exportTree` に書く。

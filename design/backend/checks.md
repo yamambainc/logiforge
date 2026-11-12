@@ -48,6 +48,7 @@ apply request の差分を、バックエンドがどう検査するかを確か
 - inactive な部分木の中の検証結果は、inactive になる前に葉だった仮説にだけ出す。
   - inactive になる前の状態は、`inactivated.md` を加えたコミットの 1 つ前の木で確かめる。
 - artifact のファイル名が、中身のハッシュと一致する。
+- 加えた artifact は、加えた検証結果のどれかから参照されている。
 - 保存しない値（真偽値など）が、ファイルに書かれていない。
 
 これらの不変条件の正本は、[仮説とストーリーの木](../../docs/tree/README.md) と [inactive 化](../../docs/tree/inactive.md) である。

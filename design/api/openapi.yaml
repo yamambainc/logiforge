@@ -1004,14 +1004,10 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, base_commit, version, versions, operations, reviews, merge_failures, awaiting]
+      required: [id, state, version, versions, operations, reviews, merge_failures, awaiting]
       properties:
         id: { type: string, pattern: '^apr_' }
         state: { $ref: '#/components/schemas/ApplyRequestState' }
-        base_commit:
-          type: string
-          pattern: '^[0-9a-f]{40}$'
-          description: ブランチを切った main のコミット
         version:
           type: integer
           description: 今の差分の版
@@ -1108,7 +1104,10 @@ components:
     WorkItem:
       type: object
       required: [kind, subject_id]
-      description: 各種類の定義は https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md に従う
+      description: |
+        各種類の定義は https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md に従う。
+        human_request_answered は、回答の artifact を引用した apply request が open になるか反映されたとき、
+        または回答のあとに対象ノードについての apply request が反映されたときに、作業から外れる。
       properties:
         kind: { $ref: '#/components/schemas/WorkKind' }
         subject_id:

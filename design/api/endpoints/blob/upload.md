@@ -14,17 +14,10 @@ opener が、プログラムや実行結果などのファイルを artifact に
 - 同じ中身がすでにあれば、置かずに同じ結果を返す。
 - 中身のハッシュと大きさを返す。
 
-## 失敗する主な場合
-
-- `validation_failed`（中身が空）
-- `unauthenticated`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [artifact](../../../../docs/tree/verdict.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `uploadBlob` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `uploadBlob` に書く。

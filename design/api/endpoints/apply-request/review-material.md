@@ -15,12 +15,6 @@ reviewer は、この材料だけを読んで審査することを想定する�
 - 引用している部分木（固定したリビジョンのもの）と artifact を返す。
 - apply request の説明欄は返さない。
 
-## 失敗する主な場合
-
-- `not_found`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [レビューの材料](../../../../docs/apply-request/review.md)
@@ -28,4 +22,4 @@ reviewer は、この材料だけを読んで審査することを想定する�
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `getReviewMaterial` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `getReviewMaterial` に書く。

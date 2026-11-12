@@ -22,6 +22,9 @@ GitHub の `gh pr list --search review-requested` に相当する。
   - 修正待ちは、その apply request の opener の作業である。
 - 回答済みの人への依頼（[人への依頼](../human-requests/README.md)）
   - 回答を検証結果に変えるのは、opener の作業である。
+  - 次のどちらかが起きたら、作業から外す。
+    - その回答の artifact を引用した apply request が、open になったか、反映された。
+    - 回答のあとに、対象ノードについての apply request が反映された。
 - 引用元が変化した検証結果（[検証結果と引用](../tree/verdict.md)）
 
 問い合わせの範囲は、次のとおり。

@@ -15,14 +15,6 @@ WebUI の人への依頼の画面から使う。
 - 状態を answered にする。回答は 1 回だけである。
 - 外の仕組みに通知する。
 
-## 失敗する主な場合
-
-- `not_open`（すでに回答済み）
-- `validation_failed`
-- `forbidden`（client から呼んだ）
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [人への依頼](../../../../docs/human-requests/README.md)
@@ -30,4 +22,4 @@ WebUI の人への依頼の画面から使う。
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `answerHumanRequest` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `answerHumanRequest` に書く。

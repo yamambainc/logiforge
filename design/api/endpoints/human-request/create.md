@@ -15,15 +15,6 @@ opener が、ストーリーが尽きた仮説について、人に判断を仰�
 - 状態は open で始まる。
 - 外の仕組みに通知する。
 
-## 失敗する主な場合
-
-- `validation_failed`
-- `not_found`（対象のノードがない）
-- `session_required`
-- `forbidden`（user から呼んだ）
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [人への依頼](../../../../docs/human-requests/README.md)
@@ -31,4 +22,4 @@ opener が、ストーリーが尽きた仮説について、人に判断を仰�
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `createHumanRequest` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `createHumanRequest` に書く。

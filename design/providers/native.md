@@ -18,7 +18,6 @@ GitHub を使わずに Logiforge を動かすときに、提案・レビュー�
 |---|---|---|
 | `id` | 識別子 | `apr_` と ULID |
 | `description` | 文字列 | 説明欄 |
-| `base_commit` | 文字列 | ブランチを切った `main` のコミット |
 | `state` | `open` / `merged` / `closed` | 状態 |
 | `closed_reason` | 文字列 | close の理由 |
 | `closed_by_session_id` | 文字列 | close したセッション |

@@ -14,18 +14,10 @@ opener が取り下げるとき、または reviewer が却下するときに呼
 - それ以外のセッションからなら、却下として扱う。
 - 外の仕組みに通知する。
 
-## 失敗する主な場合
-
-- `not_open`
-- `validation_failed`（理由がない）
-- `session_required`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [状態](../../../../docs/apply-request/README.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `closeApplyRequest` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `closeApplyRequest` に書く。

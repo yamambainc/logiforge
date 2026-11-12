@@ -14,16 +14,10 @@
 - レポートが参照する artifact と、引用を返す。
 - 反映されたリビジョンと、差し替えられたリビジョンを返す。
 
-## 失敗する主な場合
-
-- `not_found`
-
-エラーの形は、[エラー](../../README.md) に書く。
-
 ## 関係する要件
 
 - [検証結果と引用](../../../../docs/tree/verdict.md)
 
 ## 詳細
 
-パラメータとスキーマは、[openapi.yaml](../../openapi.yaml) の `getVerdict` に書く。
+パラメータ、スキーマ、エラーは、[openapi.yaml](../../openapi.yaml) の `getVerdict` に書く。
