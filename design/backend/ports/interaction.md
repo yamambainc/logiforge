@@ -7,10 +7,9 @@
 
 ## repository
 
-- repository を用意する。
+- repository の、やりとりの側を用意する。
   - バックエンドは、プロバイダが解釈する参照（provider_ref）を渡す。
-  - 用意の仕方は、実装ごとに違う。
-  - なぜ：repository をバックエンドの設定として扱うと、API から repository を用意できなくなるから。
+  - provider_ref は、管理者がサーバの設定に登録したものである（[設定と秘密情報](../../adapters/README.md)）。
 - ほかの操作は、どれも repository を指定して行う。
 
 ## 提案と版

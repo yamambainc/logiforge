@@ -22,11 +22,12 @@ GitHub を使って Logiforge を動かすときに、[やりとり](../backend/
 
 ## repository を用意する
 
-1. 人が、空の GitHub リポジトリを作る。
-2. 人が、その GitHub リポジトリにバックエンドの App を入れる。
-3. 人が、書き込み権限を App だけに与え、ほかの主体を read にする（下の「main への書き込みを守る」）。
-4. 利用者が、`owner/name` を provider_ref に指定して repository を作る。
-5. バックエンドは、GitHub リポジトリが空であることと、App が書き込めることを確かめて、根の仮説を最初のコミットとして書き込む。
+1. 管理者が、空の GitHub リポジトリを作る。
+2. 管理者が、その GitHub リポジトリにバックエンドの App を入れる。
+3. 管理者が、書き込み権限を App だけに与え、ほかの主体を read にする（下の「main への書き込みを守る」）。
+4. 管理者が、repository の名前と `owner/name` を、サーバの設定に登録する（[repository の登録](README.md)）。
+5. 利用者が、名前と根の主文で repository を作る。
+6. バックエンドは、GitHub リポジトリが空であることと、App が書き込めることを確かめて、根の仮説を最初のリビジョンとして書き込む。
 
 - App は、organization に GitHub リポジトリを作らない。
   - なぜ：App に、organization の Administration write という強い権限を持たせないため。

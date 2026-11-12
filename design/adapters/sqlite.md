@@ -6,6 +6,7 @@
 
 - 状態ストアの既定は、SQLite とする。
   - なぜ：反映は repository ごとに直列に行い、書き込みが少ないので、1 本の書き込みで足りるから。
+- 独自プロバイダを使うときは、その表も同じ SQLite ファイルに置く（[独自プロバイダ](native.md)）。
 
 ## event
 
@@ -19,15 +20,16 @@
 | `occurred_at` | 時刻 | 起きた時刻 |
 
 - 行を加えるだけにする。DB のトリガーで、UPDATE と DELETE を拒む。
+- 作り直すときだけ、表ごと消して入れ直す（[状態ストア](../backend/ports/state-store.md)）。
 
 ## そのほかの表
 
 | 表 | 列 |
 |---|---|
-| `repository` | `repository_name`（主キー）、`provider_ref`、`created_at` |
+| `repository` | `repository_name`（主キー）、`provider_ref`（キャッシュ） |
 | `idempotency_key` | `key`、`principal_id`、`response`、`created_at` |
 | `principal` | `principal_id`、`kind`（`user` / `client`） |
 | `token` | `token_hash`、`principal_id`、`created_at` |
-| `reconcile_state` | `repository_name`、`last_merged_revision`、`last_reconciled_at` |
+| `reconcile_state` | `repository_name`、`last_merged_revision`、`last_reconciled_at`（キャッシュ） |
 
 - トークンは、ハッシュだけを持つ。

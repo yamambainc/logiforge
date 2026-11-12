@@ -59,8 +59,8 @@ paths:
       operationId: createRepository
       summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
-        やりとりのポートの「repository を用意する」を呼ぶ（../../design/backend/ports/interaction.md）。
-        `provider_ref` は、プロバイダが解釈する不透明な文字列で、そのまま渡す。
+        repository の用意の手順は ../../design/backend/README.md に従う。
+        プロバイダ側の参照は、管理者がサーバの設定に登録したものを使う。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -72,9 +72,6 @@ paths:
               required: [name, statement]
               properties:
                 name: { $ref: '#/components/schemas/RepositoryNameValue' }
-                provider_ref:
-                  type: string
-                  description: プロバイダが解釈する不透明な参照
                 statement: { $ref: '#/components/schemas/Statement' }
                 background: { type: string }
       responses:
@@ -692,6 +689,7 @@ paths:
       tags: [history]
       operationId: listEvents
       summary: イベントの一覧
+      description: イベントのログが作り直されて after の位置から読めないときは、cursor_expired を返す。
       parameters:
         - name: after
           in: query
@@ -822,7 +820,9 @@ components:
             same_session：差分を書いたどれかのセッションと同じセッションでレビューした。
             not_open：open でない apply request を変えようとした。
             repository_exists：同じ名前の repository がすでにある。
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, repository_exists]
+            repository_not_registered：その名前の repository が、サーバの設定に登録されていない。
+            cursor_expired：イベントのログが作り直されたため、その位置から読めない。最初から読み直す。
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, repository_exists, repository_not_registered, cursor_expired]
 
     Tree:
       type: object

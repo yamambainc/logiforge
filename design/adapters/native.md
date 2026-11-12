@@ -6,20 +6,16 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 
 ## 置き場所
 
-- 提案・レビュー・人への依頼は、DB に置く。既定は SQLite とする。
-  - なぜ：書き込みが少ないので、1 本の書き込みで足りるから。
+- 提案・レビュー・人への依頼は、SQLite に置く。
+  - ファイルは、[状態ストア](sqlite.md) と同じ SQLite ファイルにする。表は分ける。
+  - なぜ：論理的には別のポートだが、置き場所を 1 つにすると運用が単純になるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
 
-## repository
+## repository_name
 
-| 列 | 型 | 内容 |
-|---|---|---|
-| `repository_name` | 文字列 | repository の名前。主キー |
-| `git_path` | 文字列 | bare の git リポジトリのパス |
-
-- provider_ref には、`git_path` を作る場所の名前を使う。
-- ほかの表は、すべて `repository_name` を持つ。
+- すべての表は、`repository_name` を持つ。
+- repository の一覧の表は持たない。repository は、木のリポジトリの「列挙する」で得る。
 
 ## apply_request
 

@@ -39,7 +39,7 @@ flowchart TB
     GHR[("GitHub リポジトリ")]
     BARE[("bare の git リポジトリ")]
     GHS[("GitHub の PR と issue")]
-    DB[("DB")]
+    DB[("SQLite ファイル")]
     OBJ[("オブジェクト")]
   end
   AGT --> CLI
@@ -54,6 +54,8 @@ flowchart TB
   RULE --> P3
   RULE --> P4
   MERGE --> P1
+  MERGE --> P2
+  MERGE --> P3
   GITR -.-> P1
   GITL -.-> P1
   GH -.-> P2
@@ -78,22 +80,12 @@ flowchart TB
 
 ## レイヤー
 
-- **利用する主体**：クライアントを使う側であり、クライアントではない。
-  - エージェント（opener と reviewer）と、外の仕組み（論理レビューの起動など）は、CLI を使う。
-  - 人（利用者）は、WebUI を使う。
-- **Client**：CLI と WebUI の 2 つ。API だけを使う。
-  - クライアントの仕様は書かない。API との対応だけを [クライアントの要件との対応](api/clients.md) に書く。
-- **Logiforge API**：どのアダプタを使っても同じ API。
-  - 正本は [openapi.yaml](api/openapi.yaml)。概要は [API](api/README.md) と [API の一覧](api/endpoints/README.md)。
-- **バックエンド（core）**：ルールと、4 つのポートを持つ（[バックエンド](backend/README.md)、[ポート](backend/ports/README.md)）。
-  - 1 つのバックエンドが、複数の repository を扱う。
-- **アダプタ**：ポートを実装する（[アダプタ](adapters/README.md)）。
-  - やりとりのポートを実装するアダプタを、プロバイダと呼ぶ（GitHub アダプタと独自プロバイダ）。
-- **データストア**：アダプタが読み書きする先。
-  - GitHub リポジトリか bare の git リポジトリ：木と、小さな artifact。repository ごとに 1 つ。
-  - GitHub の PR と issue、または DB：提案、レビュー、人への依頼
-  - DB：状態ストア
-  - オブジェクト：CAS の中身
+- **利用する主体**：エージェントと外の仕組みは CLI を、人は WebUI を使う。クライアントではない。
+- **Client**：CLI と WebUI。API だけを使う（[クライアントの要件との対応](api/clients.md)）。
+- **Logiforge API**：どのアダプタでも同じ API（[API](api/README.md)）。
+- **バックエンド（core）**：ルールと 4 つのポートを持ち、複数の repository を扱う（[バックエンド](backend/README.md)、[ポート](backend/ports/README.md)）。
+- **アダプタ**：ポートを実装する。やりとりのアダプタをプロバイダと呼ぶ（[アダプタ](adapters/README.md)）。
+- **データストア**：アダプタが読み書きする先。状態ストアと独自プロバイダは、同じ SQLite ファイルに置く（[SQLite アダプタ](adapters/sqlite.md)）。
 
 ## 決まり
 

@@ -21,13 +21,20 @@
 - GitHub で PR や issue としてやりとりを見たいなら、GitHub アダプタを使う。
 - GitHub を使わずに動かしたいなら、独自プロバイダを使う。
 
+## repository の登録
+
+- 管理者が、repository ごとに、名前と provider_ref をサーバの設定に登録する。
+  - GitHub アダプタ：管理者が GitHub リポジトリを作って App を入れ、`owner/name` を provider_ref として登録する（[GitHub アダプタ](github.md)）。
+  - 独自プロバイダ：bare リポジトリを置くディレクトリを設定する。名前を登録しなくても、利用者が作るときに bare リポジトリを作る（[git アダプタ](git.md)）。
+- 利用者は、名前と根の主文だけで repository を作る。
+
 ## 設定と秘密情報
 
 次のものは、サーバの設定ファイルか環境変数に置く。git リポジトリには置かない。
 
 - GitHub App の秘密鍵
 - GitHub の webhook の secret
-- 状態ストアと独自プロバイダの DB のパス
+- SQLite ファイルのパス（状態ストアと独自プロバイダで同じファイル）
 - CAS の場所と認証情報
 - 版の署名の鍵（[記録の形式](../files/revisions.md)）
 
