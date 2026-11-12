@@ -27,7 +27,8 @@
   - 人への依頼への回答
     - 回答に添えるファイルの blob と artifact の登録
 - それ以外の書き込みは、`client` だけが使える。
-- 主体とトークンは、[サーバの状態](ports/server-state.md) に置く。
+- 主体と主体の種類は、[認証](ports/authentication.md) のポートで確かめる。
+- repository を使えるのは、その repository を読める主体だけである。
 
 ## repository の用意
 

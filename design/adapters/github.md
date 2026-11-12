@@ -56,6 +56,20 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 - 回答は、バックエンドの App が書いたコメントだけを数える。
 - なぜ：セッション ID とプロンプトのリビジョンを、バックエンドが記録したものだけに限るため（[保証の範囲](../../docs/apply-request/review.md)）。
 
+## 認証
+
+GitHub を使う構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。認証は GitHub に任せる。
+
+- 主体は、GitHub のアカウント（人）と、GitHub App または機械用アカウント（エージェント、外の仕組み）である。
+- API は GitHub のトークンを受け取り、GitHub に問い合わせて主体を確かめる。
+- 主体の種類は、トークンの出どころで決める。
+  - WebUI のログインに使う GitHub の OAuth App が発行したトークンなら、`user` である。
+  - それ以外の GitHub のトークン（gh の CLI のトークン、App のトークンなど）なら、`client` である。
+- repository を読めるかは、GitHub リポジトリの権限で確かめる。
+  - 書き込み主体（App）以外の主体には、read だけを与える（下の「main への書き込みを守る」）。
+- どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
+- そのため、この構成では、サーバの SQLite ファイルに正本が残らない（[構成ごとの正本](../backend/ports/server-state.md)）。
+
 ## コメントとレビューの書き方
 
 - レビューは、すべて `event=COMMENT` の review として書く。

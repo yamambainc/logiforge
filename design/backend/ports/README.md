@@ -9,8 +9,9 @@
 |---|---|---|
 | 木の読み書き | 木のファイルと、そのリビジョン | [木の読み書き](tree-read-write.md) |
 | やりとり | 提案と版、レビュー、人への依頼、プロバイダからのイベント | [やりとり](interaction.md) |
-| サーバの状態 | サーバが持つ状態（イベントのログ、主体、repository の登録など） | [サーバの状態](server-state.md) |
+| サーバの状態 | サーバが持つ状態（イベントのログ、repository の登録など） | [サーバの状態](server-state.md) |
 | ファイルの保管 | artifact の中身 | [ファイルの保管](file-storage.md) |
+| 認証 | API の要求を送った主体 | [認証](authentication.md) |
 
 ## ポートとアダプタ
 
@@ -21,6 +22,7 @@ flowchart LR
     P2["やりとり"]
     P3["サーバの状態"]
     P4["ファイルの保管"]
+    P5["認証"]
   end
   GITR["git アダプタ（GitHub）"] -.-> P1
   GITL["git アダプタ（bare）"] -.-> P1
@@ -28,6 +30,8 @@ flowchart LR
   NA["独自プロバイダ"] -.-> P2
   SQ["SQLite アダプタ"] -.-> P3
   CA["CAS アダプタ"] -.-> P4
+  GH -.-> P5
+  SQ -.-> P5
 ```
 
 - 点線の矢印は、アダプタがポートを実装することを表す。

@@ -1,21 +1,21 @@
 # 独自プロバイダ
 
 GitHub を使わずに Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-提案・レビュー・人への依頼は、自前の DB（データベース）の表に置く。
+提案・レビュー・人への依頼は、自前の DB（データベース）のテーブルに置く。
 木の読み書きは、[git アダプタ](git.md) のローカルの bare リポジトリで扱う。
 
 ## 置き場所
 
 - 提案・レビュー・人への依頼は、SQLite に置く。
-  - ファイルは、[サーバの状態](sqlite.md) と同じ SQLite ファイルにする。表は分ける。
+  - ファイルは、[サーバの状態](sqlite.md) と同じ SQLite ファイルにする。テーブルは分ける。
   - なぜ：論理的には別のポートだが、置き場所を 1 つにすると運用が単純になるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
 
 ## repository_name
 
-- すべての表は、`repository_name` を持つ。
-- repository の一覧の表は持たない。repository は、木の読み書きの「列挙する」で得る。
+- すべてのテーブルは、`repository_name` を持つ。
+- repository の一覧のテーブルは持たない。repository は、木の読み書きの「列挙する」で得る。
 
 ## apply_request
 
@@ -35,7 +35,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 | `version` | 整数 | 1 から順に増える版 |
 | `revision` | 文字列 | 版のリビジョン（木の読み書きの参照） |
 
-- 版を書いたセッションは、コミットの trailer から読む。表には持たない。
+- 版を書いたセッションは、コミットの trailer から読む。テーブルには持たない。
 
 ## review
 
@@ -60,7 +60,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 
 ## human_request と human_request_answer
 
-| 表 | 列 |
+| テーブル | 列 |
 |---|---|
 | `human_request` | `id`（`hrq_` と ULID）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
 | `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at` |
