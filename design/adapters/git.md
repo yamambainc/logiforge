@@ -21,7 +21,7 @@
 | 変更を列挙する | `git log <a>..<b> --first-parent -- <パス>` |
 | 共通の祖先を求める | `git merge-base <a> <b>` |
 | リビジョンの並びを読む | `git rev-list --first-parent --reverse main` |
-| リビジョンを作る | `git commit-tree` で作り、`refs/logiforge/` の下の ref に置く |
+| リビジョンを作る | `git commit-tree` で作り、`refs/logiforge/` の下の ref（git のブランチなどの参照）に置く |
 | main を進める | 下の「main を進める」 |
 
 ## main を進める

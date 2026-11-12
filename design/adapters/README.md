@@ -10,7 +10,7 @@
 | 木のリポジトリ | git（GitHub のリモート）、git（ローカルの bare リポジトリ） | [git アダプタ](git.md) |
 | やりとり | GitHub アダプタ、独自プロバイダ | [GitHub アダプタ](github.md)、[独自プロバイダ](native.md) |
 | 状態ストア | SQLite | [SQLite アダプタ](sqlite.md) |
-| CAS | ローカルのディレクトリ、S3 互換のストレージ | [CAS アダプタ](cas.md) |
+| CAS（内容アドレス方式のストレージ）| ローカルのディレクトリ、S3（Amazon のオブジェクトストレージ）互換のストレージ | [CAS アダプタ](cas.md) |
 
 ## 組み合わせ
 
@@ -18,7 +18,7 @@
   - なぜ：repository ごとにプロバイダを選べると、組み合わせが増えて単純さを失うから。
 - GitHub アダプタを使うときは、木のリポジトリに git（GitHub のリモート）を使う。
 - 独自プロバイダを使うときは、木のリポジトリに git（ローカルの bare リポジトリ）を使う。
-- GitHub で PR や issue としてやりとりを見たいなら、GitHub アダプタを使う。
+- GitHub で PR（pull request）や issue としてやりとりを見たいなら、GitHub アダプタを使う。
 - GitHub を使わずに動かしたいなら、独自プロバイダを使う。
 
 ## repository の登録

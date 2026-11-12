@@ -11,7 +11,7 @@ opener が、検証結果のレポートから参照する根拠を登録する�
 ## すること
 
 - 種類（file、link、reference、program、output、human_entry）を付けて登録する。
-- 中身は、置いた blob のハッシュか、リンクの URI で指す。
+- 中身は、置いた blob のハッシュか、リンクの URI（参照先を表す文字列）で指す。
 - 登録したセッションを記録する。
 - artifact は、登録したあと変えない。
 

@@ -44,7 +44,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 
 ## エラー
 
-- エラーは、RFC 9457 の `application/problem+json` で返す。
+- エラーは、RFC 9457（HTTP API のエラーの形式の規格）の `application/problem+json` で返す。
 - `code` に、機械で判定できるエラーの種類を入れる。
 
 - エラーの種類と意味は、[openapi.yaml](openapi.yaml) の `Problem` が正本である。

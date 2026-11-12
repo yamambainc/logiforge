@@ -5,7 +5,7 @@ artifact の決まりは、[artifact](../../docs/tree/verdict.md) が正本で�
 
 ## 置き場所
 
-- 反映の前にアップロードされた中身は、すべて [CAS](../backend/ports/cas.md) に置く。
+- 反映の前にアップロードされた中身は、すべて [CAS（内容アドレス方式のストレージ）](../backend/ports/cas.md) に置く。
 - 反映のとき、中身が 1 MiB 以下の artifact は、git リポジトリの `artifacts/sha256/` にも入れる。
   - なぜ：レポートが参照するコードや小さな実行結果は、木と一緒にクローンできるほうが確かめやすいから。
 - 1 MiB を超える artifact は、CAS にだけ置き、git リポジトリにはハッシュだけを書く。
@@ -14,7 +14,7 @@ artifact の決まりは、[artifact](../../docs/tree/verdict.md) が正本で�
 - 1 MiB の境目は、`logiforge.yaml` に書く。
   - 境目は、repository を用意するときに決め、あとから変えない。
   - なぜ：境目が変わると、同じ大きさの artifact が git リポジトリにあるかないかが、時期によって変わってしまうから。
-- リンクの artifact は、中身を置かず、URI だけを書く。
+- リンクの artifact は、中身を置かず、URI（参照先を表す文字列）だけを書く。
 
 ## 検証結果からの参照
 

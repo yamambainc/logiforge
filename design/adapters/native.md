@@ -1,7 +1,7 @@
 # 独自プロバイダ
 
 GitHub を使わずに Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-提案・レビュー・人への依頼は、自前の DB の表に置く。
+提案・レビュー・人への依頼は、自前の DB（データベース）の表に置く。
 木のリポジトリは、[git アダプタ](git.md) のローカルの bare リポジトリで扱う。
 
 ## 置き場所
@@ -21,7 +21,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 
 | 列 | 型 | 内容 |
 |---|---|---|
-| `id` | 識別子 | `apr_` と ULID |
+| `id` | 識別子 | `apr_` と ULID（作った順に並ぶ一意の識別子）|
 | `description` | 文字列 | 説明欄 |
 | `state` | `open` / `merged` / `closed` | 状態 |
 | `closed_reason` | 文字列 | close の理由 |

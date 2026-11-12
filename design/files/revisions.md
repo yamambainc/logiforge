@@ -32,7 +32,7 @@
 | `Logiforge-Apply-Request:` | 版、反映 | apply request の識別子 |
 | `Logiforge-Signature:` | 最初のリビジョン、版、反映 | バックエンドの署名 |
 
-- `Logiforge-Signature:` は、コミットの tree、親、ほかの trailer に対する HMAC-SHA256 である。
+- `Logiforge-Signature:` は、コミットの tree、親、ほかの trailer に対する HMAC-SHA256（鍵付きのハッシュによる署名）である。
   - 鍵は、サーバだけが持つ（[設定と秘密情報](../adapters/README.md)）。
   - なぜ：どのアダプタを使っても、版がバックエンドの作ったものかを、同じ方法で確かめられるようにするため。
 - 反映のコミットには、反映したすべての版のセッションを、`Logiforge-Session-Id:` に並べて書く。

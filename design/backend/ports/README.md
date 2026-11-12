@@ -10,6 +10,6 @@
 | 木のリポジトリ | 木のファイルと、そのリビジョン | [木のリポジトリ](tree-repository.md) |
 | やりとり | 提案と版、レビュー、人への依頼、プロバイダからのイベント | [やりとり](interaction.md) |
 | 状態ストア | サーバが持つ状態（イベントのログ、主体、repository の登録など） | [状態ストア](state-store.md) |
-| CAS | artifact の中身 | [CAS](cas.md) |
+| CAS（内容アドレス方式のストレージ）| artifact の中身 | [CAS](cas.md) |
 
 各ポートを実装するアダプタは、[アダプタ](../../adapters/README.md) に書く。

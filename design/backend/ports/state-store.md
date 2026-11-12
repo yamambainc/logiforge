@@ -31,7 +31,7 @@
 
 - 木（[木のリポジトリ](tree-repository.md) に置く）
 - 提案、レビュー、人への依頼（[やりとり](interaction.md) に置く）
-- artifact の中身（[CAS](cas.md) に置く）
+- artifact の中身（[CAS（内容アドレス方式のストレージ）](cas.md) に置く）
 - 秘密情報（[アダプタ](../../adapters/README.md) の「設定と秘密情報」）
 
 主体とトークンの決まりは、[認可](../README.md) に書く。

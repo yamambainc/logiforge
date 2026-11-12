@@ -19,7 +19,7 @@
 | `actor_session_id` | 文字列 | 起こしたセッション |
 | `occurred_at` | 時刻 | 起きた時刻 |
 
-- 行を加えるだけにする。DB のトリガーで、UPDATE と DELETE を拒む。
+- 行を加えるだけにする。DB（データベース）のトリガーで、UPDATE と DELETE を拒む。
 - 作り直すときだけ、表ごと消して入れ直す（[状態ストア](../backend/ports/state-store.md)）。
 
 ## そのほかの表
