@@ -5,7 +5,7 @@ reviewer は、この材料だけを読んで審査することを想定する�
 
 ## 呼び出し
 
-- `GET /apply-requests/{applyRequestId}/review-material`
+- `GET /projects/{project}/apply-requests/{applyRequestId}/review-material`
 - operationId：`getReviewMaterial`
 
 ## すること

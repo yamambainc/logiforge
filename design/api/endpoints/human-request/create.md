@@ -5,7 +5,7 @@ opener が、ストーリーが尽きた仮説について、人に判断を仰�
 
 ## 呼び出し
 
-- `POST /human-requests`
+- `POST /projects/{project}/human-requests`
 - operationId：`createHumanRequest`
 
 ## すること

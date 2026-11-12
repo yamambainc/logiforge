@@ -7,6 +7,7 @@ GitHub を使って Logiforge を動かすときに、何を何に対応づけ�
 
 | インターフェース | GitHub |
 |---|---|
+| project | GitHub のリポジトリ（1 つの project に 1 つ） |
 | 提案 | pull request |
 | 版 | pull request の head のコミット |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
@@ -19,6 +20,7 @@ GitHub を使って Logiforge を動かすときに、何を何に対応づけ�
 ## バックエンドの App が作ったものだけを数える
 
 - バックエンドは、GitHub App として動く。
+  - project を作るときは、App が organization にリポジトリを作り、App をそこに入れる。
 - 版は、作者がバックエンドの App のコミットだけで作る。
   - ほかの主体のコミットがブランチに入ったら、その版は無効にする。無効な版は反映しない。
 - レビューは、作者がバックエンドの App のものだけを数える。

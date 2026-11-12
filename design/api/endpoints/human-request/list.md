@@ -5,7 +5,7 @@ opener が、回答済みの依頼を探すときにも、CLI から使う。
 
 ## 呼び出し
 
-- `GET /human-requests`
+- `GET /projects/{project}/human-requests`
 - operationId：`listHumanRequests`
 
 ## すること

@@ -4,7 +4,7 @@ opener が取り下げるとき、または reviewer が却下するときに、
 
 ## 呼び出し
 
-- `POST /apply-requests/{applyRequestId}/close`
+- `POST /projects/{project}/apply-requests/{applyRequestId}/close`
 - operationId：`closeApplyRequest`
 
 ## すること

@@ -5,7 +5,8 @@
 
 ## 登録
 
-- `client` は、`POST /webhooks` で受け取り先の URL と、受け取るイベントの種類を登録する。
+- `client` は、project ごとに、受け取り先の URL と、受け取るイベントの種類を登録する。
+  - 登録の API は、`/projects/{project}/webhooks` である。
 - 登録の応答で、署名の秘密鍵を 1 回だけ返す。
 
 ## イベント
@@ -30,13 +31,14 @@
 {
   "id": 1042,
   "type": "apply_request.changed",
+  "project": "question-a",
   "revision": "3f1c9a0e5b7d2c4a6e8f0b1d3c5a7e9f1b3d5c7a",
   "occurred_at": "2026-11-11T12:00:00Z",
   "subject": { "kind": "apply_request", "id": "apr_01J..." }
 }
 ```
 
-- `id` は、forge の中で 1 から順に増える番号である。
+- `id` は、project の中で 1 から順に増える番号である。
 - `revision` は、そのときの木のリビジョンである。
 - ペイロードには、変化した対象の種類と識別子だけを入れる。
   - なぜ：webhook は、問い合わせ直す合図だから（[通知](../../docs/work/README.md)）。
@@ -51,4 +53,4 @@
 - 同じイベントが、2 回以上届くことがある。
   - 受け取った側は、`id` で重複を除く。
 - 届かなかったイベントは、間を空けて送り直す。
-- 受け取り損ねても、`GET /events?after=<id>` で読み直せる。
+- 受け取り損ねても、`GET /projects/{project}/events?after=<id>` で読み直せる。

@@ -5,7 +5,7 @@ opener や reviewer が、自分の関わる apply request を探すときにも
 
 ## 呼び出し
 
-- `GET /apply-requests`
+- `GET /projects/{project}/apply-requests`
 - operationId：`listApplyRequests`
 
 ## すること

@@ -5,7 +5,7 @@
 
 ## 呼び出し
 
-- `GET /tree/nodes`
+- `GET /projects/{project}/tree/nodes`
 - operationId：`listNodes`
 
 ## すること

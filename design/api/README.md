@@ -21,11 +21,19 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
   - `user`：WebUI を使う利用者
   - `client`：CLI を使う主体（エージェントか人）
 - `user` が使える書き込みは、利用者の 2 つの操作だけである（[利用者](../../docs/roles/README.md)）。
-  - 根の主文の作成
+  - project の作成（根の主文を含む）
   - 人への依頼への回答
     - 回答に添えるファイルの blob と artifact の登録
 - それ以外の書き込みは、`client` だけが使える。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
+
+## project
+
+- project の一覧と作成のほかは、すべての API を `/projects/{project}/` の下に置く。
+  - なぜ：1 つの forge が、複数の project を扱うから（[木の形](../../docs/tree/README.md)）。
+- `{project}` は、project の名前である。
+  - 名前は、小文字の英数字とハイフンで、63 文字以下にする。
+  - なぜ：GitHub のリポジトリ名としても使える形にするため。
 
 ## セッション ID
 
@@ -56,7 +64,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 | `not_found` | 404 | 対象がない |
 | `same_session` | 409 | opener と同じセッションでレビューした |
 | `not_open` | 409 | `open` でない apply request を変えようとした |
-| `root_exists` | 409 | 根がすでにあるのに、根の主文を作ろうとした |
+| `project_exists` | 409 | 同じ名前の project がすでにある |
 
 - 反映の失敗は、エラーにしない。
   - レビューの応答で、apply request が `open` のままであることと、失敗の理由を返す。

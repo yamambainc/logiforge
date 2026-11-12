@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `GET /webhooks`
+- `GET /projects/{project}/webhooks`
 - operationId：`listWebhooks`
 
 ## すること

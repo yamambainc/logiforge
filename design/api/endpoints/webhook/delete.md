@@ -4,7 +4,7 @@
 
 ## 呼び出し
 
-- `DELETE /webhooks/{webhookId}`
+- `DELETE /projects/{project}/webhooks/{webhookId}`
 - operationId：`deleteWebhook`
 
 ## すること

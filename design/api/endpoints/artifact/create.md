@@ -5,7 +5,7 @@ opener が、検証結果のレポートから参照する根拠を登録する�
 
 ## 呼び出し
 
-- `POST /artifacts`
+- `POST /projects/{project}/artifacts`
 - operationId：`createArtifact`
 
 ## すること

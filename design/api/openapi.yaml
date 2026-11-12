@@ -16,6 +16,8 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: project
+    description: project の作成と参照
   - name: tree
     description: 木の参照
   - name: apply-request
@@ -32,7 +34,71 @@ tags:
     description: webhook の登録
 
 paths:
-  /tree:
+  /projects:
+    get:
+      tags: [project]
+      operationId: listProjects
+      summary: project の一覧
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: project の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [project]
+      operationId: createProject
+      summary: project を作る（user だけ。根の仮説の主文を一緒に受け取る）
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, statement]
+              properties:
+                name: { $ref: '#/components/schemas/ProjectNameValue' }
+                statement: { $ref: '#/components/schemas/Statement' }
+                background: { type: string }
+      responses:
+        '201':
+          description: 作った project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /projects/{project}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
+    get:
+      tags: [project]
+      operationId: getProject
+      summary: project
+      responses:
+        '200':
+          description: project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /projects/{project}/tree:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [tree]
       operationId: getTree
@@ -46,31 +112,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Tree' }
         '4XX': { $ref: '#/components/responses/Problem' }
-    post:
-      tags: [tree]
-      operationId: createRoot
-      summary: 根の主文を作る（user だけ。根がまだないときだけ）
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [statement]
-              properties:
-                statement: { $ref: '#/components/schemas/Statement' }
-                background: { type: string }
-      responses:
-        '201':
-          description: 根を作った木
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Tree' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /tree/nodes:
+  /projects/{project}/tree/nodes:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [tree]
       operationId: listNodes
@@ -103,7 +147,9 @@ paths:
                     items: { $ref: '#/components/schemas/Node' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /tree/completion:
+  /projects/{project}/tree/completion:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [work]
       operationId: getCompletion
@@ -116,7 +162,9 @@ paths:
               schema: { $ref: '#/components/schemas/Completion' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /tree/export:
+  /projects/{project}/tree/export:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [history]
       operationId: exportTree
@@ -137,7 +185,9 @@ paths:
               schema: { type: string }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /nodes/{nodeId}:
+  /projects/{project}/nodes/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [tree]
       operationId: getNode
@@ -153,7 +203,9 @@ paths:
               schema: { $ref: '#/components/schemas/NodeDetail' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /nodes/{nodeId}/history:
+  /projects/{project}/nodes/{nodeId}/history:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [history]
       operationId: getNodeHistory
@@ -170,7 +222,9 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /apply-requests:
+  /projects/{project}/apply-requests:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [apply-request]
       operationId: listApplyRequests
@@ -225,7 +279,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /apply-requests/{applyRequestId}:
+  /projects/{project}/apply-requests/{applyRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [apply-request]
       operationId: getApplyRequest
@@ -270,7 +326,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /apply-requests/{applyRequestId}/reviews:
+  /projects/{project}/apply-requests/{applyRequestId}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     post:
       tags: [apply-request]
       operationId: reviewApplyRequest
@@ -310,7 +368,9 @@ paths:
                   apply_request: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /apply-requests/{applyRequestId}/close:
+  /projects/{project}/apply-requests/{applyRequestId}/close:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     post:
       tags: [apply-request]
       operationId: closeApplyRequest
@@ -338,7 +398,9 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /apply-requests/{applyRequestId}/review-material:
+  /projects/{project}/apply-requests/{applyRequestId}/review-material:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [apply-request]
       operationId: getReviewMaterial
@@ -353,7 +415,9 @@ paths:
               schema: { $ref: '#/components/schemas/ReviewMaterial' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /work:
+  /projects/{project}/work:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [work]
       operationId: listWork
@@ -397,7 +461,9 @@ paths:
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /blobs:
+  /projects/{project}/blobs:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     post:
       tags: [evidence]
       operationId: uploadBlob
@@ -416,7 +482,9 @@ paths:
               schema: { $ref: '#/components/schemas/Blob' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /blobs/{sha256}:
+  /projects/{project}/blobs/{sha256}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [evidence]
       operationId: getBlob
@@ -434,7 +502,9 @@ paths:
               schema: { type: string, format: binary }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /artifacts:
+  /projects/{project}/artifacts:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     post:
       tags: [evidence]
       operationId: createArtifact
@@ -462,7 +532,9 @@ paths:
               schema: { $ref: '#/components/schemas/Artifact' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /artifacts/{artifactId}:
+  /projects/{project}/artifacts/{artifactId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [evidence]
       operationId: getArtifact
@@ -480,7 +552,9 @@ paths:
               schema: { $ref: '#/components/schemas/Artifact' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /verdicts/{verdictId}:
+  /projects/{project}/verdicts/{verdictId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [evidence]
       operationId: getVerdict
@@ -498,7 +572,9 @@ paths:
               schema: { $ref: '#/components/schemas/Verdict' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /human-requests:
+  /projects/{project}/human-requests:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [human-request]
       operationId: listHumanRequests
@@ -558,7 +634,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /human-requests/{humanRequestId}:
+  /projects/{project}/human-requests/{humanRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [human-request]
       operationId: getHumanRequest
@@ -573,7 +651,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /human-requests/{humanRequestId}/answer:
+  /projects/{project}/human-requests/{humanRequestId}/answer:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     post:
       tags: [human-request]
       operationId: answerHumanRequest
@@ -601,7 +681,9 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /events:
+  /projects/{project}/events:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [history]
       operationId: listEvents
@@ -621,7 +703,9 @@ paths:
               schema: { $ref: '#/components/schemas/EventPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /webhooks:
+  /projects/{project}/webhooks:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     get:
       tags: [webhook]
       operationId: listWebhooks
@@ -672,7 +756,9 @@ paths:
                       secret: { type: string }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /webhooks/{webhookId}:
+  /projects/{project}/webhooks/{webhookId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectName'
     delete:
       tags: [webhook]
       operationId: deleteWebhook
@@ -696,6 +782,11 @@ components:
       description: 主体（user または client）を示すトークン
 
   parameters:
+    ProjectName:
+      name: project
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ProjectNameValue' }
     NodeIdPath:
       name: nodeId
       in: path
@@ -743,6 +834,20 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
+    ProjectNameValue:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+      description: project の名前。forge の中で一意
+    Project:
+      type: object
+      required: [name, provider, root_hypothesis_id]
+      properties:
+        name: { $ref: '#/components/schemas/ProjectNameValue' }
+        provider:
+          type: string
+          enum: [github, native]
+        root_hypothesis_id: { type: string, pattern: '^h-' }
+        root_value: { $ref: '#/components/schemas/TruthValue' }
     Revision:
       type: string
       pattern: '^[0-9a-f]{40}$'
@@ -778,7 +883,7 @@ components:
         detail: { type: string }
         code:
           type: string
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, root_exists]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, project_exists]
 
     Tree:
       type: object

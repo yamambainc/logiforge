@@ -21,10 +21,11 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 
 | 画面 | 要件 | API |
 |---|---|---|
+| [project の一覧](../../docs/webui/projects.md) | project を一覧し、選ぶ | [project の一覧を読む](endpoints/project/list.md) |
+| project の一覧 | project を作る（根の主文を含む） | [project を作る](endpoints/project/create.md) |
 | [木のビューア](../../docs/webui/tree-viewer.md) | 木とバッジを表示する | [木のノードを読む](endpoints/tree/list-nodes.md) |
 | 木のビューア | ノードの詳細 | [ノードの詳細を読む](endpoints/node/get.md)、[検証結果を読む](endpoints/verdict/get.md)、[artifact を読む](endpoints/artifact/get.md)、[ファイルの中身を読む](endpoints/blob/get.md) |
 | 木のビューア | ノードの履歴 | [ノードの履歴を読む](endpoints/node/history.md) |
-| 木のビューア | 根の主文を作る | [根の主文を作る](endpoints/tree/create-root.md) |
 | [人への依頼](../../docs/webui/human-requests.md) | 種類と状態で絞り込む | [人への依頼の一覧を読む](endpoints/human-request/list.md) |
 | 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)、[ファイルの中身を置く](endpoints/blob/upload.md)、[artifact を登録する](endpoints/artifact/create.md) |
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
