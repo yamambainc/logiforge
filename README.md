@@ -38,7 +38,8 @@ FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ば�
 | [internal/adapters/snapstore](internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む、worker の内部 API のクライアント） |
 | [internal/backend](internal/backend/) | バックエンド（認可、読む API と書く API、反映の手順、着手できる作業、作業の終わりの判定、書き出し） |
 | [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json |
-| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（API）と `logiforge worker` |
+| [internal/cli](internal/cli/) | opener と reviewer の CLI（認証、clone、ひな形、check、commit、apply request、作業、木、人への依頼。`--json` と終了コード） |
+| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（API）、`logiforge worker`、それ以外は CLI（`logiforge help`） |
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |

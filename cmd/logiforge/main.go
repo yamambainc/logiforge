@@ -2,8 +2,7 @@
 //
 //	logiforge serve    バックエンドの API（design/api/README.md）
 //	logiforge worker   git を読んでスナップショットを作り続ける worker（design/backend/worker.md）
-//
-// CLI のコマンドは、あとの PR で足す。
+//	logiforge <名詞> <動詞>  opener と reviewer の CLI（design/cli/README.md）。logiforge help で一覧を見る
 package main
 
 import (
@@ -24,25 +23,25 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/api"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/cli"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "使い方：logiforge serve | logiforge worker")
-		os.Exit(2)
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var err error
-	switch os.Args[1] {
-	case "serve":
+	switch {
+	case len(os.Args) >= 2 && os.Args[1] == "serve":
 		err = runServe(ctx)
-	case "worker":
+	case len(os.Args) >= 2 && os.Args[1] == "worker":
 		err = runWorker(ctx)
 	default:
-		err = fmt.Errorf("知らないサブコマンド：%s", os.Args[1])
+		app := &cli.App{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin}
+		code := app.Run(ctx, os.Args[1:])
+		stop()
+		os.Exit(code)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.Error("止まった", "err", err)
