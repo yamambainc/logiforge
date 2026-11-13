@@ -3,26 +3,30 @@
 [木の書き込み](../backend/ports/tree-write.md) のポートを、git でどう実装するかを確かめるときに読む。
 ファイルの形式は、[木のファイル配置](../files/README.md) に従う。
 
-## リモートと使い捨ての clone
+## 2 つの部分
+
+| 部分 | 動く場所 | すること |
+|---|---|---|
+| 木の書き込みのアダプタ | バックエンド | [worker の内部 API](../backend/worker-api.md) のクライアント。git には触れない |
+| worker の git | [worker](../backend/worker.md) | clone を持ち、fetch、commit、push をする |
+
+- git に触れるのは、worker だけである。このページの残りは、worker の git について書く。
+
+## リモートと clone
 
 - 正本は、リモートの git リポジトリである。リモートは、GitHub か [独自フォージ](../forge/README.md) である。
 - どちらのリモートでも、同じ実装にする。違うのは、リモートの URL と認証情報だけである。
-  - なぜ：git の smart HTTP の push と fetch だけを使えば、どちらのリモートにも同じ手順で書けるから。
-- バックエンドのアダプタは、手元に clone を持ち続けない。
-  - 書き込みの要求ごとに、使い捨ての clone を作り、要求が終われば消す。
-  - なぜ：バックエンドは、データを保持しないから（[状態を持たない](../backend/README.md)）。
-- 使い捨ての clone は、親のリビジョンを深さ 1 で、ファイルの中身を取らずに取る（`git fetch --depth 1 --filter=blob:none`）。
-  - 取るのは、ディレクトリの構造（git の tree）だけである。ファイルの中身は読まない。
-  - 変わるファイルの中身は、バックエンドがスナップショットから書き出して渡す。artifact の中身は、置き場から読んで渡す。
-- git のファイルを読んで木にするのは、[worker](../backend/worker.md) だけである。worker は、このアダプタではなく、自分の clone を使う。
+  - なぜ：git の smart HTTP の push と fetch だけを使えば、どちらのリモートにも同じ手順で読み書きできるから。
+- worker は、repository ごとの clone を、永続するストレージに持ち続ける。
 
 ## 操作と git の対応
 
 | 操作 | git での実装 |
 |---|---|
 | 用意する | `git push --dry-run` で書き込めることを確かめる |
-| リビジョンを作る | 親の tree に、渡されたファイルを `git hash-object` と `git update-index` で足し、`git write-tree` と `git commit-tree` で作る |
+| リビジョンを作る | 親の tree に、渡されたファイルを `git hash-object` と `git update-index` で足し、`git write-tree` と `git commit-tree` で作る。blob の SHA を渡されたファイルは、その blob をそのまま使う |
 | ref を書く | 下の「ref を書く」 |
+| 追いつく | `git ls-remote` で確かめ、変わっていれば `git fetch` |
 
 ## ref を書く
 
@@ -52,7 +56,7 @@ git push --atomic --porcelain \
 
 リモートが push を受け付けたあと、応答を受け取る前に通信が切れると、結果がわからない。
 
-- アダプタは、`git ls-remote` で、ref の今の値を読む。
+- worker は、`git ls-remote` で、ref の今の値を読む。
   - ref が書いた値になっていれば、成功とする。
   - それ以外なら、ほかの失敗として返す。
 - どの ref の push にも当てはめる。`--atomic` の push では、書いたすべての ref が書いた値になっているときだけ、成功とする。
@@ -61,16 +65,16 @@ git push --atomic --porcelain \
 ## 資格情報
 
 - push と fetch の資格情報は、git の credential helper で渡す。
-  - アダプタが用意する credential helper が、サーバの設定の資格情報を git に返す。
+  - worker が用意する credential helper が、設定の資格情報を git に返す。
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
 - 独自フォージでは、`writer` のトークンを Basic 認証のパスワードとして渡す（[git のホスティング](../forge/git-hosting.md)）。
 - GitHub では、GitHub App のインストールのトークンを渡す。
-  - このトークンは 1 時間で切れる。バックエンドはトークンを保持しないので、書き込みの要求ごとに App の秘密鍵から作る。
+  - このトークンは 1 時間で切れる。worker は、切れる前に App の秘密鍵から作り直す。
 - GitHub では、App が `main` に push できるように、管理者がルールセットかブランチ保護を設定しておく（[main への書き込みを守る](github-main.md)）。
 
 ## 名前を付けたリビジョン
 
-ポートから受け取った名前を、アダプタが次の ref に組み立てる。
+ポートから受け取った名前を、worker が次の ref に組み立てる。
 
 | 名前 | ref |
 |---|---|

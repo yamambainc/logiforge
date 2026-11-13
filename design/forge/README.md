@@ -23,7 +23,7 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 
 | 種類 | 使う者 | できること |
 |---|---|---|
-| `writer` | バックエンドと worker | 独自フォージの API を使う。git リポジトリに push する（push するのはバックエンドだけ） |
+| `writer` | バックエンドと worker | バックエンドは独自フォージの API を使う。worker は git リポジトリを読み、push する |
 | `user` | WebUI を使う利用者 | git リポジトリを読む |
 | `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む |
 

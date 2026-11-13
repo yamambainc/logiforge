@@ -505,7 +505,7 @@ components:
       required: [version, reason, detail]
       properties:
         version: { type: integer, minimum: 1 }
-        reason: { type: string, enum: [stale_target, invariant_violation, snapshot_pending] }
+        reason: { type: string, enum: [stale_target, invariant_violation] }
         detail: { type: string }
 
     HumanRequestKind:

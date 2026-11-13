@@ -18,7 +18,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | バックエンド（認証） | 要求ごとに、主体のトークンで、主体、team の所属、リポジトリの権限を確かめる | 主体ごとの上限 |
 | バックエンド（やりとりの読み） | 要求ごとに、REST で、PR、レビュー、issue、コメントを読む | App の REST の上限 |
 | バックエンド（やりとりの書き込み） | REST で、PR、レビュー、issue、コメントを書く | App の REST の上限 |
-| worker | `git ls-remote` と `git fetch` だけ | API の上限に数えない |
+| worker | `git ls-remote`、`git fetch`、`git push` だけ | API の上限に数えない |
 
 - バックエンドは、読んだ結果を保持しない（[状態を持たない](../backend/README.md)）。
 - レート制限は、今は考えない。見積もりと、当たるようになったときの対処は、[費用と規模の見積もり](../estimates.md) に書く。
