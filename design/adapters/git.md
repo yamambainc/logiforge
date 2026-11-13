@@ -35,7 +35,8 @@
 
 ## 名前を付けたリビジョン
 
-- 版のコミットは、`refs/logiforge/apply-requests/<識別子>` に置く。
+- 版のコミットは、`refs/logiforge/apply-requests/<識別子>/<版の番号>` に、版ごとに置く。
+  - なぜ：古い版のコミットも ref から辿れるようにするため。辿れないコミットは git gc で消え、古い版の差分と、版を書いたセッション（trailer）を読めなくなる。
 - 人への依頼の回答のコミットは、`refs/logiforge/human-requests/<識別子>` に置く（[artifact の置き方](../files/artifacts.md)）。
 - GitHub のリモートでは、pull request の head ブランチにも、同じコミットを置く（[GitHub アダプタ](github.md)）。
 
