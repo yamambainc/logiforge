@@ -33,11 +33,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Forgejo のバイナリのキャッシュ
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/forgejo
+          key: forgejo-${{ env.FORGEJO_VERSION }}-${{ env.FORGEJO_SHA256 }}
       - name: Forgejo を取ってくる
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          curl -sSfL -o "$RUNNER_TEMP/forgejo" "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO_VERSION}/forgejo-${FORGEJO_VERSION}-linux-amd64"
-          echo "${FORGEJO_SHA256}  $RUNNER_TEMP/forgejo" | sha256sum -c -
-          chmod +x "$RUNNER_TEMP/forgejo"
+          mkdir -p ~/.cache/forgejo
+          curl -sSfL -o ~/.cache/forgejo/forgejo "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO_VERSION}/forgejo-${FORGEJO_VERSION}-linux-amd64"
+      - name: Forgejo のバイナリを確かめる
+        run: |
+          echo "${FORGEJO_SHA256}  $HOME/.cache/forgejo/forgejo" | sha256sum -c -
+          chmod +x ~/.cache/forgejo/forgejo
       - name: Forgejo を起動する
-        run: scripts/forgejo-test.sh "$RUNNER_TEMP/forgejo" 3999 >> "$GITHUB_ENV"
+        run: scripts/forgejo-test.sh ~/.cache/forgejo/forgejo 3999 >> "$GITHUB_ENV"
       - run: go test -race -count=1 -v -run TestForgejo ./internal/adapters/forgejo/

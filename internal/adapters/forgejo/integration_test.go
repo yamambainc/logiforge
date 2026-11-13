@@ -267,6 +267,13 @@ func TestForgejo(t *testing.T) {
 	if got, _ := gf.GetApplyRequest(ctx, ref, "apr_1"); got.State != ports.StateMerged {
 		t.Fatalf("state: %v", got.State)
 	}
+	// 送り直しは、同じ反映のコミットを返す。
+	if again, err := gf.Merge(ctx, ref, "apr_1", head1, "反映", "本文"); err != nil || again != sha {
+		t.Fatalf("merge の送り直し：%q %v", again, err)
+	}
+	if _, err := gf.Merge(ctx, ref, "apr_1", strings.Repeat("1", 40), "反映", "本文"); !errors.Is(err, ports.ErrHeadMoved) {
+		t.Fatalf("merge 済みで違う head：%v", err)
+	}
 
 	// ---- 衝突 ----
 	hA := e.commitPush(alice, "a", "tree/h-0000000000/background.md", "一\n二\n")
@@ -361,7 +368,7 @@ func TestForgejo(t *testing.T) {
 			t.Fatalf("%s: %+v %v", who, p, err)
 		}
 	}
-	for _, tok := range []string{e.tokens["outsider"], "bad-token"} {
+	for _, tok := range []string{e.tokens["outsider"], "bad-token", e.tokens["writer"]} {
 		if _, err := auth.Authenticate(ctx, tok); !errors.Is(err, ports.ErrUnauthenticated) {
 			t.Fatalf("organization の外：%v", err)
 		}

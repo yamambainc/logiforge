@@ -114,6 +114,10 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 		}
 		return ports.Principal{}, err
 	}
+	// 書き込み主体と worker のユーザーは、Logiforge の API の主体ではない。
+	if u.Login == a.c.cfg.Writer || (a.c.cfg.WorkerLogin != "" && u.Login == a.c.cfg.WorkerLogin) {
+		return ports.Principal{}, ports.ErrUnauthenticated
+	}
 	type teamJSON struct {
 		Name         string `json:"name"`
 		Organization struct {

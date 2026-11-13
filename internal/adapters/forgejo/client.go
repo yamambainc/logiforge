@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,6 +28,8 @@ type Config struct {
 	// Writer と WriterToken は、書き込み主体のログイン名とトークン。
 	Writer      string
 	WriterToken string
+	// WorkerLogin は、worker の読むだけのユーザーのログイン名。API の主体としては受け付けない。
+	WorkerLogin string
 	// HTTP は、使う HTTP のクライアント。nil なら http.DefaultClient。
 	HTTP *http.Client
 	// MergeWait は、merge できるかを Forgejo が確かめ終わるまで待つ時間の上限。0 なら 15 秒。
@@ -81,35 +84,42 @@ func (c *client) do(ctx context.Context, token, method, path string, in, out any
 }
 
 func (c *client) send(req *http.Request, token string, out any) error {
+	_, err := c.sendHeader(req, token, out)
+	return err
+}
+
+// sendHeader は、send と同じく呼び、応答のヘッダーも返す。
+func (c *client) sendHeader(req *http.Request, token string, out any) (http.Header, error) {
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/json")
 	res, err := c.http().Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if res.StatusCode >= 300 {
 		var m struct {
 			Message string `json:"message"`
 		}
 		_ = json.Unmarshal(data, &m)
-		return &apiError{Status: res.StatusCode, Message: m.Message}
+		return res.Header, &apiError{Status: res.StatusCode, Message: m.Message}
 	}
 	if out != nil && len(data) > 0 {
 		if b, ok := out.(*[]byte); ok {
 			*b = data
-			return nil
+			return res.Header, nil
 		}
-		return json.Unmarshal(data, out)
+		return res.Header, json.Unmarshal(data, out)
 	}
-	return nil
+	return res.Header, nil
 }
 
-// list は、ページを順に読み、すべてを返す。
+// list は、ページを順に読み、すべてを返す。X-Total-Count の数まで読んだか、空のページで終わる。
+// ページを受け付けない API（すべてを 1 度に返す）でも、X-Total-Count で終わる。
 func list[T any](ctx context.Context, c *client, token, path string) ([]T, error) {
 	const limit = 50
 	var all []T
@@ -119,11 +129,19 @@ func list[T any](ctx context.Context, c *client, token, path string) ([]T, error
 	}
 	for page := 1; ; page++ {
 		var items []T
-		if err := c.do(ctx, token, http.MethodGet, fmt.Sprintf("%s%spage=%d&limit=%d", path, sep, page, limit), nil, &items); err != nil {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1%s%spage=%d&limit=%d", strings.TrimRight(c.cfg.URL, "/"), path, sep, page, limit), nil)
+		if err != nil {
+			return nil, err
+		}
+		h, err := c.sendHeader(req, token, &items)
+		if err != nil {
 			return nil, err
 		}
 		all = append(all, items...)
-		if len(items) < limit {
+		if len(items) == 0 {
+			return all, nil
+		}
+		if total, err := strconv.Atoi(h.Get("X-Total-Count")); err == nil && len(all) >= total {
 			return all, nil
 		}
 	}

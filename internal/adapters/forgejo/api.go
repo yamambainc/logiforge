@@ -115,6 +115,7 @@ func (a api) ClosePull(ctx context.Context, repo string, number int) error {
 }
 
 // MergePull は、squash merge する。Forgejo は、merge できるかを非同期に確かめるので、確かめ終わるまで待って呼び直す。
+// 送り直しでもよい。すでに merge されていれば、head が同じなら反映のコミットを返し、違えば ErrHeadMoved を返す。
 func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, title, message string) (string, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
@@ -128,13 +129,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 	body := map[string]any{"Do": "squash", "head_commit_id": headSHA, "MergeTitleField": title, "MergeMessageField": message}
 	for {
 		err := a.w(ctx, http.MethodPost, fmt.Sprintf("%s/pulls/%d/merge", rp, number), body, nil)
-		switch statusOf(err) {
-		case 0:
-			if err != nil {
-				return "", err
-			}
+		if err == nil {
 			p, err := a.getPull(ctx, repo, number)
 			return p.MergeCommitSHA, err
+		}
+		switch statusOf(err) {
 		case http.StatusConflict:
 			// head_commit_id が今の head と違う（"head out of date"）。
 			return "", ports.ErrHeadMoved
@@ -143,12 +142,20 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 			if gerr != nil {
 				return "", gerr
 			}
+			if p.Merged {
+				if p.Head.SHA == headSHA {
+					return p.MergeCommitSHA, nil
+				}
+				return "", ports.ErrHeadMoved
+			}
 			if p.Head.SHA != headSHA {
 				return "", ports.ErrHeadMoved
 			}
 			if time.Now().After(deadline) {
-				if !p.Mergeable {
-					return "", ports.ErrConflict
+				// Forgejo は、衝突と「まだ確かめている」を、どちらも mergeable: false で表す。待っても merge できないものを衝突とみなし、
+				// Forgejo のメッセージを添える。
+				if !p.Mergeable && p.State == "open" {
+					return "", fmt.Errorf("%w（Forgejo：%v）", ports.ErrConflict, err)
 				}
 				return "", err
 			}
@@ -213,8 +220,8 @@ func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullr
 	if err != nil {
 		return nil, err
 	}
-	var cs []commentJSON
-	if err := a.w(ctx, http.MethodGet, fmt.Sprintf("%s/issues/%d/comments", rp, number), nil, &cs); err != nil {
+	cs, err := list[commentJSON](ctx, a.client, a.cfg.WriterToken, fmt.Sprintf("%s/issues/%d/comments", rp, number))
+	if err != nil {
 		return nil, err
 	}
 	out := make([]pullreq.Comment, 0, len(cs))

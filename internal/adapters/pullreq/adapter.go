@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,13 +32,19 @@ var _ ports.GitForge = (*Adapter)(nil)
 // titlePrefix は、pull request と issue のタイトルの接頭辞である。タイトルは、探すための手がかりにだけ使い、記録としては読まない。
 const titlePrefix = "[Logiforge] "
 
-// records は、書き込み主体のコメントのうち、正しい記録を返す。MAC が合わないものは警告にする。
-func (a *Adapter) records(comments []Comment) (recs []parsed, warnings []string) {
+type parsed struct {
+	Record
+	Comment Comment
+}
+
+// records は、書き込み主体のコメントのうち、その場所に置かれた正しい記録を返す。
+// MAC が合わないもの（編集された、ほかの場所から写された、など）は数えず、警告にする。
+func (a *Adapter) records(repo string, comments []Comment) (recs []parsed, warnings []string) {
 	for _, c := range comments {
 		if c.Author != a.API.WriterLogin() {
 			continue
 		}
-		r, err := a.Keys.Parse(c.Body)
+		r, err := a.Keys.Parse(c.Body, Scope{Ref: repo, Number: c.IssueNumber})
 		switch {
 		case errors.Is(err, ErrNoRecord):
 		case err != nil:
@@ -49,34 +56,50 @@ func (a *Adapter) records(comments []Comment) (recs []parsed, warnings []string)
 	return recs, warnings
 }
 
-type parsed struct {
-	Record
-	Comment Comment
-}
-
 func (a *Adapter) comment(ctx context.Context, repo string, number int, r Record) (Comment, error) {
-	text, err := a.Keys.Format(r)
+	text, err := a.Keys.Format(r, Scope{Ref: repo, Number: number})
 	if err != nil {
 		return Comment{}, err
 	}
 	return a.API.CreateComment(ctx, repo, number, text)
 }
 
+func byIssue(comments []Comment) map[int][]Comment {
+	m := map[int][]Comment{}
+	for _, c := range comments {
+		m[c.IssueNumber] = append(m[c.IssueNumber], c)
+	}
+	return m
+}
+
 // ---- 提案 ----
 
-func (a *Adapter) applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest, bool) {
+// applyRequest は、pull request と、その記録から提案を組み立てる。
+// 最初の apply_request の記録が、提案の識別子を決める。ほかの記録は、その識別子を持つものだけを数える。
+func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest, bool) {
 	ar := ports.ApplyRequest{Number: p.Number, Branch: p.Head, Description: p.Body, HeadRevision: p.HeadSHA, CreatedAt: p.CreatedAt, Warnings: warnings}
 	found, closed := false, false
 	for _, r := range recs {
-		switch r.Get(KeyRecord) {
-		case RecordApplyRequest:
-			if !found {
-				found = true
-				ar.ID, ar.FirstRevision, ar.Opener = r.Get(KeyApplyRequest), r.Get(KeyFirstRevision), r.Get(KeyPrincipal)
+		kind := r.Get(KeyRecord)
+		if kind == RecordApplyRequest {
+			if found {
+				ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：apply_request の記録が重なっている", r.Comment.ID))
+				continue
 			}
+			found = true
+			ar.ID, ar.FirstRevision, ar.Opener = r.Get(KeyApplyRequest), r.Get(KeyFirstRevision), r.Get(KeyPrincipal)
+			continue
+		}
+		if !found || r.Get(KeyApplyRequest) != ar.ID {
+			ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：提案の識別子が合わない記録", r.Comment.ID))
+			continue
+		}
+		switch kind {
 		case RecordClose:
-			closed = true
-			ar.CloseReason, ar.CloseSession = r.Body, r.Get(KeySession)
+			if !closed {
+				closed = true
+				ar.CloseReason, ar.CloseSession = r.Body, r.Get(KeySession)
+			}
 		case RecordMergeFailure:
 			ar.MergeFailures = append(ar.MergeFailures, r.Get(KeyMergeFailure))
 		}
@@ -92,6 +115,16 @@ func (a *Adapter) applyRequest(p Pull, recs []parsed, warnings []string) (ports.
 	return ar, found
 }
 
+func (a *Adapter) readPull(ctx context.Context, repo string, p Pull) (ports.ApplyRequest, bool, error) {
+	comments, err := a.API.ListComments(ctx, repo, p.Number)
+	if err != nil {
+		return ports.ApplyRequest{}, false, err
+	}
+	recs, warnings := a.records(repo, comments)
+	ar, ok := applyRequest(p, recs, warnings)
+	return ar, ok, nil
+}
+
 func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.NewApplyRequest) (ports.ApplyRequest, error) {
 	pulls, err := a.API.ListPulls(ctx, repo)
 	if err != nil {
@@ -102,12 +135,11 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		if p.Author != a.API.WriterLogin() || p.State != "open" || p.Merged || p.Head != n.Branch {
 			continue
 		}
-		comments, err := a.API.ListComments(ctx, repo, p.Number)
+		ar, ok, err := a.readPull(ctx, repo, p)
 		if err != nil {
 			return ports.ApplyRequest{}, err
 		}
-		recs, warnings := a.records(comments)
-		if ar, ok := a.applyRequest(p, recs, warnings); ok {
+		if ok {
 			if ar.ID == n.ID {
 				return ar, nil
 			}
@@ -116,7 +148,8 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		// 作ったあと、記録を書く前に止まったもの。新しく作らずに、記録を書く。
 		pull = &pulls[i]
 	}
-	if pull == nil {
+	adopted := pull != nil
+	if !adopted {
 		p, err := a.API.CreatePull(ctx, repo, n.Branch, titlePrefix+n.ID, n.Description)
 		if err != nil {
 			return ports.ApplyRequest{}, err
@@ -124,38 +157,39 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		pull = &p
 	}
 	rec := Record{Trailers: []Trailer{{KeyRecord, RecordApplyRequest}, {KeyApplyRequest, n.ID}, {KeyFirstRevision, n.FirstRevision}, {KeyPrincipal, n.Opener}}}
-	c, err := a.comment(ctx, repo, pull.Number, rec)
+	if _, err := a.comment(ctx, repo, pull.Number, rec); err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	// 書いたあとに読み直す。同じ pull request を、別の要求が同時に引き取ったなら、最初の記録が勝つ。
+	ar, ok, err := a.readPull(ctx, repo, *pull)
 	if err != nil {
 		return ports.ApplyRequest{}, err
 	}
-	ar, _ := a.applyRequest(*pull, []parsed{{Record: rec, Comment: c}}, nil)
+	if !ok || ar.ID != n.ID {
+		return ports.ApplyRequest{}, ports.ErrBranchHasOpen
+	}
 	return ar, nil
 }
 
-// findPull は、識別子の提案の pull request と記録を探す。タイトルを手がかりにし、なければ repository のコメントから探す。
+// findPull は、識別子の提案を探す。タイトルを手がかりに、その pull request のコメントだけを読む。
+// 見つからなければ、repository のコメントの一覧から探す。
 func (a *Adapter) findPull(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
 	pulls, err := a.API.ListPulls(ctx, repo)
 	if err != nil {
 		return ports.ApplyRequest{}, err
 	}
-	try := func(p Pull) (ports.ApplyRequest, bool, error) {
-		comments, err := a.API.ListComments(ctx, repo, p.Number)
-		if err != nil {
-			return ports.ApplyRequest{}, false, err
-		}
-		recs, warnings := a.records(comments)
-		ar, ok := a.applyRequest(p, recs, warnings)
-		return ar, ok && ar.ID == id, nil
-	}
 	for _, p := range pulls {
 		if p.Author == a.API.WriterLogin() && strings.Contains(p.Title, id) {
-			ar, ok, err := try(p)
-			if err != nil || ok {
-				return ar, err
+			ar, ok, err := a.readPull(ctx, repo, p)
+			if err != nil {
+				return ports.ApplyRequest{}, err
+			}
+			if ok && ar.ID == id {
+				return ar, nil
 			}
 		}
 	}
-	all, err := a.ListApplyRequests(ctx, repo)
+	all, err := a.listApplyRequests(ctx, repo, pulls)
 	if err != nil {
 		return ports.ApplyRequest{}, err
 	}
@@ -176,23 +210,28 @@ func (a *Adapter) ListApplyRequests(ctx context.Context, repo string) ([]ports.A
 	if err != nil {
 		return nil, err
 	}
+	return a.listApplyRequests(ctx, repo, pulls)
+}
+
+func (a *Adapter) listApplyRequests(ctx context.Context, repo string, pulls []Pull) ([]ports.ApplyRequest, error) {
 	comments, err := a.API.ListRepoComments(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	byIssue := map[int][]Comment{}
-	for _, c := range comments {
-		byIssue[c.IssueNumber] = append(byIssue[c.IssueNumber], c)
-	}
+	by := byIssue(comments)
 	var out []ports.ApplyRequest
+	seen := map[string]bool{}
 	for _, p := range pulls {
 		if p.Author != a.API.WriterLogin() {
 			continue
 		}
-		recs, warnings := a.records(byIssue[p.Number])
-		if ar, ok := a.applyRequest(p, recs, warnings); ok {
-			out = append(out, ar)
+		recs, warnings := a.records(repo, by[p.Number])
+		ar, ok := applyRequest(p, recs, warnings)
+		if !ok || seen[ar.ID] {
+			continue
 		}
+		seen[ar.ID] = true
+		out = append(out, ar)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out, nil
@@ -223,7 +262,8 @@ func (a *Adapter) Close(ctx context.Context, repo, id, reason, session string) e
 		return nil
 	}
 	// 記録を先に書く。close の前に止まっても、記録があれば closed として扱う。
-	if _, err := a.comment(ctx, repo, ar.Number, Record{Body: reason, Trailers: []Trailer{{KeyRecord, RecordClose}, {KeySession, session}}}); err != nil {
+	rec := Record{Body: reason, Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, id}, {KeySession, session}}}
+	if _, err := a.comment(ctx, repo, ar.Number, rec); err != nil {
 		return err
 	}
 	return a.API.ClosePull(ctx, repo, ar.Number)
@@ -234,7 +274,7 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id, reason strin
 	if err != nil {
 		return err
 	}
-	_, err = a.comment(ctx, repo, ar.Number, Record{Trailers: []Trailer{{KeyRecord, RecordMergeFailure}, {KeyMergeFailure, reason}}})
+	_, err = a.comment(ctx, repo, ar.Number, Record{Trailers: []Trailer{{KeyRecord, RecordMergeFailure}, {KeyApplyRequest, id}, {KeyMergeFailure, reason}}})
 	return err
 }
 
@@ -246,9 +286,9 @@ func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r 
 		return err
 	}
 	text, err := a.Keys.Format(Record{Body: r.Body, Trailers: []Trailer{
-		{KeyRecord, RecordReview}, {KeyReviewID, r.ID}, {KeyReviewKind, string(r.Kind)}, {KeyReviewRevision, r.Revision},
-		{KeyPrincipal, r.Reviewer}, {KeySession, r.Session}, {KeyPromptRevision, r.PromptRevision},
-	}})
+		{KeyRecord, RecordReview}, {KeyApplyRequest, applyRequestID}, {KeyReviewID, r.ID}, {KeyReviewKind, string(r.Kind)},
+		{KeyReviewRevision, r.Revision}, {KeyPrincipal, r.Reviewer}, {KeySession, r.Session}, {KeyPromptRevision, r.PromptRevision},
+	}}, Scope{Ref: repo, Number: ar.Number})
 	if err != nil {
 		return err
 	}
@@ -260,46 +300,64 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 	if err != nil {
 		return nil, err
 	}
-	reviews, err := a.API.ListReviews(ctx, repo, ar.Number)
+	prs, err := a.API.ListReviews(ctx, repo, ar.Number)
 	if err != nil {
 		return nil, err
 	}
+	return reviews(a.API.WriterLogin(), a.Keys, Scope{Ref: repo, Number: ar.Number}, applyRequestID, prs), nil
+}
+
+// reviews は、書き込み主体のレビューのうち、その提案の正しい記録だけを返す。
+// commit_id と記録の版が違うもの、提案の識別子が違うもの、レビューの識別子が重なったもの（2 つ目から）は数えない。
+func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview) []ports.Review {
 	var out []ports.Review
-	for _, pr := range reviews {
-		if pr.Author != a.API.WriterLogin() {
+	seen := map[string]bool{}
+	for _, pr := range prs {
+		if pr.Author != writer {
 			continue
 		}
-		r, err := a.Keys.Parse(pr.Body)
-		if err != nil || r.Get(KeyRecord) != RecordReview {
+		r, err := keys.Parse(pr.Body, at)
+		if err != nil || r.Get(KeyRecord) != RecordReview || r.Get(KeyApplyRequest) != id {
 			continue
 		}
-		rev := r.Get(KeyReviewRevision)
-		if pr.CommitSHA != "" && pr.CommitSHA != rev {
+		rev, rid := r.Get(KeyReviewRevision), r.Get(KeyReviewID)
+		if (pr.CommitSHA != "" && pr.CommitSHA != rev) || seen[rid] {
 			continue
 		}
+		seen[rid] = true
 		out = append(out, ports.Review{
-			ID: r.Get(KeyReviewID), Kind: ports.ReviewKind(r.Get(KeyReviewKind)), Body: r.Body, Revision: rev,
+			ID: rid, Kind: ports.ReviewKind(r.Get(KeyReviewKind)), Body: r.Body, Revision: rev,
 			Reviewer: r.Get(KeyPrincipal), Session: r.Get(KeySession), PromptRevision: r.Get(KeyPromptRevision), CreatedAt: pr.CreatedAt,
 		})
 	}
-	return out, nil
+	return out
 }
 
 // ---- 人への依頼 ----
 
-func (a *Adapter) humanRequest(is Issue, recs []parsed, warnings []string) (ports.HumanRequest, bool) {
+// humanRequest は、issue と、その記録から人への依頼を組み立てる。answer の記録は、依頼の識別子が合うものの最初だけを数える。
+func humanRequest(is Issue, recs []parsed, warnings []string) (ports.HumanRequest, *parsed, bool) {
 	hr := ports.HumanRequest{Number: is.Number, CreatedAt: is.CreatedAt, Warnings: warnings}
+	var answer *parsed
 	found := false
-	for _, r := range recs {
+	for i, r := range recs {
 		switch r.Get(KeyRecord) {
 		case RecordHumanRequest:
-			if !found {
-				found = true
-				hr.ID, hr.Kind, hr.TargetNode = r.Get(KeyHumanRequest), ports.HumanRequestKind(r.Get(KeyHumanKind)), r.Get(KeyTargetNode)
-				hr.Body, hr.Requester, hr.Session = r.Body, r.Get(KeyPrincipal), r.Get(KeySession)
+			if found {
+				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：human_request の記録が重なっている", r.Comment.ID))
+				continue
 			}
+			found = true
+			hr.ID, hr.Kind, hr.TargetNode = r.Get(KeyHumanRequest), ports.HumanRequestKind(r.Get(KeyHumanKind)), r.Get(KeyTargetNode)
+			hr.Body, hr.Requester, hr.Session = r.Body, r.Get(KeyPrincipal), r.Get(KeySession)
 		case RecordAnswer:
-			if hr.Answer == nil {
+			switch {
+			case !found || r.Get(KeyHumanRequest) != hr.ID:
+				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：依頼の識別子が合わない回答", r.Comment.ID))
+			case answer != nil:
+				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：回答が重なっている", r.Comment.ID))
+			default:
+				answer = &recs[i]
 				ans := &ports.Answer{Body: r.Body, AnsweredBy: r.Get(KeyAnsweredBy), CreatedAt: r.Comment.CreatedAt}
 				for _, v := range r.All(KeyAttachment) {
 					name, sha := splitAttachment(v)
@@ -309,7 +367,7 @@ func (a *Adapter) humanRequest(is Issue, recs []parsed, warnings []string) (port
 			}
 		}
 	}
-	return hr, found
+	return hr, answer, found
 }
 
 func attachmentTrailer(name, sha string) string { return name + " sha256:" + sha }
@@ -335,12 +393,14 @@ func (a *Adapter) CreateHumanRequest(ctx context.Context, repo string, n ports.N
 		{KeyRecord, RecordHumanRequest}, {KeyHumanRequest, n.ID}, {KeyHumanKind, string(n.Kind)}, {KeyTargetNode, n.TargetNode},
 		{KeyPrincipal, n.Requester}, {KeySession, n.Session},
 	}}
-	c, err := a.comment(ctx, repo, is.Number, rec)
+	if _, err := a.comment(ctx, repo, is.Number, rec); err != nil {
+		return ports.HumanRequest{}, err
+	}
+	f, err := a.readIssue(ctx, repo, is)
 	if err != nil {
 		return ports.HumanRequest{}, err
 	}
-	hr, _ := a.humanRequest(is, []parsed{{Record: rec, Comment: c}}, nil)
-	return hr, nil
+	return f.hr, nil
 }
 
 func truncate(s string, n int) string {
@@ -352,9 +412,20 @@ func truncate(s string, n int) string {
 }
 
 type foundIssue struct {
-	hr    ports.HumanRequest
-	issue Issue
-	recs  []parsed
+	hr     ports.HumanRequest
+	issue  Issue
+	answer *parsed
+	ok     bool
+}
+
+func (a *Adapter) readIssue(ctx context.Context, repo string, is Issue) (foundIssue, error) {
+	comments, err := a.API.ListComments(ctx, repo, is.Number)
+	if err != nil {
+		return foundIssue{}, err
+	}
+	recs, warnings := a.records(repo, comments)
+	hr, answer, ok := humanRequest(is, recs, warnings)
+	return foundIssue{hr, is, answer, ok}, nil
 }
 
 func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, error) {
@@ -362,18 +433,13 @@ func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, e
 	if err != nil {
 		return foundIssue{}, err
 	}
-	check := func(is Issue, comments []Comment) (foundIssue, bool) {
-		recs, warnings := a.records(comments)
-		hr, ok := a.humanRequest(is, recs, warnings)
-		return foundIssue{hr, is, recs}, ok && hr.ID == id
-	}
 	for _, is := range issues {
 		if is.Author == a.API.WriterLogin() && strings.Contains(is.Title, id) {
-			comments, err := a.API.ListComments(ctx, repo, is.Number)
+			f, err := a.readIssue(ctx, repo, is)
 			if err != nil {
 				return foundIssue{}, err
 			}
-			if f, ok := check(is, comments); ok {
+			if f.ok && f.hr.ID == id {
 				return f, nil
 			}
 		}
@@ -382,13 +448,14 @@ func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, e
 	if err != nil {
 		return foundIssue{}, err
 	}
-	byIssue := map[int][]Comment{}
-	for _, c := range comments {
-		byIssue[c.IssueNumber] = append(byIssue[c.IssueNumber], c)
-	}
+	by := byIssue(comments)
 	for _, is := range issues {
-		if f, ok := check(is, byIssue[is.Number]); ok && is.Author == a.API.WriterLogin() {
-			return f, nil
+		if is.Author != a.API.WriterLogin() {
+			continue
+		}
+		recs, warnings := a.records(repo, by[is.Number])
+		if hr, answer, ok := humanRequest(is, recs, warnings); ok && hr.ID == id {
+			return foundIssue{hr, is, answer, true}, nil
 		}
 	}
 	return foundIssue{}, ports.ErrNotFound
@@ -408,17 +475,16 @@ func (a *Adapter) ListHumanRequests(ctx context.Context, repo string) ([]ports.H
 	if err != nil {
 		return nil, err
 	}
-	byIssue := map[int][]Comment{}
-	for _, c := range comments {
-		byIssue[c.IssueNumber] = append(byIssue[c.IssueNumber], c)
-	}
+	by := byIssue(comments)
 	var out []ports.HumanRequest
+	seen := map[string]bool{}
 	for _, is := range issues {
 		if is.Author != a.API.WriterLogin() {
 			continue
 		}
-		recs, warnings := a.records(byIssue[is.Number])
-		if hr, ok := a.humanRequest(is, recs, warnings); ok {
+		recs, warnings := a.records(repo, by[is.Number])
+		if hr, _, ok := humanRequest(is, recs, warnings); ok && !seen[hr.ID] {
+			seen[hr.ID] = true
 			out = append(out, hr)
 		}
 	}
@@ -426,32 +492,74 @@ func (a *Adapter) ListHumanRequests(ctx context.Context, repo string) ([]ports.H
 	return out, nil
 }
 
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func attachmentKeys(names, shas []string) []string {
+	out := make([]string, len(names))
+	for i := range names {
+		out[i] = attachmentTrailer(names[i], shas[i])
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Answer は、回答を記録する。記録を書いたあとに添付を上げ、issue を閉じる。
+// 途中で止まったときは、同じ本文・回答者・添付で呼び直せば、足りない添付を上げて閉じる。中身が違えば ErrAlreadyAnswered を返す。
 func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string, files []ports.NewAttachment) error {
 	f, err := a.findIssue(ctx, repo, id)
 	if err != nil {
 		return err
 	}
+	var names, shas []string
+	for _, file := range files {
+		if slices.Contains(names, file.Name) {
+			return fmt.Errorf("pullreq: 添付の名前 %q が重なっている", file.Name)
+		}
+		names, shas = append(names, file.Name), append(shas, sha256Hex(file.Content))
+	}
+	var commentID int64
+	have := map[string]bool{}
 	if f.hr.Answer != nil {
-		return ports.ErrAlreadyAnswered
-	}
-	trailers := []Trailer{{KeyRecord, RecordAnswer}, {KeyHumanRequest, id}, {KeyAnsweredBy, answeredBy}}
-	for _, file := range files {
-		sum := sha256.Sum256(file.Content)
-		trailers = append(trailers, Trailer{KeyAttachment, attachmentTrailer(file.Name, hex.EncodeToString(sum[:]))})
-	}
-	// 添付の sha256 の一覧も MAC に含める。添付は、記録を書いたあとに付ける。
-	c, err := a.comment(ctx, repo, f.issue.Number, Record{Body: body, Trailers: trailers})
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if _, err := a.API.UploadAttachment(ctx, repo, c.ID, file.Name, file.Content); err != nil {
+		var gotNames, gotShas []string
+		for _, at := range f.hr.Answer.Attachments {
+			gotNames, gotShas = append(gotNames, at.Name), append(gotShas, at.SHA256)
+			if at.ID != "" {
+				have[at.SHA256] = true
+			}
+		}
+		normalized := strings.TrimRight(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+		if f.hr.Answer.Body != normalized || f.hr.Answer.AnsweredBy != answeredBy || !slices.Equal(attachmentKeys(names, shas), attachmentKeys(gotNames, gotShas)) {
+			return ports.ErrAlreadyAnswered
+		}
+		commentID = f.answer.Comment.ID
+	} else {
+		trailers := []Trailer{{KeyRecord, RecordAnswer}, {KeyHumanRequest, id}, {KeyAnsweredBy, answeredBy}}
+		for i := range files {
+			trailers = append(trailers, Trailer{KeyAttachment, attachmentTrailer(names[i], shas[i])})
+		}
+		// 添付の sha256 の一覧も MAC に含める。添付は、記録を書いたあとに付ける。
+		c, err := a.comment(ctx, repo, f.issue.Number, Record{Body: body, Trailers: trailers})
+		if err != nil {
 			return err
 		}
+		commentID = c.ID
+	}
+	for i, file := range files {
+		if have[shas[i]] {
+			continue
+		}
+		if _, err := a.API.UploadAttachment(ctx, repo, commentID, file.Name, file.Content); err != nil {
+			return err
+		}
+		have[shas[i]] = true
 	}
 	return a.API.CloseIssue(ctx, repo, f.issue.Number)
 }
 
+// ReadAttachment は、回答の添付を sha256 で引いて読み、中身の sha256 を確かめる。
 func (a *Adapter) ReadAttachment(ctx context.Context, repo, humanRequestID, sha string) ([]byte, error) {
 	f, err := a.findIssue(ctx, repo, humanRequestID)
 	if err != nil {
@@ -460,13 +568,6 @@ func (a *Adapter) ReadAttachment(ctx context.Context, repo, humanRequestID, sha 
 	if f.hr.Answer == nil {
 		return nil, ports.ErrNotFound
 	}
-	var commentID int64
-	for _, r := range f.recs {
-		if r.Get(KeyRecord) == RecordAnswer {
-			commentID = r.Comment.ID
-			break
-		}
-	}
 	for _, at := range f.hr.Answer.Attachments {
 		if at.SHA256 != sha {
 			continue
@@ -474,12 +575,11 @@ func (a *Adapter) ReadAttachment(ctx context.Context, repo, humanRequestID, sha 
 		if at.ID == "" {
 			return nil, ports.ErrNotFound
 		}
-		data, err := a.API.DownloadAttachment(ctx, repo, commentID, at.ID)
+		data, err := a.API.DownloadAttachment(ctx, repo, f.answer.Comment.ID, at.ID)
 		if err != nil {
 			return nil, err
 		}
-		sum := sha256.Sum256(data)
-		if hex.EncodeToString(sum[:]) != sha {
+		if sha256Hex(data) != sha {
 			return nil, ports.ErrAttachmentTamper
 		}
 		return data, nil

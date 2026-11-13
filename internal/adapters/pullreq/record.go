@@ -88,24 +88,41 @@ var ErrNoRecord = errors.New("記録の形でない")
 // ErrBadMac は、MAC が合わないことを表す（あとから編集された、など）。
 var ErrBadMac = errors.New("記録の MAC が合わない")
 
-// Format は、記録を、MAC を付けた本文にする。値の改行は、空白にする。
-func (k Keyring) Format(r Record) (string, error) {
+// Scope は、記録を置いた場所である。MAC に含め、記録をほかの pull request や issue に写して使い回せないようにする。
+type Scope struct {
+	// Ref は、repository の gitforge_ref（owner/name）。
+	Ref string
+	// Number は、記録のコメントを置いた pull request か issue の番号。
+	Number int
+}
+
+// Format は、記録を、MAC を付けた本文にする。本文の CRLF は LF にし、末尾の改行を落とす。値の改行は、空白にする。
+func (k Keyring) Format(r Record, at Scope) (string, error) {
 	key, ok := k.Keys[k.Current]
 	if !ok || !keyIDForm.MatchString(k.Current) {
 		return "", fmt.Errorf("pullreq: MAC の鍵 %q がない", k.Current)
 	}
+	r.Body = strings.TrimRight(strings.ReplaceAll(r.Body, "\r\n", "\n"), "\n")
+	trailers := make([]Trailer, len(r.Trailers))
 	for i, t := range r.Trailers {
-		r.Trailers[i].Value = strings.Join(strings.Fields(t.Value), " ")
+		trailers[i] = Trailer{t.Key, strings.Join(strings.Fields(t.Value), " ")}
 	}
-	signed := canonical(r)
-	m := hmac.New(sha256.New, key)
-	m.Write([]byte(signed))
-	return signed + "\n" + KeyMac + ": " + k.Current + ":" + hex.EncodeToString(m.Sum(nil)), nil
+	r.Trailers = trailers
+	text := canonical(r)
+	return text + "\n" + KeyMac + ": " + k.Current + ":" + mac(key, at, text), nil
 }
 
-// Parse は、コメントの本文から記録を読み、MAC を確かめる。
-// 記録の形でなければ ErrNoRecord、MAC が合わなければ ErrBadMac を返す。
-func (k Keyring) Parse(text string) (Record, error) {
+// mac は、置いた場所と記録の本文に対する HMAC-SHA256 を返す。
+func mac(key []byte, at Scope, text string) string {
+	m := hmac.New(sha256.New, key)
+	fmt.Fprintf(m, "%s#%d\n", at.Ref, at.Number)
+	m.Write([]byte(text))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// Parse は、コメントの本文から記録を読み、at に置かれたものとして MAC を確かめる。
+// 記録の形でなければ ErrNoRecord、MAC が合わなければ（編集された、ほかの場所から写された、など）ErrBadMac を返す。
+func (k Keyring) Parse(text string, at Scope) (Record, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.TrimRight(text, "\n")
 	i := strings.LastIndex(text, "\n\n")
@@ -132,18 +149,12 @@ func (k Keyring) Parse(text string) (Record, error) {
 	if last == nil || last[1] != KeyMac {
 		return Record{}, ErrNoRecord
 	}
-	id, mac, ok := strings.Cut(last[2], ":")
+	id, got, ok := strings.Cut(last[2], ":")
 	key, known := k.Keys[id]
 	if !ok || !known {
 		return Record{}, ErrBadMac
 	}
-	want, err := hex.DecodeString(mac)
-	if err != nil {
-		return Record{}, ErrBadMac
-	}
-	h := hmac.New(sha256.New, key)
-	h.Write([]byte(canonical(r)))
-	if !hmac.Equal(h.Sum(nil), want) {
+	if !hmac.Equal([]byte(mac(key, at, canonical(r))), []byte(got)) {
 		return Record{}, ErrBadMac
 	}
 	return r, nil
