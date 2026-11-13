@@ -52,7 +52,6 @@ flowchart TB
 | 失ったもの | 影響 |
 |---|---|
 | repository の登録 | 起動時に作り直す |
-| イベントのログ | 起動時に作り直す。ログの世代が変わるので、クライアントには `cursor_expired` を返す |
 | Idempotency-Key | 前に送った要求を送り直すと、二重に処理されることがある |
 | 突き合わせの状態 | 次の突き合わせで作り直す |
 | 主体とトークン | GitHub を使う構成では影響なし（GitHub が正本）。使わない構成では、誰も API を使えなくなるので、バックアップから戻す |
@@ -74,7 +73,6 @@ repository の名前の正本は、アダプタごとに次のとおりである
 次のものは、サーバの設定ファイルか環境変数に置く。git リポジトリには置かない。
 
 - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵など）
-- GitHub の webhook の secret
 - SQLite ファイルのパス（GitHub を使わない構成だけ）
 - `user` とみなす GitHub のアカウント名か、organization の team（GitHub を使う構成だけ。[GitHub アダプタ](github.md)）
 - 版の署名の鍵（[記録の形式](../files/revisions.md)）

@@ -38,6 +38,6 @@ reviewer の決まりは、[論理レビュー](../apply-request/review.md) に�
 
 - 特定のエージェントを、opener や reviewer に固定しない。
 - 誰がいつ作業するかは、この仕様では決めない。
-  - 作業の探し方は、[着手できる作業とイベント](../work/README.md) に書く。
+  - 作業の探し方は、[着手できる作業](../work/README.md) に書く。
 - repository ごとの読み取りの制限
   - GitHub を使う構成でだけ、GitHub の権限に従う。

@@ -51,7 +51,3 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 - [人への依頼を起票する](human-request/create.md) → `POST /repositories/{repository}/human-requests`
 - [人への依頼を読む](human-request/get.md) → `GET /repositories/{repository}/human-requests/{humanRequestId}`
 - [人への依頼に回答する](human-request/answer.md) → `POST /repositories/{repository}/human-requests/{humanRequestId}/answer`
-
-## イベント
-
-- [イベントの一覧を読む](event/list.md) → `GET /repositories/{repository}/events`

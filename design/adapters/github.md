@@ -31,7 +31,6 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 | レビュー | `event=COMMENT` の pull request review |
 | 人への依頼 | issue（ラベル `logiforge/pvr` か `logiforge/decision`） |
 | 回答 | バックエンドの App が、利用者の回答として書いたコメント |
-| イベント | GitHub の webhook（`pull_request`、`pull_request_review`、`issues`、`issue_comment`、`push`） |
 
 - pull request は merge しない。`main` は [git アダプタ](git.md) の「main を進める」で進める。
   - なぜ：検査したときの `main` から進めることを、確実にするため。
@@ -92,15 +91,11 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 
 - GitHub リポジトリへの書き込み権限は、バックエンドの App だけに与える。人とエージェントは read にする。
 - owner と admin は、それでも `main` に直接 push できる。
-  - バックエンドは、`push` の webhook と突き合わせで、反映の手順によらないコミットを検出して警告する。
-  - force push も、`push` の webhook の `forced` で検出して、警告に含める。
+  - バックエンドは、突き合わせで、反映の手順によらないコミットと force push を検出して警告する（[突き合わせ](../backend/README.md)）。
 - Team 以上のプランでは、ブランチ保護（またはルールセット）でも、`main` への書き込みをバックエンドの App だけに限る。
 
 ## GitHub の制約への対処
 
 - 反映は、1 分に 1 件を目安にする。
   - なぜ：GitHub は、短い間に多くのコミットの作成を行うと、制限をかけることがあるから。
-- GitHub の webhook は、届かなかったときに自動では送り直されない。
-  - 手動で送り直せるのは、3 日前までのものだけである。
-- そのため、バックエンドは定期的に突き合わせを行い、前回のあとに更新された pull request と issue を読み直す。
 - 外の仕組みは、GitHub の webhook や Actions のトリガーを、直接使ってよい。

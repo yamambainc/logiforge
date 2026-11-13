@@ -24,7 +24,7 @@
 - 論理レビュー、反映の条件、レビューの材料 → [論理レビュー](../apply-request/review.md)
 - 人への依頼（human request）→ [人への依頼](../human-requests/README.md)
 - PVR（物理検証リクエスト。種類が `pvr` の人への依頼）→ [人への依頼](../human-requests/README.md)
-- 着手できる作業、イベント → [着手できる作業とイベント](../work/README.md)
+- 着手できる作業 → [着手できる作業](../work/README.md)
 
 ## 主体
 

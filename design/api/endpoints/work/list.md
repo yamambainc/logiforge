@@ -17,7 +17,7 @@ opener や reviewer が、次にする作業を探すときに、CLI から呼�
 
 ## 関係する要件
 
-- [着手できる作業とイベント](../../../../docs/work/README.md)
+- [着手できる作業](../../../../docs/work/README.md)
 
 ## 詳細
 

@@ -15,7 +15,7 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | 論理レビューを行う | [レビューの材料を読む](endpoints/apply-request/review-material.md)、[レビューする](endpoints/apply-request/review.md) |
 | 検証結果に添えるファイルを置く | [apply request を作る](endpoints/apply-request/create.md)（ファイルは `verdict.submit` に含める） |
 | 人への依頼を起票する | [人への依頼を起票する](endpoints/human-request/create.md) |
-| 外の仕組みが変化を知る | [イベントの一覧を読む](endpoints/event/list.md)、[着手できる作業を読む](endpoints/work/list.md) |
+| 外の仕組みが次の作業を知る | [着手できる作業を読む](endpoints/work/list.md) |
 
 ## WebUI
 

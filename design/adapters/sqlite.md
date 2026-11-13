@@ -9,29 +9,13 @@ GitHub を使わない構成で、[サーバの状態](../backend/ports/server-s
 - 反映は repository ごとに直列に行い、書き込みが少ないので、1 本の書き込みで足りる。
 - 独自プロバイダのテーブルも、同じ SQLite ファイルに置く（[独自プロバイダ](native.md)）。
 
-## event
-
-| 列 | 型 | 内容 |
-|---|---|---|
-| `repository_name` | 文字列 | repository |
-| `seq` | 整数 | repository ごとに 1 から順に増える番号 |
-| `kind` | 文字列 | 変化の種類（例：`apply_request.reviewed`） |
-| `subject_id` | 識別子 | 変化した対象 |
-| `actor_session_id` | 文字列 | 起こしたセッション |
-| `occurred_at` | 時刻 | 起きた時刻 |
-
-- 行を加えるだけにする。DB（データベース）のトリガーで、UPDATE と DELETE を拒む。
-- 作り直すときだけ、テーブルごと消して入れ直す（[サーバの状態](../backend/ports/server-state.md)）。
-
-## そのほかのテーブル
+## サーバの状態
 
 | テーブル | 列 |
 |---|---|
 | `repository` | `repository_name`（主キー）、`provider_ref`（キャッシュ） |
 | `idempotency_key` | `key`、`principal_id`、`response`、`created_at` |
-| `reconcile_state` | `repository_name`、`last_merged_revision`、`last_reconciled_at`（キャッシュ） |
-
-- トークンは、ハッシュだけを持つ。
+| `reconcile_state` | `repository_name`、`last_reconciled_main`、`last_reconciled_at`（キャッシュ） |
 
 ## 認証
 

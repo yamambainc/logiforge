@@ -11,7 +11,7 @@
 | 反映の条件 | [論理レビュー](../../docs/apply-request/review.md) | [反映の手順](merge.md) |
 | 対象ノードの変化 | [反映](../../docs/apply-request/README.md) | [反映の手順](merge.md) |
 | 値の計算 | [真偽値の伝播](../../docs/tree/propagation.md) | 下の「計算」 |
-| 着手できる作業 | [着手できる作業とイベント](../../docs/work/README.md) | 下の「計算」 |
+| 着手できる作業 | [着手できる作業](../../docs/work/README.md) | 下の「計算」 |
 | 作業の終わりの判定 | [作業の終わりの判定](../../docs/work/README.md) | 下の「計算」 |
 | 認可 | [役割](../../docs/roles/README.md) | 下の「認可」 |
 
@@ -69,11 +69,12 @@
 - 作業の終わりの判定
   - 根拠部分木を `tree/` から求め、上の着手できる作業のうち、根拠部分木にあるものを数える。
 
-## イベントと突き合わせ
+## 突き合わせ
 
-- バックエンドは、やりとりからのイベントと自分の反映を、[サーバの状態](ports/server-state.md) のイベントのログに記録する。
 - バックエンドは、定期的に突き合わせを行う。正本は `main` である。
   - `main` の first-parent の並びにあるコミットの `Logiforge-Apply-Request:` を読む。
-  - やりとりとイベントのログに記録されていない反映があれば、後から記録する。
+  - やりとりに記録されていない反映があれば、後から記録する。
     - 何度行っても、結果は同じになる。
-  - `Logiforge-Signature:` のないコミットは、反映の手順によらない変更として、API の応答とイベントで警告する（[記録の形式](../files/revisions.md)）。
+  - `Logiforge-Signature:` のないコミットは、反映の手順によらない変更として、API の応答で警告する（[記録の形式](../files/revisions.md)）。
+  - 前回の突き合わせのときの `main` が、今の `main` の祖先でなければ、force push として警告する。
+    - 前回の `main` は、[サーバの状態](ports/server-state.md) の突き合わせの状態に置く。

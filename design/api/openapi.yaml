@@ -217,10 +217,10 @@ paths:
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: そのノードに関わるイベント
+          description: そのノードのパスを変えた、main のコミットの一覧
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/EventPage' }
+              schema: { $ref: '#/components/schemas/NodeHistoryPage' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/apply-requests:
@@ -613,33 +613,6 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/events:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    get:
-      tags: [history]
-      operationId: listEvents
-      summary: イベントの一覧
-      description: epoch が今のイベントのログの世代と違うときは、cursor_expired を返す。
-      parameters:
-        - name: after
-          in: query
-          description: この seq より後のイベントだけを返す
-          schema: { type: integer, minimum: 0 }
-        - name: epoch
-          in: query
-          description: after を受け取ったときの、イベントのログの世代
-          schema: { type: string }
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/Limit'
-      responses:
-        '200':
-          description: イベントの一覧
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EventPage' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
 components:
   securitySchemes:
     bearerAuth:
@@ -757,8 +730,7 @@ components:
             too_large：ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた。
             repository_exists：同じ名前の repository がすでにある。
             repository_not_registered：その名前の repository が、サーバの設定に登録されていない。
-            cursor_expired：イベントのログが作り直されたため（サーバの再起動を含む）、その位置から読めない。最初から読み直す。
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, too_large, repository_exists, repository_not_registered, cursor_expired]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, too_large, repository_exists, repository_not_registered]
 
     Tree:
       type: object
@@ -1166,25 +1138,27 @@ components:
                   description: 回答と添付を入れたリビジョン。添付を読むときに指定する
                 answered_at: { type: string, format: date-time }
 
-    Event:
+    NodeHistoryEntry:
       type: object
-      required: [seq, kind, occurred_at]
+      required: [revision, committed_at, apply_request_id, session_ids, signed]
+      description: main のコミットの署名と trailer から作る（design/files/revisions.md）
       properties:
-        seq: { type: integer, minimum: 1 }
-        kind: { type: string }
-        subject_id: { type: string }
-        actor_session_id: { type: [string, 'null'] }
-        apply_request_id: { type: [string, 'null'] }
-        payload: { type: object }
-        occurred_at: { type: string, format: date-time }
-    EventPage:
+        revision: { $ref: '#/components/schemas/Revision' }
+        committed_at: { type: string, format: date-time }
+        apply_request_id:
+          type: [string, 'null']
+          description: 反映した apply request。最初のリビジョンと、反映によらないコミットでは null
+        session_ids:
+          type: array
+          items: { type: string }
+        signed:
+          type: boolean
+          description: false なら、反映の手順によらない変更である
+    NodeHistoryPage:
       type: object
-      required: [epoch, items, next_cursor]
+      required: [items, next_cursor]
       properties:
-        epoch:
-          type: string
-          description: イベントのログの世代。ログを作り直すと変わる
         items:
           type: array
-          items: { $ref: '#/components/schemas/Event' }
+          items: { $ref: '#/components/schemas/NodeHistoryEntry' }
         next_cursor: { $ref: '#/components/schemas/NextCursor' }
