@@ -29,19 +29,25 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 | `Logiforge-Record:` | 書くとき | ほかの trailer |
 |---|---|---|
 | `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:`、`Logiforge-Principal:`（提案を作った主体） |
-| `close` | 提案を close したとき | `Logiforge-Session-Id:`。理由は本文 |
-| `merge_failure` | 反映できなかったとき | `Logiforge-Merge-Failure:`（失敗の理由） |
+| `close` | 提案を close したとき | `Logiforge-Apply-Request:`、`Logiforge-Session-Id:`。理由は本文 |
+| `merge_failure` | 反映できなかったとき | `Logiforge-Apply-Request:`、`Logiforge-Merge-Failure:`（失敗の理由） |
 | `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Principal:`（起票した主体）、`Logiforge-Session-Id:`。依頼の本文は本文 |
 | `answer` | 回答を受け付けたとき | `Logiforge-Human-Request:`、`Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
 
 - `Logiforge-Principal:` は、API の要求を送った主体である。
   - なぜ：GitForge の上では、書き込み主体がすべてを書くので、提案を作った主体や reviewer が、GitForge の作者からはわからないから。反映の手順で、reviewer と提案を作った主体が同じかを確かめるのに使う（[反映の手順](../backend/merge.md)）。
 
+- 記録の識別子を確かめる。
+  - 1 つの pull request の、最初の `apply_request` の記録が、提案の識別子を決める。`close`、`merge_failure`、レビューの記録は、`Logiforge-Apply-Request:` がその識別子と合うものだけを数える。
+  - 1 つの issue の、最初の `human_request` の記録が、依頼の識別子を決める。`answer` の記録は、`Logiforge-Human-Request:` がその識別子と合うものだけを数える。
+  - 同じ場所で、記録の識別子（`apply_request`、`human_request`、`answer`、`Logiforge-Review-Id:`）が重なったら、最初のものだけを数え、残りは数えずに警告する。
 - 人への依頼の種類と対象ノードは、`human_request` の記録で決める。issue の本文とラベルは使わない。
 - 回答済みかどうかは、`answer` の記録があるかで決める。「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue を閉じる。issue の状態は、回答済みかの判定に使わない。
 - すべての記録のコメントの trailer の最後に、`Logiforge-Record-Mac:` を書く。
-  - 値は、`<鍵の ID>:<HMAC-SHA256>` である。HMAC は、本文とほかの trailer に対して求める。鍵は、バックエンドの設定に置く（[設定と秘密情報](README.md)）。
+  - 値は、`<鍵の ID>:<HMAC-SHA256>` である。HMAC は、記録を置いた場所（repository の gitforge_ref と、pull request か issue の番号）と、本文とほかの trailer に対して求める。鍵は、バックエンドの設定に置く（[設定と秘密情報](README.md)）。
+  - 読むときは、コメントが置かれた pull request か issue の番号で求める。
+  - なぜ：正しい記録を、ほかの pull request や issue に写して使い回せないようにするため（例：close の記録を写して closed にする、ほかの issue の回答を写す）。
   - `answer` の記録では、添付の sha256 の一覧（`Logiforge-Attachment:`）も、MAC に含む。そのため、添付を足したり差し替えたりすると、MAC が合わなくなる。
   - バックエンドは、読むたびに MAC を確かめる。合わない記録は数えず、警告する。
   - なぜ：編集されたかを、GitForge の `updated_at` に頼らずに見分けるため。添付を足すと `updated_at` が変わる GitForge がある。
@@ -59,6 +65,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - なぜ：pull request を作った書き込み主体は、その pull request を approve できない GitForge があるから。GitForge の approve の状態は、反映の条件に使わない。
 - レビューの本文の末尾に、次の trailer を書く。
   - `Logiforge-Record: review`
+  - `Logiforge-Apply-Request:`（提案の識別子）
   - `Logiforge-Review-Id:`（レビューの識別子）
   - `Logiforge-Review-Revision:`（レビューした版のコミット。GitForge のレビューの `commit_id` と同じ。違うものは数えない）
   - `Logiforge-Principal:`（reviewer の主体）
