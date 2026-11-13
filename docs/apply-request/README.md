@@ -38,18 +38,21 @@ apply request には、opener と reviewer がいる。
 ```mermaid
 stateDiagram-v2
   [*] --> open
-  open --> open: request_changes / opener の修正 / 反映の失敗
-  open --> merged: approve されて反映される
-  open --> closed: 却下 / 取り下げ（理由が必須）
+  open --> open: 更新
+  open --> merged: 反映
+  open --> closed: close
   merged --> [*]
   closed --> [*]
 ```
 
 - apply request の状態は、`open`、`merged`、`closed` の 3 つである。
+- `request_changes`、opener の修正、反映の失敗のときは、`open` のままである。
 - レビューの種類は、`approve`、`request_changes`、`comment` の 3 つである。
 - [反映の条件](review.md) を満たすと、apply request は反映される。
 - reviewer の却下と、opener の取り下げは、どちらも `closed` にする。
   - どちらの場合も、理由を書く。
+  - 取り下げは、差分を書いたいずれかのセッションが行う。
+  - 却下は、差分を書いたどのセッションとも別のセッションが行う。
 
 ## 反映
 

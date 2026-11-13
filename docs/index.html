@@ -47,33 +47,42 @@ ol.points li{margin:6px 0}
   <defs><marker id="m0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424a53"/></marker></defs>
   <style>.k1{font-size:14px;font-weight:700;fill:#1f2328}.k2{font-size:12px;fill:#59636e}.ka{stroke:#424a53;stroke-width:1.5;fill:none;marker-end:url(#m0)}.kl{font-size:11px;fill:#0969da}</style>
   <rect x="20" y="80" width="160" height="90" rx="10" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
-  <text class="k1" x="34" y="106">利用者（WebUI）</text><text class="k2" x="34" y="128">依頼・PVR の記入</text><text class="k2" x="34" y="148">根の主文の作成</text>
+  <text class="k1" x="34" y="130">利用者</text>
   <rect x="240" y="16" width="190" height="74" rx="10" fill="#fbefff" stroke="#8250df" stroke-width="1.5"/>
-  <text class="k1" x="254" y="42">opener</text><text class="k2" x="254" y="62">どのエージェントでも・人でも</text><text class="k2" x="254" y="80">分解と葉の検証</text>
+  <text class="k1" x="254" y="58">opener</text>
   <rect x="480" y="16" width="150" height="74" rx="10" fill="#fff" stroke="#424a53" stroke-width="1.5"/>
-  <text class="k1" x="494" y="42">apply request</text><text class="k2" x="494" y="62">操作をまとめた</text><text class="k2" x="494" y="80">変更の差分</text>
+  <text class="k1" x="494" y="58">apply request</text>
   <rect x="680" y="16" width="200" height="74" rx="10" fill="#ffeff7" stroke="#bf3989" stroke-width="1.5"/>
-  <text class="k1" x="694" y="42">reviewer</text><text class="k2" x="694" y="62">opener と別のセッション</text><text class="k2" x="694" y="80">論理と根拠を審査する</text>
+  <text class="k1" x="694" y="58">reviewer</text>
   <rect x="240" y="160" width="640" height="84" rx="10" fill="#e6f4ea" stroke="#1a7f37" stroke-width="1.5"/>
-  <text class="k1" x="256" y="186">正式な木 ＋ レポートと artifact ＋ 履歴（Logiforge）</text>
-  <text class="k2" x="256" y="208">ストーリー＝子仮説の AND、仮説＝子ストーリーの OR で、真偽を自動で計算する</text>
-  <text class="k2" x="256" y="228">着手できる作業の問い合わせと、webhook による通知を提供する</text>
+  <text class="k1" x="256" y="208">Logiforge</text>
+  
+  
   <path class="ka" d="M430,53 L478,53"/><path class="ka" d="M630,53 L678,53"/>
-  <path class="ka" d="M780,92 L780,158"/><text class="kl" x="788" y="130">承認で反映</text>
-  <path class="ka" d="M330,158 L330,92"/><text class="kl" x="338" y="130">着手できる作業</text>
-  <path class="ka" d="M182,104 L238,66" style="marker-start:url(#m0)"/><text class="kl" x="140" y="70">スレッド</text>
+  <path class="ka" d="M780,92 L780,158"/><text class="kl" x="788" y="130">反映</text>
+  <path class="ka" d="M330,158 L330,92"/><text class="kl" x="338" y="130">作業</text>
+  <path class="ka" d="M182,104 L238,66" style="marker-start:url(#m0)"/><text class="kl" x="120" y="70">人への依頼</text>
   <path class="ka" d="M182,150 L238,190"/><text class="kl" x="150" y="196">閲覧</text>
 </svg>
-<figcaption>エージェントや人は CLI で、利用者は WebUI で、同じ forge を使う。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/architecture/README.md">全体構成</a></figcaption>
+<figcaption>
+<ul>
+  <li>Logiforge は、木、レポートと artifact、履歴を持つ。</li>
+  <li>真偽は、ストーリーは子仮説の AND、仮説は子ストーリーの OR で、自動で計算する。</li>
+  <li>opener は、木の分解と葉の検証を行い、apply request を出す。どのエージェントでも、人でもよい。</li>
+  <li>reviewer は、差分を書いたのとは別のセッションで、論理と根拠を審査する。承認されると反映される。</li>
+  <li>利用者は、repository を作って根の主文を書き、人への依頼に回答する。</li>
+  <li>エージェントや人は CLI で、利用者は WebUI で、同じ Logiforge を使う。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/architecture/README.md">全体構成</a></li>
+</ul>
+</figcaption>
 </figure>
 
 <h2 id="points">3 分でわかる要点</h2>
 <ol class="points">
   <li>究極の問いを根にして、仮説とストーリーが交互に並ぶ木を作る。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md">仮説とストーリーの木</a></li>
   <li>値を入れるのは、葉の仮説の検証結果だけ。上位の値は、すべて自動で計算する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/propagation.md">真偽値の伝播</a></li>
-  <li>木への変更は、すべて apply request を通す。opener とは別のセッションの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
+  <li>木への変更は、すべて apply request を通す。差分を書いたのとは別のセッションの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
   <li>偽が出ても、親の仮説は自動では棄却しない。別のストーリーを探す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/falsification.md">仮説が偽になったとき</a></li>
-  <li>作業は「着手できる作業」の問い合わせで見つけ、ループは外の仕組みで回す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md">着手できる作業と通知</a></li>
+  <li>作業は「着手できる作業」の問い合わせで見つけ、ループは外の仕組みで回す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md">着手できる作業</a></li>
 </ol>
 
 <h2 id="pages">ページ</h2>

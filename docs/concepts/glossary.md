@@ -5,6 +5,7 @@
 
 ## 木
 
+- repository：1 つの問い（根の仮説）とその木を収める単位。データストアの 1 つの git リポジトリに対応する（GitHub アダプタでは 1 つの GitHub リポジトリ）。→ [仮説とストーリーの木](../tree/README.md)
 - 仮説 → [仮説とストーリーの木](../tree/README.md)
 - ストーリー → [仮説とストーリーの木](../tree/README.md)
 - 親・子・孫 → [仮説とストーリーの木](../tree/README.md)
@@ -21,8 +22,9 @@
 
 - apply request → [apply request](../apply-request/README.md)
 - 論理レビュー、反映の条件、レビューの材料 → [論理レビュー](../apply-request/review.md)
-- スレッド、返信待ち、PVR（物理検証リクエスト）→ [スレッド](../threads/README.md)
-- 着手できる作業、通知 → [着手できる作業と通知](../work/README.md)
+- 人への依頼（human request）→ [人への依頼](../human-requests/README.md)
+- PVR（物理検証リクエスト。種類が `pvr` の人への依頼）→ [人への依頼](../human-requests/README.md)
+- 着手できる作業 → [着手できる作業](../work/README.md)
 
 ## 主体
 

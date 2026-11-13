@@ -10,11 +10,13 @@ flowchart TB
   R["reviewer"] -- CLI --> S
   U["利用者"] -- WebUI --> S
   subgraph S["forge"]
-    T["構造化された木、apply request、スレッド"]
-    F["ファイルと artifact"]
+    T1["木"]
+    T2["apply request"]
+    T3["人への依頼"]
+    F["artifact"]
     L["履歴"]
   end
-  S -- webhook --> X["外の仕組み（ループ）"]
+  X["外の仕組み"] -- 問い合わせ --> S
 ```
 
 - [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。
@@ -23,12 +25,21 @@ flowchart TB
   - 構造化された木を、規則付きで管理する。
   - ファイルと artifact を保存する（[artifact](../tree/verdict.md)）。
   - 履歴を残す。
-- 作業のループは、forge の外の仕組みで回す（[着手できる作業と通知](../work/README.md)）。
+- 作業のループは、forge の外の仕組みで回す（[着手できる作業](../work/README.md)）。
+
+## 木の置き場所
+
+- 木（仮説・ストーリー・検証結果・レポート）は、git リポジトリで管理する。
+  - なぜ：既存の git の道具（clone、diff、履歴）で、状態を扱えるようにするため。
+- GitHub を使うかどうかは、選べる。
 
 ## 監査
 
 - すべての変更を履歴に残す。
-- 履歴には、誰が、いつ、どの apply request で変えたかを記録する。
+- 誰が、いつ、何をしたかは、監査のための記録を新しく作らず、すでにある記録から辿る。
+  - 木の変更：`main` のコミット。誰が、いつ、どの apply request で変えたかを、コミットに記録する。
+  - apply request、レビュー、人への依頼：GitHub を使う構成では、pull request と issue の履歴。使わない構成では、forge が持つやりとりの記録。
+  - なぜ：同じことを 2 か所に記録すると、食い違ったときにどちらが正しいか決まらないから。
 - 履歴は append-only にする。
   - 書き換えも削除もしない。
 - ノードごとの履歴を表示できる。
@@ -37,6 +48,7 @@ flowchart TB
 ## 再現性
 
 - 検証の再現に要るものは、[artifact](../tree/verdict.md) と [引用](../tree/verdict.md) の決まりで残す。
+- リンクの artifact の参照先が消えたり変わったりするリスクは、利用者の責任とする。sha256 を書いておけば、変化を検出できる。
 
 ## 並行性
 

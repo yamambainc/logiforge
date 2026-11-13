@@ -19,14 +19,12 @@ Logiforge が何を満たすかを確かめるときに読む。
 9. [論理レビュー](apply-request/review.md)
 10. [論理レビューの審査観点](apply-request/review-criteria.md)
 11. [役割](roles/README.md)
-12. [着手できる作業と通知](work/README.md)
-13. [スレッド（依頼と PVR）](threads/README.md)
+12. [着手できる作業](work/README.md)
+13. [人への依頼（PVR と判断の依頼）](human-requests/README.md)
 14. [CLI](cli/README.md)
 15. [WebUI](webui/README.md)
 16. [全体構成](architecture/README.md)
 
 ## 仕様の外にあるもの
 
-- 決まっていない論点は、このリポジトリの GitHub issue で扱う。
-- 設計の出発点にする案は、[memo/](../memo/README.md) に置く。
-  - memo/ は仕様ではない。
+- 決まっていない論点は、この GitHub リポジトリの issue で扱う。
