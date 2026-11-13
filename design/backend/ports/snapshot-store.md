@@ -6,14 +6,22 @@
 
 | キー | 中身 | 変わるか |
 |---|---|---|
-| `<repository>/commits/<SHA>` | スナップショットのコミットの記録 | 変わらない |
-| `<repository>/snapshots/<SHA>` | スナップショットの木（`main`）か差分（ブランチ） | 変わらない |
-| `<repository>/artifacts/<sha256>` | artifact のファイルの中身 | 変わらない |
-| `<repository>/latest` | 今の `main` の SHA（[latest](../snapshot.md)） | 変わる |
-| `<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md)）。git から作り直せないので、バックアップを取る。ブランチの名前は、パスとしてエスケープする（`/` を `%2F` に） | 変わる |
-| `repositories` | `latest` がある repository の名前の一覧 | 変わる |
+| `v<版>/<repository>/commits/<SHA>` | スナップショットのコミットの記録 | 変わらない |
+| `v<版>/<repository>/snapshots/<SHA>` | スナップショットの木（`main`）か差分（ブランチ） | 変わらない |
+| `v<版>/<repository>/latest` | 今の `main` の SHA（[latest](../snapshot.md)） | 変わる |
+| `v<版>/repositories` | `latest` がある repository の名前の一覧 | 変わる |
+| `keep/<repository>/artifacts/<sha256>` | artifact のファイルの中身 | 変わらない |
+| `keep/<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md)）。ブランチの名前は、パスとしてエスケープする（`/` を `%2F` に） | 変わる |
+| `keep/<repository>/branch-index` | 履歴のあるブランチの名前の一覧。消えたブランチを見つけるのに使う | 変わる |
 
-- `commits` と `snapshots` は、形の版（`format_version`）を持つ。worker は、木を先に置き、コミットの記録をあとに置く。コミットの記録があれば、木もある。
+- git から作り直せるものは、形の版の接頭辞（`v<版>/`）の下に置く。
+  - 形の版（`format_version`）が変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は、消さずに残す。
+  - なぜ：形の違うスナップショットを、同じキーで混ぜないため。作り直せるので、移す必要がない。
+- 作り直せないもの（ブランチの履歴と、その一覧）と、形を持たないもの（artifact の中身）は、版の外の `keep/` に置く。
+  - ブランチの履歴は、git から作り直せないので、バックアップを取る。形を変えるときは、読めるように移す。
+- 置き場の直下には、`v<版>/` と `keep/` だけを置く。なぜ：repository の名前（`v4` など）と、ぶつからないようにするため。
+- worker は、木を先に置き、コミットの記録をあとに置く。コミットの記録があれば、木もある。
+- `latest`、ブランチの履歴、ブランチの名前の一覧は、条件付きで書く（読んだときの値のときだけ書く）。静的ファイルストレージでは、ETag と `If-Match`（ないときは `If-None-Match: *`）で書く。
 - ブランチの名前をエスケープするのは、`a` と `a/b` が、ファイルとディレクトリでぶつからないようにするため。
 
 ## 操作
