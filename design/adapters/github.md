@@ -25,7 +25,7 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 
 GitHub に固有のところだけを書く。
 
-| やりとりの操作 | GitHub での実装 |
+| GitForge のポートの操作 | GitHub での実装 |
 |---|---|
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
 | repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |

@@ -19,8 +19,8 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | 使う者 | 使い方 | 数える上限 |
 |---|---|---|
 | バックエンド（認証） | 要求ごとに、主体のトークンで、主体、team の所属、リポジトリの権限を確かめる | 主体ごとの上限 |
-| バックエンド（やりとりの読み） | 要求ごとに、REST で、PR、レビュー、issue、コメントを読む | App の REST の上限 |
-| バックエンド（やりとりの書き込み） | REST で、repository の用意、PR の作成・merge・close、レビュー、issue、コメントを書く | App の REST の上限 |
+| バックエンド（GitForge のポートの読み） | 要求ごとに、REST で、PR、レビュー、issue、コメントを読む | App の REST の上限 |
+| バックエンド（GitForge のポートの書き込み） | REST で、repository の用意、PR の作成・merge・close、レビュー、issue、コメントを書く | App の REST の上限 |
 | worker | `git ls-remote` と `git fetch` だけ | API の上限に数えない |
 
 - バックエンドは、読んだ結果を保持しない（[状態を持たない](../backend/README.md)）。

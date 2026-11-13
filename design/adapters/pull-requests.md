@@ -5,7 +5,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 ## 対応
 
-| やりとりの操作 | 実装 |
+| GitForge のポートの操作 | 実装 |
 |---|---|
 | 提案 | 利用者のブランチから `main` への pull request。書き込み主体が作る |
 | 提案の記録（識別子と、作ったときの先頭） | 書き込み主体が、pull request を作った直後に書く最初のコメント |
@@ -36,7 +36,8 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 - 回答済みかどうかは、`answer` の記録があるかで決める。「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue を閉じる。issue の状態は、回答済みかの判定に使わない。
 - すべての記録のコメントの trailer の最後に、`Logiforge-Record-Mac:` を書く。
-  - 値は、本文とほかの trailer に対する HMAC-SHA256 である。鍵は、バックエンドの設定に置く（[設定と秘密情報](README.md)）。
+  - 値は、`<鍵の ID>:<HMAC-SHA256>` である。HMAC は、本文とほかの trailer に対して求める。鍵は、バックエンドの設定に置く（[設定と秘密情報](README.md)）。
+  - `answer` の記録では、添付の sha256 の一覧（`Logiforge-Attachment:`）も、MAC に含む。そのため、添付を足したり差し替えたりすると、MAC が合わなくなる。
   - バックエンドは、読むたびに MAC を確かめる。合わない記録は数えず、警告する。
   - なぜ：編集されたかを、GitForge の `updated_at` に頼らずに見分けるため。添付を足すと `updated_at` が変わる GitForge がある。
 - 回答の添付は、`answer` の記録に書いた sha256 で守る。添付を読むときに sha256 を確かめ、合わなければ返さずに警告する。

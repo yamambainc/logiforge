@@ -60,9 +60,9 @@ flowchart TB
 - worker は、どちらの構成でも同じ実装である。リモートの URL と認証情報だけが違う。worker は git を読み、置き場に書く。
 - 置き場を読むのは、スナップショットの置き場のアダプタ（バックエンド）である。
 - git に書くのは、GitHub アダプタか Forgejo アダプタが、GitForge の API で行う repository の用意と pull request の merge だけである。
-- やりとりと認証は、同じアダプタが実装する。
+- GitForge と認証のポートは、同じアダプタが実装する。
   - なぜ：どちらの正本も、同じ GitForge にあるから。
-- GitHub で PR（pull request）や issue としてやりとりを見たいなら、GitHub を使う構成にする。
+- GitHub の PR（pull request）や issue として、apply request や人への依頼を見たいなら、GitHub を使う構成にする。
 - GitHub を使わずに動かしたいなら、Forgejo を使う構成にする（[Forgejo アダプタ](forgejo.md)）。
 - GitHub を使う構成は、複数人で使い、バックエンドを何台か並べることを想定する。そのため、置き場を、どのプロセスからも読める静的ファイルストレージにする。
 - Forgejo を使う構成は、1 台のマシンで使うことを想定する。Forgejo、worker、バックエンドの 3 つのプロセスを動かし、置き場を手元のディレクトリにする。
@@ -104,6 +104,8 @@ repository の名前の正本は、構成ごとに次のとおりである。
 
 - 構成（GitHub を使う / Forgejo を使う）
 - 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
+  - 鍵は、バックアップを取る。鍵を失うと、それまでのすべての記録の MAC が確かめられず、すべて数えない記録になる。
+  - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
 - worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
 - GitHub を使う構成だけ

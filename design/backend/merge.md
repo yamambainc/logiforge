@@ -20,7 +20,7 @@ apply request を main に反映するとき、バックエンドが何を確か
 4. GitForge の pull request の squash merge を、版のコミットの SHA を指定して呼ぶ。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. worker を起こし、`latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
-6. 手順 1〜4 で反映できなければ、失敗の理由をやりとりに記録する。apply request は open のまま残る。
+6. 手順 1〜4 で反映できなければ、失敗の理由を GitForge に記録する。apply request は open のまま残る。
 
 - reviewer の主体が、pull request を作った主体と同じなら、反映はするが、レビューの応答と apply request に警告を付ける。
   - なぜ：セッションは自己申告なので、同じ主体による書き込みとレビューは、確かめられないから（[保証の範囲](../../docs/apply-request/review.md)）。

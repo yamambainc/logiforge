@@ -891,6 +891,10 @@ components:
         citations:
           type: array
           items: { $ref: '#/components/schemas/Citation' }
+        supersedes:
+          type: array
+          description: この検証結果が差し替えた検証結果の識別子
+          items: { type: string, pattern: '^v-' }
         apply_request_id: { type: string, pattern: '^apr_' }
         submitted_revision: { $ref: '#/components/schemas/Revision' }
         superseded_revision:
@@ -1007,6 +1011,10 @@ components:
           description: 仮説の識別子か、同じ apply request で作る仮説の ref
         value: { type: boolean }
         report_body: { type: string, minLength: 1 }
+        supersedes:
+          type: array
+          description: 差し替える、同じ仮説の有効な検証結果の識別子。まとめて差し替えられる
+          items: { type: string, pattern: '^v-' }
         artifacts:
           type: array
           items: { $ref: '#/components/schemas/Artifact' }
