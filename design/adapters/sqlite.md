@@ -1,12 +1,13 @@
 # SQLite アダプタ
 
-[サーバの状態](../backend/ports/server-state.md) のポートを、SQLite でどう実装するかを確かめるときに読む。
+GitHub を使わない構成で、[サーバの状態](../backend/ports/server-state.md) と [認証](../backend/ports/authentication.md) のポートを、SQLite でどう実装するかを確かめるときに読む。
 
 ## 選んだ理由
 
-- サーバの状態の既定は、SQLite とする。
-  - なぜ：反映は repository ごとに直列に行い、書き込みが少ないので、1 本の書き込みで足りるから。
-- 独自プロバイダを使うときは、そのテーブルも同じ SQLite ファイルに置く（[独自プロバイダ](native.md)）。
+- GitHub を使わない構成では、認証の主体とトークンという正本を、サーバが持つ。
+  - そのため、サーバの状態もメモリではなく、同じ SQLite ファイルに置く。
+- 反映は repository ごとに直列に行い、書き込みが少ないので、1 本の書き込みで足りる。
+- 独自プロバイダのテーブルも、同じ SQLite ファイルに置く（[独自プロバイダ](native.md)）。
 
 ## event
 
@@ -34,13 +35,14 @@
 
 ## 認証
 
-GitHub を使わない構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。
+[認証](../backend/ports/authentication.md) のポートは、次のテーブルで実装する。
 
 | テーブル | 列 |
 |---|---|
 | `principal` | `principal_id`、`kind`（`user` / `client`） |
 | `token` | `token_hash`、`principal_id`、`created_at` |
 
-- この 2 つのテーブルは正本である（[構成ごとの正本](../backend/ports/server-state.md)）。
+- この 2 つのテーブルは正本である（[組み合わせ](README.md)）。
+- 主体の種類（`kind`）は、管理者が主体ごとに決める。
 - トークンは、ハッシュだけを持つ。
 - GitHub を使わない構成では、すべての主体が、すべての repository を読める。

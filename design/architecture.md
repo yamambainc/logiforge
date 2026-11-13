@@ -24,12 +24,11 @@ flowchart TB
   subgraph GHC["GitHub を使う構成"]
     GA["git（GitHub）"]
     GHA["GitHub アダプタ"]
+    GM["メモリのキャッシュ"]
   end
   subgraph NC["GitHub を使わない構成"]
     BA["git（bare）"]
     NA["独自プロバイダ"]
-  end
-  subgraph COM["共通"]
     SQ["SQLite"]
   end
   CL --> API
@@ -37,15 +36,11 @@ flowchart TB
   RULE --> PT
   GHC -.->|実装| PT
   NC -.->|実装| PT
-  COM -.->|実装| PT
 ```
 
 - 実線の矢印は呼び出し、点線の矢印は実装（アダプタがポートを実装する）を表す。
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
-- SQLite の役割は 2 つある。
-  - 1 つ目は、サーバの状態（両方の構成で使う）。
-  - 2 つ目は、独自プロバイダのテーブル（GitHub を使わない構成だけで使う）。
-  - どちらも、同じ SQLite ファイルにテーブルを分けて置く（[組み合わせ](adapters/README.md)）。
+- SQLite は、GitHub を使わない構成だけで使う（[組み合わせ](adapters/README.md)）。
 
 ## レイヤー
 
@@ -54,7 +49,7 @@ flowchart TB
   - API：[API](api/README.md)
   - ルール：[バックエンド](backend/README.md)、反映の流れは [反映の手順](backend/merge.md)
   - ポート：[ポート](backend/ports/README.md)
-- **アダプタ**：ポートを実装する。GitHub を使う構成、使わない構成、共通のものがある（[アダプタ](adapters/README.md)）。
+- **アダプタ**：ポートを実装する。GitHub を使う構成のものと、使わない構成のものがある（[アダプタ](adapters/README.md)）。
 - **データストア**：アダプタが読み書きする先。アダプタの名前に含まれるので、図では省いた（[組み合わせ](adapters/README.md)）。
 
 ## このレイヤー構造にした理由
@@ -72,8 +67,9 @@ flowchart TB
   - なぜ：木を git リポジトリで管理するという要件（[木の置き場所](../docs/architecture/README.md)）を満たし、変更の履歴と任意の時点の木を、git の仕組みでそのまま扱うため。
 - 認証も、ポートにする（[認証](backend/ports/authentication.md)）。
   - なぜ：GitHub を使う構成では GitHub に任せ、使わない構成ではサーバが持つ、という違いを、アダプタの差し替えだけで吸収するため。
-- SQLite は、どちらの構成でも共通に使う。
-  - なぜ：構成によって変わらない部分を、1 つの実装にまとめるため。
+- 主体の正本は、GitHub を使う構成では GitHub に、使わない構成ではサーバにある。
+  - そのため、GitHub を使う構成では、サーバに正本を持たない。サーバの状態は、メモリのキャッシュで足りる。
+  - GitHub を使わない構成では、サーバの状態・認証・独自プロバイダを、同じ SQLite ファイルに置く。
 
 ## 起動時の組み立て
 

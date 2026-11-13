@@ -27,10 +27,12 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
   - 親は、そのときの `main` である。
   - 回答の本文は、回答のファイルとして `artifacts/sha256/` に入れる。
   - 添付の小さなファイルも、`artifacts/sha256/` に入れる。大きな添付は、`link` にする。
-  - リビジョンは、[木の読み書き](../backend/ports/tree-read-write.md) の「リビジョンを作る」で作る。
-- [やりとり](../backend/ports/interaction.md) には、回答の本文と、このリビジョンを記録する。
+  - リビジョンは、[木の読み書き](../backend/ports/tree-read-write.md) の「リビジョンを作る」で作り、署名を付ける（[記録の形式](revisions.md)）。
+- 回答のリビジョンの正本は、人への依頼の識別子から求める名前である（[名前を付けたリビジョン](../adapters/git.md)）。
+- [やりとり](../backend/ports/interaction.md) には、回答の本文と、回答した利用者だけを記録する。
 - なぜ：GitHub の API では issue のコメントにファイルを添付できず、独自プロバイダにファイルの置き場所を足すと仕組みが増えるため。版と同じ仕組みで済ませる。
 - opener が `verdict.submit` で回答のファイルを引用すると、バックエンドは、回答のリビジョンから回答のファイルと添付を、版の差分に加える。
+  - 加える前に、回答のリビジョンの署名を確かめる。
 
 回答のファイルの front matter は、次のとおり。
 

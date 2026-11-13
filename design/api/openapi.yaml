@@ -620,12 +620,16 @@ paths:
       tags: [history]
       operationId: listEvents
       summary: イベントの一覧
-      description: イベントのログが作り直されて after の位置から読めないときは、cursor_expired を返す。
+      description: epoch が今のイベントのログの世代と違うときは、cursor_expired を返す。
       parameters:
         - name: after
           in: query
           description: この seq より後のイベントだけを返す
           schema: { type: integer, minimum: 0 }
+        - name: epoch
+          in: query
+          description: after を受け取ったときの、イベントのログの世代
+          schema: { type: string }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -753,7 +757,7 @@ components:
             too_large：ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた。
             repository_exists：同じ名前の repository がすでにある。
             repository_not_registered：その名前の repository が、サーバの設定に登録されていない。
-            cursor_expired：イベントのログが作り直されたため、その位置から読めない。最初から読み直す。
+            cursor_expired：イベントのログが作り直されたため（サーバの再起動を含む）、その位置から読めない。最初から読み直す。
           enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, too_large, repository_exists, repository_not_registered, cursor_expired]
 
     Tree:
@@ -1175,8 +1179,11 @@ components:
         occurred_at: { type: string, format: date-time }
     EventPage:
       type: object
-      required: [items, next_cursor]
+      required: [epoch, items, next_cursor]
       properties:
+        epoch:
+          type: string
+          description: イベントのログの世代。ログを作り直すと変わる
         items:
           type: array
           items: { $ref: '#/components/schemas/Event' }

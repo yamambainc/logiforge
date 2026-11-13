@@ -21,7 +21,8 @@
 | 変更を列挙する | `git log <a>..<b> --first-parent -- <パス>` |
 | 共通の祖先を求める | `git merge-base <a> <b>` |
 | リビジョンの並びを読む | `git rev-list --first-parent --reverse main` |
-| リビジョンを作る | `git commit-tree` で作り、`refs/logiforge/` の下の ref（git のブランチなどの参照）に置く |
+| リビジョンを作る | `git commit-tree` で作り、`refs/logiforge/` の下の ref（git のブランチなどの参照）に、名前で置く |
+| 名前でリビジョンを読む | `git rev-parse refs/logiforge/<名前>` |
 | main を進める | 下の「main を進める」 |
 
 ## main を進める
@@ -32,7 +33,7 @@
   - 新しいコミットの親は、期待する親である。
   - そのため、`main` が動いていれば fast-forward にならず、GitHub が拒む。
 
-## 版のブランチ
+## 名前を付けたリビジョン
 
 - 版のコミットは、`refs/logiforge/apply-requests/<識別子>` に置く。
 - 人への依頼の回答のコミットは、`refs/logiforge/human-requests/<識別子>` に置く（[artifact の置き方](../files/artifacts.md)）。

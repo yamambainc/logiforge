@@ -7,7 +7,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 ## 置き場所
 
 - 提案・レビュー・人への依頼は、SQLite に置く。
-  - ファイルは、[サーバの状態](sqlite.md) と同じ SQLite ファイルにする。テーブルは分ける。
+  - ファイルは、[SQLite アダプタ](sqlite.md) と同じ SQLite ファイルにする。テーブルは分ける。
   - なぜ：論理的には別のポートだが、置き場所を 1 つにすると運用が単純になるから。
 - 作った行は変えない。
   - 例外は、`apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋めることである。
@@ -63,7 +63,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 | テーブル | 列 |
 |---|---|
 | `human_request` | `id`（`hrq_` と ULID）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
-| `human_request_answer` | `human_request_id`（主キー）、`body`、`revision`、`answered_by_principal_id`、`answered_at` |
+| `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at` |
 
 - `human_request_answer` の主キーで、回答を 1 回だけにする。
 - 人への依頼の状態は保存しない。回答の行があれば `answered` である。

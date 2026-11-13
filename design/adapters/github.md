@@ -62,13 +62,17 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 
 - 主体は、GitHub のアカウント（人）と、GitHub App または機械用アカウント（エージェント、外の仕組み）である。
 - API は GitHub のトークンを受け取り、GitHub に問い合わせて主体を確かめる。
-- 主体の種類は、トークンの出どころで決める。
-  - WebUI のログインに使う GitHub の OAuth App が発行したトークンなら、`user` である。
-  - それ以外の GitHub のトークン（gh の CLI のトークン、App のトークンなど）なら、`client` である。
+- 利用者は、WebUI で、書き込み主体と同じ GitHub App のユーザー認可（user-to-server トークン）でログインする。OAuth App は使わない。
+- 主体の種類は、管理者が主体ごとに決める。
+  - `user` とみなすのは、user-to-server トークンを持ち、かつ管理者がサーバの設定に登録した人（GitHub のアカウント名か、organization の team）だけである。
+  - それ以外の主体（gh の CLI のトークン、App のトークンなど）は、`client` である。
+- トークンを確かめた結果は、5 分だけキャッシュする。
+  - なぜ：要求ごとに GitHub に問い合わせると、GitHub の API のレート制限に当たるから。
+  - なぜ 5 分：権限や登録を外したことが、遅くとも 5 分で効くようにするため。
 - repository を読めるかは、GitHub リポジトリの権限で確かめる。
   - 書き込み主体（App）以外の主体には、read だけを与える（下の「main への書き込みを守る」）。
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
-- そのため、この構成では、サーバの SQLite ファイルに正本が残らない（[構成ごとの正本](../backend/ports/server-state.md)）。
+- そのため、この構成では、サーバに正本が残らない（[組み合わせ](README.md)）。
 
 ## コメントとレビューの書き方
 
@@ -83,7 +87,6 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - 人への依頼の issue の本文の先頭に、対象ノードの識別子を書く。
 - 「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue に `logiforge/answered` ラベルを付けて閉じる。
-- 回答のコメントの末尾に、回答のリビジョンを `Logiforge-Answer-Revision:` の trailer で書く（[artifact の置き方](../files/artifacts.md)）。
 
 ## main への書き込みを守る
 

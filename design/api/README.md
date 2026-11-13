@@ -16,8 +16,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 ## 認証
 
 - リクエストは、`Authorization: Bearer <トークン>` で主体を示す。
-  - GitHub を使う構成では、GitHub のトークンを使う。
-  - GitHub を使わない構成では、サーバが発行したトークンを使う。
+  - トークンの発行元は、構成による（[GitHub アダプタ](../adapters/github.md)、[SQLite アダプタ](../adapters/sqlite.md)）。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
@@ -61,6 +60,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - ファイルの中身は、`verdict.submit` の操作と回答の要求に、base64（バイナリを文字列にする符号化）で含めて送る。
   - なぜ：アップロードの API と置き場所を、別に持たずに済むから（[artifact の置き方](../files/artifacts.md)）。
 - 1 回の要求の本文は、32 MiB までにする。
+  - apply request の作成と更新、人への依頼への回答の、どれにも当てはまる。
   - なぜ：上限（10 MiB）のファイルを base64（約 1.33 倍）にして 2 つ送れ、1 回の HTTP の要求で途中で切れずに送り切れる大きさだから。
   - それより多くのファイルは、apply request を分けて出す。
 
@@ -72,6 +72,13 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
   - サーバの状態を作り直したあとは、それより前の要求を見分けられない。
   - なぜ：通信が切れて送り直しても、apply request や人への依頼が二重にできないようにするため。
   - 24 時間は、クライアントが送り直す最も長い間隔として見込んだ値である。
+
+## イベントの世代
+
+- イベントの一覧の応答には、イベントのログの世代（`epoch`）を含める。
+- クライアントは、次に読むとき、`after` と一緒に、前に受け取った `epoch` を送る。
+- `epoch` が今の世代と違えば、`cursor_expired` を返す。クライアントは、最初から読み直す。
+  - なぜ：ログを作り直すと、同じ番号が別のイベントを指すことがあるから（[サーバの状態](../backend/ports/server-state.md)）。
 
 ## ページング
 
