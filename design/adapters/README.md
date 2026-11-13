@@ -85,11 +85,11 @@ repository の名前の正本は、構成ごとに次のとおりである。
 
 - GitHub を使う構成：サーバの設定（repository の名前と `owner/name` の組）
   - 管理者が GitHub リポジトリを作り、書き込み主体を入れて、この組を登録する（[GitHub アダプタ](github.md)）。
-  - provider_ref は `owner/name` である。
+  - gitforge_ref は `owner/name` である。
   - 設定に登録されていない名前では、repository を作れない（`repository_not_registered`）。
 - Forgejo を使う構成：設定した organization の、Forgejo の repository の一覧
   - 利用者が作るときに、バックエンドが Forgejo に repository を作る（[Forgejo アダプタ](forgejo.md)）。
-  - provider_ref は、`<organization>/<名前>` である。
+  - gitforge_ref は、`<organization>/<名前>` である。
   - 管理者の登録は要らない。そのため、`repository_not_registered` は起きない。
 
 - 利用者は、名前と根の主文だけで repository を作る。

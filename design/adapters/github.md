@@ -27,7 +27,7 @@ GitHub に固有のところだけを書く。
 
 | GitForge のポートの操作 | GitHub での実装 |
 |---|---|
-| repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
+| repository | GitHub リポジトリ（1 つの repository に 1 つ）。gitforge_ref は `owner/name` |
 | repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
 | 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（版のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
 | レビュー | `event=COMMENT` の pull request review |

@@ -26,7 +26,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 | GitForge のポートの操作 | Forgejo での実装 |
 |---|---|
-| repository | 設定した organization の repository。provider_ref は `<organization>/<名前>` |
+| repository | 設定した organization の repository。gitforge_ref は `<organization>/<名前>` |
 | repository を列挙する | `GET /orgs/{org}/repos` |
 | repository を用意する | 下の「repository の用意」 |
 | 提案を作る | `POST /repos/{owner}/{repo}/pulls` |

@@ -8,11 +8,11 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 
 ## repository
 
-- repository を列挙する。名前と provider_ref の組を返す。
-- 名前から provider_ref を求める。
+- repository を列挙する。名前と gitforge_ref の組を返す。
+- 名前から gitforge_ref を求める。
 - repository を用意する。git リポジトリを作り（作れる GitForge だけ）、根の仮説を入れた最初のコミットを `main` に置く。
   - `main` がすでにあれば、そのことがわかる形で失敗する（[repository の用意](../README.md)）。
-  - バックエンドは、provider_ref と、最初のコミットに入れるファイルを渡す。
+  - バックエンドは、gitforge_ref と、最初のコミットに入れるファイルを渡す。
 - ほかの操作は、どれも repository を指定して行う。
 
 ## 提案
