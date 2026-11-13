@@ -49,6 +49,7 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
     - GitHub が `refs/logiforge/` の下への push を受け付けるか
     - `git ls-remote` と `git fetch` で、`refs/logiforge/` の下を読めるか
     - `git push --atomic` を受け付けるか（[ref を書く](git.md)）
+    - `refs/logiforge/` を、GitHub のルールセットで守れるか。守れないなら、worker が書き換えを見つけて警告する（版の記録の署名が正しくない ref を、ref の一覧で印を付ける）
 
 ## repository を用意する
 
