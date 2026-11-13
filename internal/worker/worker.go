@@ -168,6 +168,7 @@ func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	if err != nil {
 		return err
 	}
+	// 前に取ってきた先頭と違うときだけ、fetch する。
 	old, err := g.LocalHeads(ctx)
 	if err != nil {
 		return err
@@ -187,7 +188,7 @@ func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 			return fmt.Errorf("main: %w", err)
 		}
 	}
-	// ブランチ。消えたブランチは、前に取ってきた先頭（old）にあって、今の先頭（heads）にないものである。
+	// ブランチ。
 	names := make([]string, 0, len(heads))
 	for name := range heads {
 		if name != "main" {

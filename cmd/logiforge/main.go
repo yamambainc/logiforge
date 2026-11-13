@@ -89,7 +89,8 @@ func runWorker(ctx context.Context) error {
 		interval = d
 	}
 	// worker は 1 つだけ動かす。ほかの worker が同じディレクトリで動いていれば、起動しない。
-	release, err := worker.Lock(cfg.dir)
+	// 置き場が手元のディレクトリなので、置き場の根にもロックを取る。
+	release, err := worker.LockAll(cfg.dir, cfg.storeDir)
 	if err != nil {
 		return err
 	}

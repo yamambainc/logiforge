@@ -340,6 +340,16 @@ func TestSecondWorkerDoesNotStart(t *testing.T) {
 		t.Fatalf("2 つ目の worker が起動した：%v", err)
 	}
 	release()
+	// 置き場の根を共有する worker も、起動しない。
+	storeDir := t.TempDir()
+	r1, err := LockAll(t.TempDir(), storeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LockAll(t.TempDir(), storeDir); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("置き場を共有する worker が起動した：%v", err)
+	}
+	r1()
 	again, err := Lock(dir)
 	if err != nil {
 		t.Fatalf("止まったあとに起動できない：%v", err)

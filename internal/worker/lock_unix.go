@@ -10,9 +10,6 @@ import (
 	"syscall"
 )
 
-// ErrAlreadyRunning は、ほかの worker が、同じディレクトリで動いていることを表す。
-var ErrAlreadyRunning = errors.New("worker: ほかの worker が動いている")
-
 // Lock は、clone のディレクトリに排他のロックファイルを取る。取れなければ ErrAlreadyRunning を返す。
 // worker は 1 つだけ動かす（design/backend/worker.md）。起動のときに呼び、止まるまで持ち続ける。
 func Lock(dir string) (release func(), err error) {
