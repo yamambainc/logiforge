@@ -55,11 +55,20 @@ type ApplyRequest struct {
 	Opener       string
 	CloseReason  string
 	CloseSession string
-	// MergeFailures は、反映の失敗の理由の記録である（古い順）。
-	MergeFailures []string
+	// MergeFailures は、反映の失敗の記録である（古い順）。
+	MergeFailures []MergeFailure
 	CreatedAt     time.Time
 	// Warnings は、数えなかった記録（MAC が合わない、など）である。
 	Warnings []string
+}
+
+// MergeFailure は、反映の失敗の記録である。
+type MergeFailure struct {
+	// Revision は、反映しようとした版のコミット。
+	Revision string
+	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending のどれか。
+	Reason string
+	Detail string
 }
 
 // NewApplyRequest は、提案を作るときに渡すものである。
@@ -160,6 +169,8 @@ type NewAttachment struct {
 type GitForge interface {
 	ListRepositories(ctx context.Context) ([]Repository, error)
 	GitForgeRef(ctx context.Context, name string) (string, error)
+	// GitURL は、gitforge_ref から、クライアントが clone と push に使う git の URL を返す。
+	GitURL(gitForgeRef string) string
 	// SetupRepository は、repository を用意する。用意が途中で止まっていれば、続きから行う。
 	// main がすでにあり、用意が終わっていれば、ErrMainExists を返す。
 	SetupRepository(ctx context.Context, gitForgeRef string, files []File, message string) error
@@ -172,7 +183,7 @@ type GitForge interface {
 	// 戻り値は、反映のコミットの SHA である。
 	Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error)
 	Close(ctx context.Context, repo, id, reason, session string) error
-	RecordMergeFailure(ctx context.Context, repo, id, reason string) error
+	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure) error
 
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)

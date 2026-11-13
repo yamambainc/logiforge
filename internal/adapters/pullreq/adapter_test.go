@@ -225,7 +225,7 @@ func TestEditedRecordIsWarned(t *testing.T) {
 	ctx := context.Background()
 	a, f := newAdapter()
 	create(t, a, "apr_a", "a")
-	if err := a.RecordMergeFailure(ctx, repo, "apr_a", "conflict"); err != nil {
+	if err := a.RecordMergeFailure(ctx, repo, "apr_a", ports.MergeFailure{Revision: "h-a", Reason: "conflict", Detail: "d"}); err != nil {
 		t.Fatal(err)
 	}
 	c := f.comments[len(f.comments)-1]

@@ -24,6 +24,7 @@ const (
 	KeyAnsweredBy     = "Logiforge-Answered-By"
 	KeyAttachment     = "Logiforge-Attachment"
 	KeyMergeFailure   = "Logiforge-Merge-Failure"
+	KeyRevision       = "Logiforge-Revision"
 	KeyReviewID       = "Logiforge-Review-Id"
 	KeyReviewKind     = "Logiforge-Review-Kind"
 	KeyPreviousReview = "Logiforge-Previous-Review"

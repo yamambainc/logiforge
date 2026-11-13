@@ -17,6 +17,7 @@ import (
 type Repos interface {
 	ListRepositories(ctx context.Context) ([]ports.Repository, error)
 	GitForgeRef(ctx context.Context, name string) (string, error)
+	GitURL(gitForgeRef string) string
 	SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error
 }
 
@@ -115,7 +116,7 @@ func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest,
 				ar.CloseReason, ar.CloseSession = r.Body, r.Get(KeySession)
 			}
 		case RecordMergeFailure:
-			ar.MergeFailures = append(ar.MergeFailures, r.Get(KeyMergeFailure))
+			ar.MergeFailures = append(ar.MergeFailures, ports.MergeFailure{Revision: r.Get(KeyRevision), Reason: r.Get(KeyMergeFailure), Detail: r.Body})
 		}
 	}
 	switch {
@@ -290,12 +291,12 @@ func (a *Adapter) Close(ctx context.Context, repo, id, reason, session string) e
 	return a.API.ClosePull(ctx, repo, ar.Number)
 }
 
-func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id, reason string) error {
+func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
 	ar, err := a.findPull(ctx, repo, id)
 	if err != nil {
 		return err
 	}
-	_, err = a.comment(ctx, repo, ar.Number, Record{Trailers: []Trailer{{KeyRecord, RecordMergeFailure}, {KeyApplyRequest, id}, {KeyMergeFailure, reason}}})
+	_, err = a.comment(ctx, repo, ar.Number, Record{Body: f.Detail, Trailers: []Trailer{{KeyRecord, RecordMergeFailure}, {KeyApplyRequest, id}, {KeyMergeFailure, f.Reason}, {KeyRevision, f.Revision}}})
 	return err
 }
 

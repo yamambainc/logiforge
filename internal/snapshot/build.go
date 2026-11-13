@@ -80,17 +80,13 @@ func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	// 親から直接変わったファイルと、ノードの変更の一覧。
 	changed := tree.ChangedPaths(parentFiles, files)
 	affected := map[string]bool{}
-	seen := map[NodeChange]bool{}
 	for _, p := range changed {
 		n := owner[path.Dir(p)]
 		kind := fileKind(n, p)
 		if kind == "" {
 			continue
 		}
-		if c := (NodeChange{Node: n.ID, File: kind}); !seen[c] {
-			seen[c] = true
-			m.Commit.Changes = append(m.Commit.Changes, c)
-		}
+		m.Commit.Changes = append(m.Commit.Changes, NodeChange{Node: n.ID, File: kind, Path: p})
 		for _, id := range affectedNodes(t, n.ID, kind) {
 			affected[id] = true
 		}

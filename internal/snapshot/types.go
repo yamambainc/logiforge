@@ -13,7 +13,7 @@ import (
 
 // FormatVersion は、スナップショットの形の版である。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
-const FormatVersion = 3
+const FormatVersion = 4
 
 // Kind は、コミットの種類である。
 type Kind string
@@ -70,6 +70,8 @@ const (
 type NodeChange struct {
 	Node string   `json:"node"`
 	File FileKind `json:"file"`
+	// Path は、変わったファイルのパス。検証結果がどのコミットで加わったかを探すのに使う。
+	Path string `json:"path"`
 }
 
 // Status は、ファイルの変わり方である。
