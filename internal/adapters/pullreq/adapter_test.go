@@ -318,6 +318,41 @@ func TestReviewChain(t *testing.T) {
 		t.Fatalf("間が消えたのに鎖が切れていない：%+v", got)
 	}
 
+	// 最後のレビューを、記録でない本文に書き換えると、鎖が切れる。
+	c, h := newAdapter()
+	create(t, c, "apr_a", "a")
+	for _, id := range []string{"rev_1", "rev_2"} {
+		if err := c.AddReview(ctx, repo, "apr_a", ports.Review{ID: id, Revision: "h-a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.reviews[1][1].Body = "ただの本文"
+	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
+		t.Fatalf("最後を本文に書き換えたのに、鎖が切れていない：%+v", got)
+	}
+	// 種類が review でない、正しい記録に書き換えても、鎖が切れる。
+	h.reviews[1][1].Body, _ = ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, "apr_a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
+	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
+		t.Fatalf("種類を変えたのに、鎖が切れていない：%+v", got)
+	}
+
+	// 同時に 2 つのレビューが、同じ直前のレビューを指しても、鎖は切れない。
+	d, k := newAdapter()
+	create(t, d, "apr_a", "a")
+	if err := d.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_1", Revision: "h-a"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"rev_2", "rev_3"} {
+		text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordReview}, {KeyApplyRequest, "apr_a"}, {KeyReviewID, id}, {KeyPreviousReview, "rev_1"}, {KeyReviewRevision, "h-a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
+		k.reviews[1] = append(k.reviews[1], PullReview{Body: text, CommitSHA: "h-a", Author: k.writer})
+	}
+	if got, _ := d.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 3 {
+		t.Fatalf("同時の 2 つで鎖が切れた：%+v", got)
+	}
+	if err := d.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_4", Revision: "h-a"}); err != nil {
+		t.Fatal(err)
+	}
+
 	// commit_id と記録の版が違うもの、識別子が重なったものも、鎖を切る。
 	b, g := newAdapter()
 	create(t, b, "apr_a", "a")

@@ -355,15 +355,17 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 }
 
 // reviews は、書き込み主体のレビューを、記録した順に読む。
-//   - その提案の、MAC の合う記録だけを数える。commit_id と記録の版が違うもの、識別子が重なったもの（2 つ目から）も数えない。
-//   - 書き込み主体のレビューに、数えないものがあれば、鎖が切れたとする。
-//   - 各レビューの Logiforge-Previous-Review: が、直前に数えたレビューの識別子でなければ、鎖が切れたとする。
+//   - その提案の、MAC の合うレビューの記録だけを数える。
+//   - 書き込み主体のレビューに、数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、
+//     記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子や版が違うもの、識別子が重なるものは、
+//     どれも書き換えられたものである。
+//   - 各レビューの Logiforge-Previous-Review: が、それより前に数えたレビューのどれか（最初は `-`）でなければ、鎖が切れたとする。
+//     同時に 2 つのレビューが同じ直前のレビューを指すのは、正しい。鎖が見つけるのは、途中のレビューが丸ごと消されたことである。
 //
-// 鎖が切れていれば、バックエンドは反映しない。後のレビュー（request_changes など）を壊して、前の approve に戻すことを防ぐため。
+// 鎖が切れていれば、バックエンドは反映しない。後のレビュー（request_changes など）を壊したり消したりして、前の approve に戻すことを防ぐため。
 func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview) ports.Reviews {
 	var out ports.Reviews
-	seen := map[string]bool{}
-	previous := noPrevious
+	seen := map[string]bool{noPrevious: true}
 	for i, pr := range prs {
 		if pr.Author != writer {
 			continue
@@ -373,11 +375,12 @@ func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview)
 			out.Warnings = append(out.Warnings, fmt.Sprintf("レビュー %d：%s", i+1, why))
 		}
 		r, err := keys.Parse(pr.Body, at)
-		if errors.Is(err, ErrNoRecord) || (err == nil && r.Get(KeyRecord) != RecordReview) {
-			continue // 記録でない、書き込み主体のレビュー（バックエンドを通さないもの）
-		}
 		if err != nil {
 			broken(err.Error())
+			continue
+		}
+		if r.Get(KeyRecord) != RecordReview {
+			broken("種類が review でない記録")
 			continue
 		}
 		if r.Get(KeyApplyRequest) != id {
@@ -389,14 +392,14 @@ func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview)
 			broken("commit_id と記録の版が違う")
 			continue
 		}
-		if seen[rid] {
+		if rid == noPrevious || seen[rid] {
 			broken("識別子が重なっている")
 			continue
 		}
-		if r.Get(KeyPreviousReview) != previous {
-			broken("直前のレビューの識別子が合わない")
+		if !seen[r.Get(KeyPreviousReview)] {
+			broken("Logiforge-Previous-Review: が、前に数えたレビューを指していない（途中のレビューが消された）")
 		}
-		seen[rid], previous = true, rid
+		seen[rid] = true
 		out.Items = append(out.Items, ports.Review{
 			ID: rid, Kind: ports.ReviewKind(r.Get(KeyReviewKind)), Body: r.Body, Revision: rev,
 			Reviewer: r.Get(KeyPrincipal), Session: r.Get(KeySession), PromptRevision: r.Get(KeyPromptRevision), CreatedAt: pr.CreatedAt,
