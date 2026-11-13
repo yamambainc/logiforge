@@ -54,6 +54,13 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 		return out, err
 	}
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
+	if e := AsError(err); e != nil && e.Code == CodeNotOpen && kind == ports.ReviewApprove {
+		// approve の送り直し：反映済みで、最後の決めるレビューが、同じセッションの approve なら、成功として今の状態を返す。
+		if res, ok, err := b.approveResent(ctx, c, repo, ref, id, n.Session); err != nil || ok {
+			out.Value = res
+			return out, err
+		}
+	}
 	if err != nil {
 		return out, err
 	}
@@ -107,6 +114,39 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	return out, nil
 }
 
+// approveResent は、反映済みの提案への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
+func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, session string) (ReviewResult, bool, error) {
+	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
+	if err != nil || ar.State != ports.StateMerged {
+		return ReviewResult{}, false, nil
+	}
+	reviews, err := b.Forge.ListReviews(ctx, ref, id)
+	if err != nil {
+		return ReviewResult{}, false, err
+	}
+	last := lastDecisive(reviews.Items, "")
+	if last == nil || last.Kind != ports.ReviewApprove || last.Session != session {
+		return ReviewResult{}, false, nil
+	}
+	model, err := b.GetApplyRequest(ctx, c, repo, id)
+	if err != nil {
+		return ReviewResult{}, false, err
+	}
+	return ReviewResult{ApplyRequest: model, Review: Review{ID: last.ID, Kind: string(last.Kind), Version: versionOf(model.Versions, last.Revision),
+		Revision: last.Revision, Body: last.Body, ReviewerSessionID: last.Session, PromptRevision: last.PromptRevision}}, true, nil
+}
+
+// lastDecisive は、決めるレビュー（approve か request_changes）の最後のものを返す。revision が空でなければ、その版へのものだけを見る。
+func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
+	var last *ports.Review
+	for i, r := range reviews {
+		if (revision == "" || r.Revision == revision) && (r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges) {
+			last = &reviews[i]
+		}
+	}
+	return last
+}
+
 // merge は、反映の手順を行う（design/backend/merge.md の「手順」）。反映できなければ、失敗の理由を GitForge に記録し、エラーにしない。
 // 反映のコミットが読む側に出るのを待ち、上限を過ぎたら、そのリビジョンを返す。
 func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, error) {
@@ -124,12 +164,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	if d.reviews.ChainBroken {
 		return "", fail(CodeNotOpen, chainBrokenDetail)
 	}
-	var last *ports.Review
-	for i, r := range d.reviews.Items {
-		if r.Revision == d.current.Revision {
-			last = &d.reviews.Items[i]
-		}
-	}
+	last := lastDecisive(d.reviews.Items, d.current.Revision)
 	if last == nil || last.Kind != ports.ReviewApprove {
 		return "", nil
 	}
@@ -143,8 +178,9 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 		}
 	}
 	// 2. 今の main のスナップショット。GitForge の main が latest より進んでいれば、worker が追いつくのを待つ。
+	// 待ち始めに読んだ head が、latest の history に入ったら抜ける（そのあとに main が進んでもよい）。
 	if head, err := b.Forge.MainHead(ctx, ref); err == nil {
-		if !b.waitLatest(ctx, repo, func(l string) bool { return l == head }) {
+		if !b.waitLatest(ctx, repo, func(l string) bool { return b.inHistory(ctx, repo, l, head) }) {
 			return failure("snapshot_pending", "GitForge の main "+head+" に、worker がまだ追いついていない")
 		}
 	} else if !errors.Is(err, ports.ErrNotFound) {
@@ -168,6 +204,14 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 			return failure("stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t))
 		}
 	}
+	// 引用した部分木が、base のあとに変わっていれば、それも stale_target にする（design/backend/merge.md の「対象ノードの変化」）。
+	for _, op := range d.model.Operations {
+		for _, ci := range op.Citations {
+			if ci.TargetKind == "subtree" && latest.main.Tree.SubtreeChangedAfter(ci.NodeID, baseNum) {
+				return failure("stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID))
+			}
+		}
+	}
 	res, conflicts, err := b.checkVersion(ctx, latest, latest, d.branch)
 	if err != nil {
 		return "", err
@@ -180,7 +224,15 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	}
 	// 4. head の SHA を指定して squash merge する。
 	title := fmt.Sprintf("apply request %s を反映した", id)
-	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s\nLogiforge-Session-Id: %s", id, d.current.Version, d.current.Revision, *author)
+	// 反映したすべての版のセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
+	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s", id, d.current.Version, d.current.Revision)
+	var sessions []string
+	for _, v := range d.model.Versions {
+		if v.AuthorSessionID != nil && !slices.Contains(sessions, *v.AuthorSessionID) {
+			sessions = append(sessions, *v.AuthorSessionID)
+			message += "\nLogiforge-Session-Id: " + *v.AuthorSessionID
+		}
+	}
 	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Revision, title, message)
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):
@@ -215,4 +267,13 @@ func targetsOf(ops []Operation) []string {
 		}
 	}
 	return out
+}
+
+// inHistory は、latest の main の history に、sha があるかを返す。
+func (b *Backend) inHistory(ctx context.Context, repo, latest, sha string) bool {
+	if latest == sha {
+		return true
+	}
+	m, err := b.Snap.Main(ctx, repo, latest)
+	return err == nil && m.Tree.HistoryNumber(sha) > 0
 }

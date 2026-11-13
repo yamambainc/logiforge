@@ -493,5 +493,11 @@ func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (Branc
 	if err := g.Fetch(ctx, remote); err != nil {
 		return BranchResult{}, err
 	}
+	// ブランチの base（main と分かれた点）のスナップショットがないと、バックエンドは差分を検査できない。先に main を進める。
+	if mainSHA, ok := heads["main"]; ok {
+		if err := w.syncMain(ctx, g, r.Name, mainSHA); err != nil {
+			return BranchResult{}, fmt.Errorf("main: %w", err)
+		}
+	}
 	return w.syncBranch(ctx, g, r.Name, branch, head, heads["main"])
 }

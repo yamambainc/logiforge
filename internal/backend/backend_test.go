@@ -76,6 +76,10 @@ type fakeForge struct {
 	// remote は、squash merge を行う git リポジトリである。
 	remote *remote
 	next   int
+	// mergeErr があれば、Merge はそれを返す（衝突や、head が動いた場合を作るため）。
+	mergeErr error
+	// mainHead があれば、MainHead はそれを返す（worker が追いつかない場合を作るため）。
+	mainHead string
 }
 
 func (f *fakeForge) ListRepositories(context.Context) ([]ports.Repository, error) { return nil, nil }
@@ -84,6 +88,9 @@ func (f *fakeForge) GitForgeRef(_ context.Context, name string) (string, error) 
 }
 func (f *fakeForge) GitURL(ref string) string { return "https://forge.example.com/" + ref + ".git" }
 func (f *fakeForge) MainHead(context.Context, string) (string, error) {
+	if f.mainHead != "" {
+		return f.mainHead, nil
+	}
 	if f.remote == nil {
 		return "", ports.ErrNotFound
 	}
@@ -137,6 +144,9 @@ func (f *fakeForge) UpdateDescription(_ context.Context, _, id, d string) error 
 // Merge は、版のコミットを、リモートの main に squash merge する。
 func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string) (string, error) {
 	ar := f.ar(id)
+	if f.mergeErr != nil {
+		return "", f.mergeErr
+	}
 	if ar.HeadRevision != head {
 		return "", ports.ErrHeadMoved
 	}

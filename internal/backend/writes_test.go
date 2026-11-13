@@ -226,3 +226,160 @@ func TestCreateRepositoryExists(t *testing.T) {
 		t.Fatalf("client：%v", err)
 	}
 }
+
+var (
+	agentC    = Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
+	reviewerC = Caller{Token: "rev", Principal: ports.Principal{Login: "reviewer", Kind: ports.PrincipalClient}}
+)
+
+func approve(t *testing.T, f *fixture, id string) (Written[ReviewResult], error) {
+	t.Helper()
+	return f.b.ReviewApplyRequest(context.Background(), reviewerC, "q", id, NewReview{Kind: "approve", Version: 0, Revision: f.forge.ar(id).HeadRevision, Session: "s9", PromptRevision: "p"})
+}
+
+func create(t *testing.T, f *fixture, branch, session string, files map[string][]byte) string {
+	t.Helper()
+	f.branch(branch, session, files)
+	out, err := f.b.CreateApplyRequest(context.Background(), agentC, "q", NewApplyRequest{Branch: branch, Session: session})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out.Value.ID
+}
+
+func lastFailure(t *testing.T, res Written[ReviewResult], err error) string {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := res.Value.ApplyRequest.MergeFailures
+	if res.Value.ApplyRequest.State != "open" || len(fs) == 0 {
+		t.Fatalf("反映に失敗していない：%+v", res.Value.ApplyRequest)
+	}
+	return fs[len(fs)-1].Reason
+}
+
+func TestMergeFailurePaths(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("git の衝突", func(t *testing.T) {
+		f := live(t)
+		id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+		f.forge.mergeErr = ports.ErrConflict
+		res, err := approve(t, f, id)
+		if r := lastFailure(t, res, err); r != "conflict" || *res.Value.ApplyRequest.Awaiting != "fix" {
+			t.Fatalf("got %s", r)
+		}
+	})
+	t.Run("head が動いた", func(t *testing.T) {
+		f := live(t)
+		id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+		f.forge.mergeErr = ports.ErrHeadMoved
+		if _, err := approve(t, f, id); code(err) != CodeVersionConflict {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("worker が main に追いつかない", func(t *testing.T) {
+		f := live(t)
+		f.b.WaitTimeout = 500 * time.Millisecond
+		id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+		f.forge.mainHead = strings.Repeat("e", 40)
+		res, err := approve(t, f, id)
+		if r := lastFailure(t, res, err); r != "snapshot_pending" || *res.Value.ApplyRequest.Awaiting != "review" {
+			t.Fatalf("got %s %v", r, res.Value.ApplyRequest.Awaiting)
+		}
+	})
+	t.Run("不変条件（識別子の重なり）", func(t *testing.T) {
+		f := live(t)
+		story := func(parent string) map[string][]byte {
+			return map[string][]byte{
+				parent + "/s-aaaaaaaaaa/story.md":                   tree.MarshalStory(tree.StoryContent{ID: "s-aaaaaaaaaa", Title: "t", Summary: "s"}),
+				parent + "/s-aaaaaaaaaa/h-bbbbbbbbbb/hypothesis.md": tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-bbbbbbbbbb", Statement: "x"}),
+			}
+		}
+		// 葉の仮説を、もう 1 つ main に足す（H5）。
+		const h5 = "h-6666666666"
+		f.r.write(dS1+"/"+h5+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: h5, Statement: "子3"}))
+		f.r.git("add", "-A")
+		f.r.git("commit", "--quiet", "-m", "x")
+		f.r.git("commit", "--quiet", "--amend", "-m", "反映\n\nLogiforge-Apply-Request: apr_0")
+		// 2 つの提案が、別の仮説の下に、同じ識別子のストーリーと仮説を作る。対象ノードは違う。
+		x := create(t, f, "x", "s3", story(dH2))
+		y := create(t, f, "y", "s4", story(dS1+"/"+h5))
+		if _, err := approve(t, f, x); err != nil {
+			t.Fatal(err)
+		}
+		res, err := approve(t, f, y)
+		if r := lastFailure(t, res, err); r != "invariant_violation" {
+			t.Fatalf("got %s", r)
+		}
+	})
+	t.Run("引用した部分木が変わった", func(t *testing.T) {
+		f := live(t)
+		id := create(t, f, "x", "s3", map[string][]byte{dH2 + "/verdicts/v-9999999999.md": tree.MarshalVerdict(tree.VerdictContent{ID: "v-9999999999", Value: true, Report: "r\n",
+			Citations: []tree.Citation{{TargetKind: "subtree", NodeID: H1, Revision: f.c2}}})})
+		other := create(t, f, "y", "s4", map[string][]byte{dH1 + "/background.md": []byte("変えた\n")})
+		if _, err := approve(t, f, other); err != nil {
+			t.Fatal(err)
+		}
+		res, err := approve(t, f, id)
+		if r := lastFailure(t, res, err); r != "stale_target" {
+			t.Fatalf("got %s", r)
+		}
+	})
+	_ = ctx
+}
+
+func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	// 2 つ目の版を、別のセッションで push する。
+	f.r.git("checkout", "--quiet", "x")
+	f.r.write(dH1+"/background.md", []byte("一\n二\n"))
+	head := f.r.commit("版 2\n\nLogiforge-Session-Id: s4")
+	f.r.git("checkout", "--quiet", "main")
+	f.forge.ar(id).HeadRevision = head
+	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w.SyncAll(ctx)
+
+	res, err := approve(t, f, id)
+	if err != nil || res.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("approve: %+v %v", res.Value.ApplyRequest, err)
+	}
+	c, _ := f.b.GetCommitForTest(ctx, "q", *res.Value.ApplyRequest.MergedRevision)
+	var sessions []string
+	for _, tr := range c {
+		if tr.Key == "Logiforge-Session-Id" {
+			sessions = append(sessions, tr.Value)
+		}
+	}
+	if strings.Join(sessions, ",") != "s3,s4" {
+		t.Fatalf("sessions: %v", sessions)
+	}
+	// approve の送り直しは、成功として今の状態を返す。
+	again, err := approve(t, f, id)
+	if err != nil || again.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("送り直し：%+v %v", again.Value.ApplyRequest, err)
+	}
+	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Revision: head, Session: "other", PromptRevision: "p"}); code(err) != CodeNotOpen {
+		t.Fatalf("別のセッションの approve：%v", err)
+	}
+}
+
+func TestHumanRequestTarget(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	for _, node := range []string{H0, S1, H1} { // H0 は葉でない、S1 はストーリー、H1 は値の決まった葉（要再検討でない葉は可。H1 は葉）
+		_, err := f.b.CreateHumanRequest(ctx, agentC, "q", NewHumanRequest{NodeID: node, Kind: "pvr", Body: "b", Session: "s"})
+		if node == H1 {
+			if err != nil {
+				t.Fatalf("葉の H1：%v", err)
+			}
+			continue
+		}
+		if code(err) != CodeValidationFailed {
+			t.Fatalf("%s：%v", node, err)
+		}
+	}
+}

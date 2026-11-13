@@ -121,7 +121,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 			return out, err
 		}
 		r := v.tree.Root()
-		if len(v.main.Tree.History) != 1 || r == nil || r.Statement != statement || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
+		if len(v.main.Tree.History) != 1 || r == nil || r.Statement != statement || r.Background != background || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
 			return out, fail(CodeRepositoryExists, "同じ名前の repository がすでにある")
 		}
 	} else if err != nil {
@@ -130,6 +130,9 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 	if !b.waitLatest(ctx, name, func(l string) bool { return l != "" }) {
 		out.Value = Repository{Name: name, GitURL: b.Forge.GitURL(ref)}
 		out.Pending = "main"
+		if head, err := b.Forge.MainHead(ctx, ref); err == nil {
+			out.Pending = head
+		}
 		return out, nil
 	}
 	repo, err := b.GetRepository(ctx, c, name)
@@ -401,8 +404,17 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return HumanRequest{}, err
 	}
-	if latest.main.Tree.Nodes[n.NodeID] == nil {
+	// 対象は、active な仮説で、葉か要再検討であるもの（docs/human-requests/README.md）。
+	node := latest.main.Tree.Nodes[n.NodeID]
+	switch {
+	case node == nil:
 		return HumanRequest{}, fail(CodeValidationFailed, "ノード %s が、今の main の木にない", n.NodeID)
+	case node.Kind != snapshot.NodeHypothesis:
+		return HumanRequest{}, fail(CodeValidationFailed, "対象は仮説に限る")
+	case node.Inactive:
+		return HumanRequest{}, fail(CodeValidationFailed, "仮説 %s は inactive である", n.NodeID)
+	case !node.Leaf && !node.NeedsReconsideration:
+		return HumanRequest{}, fail(CodeValidationFailed, "仮説 %s は、葉でも要再検討でもない", n.NodeID)
 	}
 	hr, err := b.Forge.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{ID: id, Kind: ports.HumanRequestKind(n.Kind), TargetNode: n.NodeID,
 		Body: n.Body, Requester: c.Principal.Login, Session: n.Session})
