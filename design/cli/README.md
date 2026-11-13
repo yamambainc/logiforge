@@ -38,10 +38,12 @@ sequenceDiagram
 - トークンの置き場所は、次の順に探す。
   1. 環境変数 `LOGIFORGE_TOKEN`
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`
-- `logiforge auth login` は、トークンを受け取って設定ファイルに書く。設定ファイルは、本人だけが読めるようにする。
+- `logiforge auth login --with-token` は、トークンを標準入力から読んで、設定ファイルに書く。設定ファイルは、本人だけが読めるようにする。
+  - `--token <トークン>` でも渡せるが、コマンドの履歴に残るので、`--with-token` を勧める。
 - git には、CLI の credential helper で同じトークンを渡す（`logiforge auth setup-git`）。
   - GitForge には、git の HTTP の Basic 認証のパスワードに、トークンを入れて読み書きできることを求める（[アダプタ](../adapters/README.md)）。ユーザー名は `logiforge` にする。
   - helper は、GitForge の URL にだけ設定する（`credential.<URL>.helper`）。ほかの URL に、トークンを渡さないため。URL は、`--url` か、repository の `git_url` から求める。
+  - URL が https でなければ、`--insecure` なしでは設定しない。トークンが平文で流れるため。
   - helper の本体は、`logiforge auth git-credential` である。
 - バックエンドの URL は、環境変数 `LOGIFORGE_HOST` か、設定ファイルの `host` に置く。
 

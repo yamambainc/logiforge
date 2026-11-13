@@ -7,8 +7,8 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 
 | コマンド | API | git |
 |---|---|---|
-| `auth login --token <トークン>` | なし | なし |
-| `auth setup-git [--url <GitForge の URL>]` | `listRepositories`（URL を求めるときだけ） | GitForge の URL にだけ、credential helper を設定する |
+| `auth login --with-token \| --token <トークン> [--host <URL>]` | なし | なし |
+| `auth setup-git [--url <GitForge の URL>] [--insecure]` | `listRepositories`（URL を求めるときだけ） | GitForge の URL にだけ、credential helper を設定する |
 | `auth git-credential get` | なし | credential helper の本体。git が呼ぶ |
 | `commit [git commit の引数]` | なし | `git commit` に、セッションの trailer を付けて呼ぶ |
 | `repo list` | `listRepositories` | なし |
@@ -36,7 +36,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 
 | コマンド | API | git |
 |---|---|---|
-| `ar create --branch <ブランチ> [--description]` | `createApplyRequest` | なし（先に push しておく） |
+| `ar create --branch <ブランチ> [--description] [--idempotency-key <キー>]` | `createApplyRequest` | なし（先に push しておく） |
 | `ar edit <apply request> --description` | `updateApplyRequest` | なし |
 | `ar view <apply request>` | `getApplyRequest` | なし |
 | `ar list [--state]` | `listApplyRequests` | なし |
@@ -51,9 +51,9 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 - 版の更新は、同じブランチへの `git push` だけである。コマンドはない。`ar edit` は説明欄だけを書き換える。
 - `ar review` は、`--version` の番号を、`ar view` で SHA に引き直してから、`revision` として送る。版の正体は SHA である（[版](../backend/apply-request.md)）。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
-- `ar create` は、`Idempotency-Key` を自動で付ける。キーは、repository、ブランチ、手元の先頭と、そのブランチの閉じた（反映か close された）apply request の数から作る（[同じ要求の繰り返し](../api/writes.md)）。
-  - 送り直しでは、閉じた数が変わらないので、同じキーになる。
-  - close したあと、同じブランチの同じ先頭から作り直すと、閉じた数が増えているので、新しいキーになる。なぜ：レビューの鎖が切れたときの「close して、同じブランチから作り直す」で、閉じた apply request が返らないようにするため（[反映の手順](../backend/merge.md)）。
+- `ar create` は、`Idempotency-Key` を、呼び出しごとに乱数で作る。その呼び出しの中で送り直すとき（通信の誤り、502、503、504）だけ、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
+  - `--json` の出力に、使ったキー（`idempotency_key`）を書く。あとで送り直すときは、`--idempotency-key` にそのキーを渡す。
+  - なぜ呼び出しごとか：レビューの鎖が切れたときの「close して、同じブランチから作り直す」で、閉じた apply request が返らないようにするため（[反映の手順](../backend/merge.md)）。同じブランチの二重の作成は、バックエンドが拒む。
 - `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
 
 ## 作業と人への依頼

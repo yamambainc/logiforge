@@ -21,11 +21,13 @@ CLI が、手元の clone の中で、ファイルのひな形を作り、検査
 
 ## check
 
-`logiforge check` は、手元の作業ツリーを、`origin/main` と比べて検査する。
+`logiforge check` は、手元の作業ツリーを検査する。base は、サーバと同じく、`HEAD` と `origin/main` の分かれた点（`git merge-base`）である。
 
 - 木の形が正しいか（交互に並ぶこと、深さ、文字数、front matter）
 - `origin/main` との差分が、4 種類の操作として読めるか
 - 新しいノードと検証結果の識別子が、`origin/main` の木とぶつかっていないか
+- 差分を `origin/main` に重ねられるか（警告）。差分が変えたファイルが、base のあとに `origin/main` でも変わっていれば、反映で `conflict` になるので、警告する
+- コミットしていない変更があるか（警告）。`check` は作業ツリーを見るが、push するのは `HEAD` だから
 - 普通のファイル（100644）だけか
 - ブランチの先頭のコミットに、セッションの trailer があるか
   - なければ警告し、付け方を示す（`git commit --amend --trailer "Logiforge-Session-Id: <ID>"`）。
