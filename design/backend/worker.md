@@ -46,6 +46,7 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
 5. `main` の新しいコミットについて、次のことを確かめ、破れていれば警告として記録する。
    - 反映の記録（`Logiforge-Apply-Request:`）がある（[記録の形式](../files/revisions.md)）。
    - 木の不変条件が成り立つ（[差分の検査](checks.md) の「head の木で確かめること」）。
+   - 反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていない（[対象ノードの変化](merge.md)）。
    - なぜ：`main` の保護が外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
 6. `repositories` を書き直す。
 

@@ -25,6 +25,7 @@
 | `refs/heads/main` | すべての主体 | だれもできない。merge の API だけが進める |
 | `refs/heads/logiforge/` の下 | すべての主体 | だれもできない（予約） |
 | そのほかのブランチ（`refs/heads/` の下） | すべての主体 | `user` と `client` |
+| `refs/pull/<識別子>/<版の番号>` | すべての主体 | だれもできない。独自フォージが書く |
 | そのほかの ref（タグなど） | すべての主体 | だれもできない |
 
 - `user` と `client` がブランチに push できるのは、apply request のもとになるブランチを置くためである（[CLI](../cli/README.md)）。
@@ -35,15 +36,18 @@
   - 受け取った push の ref を、更新の前に 1 つずつ確かめ、決まりに合わない ref があれば、push 全体を拒む。
 - ブランチを消す push を受け取ったら、そのブランチの open の提案を close にする。
   - なぜ：GitHub で、ブランチを消すと pull request が閉じるのと同じ振る舞いにするため。
-- 他人のブランチも消せる。消されても、反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request.md)）。
+- 信頼の境界：push できる主体は、他人のブランチも消せる。そのため、他人の open の apply request を close にできる。
+  - 消されても、反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request.md)）。版のコミットは、下の `refs/pull/` に残る。
+- 独自フォージは、提案のブランチの先頭が変わるたびに、その版のコミットを `refs/pull/<識別子>/<版の番号>` に置く。
+  - なぜ：squash merge とブランチの削除のあとも、版のコミットを git から辿れるようにするため（[ブランチの履歴](../backend/snapshot.md)）。
 - push の資格は、receive-pack の広告（`info/refs?service=git-receive-pack`）の時点で確かめる。どの ref に書けるかは、push を受け取ってから確かめる。
 
 ## merge
 
-- `mergeApplyRequest` は、bare リポジトリに対して git で行う。
+- `mergeApplyRequest` は、GitHub の pull request の squash merge と同じ意味にする。中は、bare リポジトリに対する git で行う。
   - ブランチの先頭が、指定した SHA かを確かめる。
-  - ブランチと `main` の分かれた点からの差分を、今の `main` に当てはめる。git の衝突があれば、失敗する。
-  - 当てはめた結果を 1 つのコミットにし、受け取ったメッセージを付けて、`main` を進める。
+  - `git merge-tree --write-tree` で、今の `main` とブランチを、git の 3-way の merge と同じ規則で合わせる。衝突があれば、失敗する。
+  - 合わせた tree を、今の `main` だけを親とする 1 つのコミットにし、受け取ったメッセージを付けて、`main` を進める（squash）。
 - 同じ repository の merge は、独自フォージの中で 1 つずつ順に行う。
 
 ## push で確かめること

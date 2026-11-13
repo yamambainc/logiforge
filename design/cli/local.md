@@ -7,9 +7,9 @@ CLI が、手元の clone の中で、ファイルのひな形を作り、検査
 
 | コマンド | 作るもの | 対応する操作 |
 |---|---|---|
-| `story new --parent <仮説> --title --summary --hypothesis <主文>...` | ストーリーと子仮説のディレクトリ、`story.md`、`hypothesis.md`、親の `children.md` | `story.create` |
-| `story inactivate <ストーリー> --reason` | `inactivated.md`、親の `children.md` | `story.inactivate` |
-| `verdict new --hypothesis <仮説> --value true\|false --report <ファイル> [--artifact <ファイル>]... [--cite ...]...` | `verdicts/v-*.md`、artifact のファイル、仮説の `children.md` | `verdict.submit` |
+| `story new --parent <仮説> --title --summary --hypothesis <主文>...` | ストーリーと子仮説のディレクトリ、`story.md`、`hypothesis.md` | `story.create` |
+| `story inactivate <ストーリー> --reason` | `inactivated.md` | `story.inactivate` |
+| `verdict new --hypothesis <仮説> --value true\|false --report <ファイル> [--artifact <ファイル>]... [--cite ...]...` | `verdicts/v-*.md`、artifact のファイル | `verdict.submit` |
 | `node edit <仮説> --append-background <ファイル>` | `background.md` の末尾への追加 | `node.edit` |
 
 - 新しいノードの識別子は、CLI が乱数で決める（[識別子](../files/layout.md)）。
@@ -26,9 +26,9 @@ CLI が、手元の clone の中で、ファイルのひな形を作り、検査
 - 木の形が正しいか（交互に並ぶこと、深さ、文字数、front matter）
 - `origin/main` との差分が、4 種類の操作として読めるか
 - 新しいノードと検証結果の識別子が、`origin/main` の木とぶつかっていないか
-- `children.md` が、ディレクトリと検証結果に合っているか
 - 普通のファイル（100644）だけか
-- ブランチの先頭のコミットに、セッションの trailer があるか（なければ警告）
+- ブランチの先頭のコミットに、セッションの trailer があるか
+  - なければ警告し、付け方を示す（`git commit --amend --trailer "Logiforge-Session-Id: <ID>"`）。
 - artifact の大きさが上限を超えていないか、ファイル名が中身のハッシュと合うか
 
 - `check` は、バックエンドの [差分の検査](../backend/checks.md) と同じコードを使う。ただし、引用したリビジョンの確認など、手元でできないものは省く。

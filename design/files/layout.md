@@ -10,7 +10,6 @@ tree/
   h-7k3m9q2x4p/                      根の仮説
     hypothesis.md                    主文
     background.md                    背景情報
-    children.md                      子ストーリーと結論の一覧
     verdicts/
       v-2c8d0f6t1n.md                検証結果とレポート
     s-9w4b1r7e3k/                    子ストーリー
@@ -44,7 +43,6 @@ artifacts/
 |---|---|---|
 | `hypothesis.md` | `id`、`statement` | なし |
 | `background.md` | なし | 背景情報 |
-| `children.md` | `stories`、`inactive`、`verdict` | なし |
 | `story.md` | `id`、`title`、`summary` | なし |
 | `inactivated.md` | なし | inactive にした理由 |
 | `verdicts/v-*.md` | `id`、`value`、`supersedes`、`artifacts`、`citations` | レポート |
@@ -54,18 +52,6 @@ artifacts/
 - `citations` は、引用の一覧である。
   - artifact の引用は、`sha256` で書く。
   - 部分木の引用は、ノードの識別子と commit SHA の組で書く（[リビジョンとコミット](revisions.md)）。
-
-## 子ストーリーと結論の一覧
-
-- `children.md` は、仮説ごとに、子ストーリーの識別子の一覧（`stories`）、そのうち inactive のもの（`inactive`）、有効な検証結果の識別子（`verdict`）を持つ。
-  - 子ストーリーも検証結果もない仮説には、置かない。
-- 次の操作は、対象の仮説の `children.md` を必ず書き換える。
-  - `story.create`：親の仮説の `stories` に足す。
-  - `story.inactivate`：親の仮説の `inactive` に足す。
-  - `verdict.submit`：仮説の `verdict` を書き換える。
-- なぜ：同じ仮説の子や結論を変える 2 つの apply request が、同じファイルの同じ箇所を変えて、git の衝突になるようにするため（[反映の手順](../backend/merge.md)）。
-  - 例：偽と結論する apply request と、同じ仮説に新しいストーリーを足す apply request は、両方を反映できない。
-- `children.md` の中身は、ディレクトリと検証結果のファイルから求めたものと、いつも一致する（[差分の検査](../backend/checks.md)）。
 
 ## 有効な検証結果
 

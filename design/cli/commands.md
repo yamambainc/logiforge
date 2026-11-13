@@ -40,14 +40,15 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | `ar view <apply request>` | `getApplyRequest` | なし |
 | `ar list [--state]` | `listApplyRequests` | なし |
 | `ar material <apply request>` | `getReviewMaterial` | なし |
-| `ar review <apply request> --approve\|--request-changes\|--comment --version <n> [--body] [--prompt-revision]` | `reviewApplyRequest` | なし |
+| `ar review <apply request> --approve\|--request-changes\|--comment --version <n>\|--revision <SHA> [--body] [--prompt-revision]` | `reviewApplyRequest` | なし |
 | `ar close <apply request> --reason` | `closeApplyRequest` | なし |
 | `ar cleanup` | `listApplyRequests` | 手元のブランチのうち、反映か close された apply request のものだけを、`git branch -d` と `git push --delete` で消す |
 
 - `ar create` は、ブランチが push 済みで、手元の先頭と remote の先頭が同じかを確かめてから API を呼ぶ。`revision` に手元の先頭を入れて送る。
   - なぜ：push し忘れた変更を、知らないまま取り込まないため。
 - ブランチの名前は、`main` と、`logiforge/` で始まるものを使えない。プロバイダが push を拒む。
-- 版の更新は、同じブランチへの `git push` だけである。コマンドはない。
+- 版の更新は、同じブランチへの `git push` だけである。コマンドはない。`ar edit` は説明欄だけを書き換える。
+- `ar review` は、`--version` の番号を、`ar view` で SHA に引き直してから、`revision` として送る。版の正体は SHA である（[版](../backend/apply-request.md)）。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
 - `ar create` は、`Idempotency-Key` を自動で付ける。送り直すときは、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
 

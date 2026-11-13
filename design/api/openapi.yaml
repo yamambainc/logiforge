@@ -349,12 +349,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [kind, version]
+              required: [kind]
               properties:
                 kind: { $ref: '#/components/schemas/ReviewKind' }
+                revision:
+                  $ref: '#/components/schemas/Revision'
+                  description: レビューした版のコミットの SHA。版の正体は SHA である（../../design/backend/apply-request.md）。今の版と違えば version_conflict で受け付けない
                 version:
                   type: integer
-                  description: レビューした差分の版。今の版と違えば version_conflict で受け付けない
+                  description: レビューした版の番号。revision の代わりに使える。バックエンドが SHA に引き直す。revision と version のどちらか一方を必ず送る
                 body: { type: string }
                 prompt_revision:
                   type: string
@@ -1033,7 +1036,7 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, version, versions, operations, reviews, merge_failures, awaiting]
+      required: [id, state, branch, version, versions, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
         branch:
@@ -1076,17 +1079,24 @@ components:
           description: open のとき、レビュー待ち（review）か修正待ち（fix）か
         closed_reason: { type: [string, 'null'] }
         closed_by_session_id: { type: [string, 'null'] }
+        warnings:
+          type: array
+          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった（../../design/backend/merge.md）
+          items: { type: string }
         merged_revision: { type: [string, 'null'] }
     ReviewKind:
       type: string
       enum: [approve, request_changes, comment]
     Review:
       type: object
-      required: [id, kind, version, reviewer_session_id, valid]
+      required: [id, kind, version, revision, reviewer_session_id, valid]
       properties:
         id: { type: string, pattern: '^rev_' }
         kind: { $ref: '#/components/schemas/ReviewKind' }
         version: { type: integer }
+        revision:
+          $ref: '#/components/schemas/Revision'
+          description: レビューした版のコミット
         body: { type: string }
         reviewer_session_id: { type: string }
         prompt_revision: { type: string }

@@ -29,7 +29,7 @@
 | `committed_at` | コミットの時刻 |
 | `trailers` | コミットの trailer（[記録の形式](../files/revisions.md)） |
 | `warnings` | `main` のコミットだけ。反映の記録がない、不変条件が破れている、などの警告（[すること](worker.md)） |
-| `changes` | `parent` から変わったもの。ノードの識別子と、変わったファイルの種類（`hypothesis`、`background`、`children`、`verdict`、`story`、`inactivated`）の組。`branch` では、変わったファイルのパスと、木の外のファイルの変化と、普通のファイルでないものや大きすぎるものも持つ |
+| `changes` | `parent` から変わったもの。ノードの識別子と、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）の組。`branch` では、変わったファイルのパスと、木の外のファイルの変化と、普通のファイルでないものや大きすぎるものも持つ |
 
 木：
 
@@ -84,6 +84,10 @@
 - apply request の版は、この一覧から求める（[版](apply-request.md)）。
 - 反映は squash merge なので、版のコミットは `main` から辿れない。ブランチを消すと、git からも辿れなくなる。
   - 版のスナップショットとブランチの履歴は、worker が置き場に残し、消さない。そのため、反映や close のあとも、版の差分とレビューした版を読める。
+  - プロバイダも、版のコミットを ref に残す。
+    - 独自フォージ：pull request ごと・版ごとの ref（`refs/pull/<識別子>/<版の番号>`）を、フォージが持つ（[git のホスティング](../forge/git-hosting.md)）。
+    - GitHub：`refs/pull/<number>/head` で、最後の版が取れる。途中の版は、置き場にしか残らない。
+- ブランチの履歴と、消えたブランチの版のスナップショットは、git から作り直せない。置き場のうち、ここだけはバックアップを取る（[組み合わせ](../adapters/README.md)）。
 
 ## 読む
 
