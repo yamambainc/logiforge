@@ -13,7 +13,7 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | 着手できる作業を問い合わせる | [着手できる作業を読む](endpoints/work/list.md) |
 | 作業の終わりを判定する | [作業の終わりを判定する](endpoints/tree/completion.md) |
 | 論理レビューを行う | [レビューの材料を読む](endpoints/apply-request/review-material.md)、[レビューする](endpoints/apply-request/review.md) |
-| 検証結果に添えるファイルを置く | [ファイルの中身を置く](endpoints/blob/upload.md)、[artifact を登録する](endpoints/artifact/create.md) |
+| 検証結果に添えるファイルを置く | [apply request を作る](endpoints/apply-request/create.md)（ファイルは `verdict.submit` に含める） |
 | 人への依頼を起票する | [人への依頼を起票する](endpoints/human-request/create.md) |
 | 外の仕組みが変化を知る | [イベントの一覧を読む](endpoints/event/list.md)、[着手できる作業を読む](endpoints/work/list.md) |
 
@@ -24,10 +24,10 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | [repository の一覧](../../docs/webui/repositories.md) | repository を一覧し、選ぶ | [repository の一覧を読む](endpoints/repository/list.md) |
 | repository の一覧 | repository を作る（根の主文を含む） | [repository を作る](endpoints/repository/create.md) |
 | [木のビューア](../../docs/webui/tree-viewer.md) | 木とバッジを表示する | [木のノードを読む](endpoints/tree/list-nodes.md) |
-| 木のビューア | ノードの詳細 | [ノードの詳細を読む](endpoints/node/get.md)、[検証結果を読む](endpoints/verdict/get.md)、[artifact を読む](endpoints/artifact/get.md)、[ファイルの中身を読む](endpoints/blob/get.md) |
+| 木のビューア | ノードの詳細 | [ノードの詳細を読む](endpoints/node/get.md)、[検証結果を読む](endpoints/verdict/get.md)、[artifact のファイルを読む](endpoints/artifact/get.md) |
 | 木のビューア | ノードの履歴 | [ノードの履歴を読む](endpoints/node/history.md) |
 | [人への依頼](../../docs/webui/human-requests.md) | 種類と状態で絞り込む | [人への依頼の一覧を読む](endpoints/human-request/list.md) |
-| 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)、[ファイルの中身を置く](endpoints/blob/upload.md)、[artifact を登録する](endpoints/artifact/create.md) |
+| 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)（ファイルは回答に含める） |
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
 | apply request と履歴 | 過去の時点の木 | [木のノードを読む](endpoints/tree/list-nodes.md) |
 | [ダッシュボード](../../docs/webui/dashboard.md) | 根の値と、作業の終わりの判定 | [作業の終わりを判定する](endpoints/tree/completion.md) |

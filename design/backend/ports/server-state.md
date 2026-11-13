@@ -39,7 +39,7 @@
 
 - 木（[木の読み書き](tree-read-write.md) に置く）
 - 提案、レビュー、人への依頼（[やりとり](interaction.md) に置く）
-- artifact の中身（[ファイルの保管](file-storage.md) に置く）
+- artifact の中身（[木の読み書き](tree-read-write.md) の git リポジトリに置く）
 - 主体とトークン（[認証](authentication.md) に置く）
 - 秘密情報（[アダプタ](../../adapters/README.md) の「設定と秘密情報」）
 

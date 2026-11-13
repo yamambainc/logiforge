@@ -63,8 +63,7 @@ GitHub を使わずに Logiforge を動かすときに、[やりとり](../backe
 | テーブル | 列 |
 |---|---|
 | `human_request` | `id`（`hrq_` と ULID）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
-| `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at` |
-| `human_request_attachment` | `human_request_id`、`sha256` |
+| `human_request_answer` | `human_request_id`（主キー）、`body`、`revision`、`answered_by_principal_id`、`answered_at` |
 
 - `human_request_answer` の主キーで、回答を 1 回だけにする。
 - 人への依頼の状態は保存しない。回答の行があれば `answered` である。

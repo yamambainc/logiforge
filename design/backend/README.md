@@ -25,7 +25,6 @@
 - `user` が使える書き込みは、利用者の 2 つの操作だけである。
   - repository の作成（根の主文を含む）
   - 人への依頼への回答
-    - 回答に添えるファイルの blob と artifact の登録
 - それ以外の書き込みは、`client` だけが使える。
 - 主体と主体の種類は、[認証](ports/authentication.md) のポートで確かめる。
 - repository を使えるのは、その repository を読める主体だけである。
@@ -36,7 +35,7 @@
 
 1. アダプタから、その名前の provider_ref を読む（[repository の登録](../adapters/README.md)）。
 2. 木の読み書きの「用意する」と「最初のリビジョンで main を作る」を呼ぶ。
-   - 最初のリビジョンには、`logiforge.yaml` と根の仮説を入れる。
+   - 最初のリビジョンには、根の仮説を入れる。
 3. やりとりの「repository の、やりとりの側を用意する」を呼ぶ。
 4. サーバの状態の repository の登録を更新する。
 
@@ -48,7 +47,7 @@
 - API が受け取る 4 種類の操作（[操作](../../docs/apply-request/README.md)）を、バックエンドがファイルの変化に変える。
   - `story.create`：仮説とストーリーのディレクトリを加える。
   - `story.inactivate`：`inactivated.md` を加える。
-  - `verdict.submit`：`verdicts/` に検証結果のファイルを加える。
+  - `verdict.submit`：`verdicts/` に検証結果のファイルを、`artifacts/` に artifact のファイルを加える。
   - `node.edit`：`background.md` の末尾に文章を加える。
 - 操作とファイルの変化は 1 対 1 なので、バックエンドは差分から操作を復元できる。
   - なぜ：操作を別に保存しなくても、差分だけで API の応答を作れるようにするため。

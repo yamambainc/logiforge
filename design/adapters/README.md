@@ -10,7 +10,6 @@
 | 木の読み書き | git（GitHub のリモート）、git（ローカルの bare リポジトリ） | [git アダプタ](git.md) |
 | やりとり | GitHub アダプタ、独自プロバイダ | [GitHub アダプタ](github.md)、[独自プロバイダ](native.md) |
 | サーバの状態 | SQLite | [SQLite アダプタ](sqlite.md) |
-| ファイルの保管 | CAS（内容アドレス方式のストレージ）アダプタ（ローカルのディレクトリ、S3（Amazon のオブジェクトストレージ）互換のストレージ） | [CAS アダプタ](cas.md) |
 | 認証 | GitHub アダプタ、SQLite アダプタ | [GitHub アダプタ](github.md)、[SQLite アダプタ](sqlite.md) |
 
 ## 組み合わせ
@@ -21,19 +20,16 @@ flowchart TB
     G1["git アダプタ（GitHub）"] ==> G1D[("git リポジトリ（GitHub）")]
     G2["GitHub アダプタ"] ==> G2D[("GitHub の PR と issue")]
     G3["SQLite アダプタ"] ==> G3D[("SQLite ファイル")]
-    G4["CAS アダプタ"] ==> G4D[("CAS")]
   end
   subgraph N["GitHub を使わない場合"]
     N1["git アダプタ（bare）"] ==> N1D[("git リポジトリ（bare）")]
     N2["独自プロバイダ"] ==> N3D[("SQLite ファイル")]
     N3["SQLite アダプタ"] ==> N3D
-    N4["CAS アダプタ"] ==> N4D[("CAS")]
   end
 ```
 
 - 太い矢印は、アダプタがデータストアを読み書きすることを表す。
 - GitHub を使わない場合は、独自プロバイダとサーバの状態が、同じ SQLite ファイルにテーブルを分けて置く。
-
 
 - やりとりのアダプタ（プロバイダ）は、サーバの設定で 1 つに決める。
   - なぜ：repository ごとにプロバイダを選べると、組み合わせが増えて単純さを失うから。
@@ -62,7 +58,6 @@ repository の名前の正本は、アダプタごとに次のとおりである
 - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵など）
 - GitHub の webhook の secret
 - SQLite ファイルのパス（サーバの状態と独自プロバイダで同じファイル）
-- CAS の場所と認証情報
 - 版の署名の鍵（[記録の形式](../files/revisions.md)）
 
 - なぜ：git リポジトリは、人やエージェントが読めるから。

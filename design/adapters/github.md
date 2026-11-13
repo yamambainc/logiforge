@@ -83,6 +83,7 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - 人への依頼の issue の本文の先頭に、対象ノードの識別子を書く。
 - 「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue に `logiforge/answered` ラベルを付けて閉じる。
+- 回答のコメントの末尾に、回答のリビジョンを `Logiforge-Answer-Revision:` の trailer で書く（[artifact の置き方](../files/artifacts.md)）。
 
 ## main への書き込みを守る
 

@@ -6,7 +6,6 @@
 ## ディレクトリ
 
 ```
-logiforge.yaml                       設定（artifact を git リポジトリに入れる大きさの境目など）
 tree/
   h-7k3m9q2x4p/                      根の仮説
     hypothesis.md                    主文
@@ -20,21 +19,12 @@ tree/
         hypothesis.md
         ...
 artifacts/
-  sha256/<先頭 2 文字>/<残りの 62 文字>   git リポジトリに入れる artifact の中身
+  sha256/<先頭 2 文字>/<残りの 62 文字>   artifact のファイル（[artifact の置き方](artifacts.md)）
 ```
 
 - 仮説は `h-`、ストーリーは `s-`、検証結果は `v-` で始まるディレクトリかファイルにする。
 - 仮説のディレクトリの子は、ストーリーのディレクトリだけにする。
 - ストーリーのディレクトリの子は、仮説のディレクトリだけにする。
-
-## logiforge.yaml
-
-| 項目 | 内容 |
-|---|---|
-| `artifact_inline_limit` | artifact を git リポジトリに入れる大きさの境目（[artifact の置き方](artifacts.md)） |
-
-- `logiforge.yaml` は、最初のリビジョンで作る。
-- repository の名前は、`logiforge.yaml` には書かない（[repository の登録](../adapters/README.md)）。
 
 ## 識別子
 

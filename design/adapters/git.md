@@ -35,6 +35,7 @@
 ## 版のブランチ
 
 - 版のコミットは、`refs/logiforge/apply-requests/<識別子>` に置く。
+- 人への依頼の回答のコミットは、`refs/logiforge/human-requests/<識別子>` に置く（[artifact の置き方](../files/artifacts.md)）。
 - GitHub のリモートでは、pull request の head ブランチにも、同じコミットを置く（[GitHub アダプタ](github.md)）。
 
 ## 制約

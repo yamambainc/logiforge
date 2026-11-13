@@ -25,7 +25,7 @@ tags:
   - name: work
     description: 着手できる作業と、作業の終わりの判定
   - name: evidence
-    description: blob、artifact、検証結果、レポート
+    description: artifact、検証結果、レポート
   - name: human-request
     description: 人への依頼（PVR と判断の依頼）
   - name: history
@@ -462,95 +462,26 @@ paths:
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/blobs:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    post:
-      tags: [evidence]
-      operationId: uploadBlob
-      summary: ファイルの中身を置く
-      description: 同じ中身がすでにあれば、置かずに同じ結果を返す
-      requestBody:
-        required: true
-        content:
-          application/octet-stream:
-            schema: { type: string, format: binary }
-      responses:
-        '201':
-          description: 置いた blob
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Blob' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /repositories/{repository}/blobs/{sha256}:
+  /repositories/{repository}/artifacts/{sha256}:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
     get:
       tags: [evidence]
-      operationId: getBlob
-      summary: ファイルの中身を読む
+      operationId: getArtifact
+      summary: artifact のファイルを読む
+      description: 指定したリビジョン（版や回答のリビジョンも指定できる）の artifacts/ から、file の artifact の中身を読む
       parameters:
         - name: sha256
           in: path
           required: true
           schema: { $ref: '#/components/schemas/Sha256' }
+        - $ref: '#/components/parameters/Revision'
       responses:
         '200':
           description: 中身
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /repositories/{repository}/artifacts:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    post:
-      tags: [evidence]
-      operationId: createArtifact
-      summary: artifact を登録する
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [kind]
-              properties:
-                kind: { $ref: '#/components/schemas/ArtifactKind' }
-                sha256: { $ref: '#/components/schemas/Sha256' }
-                uri: { type: string, format: uri }
-                media_type: { type: string }
-      responses:
-        '201':
-          description: 登録した artifact
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Artifact' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /repositories/{repository}/artifacts/{artifactId}:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-    get:
-      tags: [evidence]
-      operationId: getArtifact
-      summary: artifact
-      parameters:
-        - name: artifactId
-          in: path
-          required: true
-          schema: { type: string, pattern: '^art_' }
-      responses:
-        '200':
-          description: artifact
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Artifact' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/verdicts/{verdictId}:
@@ -671,12 +602,12 @@ paths:
               required: [body]
               properties:
                 body: { type: string, minLength: 1 }
-                attachment_artifact_ids:
+                attachments:
                   type: array
-                  items: { type: string, pattern: '^art_' }
+                  items: { $ref: '#/components/schemas/ArtifactInput' }
       responses:
         '201':
-          description: 回答した人への依頼。回答は artifact としても登録される
+          description: 回答した人への依頼。回答と添付は、回答のリビジョンの artifacts/ に入る
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HumanRequest' }
@@ -819,10 +750,11 @@ components:
             not_found：対象がない。
             same_session：差分を書いたどれかのセッションと同じセッションでレビューした。
             not_open：open でない apply request を変えようとした。
+            too_large：ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた。
             repository_exists：同じ名前の repository がすでにある。
             repository_not_registered：その名前の repository が、サーバの設定に登録されていない。
             cursor_expired：イベントのログが作り直されたため、その位置から読めない。最初から読み直す。
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, repository_exists, repository_not_registered, cursor_expired]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, too_large, repository_exists, repository_not_registered, cursor_expired]
 
     Tree:
       type: object
@@ -918,15 +850,15 @@ components:
 
     Verdict:
       type: object
-      required: [id, hypothesis_id, value, report_body, artifact_ids, citations, submitted_revision]
+      required: [id, hypothesis_id, value, report_body, artifacts, citations, submitted_revision]
       properties:
         id: { type: string, pattern: '^v-' }
         hypothesis_id: { type: string, pattern: '^h-' }
         value: { type: boolean }
         report_body: { type: string }
-        artifact_ids:
+        artifacts:
           type: array
-          items: { type: string, pattern: '^art_' }
+          items: { $ref: '#/components/schemas/Artifact' }
         citations:
           type: array
           items: { $ref: '#/components/schemas/Citation' }
@@ -938,10 +870,12 @@ components:
     Citation:
       oneOf:
         - type: object
-          required: [target_kind, artifact_id]
+          required: [target_kind, sha256]
           properties:
             target_kind: { type: string, const: artifact }
-            artifact_id: { type: string, pattern: '^art_' }
+            sha256:
+              $ref: '#/components/schemas/Sha256'
+              description: 回答のファイルを指定すると、バックエンドが回答のリビジョンから回答のファイルと添付を版に加える
         - type: object
           required: [target_kind, node_id, revision]
           properties:
@@ -950,22 +884,42 @@ components:
             revision: { $ref: '#/components/schemas/Revision' }
     Artifact:
       type: object
-      required: [id, kind]
+      required: [kind, name]
+      description: 決まりは ../../docs/tree/verdict.md に従う
       properties:
-        id: { type: string, pattern: '^art_' }
         kind: { $ref: '#/components/schemas/ArtifactKind' }
-        sha256: { $ref: '#/components/schemas/Sha256' }
-        uri: { type: string }
+        name: { type: string, minLength: 1 }
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+          description: file では必ずある。link では任意で、利用者やエージェントが照合に使う
+        uri:
+          type: string
+          format: uri
+          description: link のときの URL
         media_type: { type: string }
     ArtifactKind:
       type: string
-      enum: [file, link, reference, program, output, human_entry]
-    Blob:
-      type: object
-      required: [sha256, size]
-      properties:
-        sha256: { $ref: '#/components/schemas/Sha256' }
-        size: { type: integer }
+      enum: [file, link]
+    ArtifactInput:
+      oneOf:
+        - type: object
+          required: [kind, name, content_base64]
+          properties:
+            kind: { type: string, const: file }
+            name: { type: string, minLength: 1 }
+            media_type: { type: string }
+            content_base64:
+              type: string
+              format: byte
+              description: 中身を base64 にしたもの。中身は 10 MiB まで
+        - type: object
+          required: [kind, name, uri]
+          properties:
+            kind: { type: string, const: link }
+            name: { type: string, minLength: 1 }
+            uri: { type: string, format: uri }
+            sha256: { $ref: '#/components/schemas/Sha256' }
+            media_type: { type: string }
 
     OperationInput:
       oneOf:
@@ -1019,9 +973,9 @@ components:
           description: 仮説の識別子か、同じ apply request で作る仮説の ref
         value: { type: boolean }
         report_body: { type: string, minLength: 1 }
-        artifact_ids:
+        artifacts:
           type: array
-          items: { type: string, pattern: '^art_' }
+          items: { $ref: '#/components/schemas/ArtifactInput' }
         citations:
           type: array
           items: { $ref: '#/components/schemas/Citation' }
@@ -1194,16 +1148,18 @@ components:
           oneOf:
             - type: 'null'
             - type: object
-              required: [body, artifact_id, answered_at]
+              required: [body, artifact, attachments, revision, answered_at]
               properties:
                 body: { type: string }
-                artifact_id:
-                  type: string
-                  pattern: '^art_'
-                  description: 回答を登録した artifact（human_entry）
-                attachment_artifact_ids:
+                artifact:
+                  $ref: '#/components/schemas/Artifact'
+                  description: 回答のファイル。引用するときは、この sha256 を使う
+                attachments:
                   type: array
-                  items: { type: string, pattern: '^art_' }
+                  items: { $ref: '#/components/schemas/Artifact' }
+                revision:
+                  $ref: '#/components/schemas/Revision'
+                  description: 回答と添付を入れたリビジョン。添付を読むときに指定する
                 answered_at: { type: string, format: date-time }
 
     Event:

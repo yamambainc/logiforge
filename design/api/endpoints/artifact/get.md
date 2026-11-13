@@ -1,16 +1,18 @@
-# artifact を読む
+# artifact のファイルを読む
 
-利用者は WebUI から、reviewer は CLI から、レポートが参照する根拠を確かめるときに呼ぶ。
+利用者は WebUI から、reviewer は CLI から、artifact のファイルの中身を読むときに呼ぶ。
+反映の前のファイルは版のリビジョンを、回答の添付は回答のリビジョンを指定して読む。
 
 ## 呼び出し
 
-- `GET /repositories/{repository}/artifacts/{artifactId}`
+- `GET /repositories/{repository}/artifacts/{sha256}`
 - operationId：`getArtifact`
 
 ## すること
 
-- artifact の種類と、中身のハッシュかリンクを返す。
-- 中身そのものは、ファイルの中身を読む API で読む。
+- 指定したリビジョンの `artifacts/sha256/` から、ファイルの中身を返す。
+- リビジョンを指定しなければ、今の `main` から読む。
+- link の artifact の先は、取りに行かない。
 
 ## 関係する要件
 

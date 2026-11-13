@@ -37,15 +37,9 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 
 - [着手できる作業を読む](work/list.md) → `GET /repositories/{repository}/work`
 
-## ファイルの中身
-
-- [ファイルの中身を置く](blob/upload.md) → `POST /repositories/{repository}/blobs`
-- [ファイルの中身を読む](blob/get.md) → `GET /repositories/{repository}/blobs/{sha256}`
-
 ## artifact
 
-- [artifact を登録する](artifact/create.md) → `POST /repositories/{repository}/artifacts`
-- [artifact を読む](artifact/get.md) → `GET /repositories/{repository}/artifacts/{artifactId}`
+- [artifact のファイルを読む](artifact/get.md) → `GET /repositories/{repository}/artifacts/{sha256}`
 
 ## 検証結果
 

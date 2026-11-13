@@ -45,6 +45,7 @@ flowchart TB
 ## 再現性
 
 - 検証の再現に要るものは、[artifact](../tree/verdict.md) と [引用](../tree/verdict.md) の決まりで残す。
+- リンクの artifact の参照先が消えたり変わったりするリスクは、利用者の責任とする。sha256 を書いておけば、変化を検出できる。
 
 ## 並行性
 

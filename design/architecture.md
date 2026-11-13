@@ -18,8 +18,7 @@ flowchart TB
       P1["木の読み書き"]
       P2["やりとり"]
       P3["サーバの状態"]
-      P4["ファイルの保管"]
-      P5["認証"]
+      P4["認証"]
     end
   end
   subgraph GHC["GitHub を使う構成"]
@@ -32,7 +31,6 @@ flowchart TB
   end
   subgraph COM["共通"]
     SQ["SQLite"]
-    CA["CAS"]
   end
   CL --> API
   API --> RULE
@@ -74,7 +72,7 @@ flowchart TB
   - なぜ：木を git リポジトリで管理するという要件（[木の置き場所](../docs/architecture/README.md)）を満たし、変更の履歴と任意の時点の木を、git の仕組みでそのまま扱うため。
 - 認証も、ポートにする（[認証](backend/ports/authentication.md)）。
   - なぜ：GitHub を使う構成では GitHub に任せ、使わない構成ではサーバが持つ、という違いを、アダプタの差し替えだけで吸収するため。
-- SQLite と CAS（内容アドレス方式のストレージ）は、どちらの構成でも共通に使う。
+- SQLite は、どちらの構成でも共通に使う。
   - なぜ：構成によって変わらない部分を、1 つの実装にまとめるため。
 
 ## 起動時の組み立て
