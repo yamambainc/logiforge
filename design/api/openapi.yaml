@@ -620,6 +620,7 @@ paths:
       description: |
         送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
         回答と添付は、git ではなく、プロバイダのやりとりの側に置く（../../design/files/artifacts.md）。
+        GitHub を使う構成では、添付は link だけで、file は validation_failed で受け付けない。
       parameters:
         - $ref: '#/components/parameters/HumanRequestId'
       requestBody:

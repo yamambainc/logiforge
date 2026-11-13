@@ -49,11 +49,11 @@ flowchart TB
 
 | 構成 | 正本の置き場所 | バックアップ |
 |---|---|---|
-| GitHub を使う構成 | GitHub と、置き場の `answers/`（回答の添付） | GitHub は GitHub に任せる。`answers/` は取る |
+| GitHub を使う構成 | GitHub | GitHub に任せる |
 | 独自フォージを使う構成 | 独自フォージ | 独自フォージのデータを取る（[独自フォージ](../forge/README.md)） |
 
 - どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
-- スナップショットの置き場（`answers/` を除く）と worker の clone は、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
+- スナップショットの置き場と worker の clone は、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
 
 ## repository の登録
 
@@ -85,7 +85,6 @@ repository の名前の正本は、構成ごとに次のとおりである。
   - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵）
   - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）
   - repository の名前と `owner/name` の組
-  - 置き場の `answers/` の接頭辞にだけ書ける鍵（回答の添付のため。[人への依頼の回答](../files/artifacts.md)）
 - 独自フォージを使う構成だけ
   - 独自フォージの URL
   - 独自フォージの `writer` のトークン（[独自フォージのアダプタ](forge.md)）

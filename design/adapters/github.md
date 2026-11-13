@@ -36,7 +36,7 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 | 人への依頼 | issue（ラベル `logiforge/pvr` か `logiforge/decision`） |
 | 人への依頼の識別子 | issue の本文の末尾の trailer `Logiforge-Human-Request:` |
 | 回答 | App が、利用者の回答として書いたコメント |
-| 回答の添付 | 静的ファイルストレージの `<repository>/answers/<人への依頼の識別子>/<sha256>`。バックエンドが置く（[人への依頼の回答](../files/artifacts.md)） |
+| 回答の添付 | リンクだけ。ファイルは受け付けない。独自フォージの構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |
 | 一覧のカーソル | pull request と issue の number。時刻は使わない |
 
 - 1 つのブランチに、open の pull request は 1 つまでである。GitHub も、同じ head と base の pull request を 2 つ開けない。
