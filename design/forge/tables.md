@@ -11,7 +11,7 @@
   - `apply_request` の `description` を、更新の API で書き換える。
     - なぜ：説明欄は、レビューの材料にも、版の差分にも含まないから（[レビューの材料](../../docs/apply-request/review.md)）。
 - 識別子は、バックエンドが決めたものを、そのまま使う（[やりとり](../backend/ports/interaction.md)）。
-- 版は置かない。版の正本は git の ref である（[apply request の作成と更新](../backend/apply-request.md)）。
+- 版は置かない。版は、ブランチの先頭のコミットで、worker が求める（[版](../backend/apply-request.md)）。
 - 一覧は、行を作った順に返す。識別子の順ではない（[ページング](../api/README.md)）。
   - カーソルには、行の連番（SQLite の rowid）を使う。時刻は使わない。
 
@@ -22,6 +22,8 @@
 | `id` | `apr_` と 26 文字（[識別子](../backend/ports/interaction.md)） |
 | `description` | 説明欄 |
 | `branch` | apply request のもとになったブランチの名前 |
+| `first_revision` | 作ったときのブランチの先頭のコミット |
+| `merged_revision` | 反映のコミット。反映されていなければ空 |
 | `state` | `open` / `merged` / `closed` |
 | `closed_reason` | close の理由 |
 | `closed_by_session_id` | close したセッション |
@@ -32,7 +34,8 @@
 |---|---|
 | `id` | `rev_` と 26 文字 |
 | `apply_request_id` | 対象の提案 |
-| `version` | レビューした版 |
+| `version` | レビューした版の番号 |
+| `revision` | レビューした版のコミット |
 | `kind` | `approve` / `request_changes` / `comment` |
 | `body` | 本文 |
 | `reviewer_session_id` | reviewer のセッション |
@@ -52,7 +55,8 @@
 | テーブル | 列 |
 |---|---|
 | `human_request` | `id`（`hrq_` と 26 文字）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
-| `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at`、`revision`（回答のリビジョン） |
+| `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at` |
+| `human_request_attachment` | `human_request_id`、`sha256`、`name`、`media_type`。中身は、添付のディレクトリに sha256 の名前で置く |
 
 - `human_request_answer` の主キーで、回答を 1 回だけにする。
 - 人への依頼の状態は保存しない。回答の行があれば `answered` である。
@@ -61,7 +65,7 @@
 
 | テーブル | 列 |
 |---|---|
-| `principal` | `principal_id`、`kind`（`writer` / `user` / `client`） |
+| `principal` | `principal_id`、`kind`（`writer` / `reader` / `user` / `client`） |
 | `token` | `token_hash`、`principal_id`、`created_at` |
 
 - 主体の種類は、管理者が主体ごとに決める（[主体](README.md)）。

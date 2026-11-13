@@ -7,9 +7,10 @@
 
 | ポート | アダプタ | ページ |
 |---|---|---|
-| 木の書き込み | 木の書き込みのアダプタ（[worker](../backend/worker.md) の内部 API のクライアント。worker がリモートの git リポジトリに書く） | [git アダプタ](git.md) |
 | やりとり | GitHub アダプタ、独自フォージのアダプタ | [GitHub アダプタ](github.md)、[独自フォージのアダプタ](forge.md) |
 | スナップショットの置き場 | 静的ファイルストレージ、手元のディレクトリ | [スナップショットの置き場のアダプタ](snapshot-store.md) |
+
+- [worker](../backend/worker.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
 | 認証 | GitHub アダプタ、独自フォージのアダプタ | [GitHub アダプタ](github.md)、[独自フォージのアダプタ](forge.md) |
 
 ## 組み合わせ
@@ -17,24 +18,25 @@
 ```mermaid
 flowchart TB
   subgraph G["GitHub を使う構成"]
-    G1["木の書き込みのアダプタ"] ==> GW["worker"] ==> GH[("GitHub")]
-    GW ==> OBJ
-    G2["GitHub アダプタ"] ==> GH
+    G2["GitHub アダプタ"] ==> GH[("GitHub")]
     G3["静的ファイルストレージのアダプタ"] ==> OBJ[("静的ファイルストレージ")]
+    GW["worker"] ==> GH
+    GW ==> OBJ
   end
   subgraph N["独自フォージを使う構成"]
-    N1["木の書き込みのアダプタ"] ==> NW["worker"] ==> NF[("独自フォージ")]
-    NW ==> DIR
-    N2["独自フォージのアダプタ"] ==> NF
+    N2["独自フォージのアダプタ"] ==> NF[("独自フォージ")]
     N3["手元のディレクトリのアダプタ"] ==> DIR[("手元のディレクトリ")]
+    NW["worker"] ==> NF
+    NW ==> DIR
   end
 ```
 
 - 太い矢印は、アダプタが外のサービスを読み書きすることを表す。
 - 構成は、サーバの設定で 1 つに決める。
   - なぜ：repository ごとに構成を選べると、組み合わせが増えて単純さを失うから。
-- 木の書き込みのアダプタと worker は、どちらの構成でも同じ実装である。リモートの URL と認証情報だけが違う。
-- 置き場に書くのは worker、読むのはスナップショットの置き場のアダプタ（バックエンド）である。
+- worker は、どちらの構成でも同じ実装である。リモートの URL と認証情報だけが違う。worker は git を読み、置き場に書く。
+- 置き場を読むのは、スナップショットの置き場のアダプタ（バックエンド）である。
+- git に書くのは、GitHub アダプタか独自フォージのアダプタが、プロバイダの API で行う repository の用意と pull request の merge だけである。
 - やりとりと認証は、同じアダプタが実装する。
   - なぜ：どちらの正本も、同じ外のサービス（GitHub か独自フォージ）にあるから。
 - GitHub で PR（pull request）や issue としてやりとりを見たいなら、GitHub を使う構成にする。
@@ -47,11 +49,11 @@ flowchart TB
 
 | 構成 | 正本の置き場所 | バックアップ |
 |---|---|---|
-| GitHub を使う構成 | GitHub | GitHub に任せる |
+| GitHub を使う構成 | GitHub と、置き場の `answers/`（回答の添付） | GitHub は GitHub に任せる。`answers/` は取る |
 | 独自フォージを使う構成 | 独自フォージ | 独自フォージのデータを取る（[独自フォージ](../forge/README.md)） |
 
 - どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
-- スナップショットの置き場と worker の clone も、正本ではない。失っても、worker が git とプロバイダから作り直す。そのため、バックアップは要らない。
+- スナップショットの置き場（`answers/` を除く）と worker の clone は、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
 
 ## repository の登録
 
@@ -80,27 +82,26 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
 - GitHub を使う構成だけ
-  - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵など）
+  - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵）
   - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）
   - repository の名前と `owner/name` の組
+  - 置き場の `answers/` の接頭辞にだけ書ける鍵（回答の添付のため。[人への依頼の回答](../files/artifacts.md)）
 - 独自フォージを使う構成だけ
   - 独自フォージの URL
-  - 独自フォージの書き込み主体のトークン（[独自フォージのアダプタ](forge.md)）
+  - 独自フォージの `writer` のトークン（[独自フォージのアダプタ](forge.md)）
 
 [worker](../backend/worker.md)：
 
 - 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
-- 版の署名の鍵（署名を付け、確かめるため。[記録の形式](../files/revisions.md)）
-- git を読み書きし、repository の一覧を読む資格情報
-  - GitHub を使う構成：GitHub App の秘密鍵
-  - 独自フォージを使う構成：独自フォージの `writer` のトークン
+- git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
+  - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
+  - 独自フォージを使う構成：独自フォージの `reader` のトークン
 - 内部 API の鍵（バックエンドと同じもの）
 - 置き場の接続先と、書く鍵
 - 巡回の間隔と、内部 API を受ける HTTP のエンドポイント
 - clone を置く、永続するストレージのパス
 
-鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。署名の鍵を持つのは、worker だけである。
+鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
 
-- その管理者は、署名の鍵を取り出せば、反映によらない変更を、署名付きの変更に見せかけられる。
 - ほかの主体には、鍵を置く場所を読ませない。
-- 署名の鍵は、失うと、それまでの版と回答の署名を確かめられなくなるので、バックアップを取る。
+- worker は、git とプロバイダに書く鍵を持たない。

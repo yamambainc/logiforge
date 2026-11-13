@@ -9,6 +9,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 |---|---|---|
 | `auth login --token <トークン>` | なし | なし |
 | `auth setup-git` | なし | credential helper を設定する |
+| `commit [git commit の引数]` | なし | `git commit` に、セッションの trailer を付けて呼ぶ |
 | `repo list` | `listRepositories` | なし |
 | `repo view <repository>` | `getRepository` | なし |
 | `repo clone <repository>` | `getRepository`（`git_url` を得る） | `git clone` |
@@ -35,16 +36,19 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | コマンド | API | git |
 |---|---|---|
 | `ar create --branch <ブランチ> [--description]` | `createApplyRequest` | なし（先に push しておく） |
-| `ar update <apply request> --base-version <n> [--branch]` | `updateApplyRequest` | なし（先に push しておく） |
+| `ar edit <apply request> --description` | `updateApplyRequest` | なし |
 | `ar view <apply request>` | `getApplyRequest` | なし |
 | `ar list [--state]` | `listApplyRequests` | なし |
 | `ar material <apply request>` | `getReviewMaterial` | なし |
 | `ar review <apply request> --approve\|--request-changes\|--comment --version <n> [--body] [--prompt-revision]` | `reviewApplyRequest` | なし |
 | `ar close <apply request> --reason` | `closeApplyRequest` | なし |
-| `ar cleanup` | `listApplyRequests` | 反映か close された apply request のブランチを、`git push --delete` で消す |
+| `ar cleanup` | `listApplyRequests` | 手元のブランチのうち、反映か close された apply request のものだけを、`git branch -d` と `git push --delete` で消す |
 
-- `ar create` と `ar update` は、ブランチが push 済みで、手元の先頭と remote の先頭が同じかを確かめてから API を呼ぶ。`--revision` に手元の先頭を入れて送る。
+- `ar create` は、ブランチが push 済みで、手元の先頭と remote の先頭が同じかを確かめてから API を呼ぶ。`revision` に手元の先頭を入れて送る。
   - なぜ：push し忘れた変更を、知らないまま取り込まないため。
+- ブランチの名前は、`main` と、`logiforge/` で始まるものを使えない。プロバイダが push を拒む。
+- 版の更新は、同じブランチへの `git push` だけである。コマンドはない。
+- `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
 - `ar create` は、`Idempotency-Key` を自動で付ける。送り直すときは、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
 
 ## 作業と人への依頼

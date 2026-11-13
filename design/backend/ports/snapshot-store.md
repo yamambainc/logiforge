@@ -1,6 +1,6 @@
 # スナップショットの置き場
 
-バックエンドが、[スナップショット](../snapshot.md) を読むときに使うポートを確かめるために読む。
+バックエンドが、[スナップショット](../snapshot.md) を読むときと、[worker](../worker.md) に取り込みを頼むときに使うポートを確かめるために読む。
 
 ## 置いてあるもの
 
@@ -9,7 +9,8 @@
 | `<repository>/commits/<SHA>` | スナップショットのコミットの記録 | 変わらない |
 | `<repository>/snapshots/<SHA>` | スナップショットの木 | 変わらない |
 | `<repository>/artifacts/<sha256>` | artifact のファイルの中身 | 変わらない |
-| `<repository>/latest` | 今の `main` の SHA、ref の一覧、force push の記録（[latest](../snapshot.md)） | 変わる |
+| `<repository>/latest` | 今の `main` の SHA（[latest](../snapshot.md)） | 変わる |
+| `<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md)） | 変わる |
 | `repositories` | `latest` がある repository の名前の一覧 | 変わる |
 
 ## 操作
@@ -17,8 +18,11 @@
 | 操作 | 内容 |
 |---|---|
 | 読む | キーの中身を返す。なければ、ないことを返す |
+| ブランチを取り込む | worker に、ブランチの先頭と base を求め、差分のスナップショットを作ってもらう |
+| worker を起こす | プロバイダに書いたあとに、worker に巡回を始めてもらう |
 
-- バックエンドは、読むだけである。
+- アダプタは、置き場を読む部分と、[worker の内部 API](../worker-api.md) のクライアントからなる。
+- バックエンドは、置き場を読むだけである。
 - 書くのは [worker](../worker.md) だけで、worker の中の別のインターフェースで書く。このポートには、書く操作を置かない。
   - なぜ：バックエンドが置き場に書かないことを、ポートの形で守るため。
 

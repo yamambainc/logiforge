@@ -76,6 +76,8 @@ paths:
       responses:
         '201':
           description: 作った repository
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Repository' }
@@ -254,8 +256,9 @@ paths:
       operationId: createApplyRequest
       summary: apply request を作る（client だけ）
       description: |
-        push したブランチの差分を、版 1 として取り込む。手順は ../../design/backend/apply-request.md に従う。
+        push したブランチから main への pull request を作る。ブランチの先頭が版 1 になる。手順は ../../design/backend/apply-request.md に従う。
         差分が 4 種類の操作として読めなければ、validation_failed で受け付けない。操作は、差分から復元して応答に入れる。
+        そのブランチに open の apply request がすでにあれば、validation_failed で受け付けない。
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -277,6 +280,8 @@ paths:
       responses:
         '201':
           description: 作った apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -301,11 +306,10 @@ paths:
     patch:
       tags: [apply-request]
       operationId: updateApplyRequest
-      summary: apply request を更新する（client なら、どのセッションからでもよい）
+      summary: apply request の説明欄を書き換える（client なら、どのセッションからでもよい）
       description: |
-        ブランチの今の先頭を、新しい版として取り込む。版の差分は、ブランチと main の分かれた点からの差分で、それまでの版を置き換える。
-        新しい版には、更新したセッションを `author_session_id` として記録する。
-        それまでの approve の扱いは、[反映の条件](../../docs/apply-request/review.md) に従う。
+        版の更新は、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request.md）。
+        この API は、説明欄だけを書き換える。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
         - $ref: '#/components/parameters/SessionId'
@@ -315,18 +319,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [base_version]
+              required: [description]
               properties:
-                base_version:
-                  type: integer
-                  minimum: 1
-                  description: もとにした版の番号。今の版と違えば version_conflict で受け付けない
-                branch:
-                  $ref: '#/components/schemas/BranchName'
-                  description: 取り込むブランチ。指定しなければ、apply request のブランチ
-                revision:
-                  $ref: '#/components/schemas/Revision'
-                  description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない
                 description: { type: string }
       responses:
         '200':
@@ -368,6 +362,8 @@ paths:
       responses:
         '201':
           description: 付けたレビューと、その後の apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema:
@@ -593,6 +589,27 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
+  /repositories/{repository}/human-requests/{humanRequestId}/attachments/{sha256}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    get:
+      tags: [human-request]
+      operationId: getAnswerAttachment
+      summary: 回答の添付のファイルを読む
+      parameters:
+        - $ref: '#/components/parameters/HumanRequestId'
+        - name: sha256
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Sha256' }
+      responses:
+        '200':
+          description: 中身
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories/{repository}/human-requests/{humanRequestId}/answer:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
@@ -601,7 +618,8 @@ paths:
       operationId: answerHumanRequest
       summary: 人への依頼に回答する（user だけ。1 回だけ）
       description: |
-        送り直しは、回答のリビジョンがすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
+        送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
+        回答と添付は、git ではなく、プロバイダのやりとりの側に置く（../../design/files/artifacts.md）。
       parameters:
         - $ref: '#/components/parameters/HumanRequestId'
       requestBody:
@@ -680,6 +698,13 @@ components:
         決まりは ../../design/api/writes.md の「同じ要求の繰り返し」に従う。
       schema: { type: string, minLength: 1, maxLength: 128 }
 
+  headers:
+    PendingRevision:
+      description: |
+        書いたものが、待つ時間の上限までに読む側に出なかったときに付ける。値は、読む側に出るのを待っているリビジョン。
+        決まりは ../../design/api/writes.md の「書いた直後の読み」に従う
+      schema: { type: string }
+
   responses:
     Problem:
       description: エラー
@@ -751,9 +776,10 @@ components:
             | version_conflict | 409 | レビューした版、または更新のもとにした版が、今の版と違う |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
-            | unavailable | 503 | worker が止まっているか、書き込みがぶつかり続けて、git に書けない。少し待って送り直す |
+            | unavailable | 503 | worker が止まっていて、ブランチを読めない。少し待って送り直す |
+            | snapshot_pending | 503 | 指定したリビジョンのスナップショットが、まだない。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。GitHub を使う構成だけで起きる |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, repository_not_registered]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered]
 
     Tree:
       type: object
@@ -874,7 +900,7 @@ components:
             target_kind: { type: string, const: artifact }
             sha256:
               $ref: '#/components/schemas/Sha256'
-              description: 回答のファイルを引用するときは、回答のファイルと添付を、同じ版のブランチにも入れる（../../design/files/artifacts.md）
+              description: artifact の sha256。回答の添付は、ここではなく link の artifact で引用する（../../design/files/artifacts.md）
         - type: object
           required: [target_kind, node_id, revision]
           properties:
@@ -1021,7 +1047,7 @@ components:
           description: 版ごとの、差分を書いたセッション
           items:
             type: object
-            required: [version, revision, base_revision, author_session_id]
+            required: [version, revision, base_revision]
             properties:
               version: { type: integer }
               revision:
@@ -1031,8 +1057,8 @@ components:
                 $ref: '#/components/schemas/Revision'
                 description: そのコミットと main の分かれた点。版の差分は、ここからの差分である
               author_session_id:
-                type: string
-                description: 版を取り込んだ API の呼び出しのセッション。コミットの trailer ではない
+                type: [string, 'null']
+                description: 版を書いたセッション。版のコミットの trailer の自己申告で、なければ null（../../design/files/revisions.md）
         description: { type: string }
         operations:
           type: array
@@ -1071,7 +1097,10 @@ components:
       required: [version, reason, detail]
       properties:
         version: { type: integer }
-        reason: { type: string, enum: [stale_target, invariant_violation] }
+        reason:
+          type: string
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
         detail: { type: string }
     ReviewMaterial:
       type: object
@@ -1167,24 +1196,19 @@ components:
           oneOf:
             - type: 'null'
             - type: object
-              required: [body, artifact, attachments, revision, answered_at]
+              required: [body, attachments, answered_at]
               properties:
                 body: { type: string }
-                artifact:
-                  $ref: '#/components/schemas/Artifact'
-                  description: 回答のファイル。引用するときは、この sha256 を使う
                 attachments:
                   type: array
+                  description: 添付。file のものは、getAnswerAttachment で読む。引用するときは、その URL の link にする（../../design/files/artifacts.md）
                   items: { $ref: '#/components/schemas/Artifact' }
-                revision:
-                  $ref: '#/components/schemas/Revision'
-                  description: 回答と添付を入れたリビジョン。添付を読むときに指定する
                 answered_at: { type: string, format: date-time }
 
     NodeHistoryEntry:
       type: object
-      required: [revision, committed_at, apply_request_id, session_ids, signed]
-      description: main のコミットの署名と trailer から作る（design/files/revisions.md）
+      required: [revision, committed_at, apply_request_id, session_ids, reflected]
+      description: main のコミットの trailer から作る（design/files/revisions.md）
       properties:
         revision: { $ref: '#/components/schemas/Revision' }
         committed_at: { type: string, format: date-time }
@@ -1194,9 +1218,9 @@ components:
         session_ids:
           type: array
           items: { type: string }
-        signed:
+        reflected:
           type: boolean
-          description: false なら、反映の手順によらない変更である
+          description: 反映の記録（Logiforge-Apply-Request:）があるか。false なら、反映の手順によらない変更である（最初のリビジョンを除く）
     NodeHistoryPage:
       type: object
       required: [items, next_cursor]

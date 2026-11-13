@@ -24,30 +24,14 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 
 ## 人への依頼の回答
 
-- 利用者が回答すると、バックエンドは、回答と添付を 1 つのリビジョンにまとめる。
-  - 親は、そのときの `main` である。
-  - 回答の本文は、回答のファイルとして `artifacts/sha256/` に入れる。
-  - 添付の小さなファイルも、`artifacts/sha256/` に入れる。大きな添付は、`link` にする。
-  - リビジョンは、[木の書き込み](../backend/ports/tree-write.md) の「リビジョンを作る」で作り、署名を付ける（[記録の形式](revisions.md)）。
-- 回答のリビジョンの正本は、人への依頼の識別子から求める名前である（[名前を付けたリビジョン](../adapters/git.md)）。
-- [やりとり](../backend/ports/interaction.md) には、回答の本文と、回答した利用者だけを記録する。
-- 「リビジョンを作る」が「同じ名前のリビジョンがすでにある」で失敗したら、バックエンドは、そのリビジョンの回答のファイルを読む。
-  - 本文と回答した利用者が同じなら、送り直しとみなし、やりとりへの記録に進む。
-  - 違えば、もう回答されているので、`not_open` で失敗する。
-  - やりとりの「回答を記録する」が「すでに回答がある」で失敗したときも、同じく `not_open` に当たる（[回答](../backend/apply-request.md)）。
-- なぜ：GitHub の API では issue のコメントにファイルを添付できず、独自フォージにファイルの置き場所を足すと仕組みが増えるため。版と同じ仕組みで済ませる。
-- opener が検証結果で回答のファイルを引用するときは、回答のファイルと添付を、自分のブランチの `artifacts/sha256/` にも入れる。
-  - CLI は、回答の ref（`refs/logiforge/human-requests/<識別子>`）を fetch して、そのファイルを写す（[CLI](../cli/README.md)）。
-  - バックエンドは、入れたファイルの sha256 が、署名の正しい回答のリビジョンにあることを確かめる（[差分の検査](../backend/checks.md)）。
-
-回答のファイルの front matter は、次のとおり。
-
-| 項目 | 内容 |
-|---|---|
-| `human_request_id` | 人への依頼の識別子 |
-| `answered_by` | 回答した利用者 |
-| `answered_at` | 回答した日時 |
-| `attachments` | 添付の一覧。各項目は、下の「検証結果からの参照」と同じ形 |
+- 回答の本文と添付は、git に置かない。プロバイダのやりとりの側に置く（[やりとり](../backend/ports/interaction.md)）。
+  - 独自フォージ：独自フォージのデータベースとファイルの置き場（[テーブル](../forge/tables.md)）
+  - GitHub：issue のコメントに本文を書く。GitHub の API ではコメントにファイルを添付できないので、添付は、静的ファイルストレージの `<repository>/answers/<人への依頼の識別子>/<sha256>` に、バックエンドが置く（[GitHub アダプタ](../adapters/github.md)）
+  - なぜ：回答は、利用者が WebUI から行い、git を使わないから。サーバの側が git に書くのを、pull request の操作と repository の用意だけにするため。
+- 回答の添付は、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
+- opener が検証結果で回答を引用するときは、`link` の artifact にする。
+  - URL は、その添付を読む API の URL である。`sha256` も書く。
+  - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。
 
 ## 検証結果からの参照
 

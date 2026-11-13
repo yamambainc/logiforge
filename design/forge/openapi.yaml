@@ -56,8 +56,29 @@ paths:
     put:
       tags: [repository]
       operationId: putRepository
-      summary: repository を作る。すでにあれば何もしない
-      description: 空の bare リポジトリを作る（git-hosting.md）。
+      summary: repository を作り、最初のコミットを main に置く
+      description: |
+        bare リポジトリを作り、受け取ったファイルだけを入れた最初のコミットを main に置く（git-hosting.md）。
+        リポジトリがすでにあり、main もあれば、already_exists で受け付けない。main がなければ、最初のコミットを置く。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [files, message]
+              properties:
+                files:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [path, content_base64]
+                    properties:
+                      path: { type: string }
+                      content_base64: { type: string, format: byte }
+                message: { type: string }
+                committed_at: { type: string, format: date-time }
       responses:
         '200':
           description: すでにあった repository
@@ -128,15 +149,17 @@ paths:
     post:
       tags: [apply-request]
       operationId: createApplyRequest
-      summary: 提案を作る
-      description: 版は、git の ref が正本なので、ここには記録しない（../backend/apply-request.md）。
+      summary: 提案（pull request）を作る
+      description: |
+        利用者のブランチから main への提案を作る。版は、ブランチの先頭のコミットである（../backend/apply-request.md）。
+        そのブランチに open の提案がすでにあれば、branch_in_use で受け付けない。
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, branch]
+              required: [id, branch, first_revision]
               properties:
                 id: { $ref: '#/components/schemas/ApplyRequestId' }
                 description: { type: string }
@@ -144,6 +167,9 @@ paths:
                   type: string
                   minLength: 1
                   description: apply request のもとになったブランチの名前（refs/heads/ の後ろ）
+                first_revision:
+                  $ref: '#/components/schemas/Revision'
+                  description: 作ったときのブランチの先頭のコミット
       responses:
         '201':
           description: 作った提案
@@ -257,15 +283,29 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/apply-requests/{applyRequestId}/merged:
+  /repositories/{repository}/apply-requests/{applyRequestId}/merge:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
       - $ref: '#/components/parameters/ApplyRequestIdPath'
     post:
       tags: [apply-request]
-      operationId: markMerged
-      summary: 提案が反映されたことを記録し、提案を閉じる
-      description: すでに merged なら、何もせずに 200 を返す。closed なら、not_open で受け付けない。
+      operationId: mergeApplyRequest
+      summary: 提案を squash merge して、main を進める
+      description: |
+        ブランチの先頭が sha でなければ、head_moved で受け付けない。
+        main と git の衝突があれば、conflict で受け付けない。
+        通れば、ブランチの base からの差分を 1 つのコミットにまとめ、message をメッセージにして main に置き、提案を merged にする。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sha, message]
+              properties:
+                sha: { $ref: '#/components/schemas/Revision' }
+                message: { type: string }
+                committed_at: { type: string, format: date-time }
       responses:
         '200':
           description: merged にした提案
@@ -348,6 +388,26 @@ paths:
               schema: { $ref: '#/components/schemas/HumanRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
+  /repositories/{repository}/human-requests/{humanRequestId}/attachments/{sha256}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/HumanRequestIdPath'
+      - name: sha256
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+    get:
+      tags: [human-request]
+      operationId: getAnswerAttachment
+      summary: 回答の添付のファイルを読む
+      responses:
+        '200':
+          description: 中身
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories/{repository}/human-requests/{humanRequestId}/answer:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
@@ -358,7 +418,7 @@ paths:
       summary: 回答を記録する
       description: |
         すでに回答があれば、already_answered で受け付けない。
-        answered_at は、バックエンドが回答のファイルに書いたものと同じ日時を送る（../files/artifacts.md）。
+        添付のファイルは、独自フォージが置く（../files/artifacts.md）。
       requestBody:
         required: true
         content:
@@ -453,10 +513,13 @@ components:
             | unauthenticated | 401 | トークンがない、または正しくない |
             | forbidden | 403 | 主体の種類が writer でない |
             | not_found | 404 | 対象がない |
-            | already_exists | 409 | 同じ識別子の提案、レビュー、人への依頼が、すでにある |
-            | not_open | 409 | open でない提案を close するか、closed の提案を merged にしようとした |
+            | already_exists | 409 | 同じ識別子の提案、レビュー、人への依頼、または main が、すでにある |
+            | not_open | 409 | open でない提案を close するか、merge しようとした |
             | already_answered | 409 | 回答がすでにある |
-          enum: [validation_failed, unauthenticated, forbidden, not_found, already_exists, not_open, already_answered]
+            | branch_in_use | 409 | そのブランチに、open の提案がすでにある |
+            | head_moved | 409 | ブランチの先頭が、指定した sha でない |
+            | conflict | 409 | main と git の衝突があり、merge できない |
+          enum: [validation_failed, unauthenticated, forbidden, not_found, already_exists, not_open, already_answered, branch_in_use, head_moved, conflict]
 
     Repository:
       type: object
@@ -472,17 +535,22 @@ components:
       required: [id, kind]
       properties:
         id: { type: string }
-        kind: { type: string, enum: [writer, user, client] }
+        kind: { type: string, enum: [writer, reader, user, client] }
 
     ApplyRequestState:
       type: string
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, branch, state, reviews, merge_failures]
+      required: [id, branch, first_revision, head, state, reviews, merge_failures]
       properties:
         id: { $ref: '#/components/schemas/ApplyRequestId' }
         branch: { type: string }
+        first_revision: { $ref: '#/components/schemas/Revision' }
+        head:
+          type: [string, 'null']
+          description: ブランチの今の先頭のコミット。ブランチが消えていれば null
+        merged_revision: { type: [string, 'null'] }
         description: { type: [string, 'null'] }
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         closed_reason: { type: [string, 'null'] }
@@ -497,10 +565,13 @@ components:
           items: { $ref: '#/components/schemas/MergeFailure' }
     Review:
       type: object
-      required: [id, version, kind, reviewer_session_id]
+      required: [id, version, revision, kind, reviewer_session_id]
       properties:
         id: { $ref: '#/components/schemas/ReviewId' }
         version: { type: integer, minimum: 1 }
+        revision:
+          $ref: '#/components/schemas/Revision'
+          description: レビューした版のコミット
         kind: { type: string, enum: [approve, request_changes, comment] }
         body: { type: [string, 'null'] }
         reviewer_session_id: { $ref: '#/components/schemas/SessionId' }
@@ -510,7 +581,7 @@ components:
       required: [version, reason, detail]
       properties:
         version: { type: integer, minimum: 1 }
-        reason: { type: string, enum: [stale_target, invariant_violation] }
+        reason: { type: string, enum: [stale_target, invariant_violation, conflict, snapshot_pending] }
         detail: { type: string }
 
     HumanRequestKind:
@@ -518,14 +589,22 @@ components:
       enum: [pvr, decision]
     HumanRequestAnswer:
       type: object
-      required: [body, answered_by_principal_id, answered_at, revision]
+      required: [body, answered_by_principal_id, answered_at, attachments]
       properties:
         body: { type: string, minLength: 1 }
-        revision:
-          $ref: '#/components/schemas/Revision'
-          description: 回答のリビジョン（../files/artifacts.md）
         answered_by_principal_id: { type: string }
         answered_at: { type: string, format: date-time }
+        attachments:
+          type: array
+          description: 添付のファイル。受け取るときは content_base64 を持ち、返すときは持たない
+          items:
+            type: object
+            required: [name, sha256]
+            properties:
+              name: { type: string }
+              sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+              media_type: { type: string }
+              content_base64: { type: string, format: byte }
     HumanRequest:
       type: object
       required: [id, node_id, kind, body, created_by_session_id, created_at, answer]

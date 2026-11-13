@@ -3,75 +3,67 @@
 GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
 木の書き込みは、[git アダプタ](git.md) が、GitHub リポジトリをリモートとして扱う。
 
-## 前提：main を守る設定と、push できる人
+## 前提：main を守る設定
 
-- `main` と `refs/logiforge/` を守る設定は、運用する人が用意する（[main への書き込みを守る](github-main.md)）。
-- 用意しないときは、push できる人を信頼する。反映によらない変更は、[worker](../backend/worker.md) が見つけて警告する。
+- `main` を守る設定（ルールセットかブランチ保護）は、必須である。管理者が用意する（[main への書き込みを守る](github-main.md)）。
+  - `main` に入るのは、App による pull request の merge だけにする。
+- 守る設定がないと、反映によらない変更が `main` に入りうる。[worker](../backend/worker.md) は、それを見つけたら警告する。
 
 ## 書き込み主体
 
 GitHub アダプタに必要なのは、バックエンドだけが使う、専用の書き込み主体である。
 
 - なぜ：GitHub に書き込む認証情報が要るから。
-- なぜ：書き込める主体を、バックエンドだけに絞るから。
+- なぜ：`main` に merge できる主体を、バックエンドだけに絞るから。
 
-書き込み主体には、GitHub App を推奨する。
+書き込み主体には、GitHub App を使う。以下では「App」と書く。
 
-- 権限を細かく絞れる。
-- 人に紐づかない。
-- 席を消費しない。
-
-機械用のユーザーアカウントでもよい。その場合は、席を 1 つ使う。
-以下では、書き込み主体を「App」と書く。
+- 権限を細かく絞れる。人に紐づかない。席を消費しない。
 
 ## 対応
 
 | やりとりの操作 | GitHub での実装 |
 |---|---|
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
-| 提案 | pull request |
-| 提案の識別子 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` |
-| 一覧のカーソル | pull request と issue の number。時刻は使わない |
-| 版と今の版 | 記録しない。git の ref が正本で、worker が git から読む（[版と ref](../backend/apply-request.md)） |
-| head ブランチ | 利用者が push したブランチ（apply request のもとになったブランチ）。pull request の画面で差分を見せる |
+| repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
+| 提案 | 利用者のブランチから `main` への pull request。App が作る |
+| 提案の識別子と、作ったときの先頭 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` と `Logiforge-First-Revision:` |
+| 版 | pull request の head のコミット（[版](../backend/apply-request.md)） |
+| 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（版のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
+| close | pull request を close する。理由とセッションは、コメントに書く |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
-| 反映されたことの記録 | バックエンドが pull request に反映したコミットを書き、close する |
-| レビュー | `event=COMMENT` の pull request review |
+| レビュー | `event=COMMENT` の pull request review。`commit_id` に版のコミットを入れる |
 | 人への依頼 | issue（ラベル `logiforge/pvr` か `logiforge/decision`） |
 | 人への依頼の識別子 | issue の本文の末尾の trailer `Logiforge-Human-Request:` |
-| 回答 | バックエンドの App が、利用者の回答として書いたコメント。末尾の trailer `Logiforge-Answer-Revision:` に回答のリビジョンを書く |
+| 回答 | App が、利用者の回答として書いたコメント |
+| 回答の添付 | 静的ファイルストレージの `<repository>/answers/<人への依頼の識別子>/<sha256>`。バックエンドが置く（[人への依頼の回答](../files/artifacts.md)） |
+| 一覧のカーソル | pull request と issue の number。時刻は使わない |
 
-- pull request は merge しない。`main` は、[反映の手順](../backend/merge.md) が git の push で進める。
-- 版の記録は、pull request の head ブランチとは別に、版ごとの ref（[名前を付けたリビジョン](git.md)）に置く。
-  - なぜ：head ブランチは利用者が動かし、消すこともあるので、古い版のコミットが git gc で消えないようにするため。
-  - pull request の画面の差分は、ブランチの今の中身である。取り込んだ版とは限らない。
-  - GitHub アダプタを作るときに、次のことを確かめる。
-    - GitHub が `refs/logiforge/` の下への push を受け付けるか
-    - `git ls-remote` と `git fetch` で、`refs/logiforge/` の下を読めるか
-    - `git push --atomic` を受け付けるか（[ref を書く](git.md)）
-    - `refs/logiforge/` を、GitHub のルールセットで守れるか。守れないなら、worker が書き換えを見つけて警告する（版の記録の署名が正しくない ref を、ref の一覧で印を付ける）
+- 1 つのブランチに、open の pull request は 1 つまでである。GitHub も、同じ head と base の pull request を 2 つ開けない。
+- 利用者がブランチを消すと、GitHub は pull request を閉じる。バックエンドは、それを close として扱う。
+- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、2 つ目のコミットで足す。
+  - 用意のコミットには、trailer `Logiforge-Init:` を付ける。worker は、これを反映によらない変更として扱わない。
+- GitHub アダプタを作るときに、次のことを確かめる。
+  - App が、`main` を守る設定の例外として、pull request を merge できるか
+  - 空のリポジトリに、contents API で最初のコミットを作れるか
 
 ## repository を用意する
 
 1. 管理者が、空の GitHub リポジトリを作る。
-2. 管理者が、その GitHub リポジトリに App を入れる（機械用のユーザーアカウントなら、書き込み権限を与える）。
-3. 管理者が、利用者とエージェントに、ブランチを push できる権限を与え、`main` と `refs/logiforge/` を守る設定を用意する（[main への書き込みを守る](github-main.md)）。
+2. 管理者が、その GitHub リポジトリに App を入れる。
+3. 管理者が、利用者とエージェントに、ブランチを push できる権限を与え、`main` を守る設定を用意する（[main への書き込みを守る](github-main.md)）。
 4. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
-5. 利用者が、名前と根の主文で repository を作る。
-6. バックエンドは、[repository の用意](../backend/README.md) の手順で、根の仮説を最初のリビジョンとして書き込む。
-   - git アダプタの「用意する」は、App が書き込めることだけを確かめる。
-   - GitHub リポジトリに `main` がすでにあるかは、「最初のリビジョンで main を作る」の結果で判定する。
+5. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、最初のコミットを置く。
 
 - App は、organization に GitHub リポジトリを作らない。
   - なぜ：App に、organization の Administration write という強い権限を持たせないため。
 
 ## バックエンドの App が作ったものだけを数える
 
-- 版は、[記録の形式](../files/revisions.md) の署名で確かめる。これが主な確認である。
-  - 補助として、コミットの作者が App かも確かめる。
-- レビューは、作者がバックエンドの App のものだけを数える。
-- 回答は、バックエンドの App が書いたコメントだけを数える。
-- なぜ：セッション ID とプロンプトのリビジョンを、バックエンドが記録したものだけに限るため（[保証の範囲](../../docs/apply-request/review.md)）。
+- 提案は、App が作った pull request だけを数える。
+- レビューは、作者が App のものだけを数える。
+- 回答は、App が書いたコメントだけを数える。
+- なぜ：セッション ID とプロンプトのリビジョンを、バックエンドを通したものだけに限るため（[保証の範囲](../../docs/apply-request/review.md)）。
 
 ## 認証
 
@@ -85,7 +77,7 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
   - それ以外の主体（gh の CLI のトークン、App のトークンなど）は、`client` である。
 - GitHub への問い合わせは、主体のトークンで行う。そのため、主体ごとの上限に数え、App の上限には数えない。
 - 読める repository は、主体のトークンで、サーバの設定に登録した GitHub リポジトリの権限を確かめて求める。
-  - `main` と `refs/logiforge/` に書けるのは、書き込み主体（App）だけにする（[main への書き込みを守る](github-main.md)）。
+  - `main` に merge できるのは、書き込み主体（App）だけにする（[main への書き込みを守る](github-main.md)）。
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
 - そのため、この構成では、サーバに正本が残らない（[組み合わせ](README.md)）。
 

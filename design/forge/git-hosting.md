@@ -22,20 +22,31 @@
 
 | ref | fetch と clone | push |
 |---|---|---|
-| `refs/heads/main` | すべての主体 | `writer` だけ |
-| `refs/logiforge/` の下 | すべての主体 | `writer` だけ |
-| そのほかのブランチ（`refs/heads/` の下） | すべての主体 | すべての主体 |
+| `refs/heads/main` | すべての主体 | だれもできない。merge の API だけが進める |
+| `refs/heads/logiforge/` の下 | すべての主体 | だれもできない（予約） |
+| そのほかのブランチ（`refs/heads/` の下） | すべての主体 | `user` と `client` |
 | そのほかの ref（タグなど） | すべての主体 | だれもできない |
 
 - `user` と `client` がブランチに push できるのは、apply request のもとになるブランチを置くためである（[CLI](../cli/README.md)）。
-- `main` と `refs/logiforge/` に書けるのは worker だけである。独自フォージが、これを強制する。
+- `main` を進めるのは、`mergeApplyRequest` だけである（[openapi.yaml](openapi.yaml)）。
+  - なぜ：GitHub の構成で、`main` を守る設定を必須にするのと同じ振る舞いにするため（[main への書き込みを守る](../adapters/github-main.md)）。
+- 独自フォージは、これを pre-receive で強制する。
+  - 認証した主体と、その種類を、pre-receive に渡す。
   - 受け取った push の ref を、更新の前に 1 つずつ確かめ、決まりに合わない ref があれば、push 全体を拒む。
-  - なぜ：`main` を進めるのは反映の手順だけで、版の記録を書くのは worker だけだから。
+- ブランチを消す push を受け取ったら、そのブランチの open の提案を close にする。
+  - なぜ：GitHub で、ブランチを消すと pull request が閉じるのと同じ振る舞いにするため。
+- 他人のブランチも消せる。消されても、反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request.md)）。
 - push の資格は、receive-pack の広告（`info/refs?service=git-receive-pack`）の時点で確かめる。どの ref に書けるかは、push を受け取ってから確かめる。
+
+## merge
+
+- `mergeApplyRequest` は、bare リポジトリに対して git で行う。
+  - ブランチの先頭が、指定した SHA かを確かめる。
+  - ブランチと `main` の分かれた点からの差分を、今の `main` に当てはめる。git の衝突があれば、失敗する。
+  - 当てはめた結果を 1 つのコミットにし、受け取ったメッセージを付けて、`main` を進める。
+- 同じ repository の merge は、独自フォージの中で 1 つずつ順に行う。
 
 ## push で確かめること
 
 - push の中身（ファイルの形や不変条件）は、確かめない。
-  - なぜ：ルールはバックエンドにだけ置くから。利用者のブランチの中身は、apply request を作るときに、バックエンドが検査する。
-- ref の期待する値（`--force-with-lease`）と、`--atomic` の push は、git の標準のとおりに扱う（[ref を書く](../adapters/git.md)）。
-  - git の receive-pack が `atomic` を広告することを、作るときに確かめる。
+  - なぜ：ルールはバックエンドにだけ置くから。利用者のブランチの中身は、apply request を作るときと反映の前に、バックエンドが検査する。

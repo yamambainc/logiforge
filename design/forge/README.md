@@ -10,7 +10,8 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 | 持つもの | GitHub を使う構成でのもの | ページ |
 |---|---|---|
 | git リポジトリ（bare） | GitHub リポジトリ | [git のホスティング](git-hosting.md) |
-| 提案・レビュー・反映の失敗・人への依頼 | pull request と issue | [テーブル](tables.md) |
+| 提案・レビュー・反映の失敗・人への依頼と回答 | pull request と issue | [テーブル](tables.md) |
+| 回答の添付のファイル | issue のコメントの添付に当たるもの | [テーブル](tables.md) |
 | 主体とトークン | GitHub のアカウントとトークン | [テーブル](tables.md) |
 
 - 独自フォージは、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
@@ -23,12 +24,13 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 
 | 種類 | 使う者 | できること |
 |---|---|---|
-| `writer` | バックエンドと worker | バックエンドは独自フォージの API を使う。worker は git リポジトリを読み、push する |
-| `user` | WebUI を使う利用者 | git リポジトリを読む。`main` と `refs/logiforge/` 以外のブランチに push する |
-| `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む。`main` と `refs/logiforge/` 以外のブランチに push する |
+| `writer` | バックエンド | 独自フォージの API を使う。git には push しない |
+| `reader` | worker | git リポジトリを読む |
+| `user` | WebUI を使う利用者 | git リポジトリを読む。`main` と `logiforge/` 以外のブランチに push する |
+| `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む。`main` と `logiforge/` 以外のブランチに push する |
 
 - `user` と `client` のトークンは、バックエンドの API で使う。バックエンドが、要求ごとに独自フォージに問い合わせて確かめる。
-- 独自フォージの API と、`main` と `refs/logiforge/` への push は、`writer` だけに許す（[git のホスティング](git-hosting.md)）。
+- 独自フォージの API は、`writer` だけに許す。`main` は、だれも push できず、merge の API だけが進める（[git のホスティング](git-hosting.md)）。
   - なぜ：`main` を進めるのは、バックエンドの [反映の手順](../backend/merge.md) だけだから。
 - `user` と `client` には、git リポジトリを読むことと、そのほかのブランチに push することを許す。
   - なぜ：既存の git の道具（clone、diff、履歴）で状態を扱い、apply request のもとになるブランチを置けるようにするため（[木の置き場所](../../docs/architecture/README.md)、[CLI](../cli/README.md)）。
@@ -42,9 +44,10 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 - テーブルは、1 つの SQLite ファイルに置く。
   - なぜ：書き込むのはバックエンドだけで、1 台のマシンで使う構成なので、1 本の書き込みで足りるから。
 - git リポジトリは、bare リポジトリとして、設定したディレクトリに置く。
-- SQLite ファイルのパスと、git リポジトリを置くディレクトリは、独自フォージの設定に書く。
+- 回答の添付のファイルは、sha256 の名前で、設定したディレクトリに置く。
+- SQLite ファイルのパスと、git リポジトリと添付を置くディレクトリは、独自フォージの設定に書く。
 
 ## バックアップ
 
-- 独自フォージのデータは、Logiforge の正本である。SQLite ファイルと、git リポジトリのディレクトリの両方を取る。
+- 独自フォージのデータは、Logiforge の正本である。SQLite ファイルと、git リポジトリと添付のディレクトリを取る。
 - 主体とトークンを失うと、誰も API を使えなくなる。バックアップから戻す。

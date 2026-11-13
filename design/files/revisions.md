@@ -6,7 +6,7 @@
 
 - リビジョンは、`main` ブランチの first-parent の並びにあるコミットである。
 - apply request が 1 件反映されるたびに、`main` に 1 つのコミットができる（[反映の手順](../backend/merge.md)）。
-  - 1 つの apply request の操作は、すべて同じコミットで反映される。
+  - 反映は、プロバイダの pull request の squash merge である。1 つの apply request の変更は、すべて同じコミットで反映される。
 - リビジョンの順番は、first-parent の並びで決まる。
   - 数で表したいときは、根のコミットからの first-parent の数を使う。
 
@@ -19,34 +19,33 @@
 ## 任意の時点の木
 
 - リビジョン r の木は、commit r を checkout したときの `tree/` である。
-- 値は、その `tree/` からバックエンドが計算し直す（[真偽値の伝播](../../docs/tree/propagation.md)）。
-- そのため、時点ごとのスナップショットや、別の履歴のテーブルは要らない。
+- 値は、その `tree/` から計算し直す（[真偽値の伝播](../../docs/tree/propagation.md)）。
 
 ## 記録の形式
 
-worker が作るコミットと、版の記録（タグ）には、メッセージの末尾に次の trailer を書く。
+バックエンドは、反映のコミットのメッセージ（squash merge のメッセージ）の末尾に、次の trailer を書く。
 
-| trailer | 書くもの | 内容 |
-|---|---|---|
-| `Logiforge-Session-Id:` | 版の記録、反映 | 差分を取り込んだ API の呼び出しのセッション |
-| `Logiforge-Apply-Request:` | 版の記録、反映 | apply request の識別子 |
-| `Logiforge-Version:` | 版の記録、反映 | 版の番号。反映では、版の番号と、版のコミット（例：`3 <commit SHA>`） |
-| `Logiforge-Base:` | 版の記録 | 版の差分の base（[版と ref](../backend/apply-request.md)） |
-| `Logiforge-Human-Request:` | 回答 | 人への依頼の識別子 |
-| `Logiforge-Signature:` | 最初のリビジョン、版の記録、反映、回答 | worker の署名 |
+| trailer | 内容 |
+|---|---|
+| `Logiforge-Apply-Request:` | apply request の識別子 |
+| `Logiforge-Version:` | 反映した版の番号と、版のコミット（例：`3 <commit SHA>`） |
+| `Logiforge-Session-Id:` | 版を書いたセッション。自己申告である（下の「セッション」） |
 
-- 版の記録は、利用者のコミットを指す、注釈付きのタグである（[版の記録](../backend/apply-request.md)）。利用者のコミットには、何も書き足さない。
-- 利用者のコミットのメッセージにある trailer は、記録として扱わない。
-- `Logiforge-Signature:` は、コミットの tree と親（タグでは、指すコミット）、ほかの trailer に対する HMAC-SHA256（鍵付きのハッシュによる署名）である。
-  - 鍵は、worker だけが持つ（[設定と秘密情報](../adapters/README.md)）。署名を付けるのも、確かめるのも worker である。git に書くのは worker だけだからである。
-  - なぜ：どのアダプタを使っても、版と回答がバックエンドの作ったものかを、同じ方法で確かめられるようにするため。
-- 反映のコミットには、反映したすべての版のセッションを、`Logiforge-Session-Id:` に並べて書く。
-- 最初のリビジョンは、`Logiforge-Apply-Request:` を持たない。突き合わせでは、用意によるものとして扱う。
-- `main` の first-parent の並びのうち、`Logiforge-Signature:` のない、または正しくないコミットは、反映によらない変更とみなす。
+- 最初のリビジョンは、`Logiforge-Apply-Request:` を持たない。
+- `main` の first-parent の並びのうち、`Logiforge-Apply-Request:` のないコミットは、反映によらない変更とみなす。最初のリビジョンは除く。
+  - `main` は、プロバイダの保護で、バックエンドの merge でしか進まない（[main への書き込みを守る](../adapters/github-main.md)）。この記録は、保護が外れたときに気づくためのものである。
+  - 署名は付けない。なぜ：`main` に書けるのはバックエンドだけで、保護が正しければ、記録を偽れる主体がいないから。
+
+## セッション
+
+- 版を書いたセッションは、利用者の自己申告である。
+  - 版の先頭のコミットのメッセージの trailer `Logiforge-Session-Id:` に、CLI が書く（[CLI](../cli/README.md)）。
+  - trailer のない版は、書いたセッションがわからないので、`approve` できない（[反映の条件](../backend/merge.md)）。
+- 自己申告であることと、その限りでの保証は、[保証の範囲](../../docs/apply-request/review.md) に書く。
 
 ## 誰が、いつ、どの apply request で
 
-- 誰が：反映のコミットと、版の記録の `Logiforge-Session-Id:`
+- 誰が：反映のコミットの `Logiforge-Session-Id:` と、pull request を作った主体
 - いつ：コミットの時刻
 - どの apply request で：`Logiforge-Apply-Request:`
 

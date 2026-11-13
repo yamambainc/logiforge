@@ -29,7 +29,8 @@ sequenceDiagram
 ```
 
 - ひな形と `check` は、手元のファイルだけを扱う（[ひな形と check](local.md)）。
-- 版を更新するときは、同じブランチに push してから `ar update` を呼ぶ。
+- 版を更新するときは、同じブランチに push するだけである。新しい先頭が、新しい版になる（[版](../backend/apply-request.md)）。
+- apply request は、プロバイダの pull request である。GitHub の構成では、GitHub の画面でも見られる。
 
 ## 認証
 
@@ -44,6 +45,9 @@ sequenceDiagram
 ## セッション
 
 - 書き込みのコマンドは、セッション ID を必ず送る（[セッション ID](../api/README.md)）。
+- 版を書いたセッションは、版のコミットのメッセージの trailer `Logiforge-Session-Id:` に書く（[セッション](../files/revisions.md)）。
+  - `logiforge commit` は、`git commit` にこの trailer を付けて呼ぶ。`git commit --trailer "Logiforge-Session-Id: <ID>"` と同じである。
+  - `check` は、ブランチの先頭のコミットに trailer がなければ、警告する。trailer のない版は `approve` できない。
 - セッション ID は、次の順に探す。見つからなければ、書き込みのコマンドは失敗する。
   1. フラグ `--session`
   2. 環境変数 `LOGIFORGE_SESSION_ID`
@@ -64,6 +68,6 @@ sequenceDiagram
 |---|---|
 | gh に似た CLI | `logiforge <名詞> <動詞>` の形（[コマンドの一覧](commands.md)） |
 | すべてのコマンドに `--json` | 上の「出力」 |
-| 木を変えるときは apply request を作るか更新する | git で push したブランチから `ar create`、`ar update` |
+| 木を変えるときは apply request を作るか更新する | git で push したブランチから `ar create`。更新は同じブランチへの push |
 | 着手できる作業を問い合わせる | `work list` |
 | 特定のディレクトリで使う | 木の repository の clone の中で使う |
