@@ -152,8 +152,18 @@ func TestApplyRequestCommands(t *testing.T) {
 	git(t, dir, "commit", "--quiet", "-m", "x")
 	head := git(t, dir, "rev-parse", "HEAD")
 	var st stub
+	closedCount := 0
 	host := st.server(t, func(r *http.Request) (int, string, string) {
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/repositories/q/apply-requests":
+			items := ""
+			for i := 0; i < closedCount; i++ {
+				if i > 0 {
+					items += ","
+				}
+				items += `{"id":"apr_old","branch":"work","state":"closed"}`
+			}
+			return 200, "application/json", `{"items":[` + items + `],"next_cursor":null}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
 			return 200, "application/json", `{"id":"apr_1","state":"open","versions":[{"version":1,"revision":"` + head + `"}]}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
@@ -169,15 +179,35 @@ func TestApplyRequestCommands(t *testing.T) {
 	}
 	git(t, dir, "push", "--quiet", "origin", "work")
 	code, out, _ := run(t, dir, e, "", "ar", "create", "--branch", "work", "--json")
-	req := st.reqs[0]
+	var req *http.Request
+	for _, r := range st.reqs {
+		if r.Method == "POST" {
+			req = r
+		}
+	}
 	if code != 0 || req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || req.Header.Get("Idempotency-Key") == "" ||
-		!strings.Contains(st.body[0], `"revision":"`+head+`"`) || !strings.HasPrefix(out, `{"id":"apr_1"`) {
+		!strings.Contains(st.body[len(st.body)-1], `"revision":"`+head+`"`) || !strings.HasPrefix(out, `{"id":"apr_1"`) {
 		t.Fatalf("ar create: %d %s %v %s", code, out, req.Header, st.body[0])
 	}
 	key := req.Header.Get("Idempotency-Key")
+	posts := func() []*http.Request {
+		var out []*http.Request
+		for _, r := range st.reqs {
+			if r.Method == "POST" {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
 	run(t, dir, e, "", "ar", "create", "--branch", "work")
-	if st.reqs[1].Header.Get("Idempotency-Key") != key {
+	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") != key {
 		t.Fatal("送り直しで、Idempotency-Key が変わった")
+	}
+	// close したあと、同じブランチの同じ先頭から作り直すと、キーが変わる（新しい apply request になる）。
+	closedCount = 1
+	run(t, dir, e, "", "ar", "create", "--branch", "work")
+	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") == key {
+		t.Fatal("作り直しで、Idempotency-Key が変わらない")
 	}
 
 	// --version は、SHA に引き直して送る。

@@ -338,7 +338,9 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 // ---- apply request ----
 
 // arCreate は、push したブランチから apply request を作る。手元の先頭と remote の先頭が同じかを確かめてから、revision に入れて送る。
-// Idempotency-Key は、repository・ブランチ・先頭から作る。同じブランチの同じ先頭なら、送り直しても同じ apply request になる。
+// Idempotency-Key は、repository・ブランチ・先頭と、そのブランチの閉じた（反映か close された）apply request の数から作る。
+//   - 同じブランチの同じ先頭なら、送り直しても同じ apply request になる。
+//   - close したあと、同じブランチの同じ先頭から作り直すと、閉じた数が増えているので、新しい apply request になる。
 func (a *App) arCreate(ctx context.Context, args []string) error {
 	f := newFlags("ar create")
 	repo, branch, desc, sess := repoFlag(f), f.String("branch", "", ""), f.String("description", "", ""), f.String("session", "", "")
@@ -367,7 +369,11 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	if fields := strings.Fields(remote); len(fields) == 0 || fields[0] != local {
 		return fmt.Errorf("ブランチ %s の手元の先頭 %s が、remote の先頭と違う。先に git push する", *branch, local)
 	}
-	sum := sha256.Sum256([]byte(name + "\n" + *branch + "\n" + local))
+	closed, err := a.closedOnBranch(ctx, name, *branch)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256([]byte(name + "\n" + *branch + "\n" + local + "\n" + strconv.Itoa(closed)))
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session,
 		idempotency: "cli-" + hex.EncodeToString(sum[:16]),
 		body:        map[string]string{"branch": *branch, "revision": local, "description": *desc}})
@@ -375,6 +381,33 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.show(res, a.printAR)
+}
+
+// closedOnBranch は、ブランチの、閉じた（反映か close された）apply request の数を返す。
+func (a *App) closedOnBranch(ctx context.Context, repo, branch string) (int, error) {
+	n := 0
+	cursor := ""
+	for {
+		var page struct {
+			Items []struct {
+				Branch string `json:"branch"`
+				State  string `json:"state"`
+			} `json:"items"`
+			NextCursor *string `json:"next_cursor"`
+		}
+		if err := a.getJSON(ctx, repoPath(repo)+"/apply-requests", query("limit", "200", "cursor", cursor), &page); err != nil {
+			return 0, err
+		}
+		for _, ar := range page.Items {
+			if ar.Branch == branch && ar.State != "open" {
+				n++
+			}
+		}
+		if page.NextCursor == nil {
+			return n, nil
+		}
+		cursor = *page.NextCursor
+	}
 }
 
 func (a *App) printAR(v map[string]any) {
