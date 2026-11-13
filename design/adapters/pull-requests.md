@@ -20,6 +20,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 - 1 つのブランチに、open の pull request は 1 つまでである。
 - ラベル（`logiforge/pvr`、`logiforge/decision`、`logiforge/answered`）は、GitForge の画面で見分けるためだけに付ける。バックエンドは読まない。
+  - ラベルがなければ、付けるときに作る。
 
 ## 記録のコメント
 
@@ -27,10 +28,14 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 | `Logiforge-Record:` | 書くとき | ほかの trailer |
 |---|---|---|
-| `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:` |
+| `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:`、`Logiforge-Principal:`（提案を作った主体） |
 | `close` | 提案を close したとき | `Logiforge-Session-Id:`。理由は本文 |
-| `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Session-Id:` |
-| `answer` | 回答を受け付けたとき | `Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
+| `merge_failure` | 反映できなかったとき | `Logiforge-Merge-Failure:`（失敗の理由） |
+| `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Principal:`（起票した主体）、`Logiforge-Session-Id:`。依頼の本文は本文 |
+| `answer` | 回答を受け付けたとき | `Logiforge-Human-Request:`、`Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
+
+- `Logiforge-Principal:` は、API の要求を送った主体である。
+  - なぜ：GitForge の上では、書き込み主体がすべてを書くので、提案を作った主体や reviewer が、GitForge の作者からはわからないから。反映の手順で、reviewer と提案を作った主体が同じかを確かめるのに使う（[反映の手順](../backend/merge.md)）。
 
 - 人への依頼の種類と対象ノードは、`human_request` の記録で決める。issue の本文とラベルは使わない。
 - 回答済みかどうかは、`answer` の記録があるかで決める。「回答は 1 回だけ」の判定は、バックエンドが行う。
@@ -43,6 +48,8 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 - 回答の添付は、`answer` の記録に書いた sha256 で守る。添付を読むときに sha256 を確かめ、合わなければ返さずに警告する。
 - 一覧の API は、repository のコメントの一覧（`GET /repos/{owner}/{repo}/issues/comments`）から、まとめて読む。GitHub と Forgejo の両方にある。
 - 1 件を読む API は、その pull request か issue のコメントだけを読む（`GET /repos/{owner}/{repo}/issues/{index}/comments`）。
+  - pull request と issue のタイトルは、`[Logiforge] <識別子>` にする。1 件を読むときに、どの番号かを探す手がかりにだけ使う。記録としては読まない。
+  - タイトルで見つからなければ（書き換えられた、など）、repository のコメントの一覧から探す。
 - 提案を作ったあと、記録のコメントを書く前に止まったら、送り直しで記録のコメントを書く。
   - 書き込み主体が作った open の pull request で、同じブランチのもので、記録のコメントがないものがあれば、新しく作らずに、それに記録を書く。
 
@@ -51,7 +58,10 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 - レビューは、すべてコメントの種類の review として書く。
   - なぜ：pull request を作った書き込み主体は、その pull request を approve できない GitForge があるから。GitForge の approve の状態は、反映の条件に使わない。
 - レビューの本文の末尾に、次の trailer を書く。
+  - `Logiforge-Record: review`
   - `Logiforge-Review-Id:`（レビューの識別子）
+  - `Logiforge-Review-Revision:`（レビューした版のコミット。GitForge のレビューの `commit_id` と同じ。違うものは数えない）
+  - `Logiforge-Principal:`（reviewer の主体）
   - `Logiforge-Review-Kind: approve|request_changes|comment`
   - `Logiforge-Session-Id:`
   - `Logiforge-Prompt-Revision:`
@@ -73,7 +83,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 | merged | GitForge の pull request が merged |
 | closed | 書き込み主体の `close` の記録がある。pull request が reopen されていても、closed とする |
 | closed | GitForge の pull request が closed（画面からの close と、ブランチを消したとき） |
-| closed | pull request は open だが、head のブランチがない。worker の [ブランチの履歴](../backend/snapshot.md) で、消えたことがわかる |
+| closed | pull request は open だが、head のブランチがない。worker の [ブランチの履歴](../backend/snapshot.md) で、消えたことがわかる。これは、ブランチの履歴を読むバックエンドが決める。アダプタは、GitForge の状態と記録だけから決める |
 | open | それ以外 |
 
 - 画面から close された pull request は、GitForge の状態に従う。画面から reopen されれば、open に戻る。

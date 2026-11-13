@@ -72,14 +72,17 @@ Forgejo の API の定義（`swagger.v1.json`、Forgejo 17 系）で、次のこ
 | トークンを確かめる API | `GET /user`。team の所属は `GET /user/teams` |
 | 1 つのコミットで複数のファイルを置けるか | できる。`POST /repos/{owner}/{repo}/contents`（`ChangeFilesOptions`）。コミットの時刻も `dates` で指定できる |
 
-作るときに確かめること（API の定義だけではわからないもの）：
+動く Forgejo（17.0.1）で、次のことを確かめた（`internal/adapters/forgejo` の結合テスト）。
 
-- `POST /contents` で、空の repository に最初のコミットを作れるか。作れなければ、`auto_init` で作ったあとに、`tree/` の外のファイルを残さないように用意する手順を決める
-- ブランチを消すと、pull request が閉じるか（Gitea で直された振る舞い）。閉じなくても、バックエンドは closed として扱う（[提案の状態](pull-requests.md)）
-- repository の管理者が、`enable_push: false` を越えて `main` に push できないか
-- 書き込み主体に、organization に repository を作る権限を与える方法（organization の設定か、team の権限か）
-- issue と pull request を読むだけの team の人が、他人のコメントを編集・削除できず、pull request を close できないか
-- `refs/pull/<index>/head` が、git の fetch で読めるか
+| 項目 | 結果 |
+|---|---|
+| `POST /contents` で、空の repository に最初のコミットを作れるか | 作れる。`auto_init` は要らない |
+| ブランチを消すと、pull request が閉じるか | 閉じる |
+| repository の管理者が、`enable_push: false` を越えて `main` に push できないか | できない。サイトの管理者でも、pre-receive で拒まれる |
+| 書き込み主体に、organization に repository を作る権限を与える方法 | team の `can_create_org_repo: true`。書き込み主体を、その team に入れる |
+| issue と pull request を読むだけの team の人が、他人のコメントを編集・削除し、pull request を close できるか | できない（403）。コメントを書くことはできるが、書き込み主体のものでないので数えない |
+| `refs/pull/<index>/head` が、git の fetch で読めるか | 読める |
+| merge を呼べるのはいつか | Forgejo が merge できるかを確かめ終わるまで、405 を返す。アダプタは、上限つきで待って呼び直す。head が違えば 409 |
 
 ## 認証
 

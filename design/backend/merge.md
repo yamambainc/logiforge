@@ -16,7 +16,8 @@ apply request を main に反映するとき、バックエンドが何を確か
    - GitForge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
-   - 版の差分を今の `main` に当てはめた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
+   - 版の差分を、今の `main` に重ねる。差分が変えたファイルが、base のあとに `main` でも変わっていれば重ねられないので、`conflict`（[スナップショット](snapshot.md) のブランチの木）。
+   - 版の差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
 4. GitForge の pull request の squash merge を、版のコミットの SHA を指定して呼ぶ。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. worker を起こし、`latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
