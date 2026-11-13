@@ -11,7 +11,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
   - merge できるのは、App だけにする。
 - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
 - 守る設定が外れて、反映によらない変更が `main` に入ったら、[worker](../backend/worker.md) が見つけて警告する。
-- 信頼の境界は、[Forge アダプタの共通の書き方](pull-requests.md) に書く。
+- 信頼の境界は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
 - 他人のブランチの削除を防ぎたいときは、ブランチを守る設定で禁じる。
 
 ## GitHub の API の使い方

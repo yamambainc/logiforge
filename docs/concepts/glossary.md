@@ -5,7 +5,7 @@
 
 ## 木
 
-- repository：1 つの問い（根の仮説）とその木を収める単位。[Forge](#この用語集で定義する語) の 1 つの git リポジトリに対応する。→ [仮説とストーリーの木](../tree/README.md)
+- repository：1 つの問い（根の仮説）とその木を収める単位。[GitForge](#この用語集で定義する語) の 1 つの git リポジトリに対応する。→ [仮説とストーリーの木](../tree/README.md)
 - 仮説 → [仮説とストーリーの木](../tree/README.md)
 - ストーリー → [仮説とストーリーの木](../tree/README.md)
 - 親・子・孫 → [仮説とストーリーの木](../tree/README.md)
@@ -34,4 +34,4 @@
 
 - **Logiforge**：この仕様が定めるシステム全体。
   - 位置づけは、[目的と範囲](README.md) に書く。
-- **Forge**：git のホスティング、pull request、レビュー、issue、主体とトークンを持つ、外のサービス。Logiforge は、木の git リポジトリとやりとりの正本を Forge に置く。どの Forge を使うかは、アダプタで差し替える。
+- **GitForge**：git のホスティング、pull request、レビュー、issue、主体とトークンを持つ、外のサービス。Logiforge は、木の git リポジトリとやりとりの正本を GitForge に置く。どの GitForge を使うかは、アダプタで差し替える。

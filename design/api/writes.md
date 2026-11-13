@@ -11,7 +11,7 @@
   - 上限を過ぎたら、成功として応答し、`Logiforge-Pending-Revision` ヘッダーに、待っていたリビジョンを入れる。
   - クライアントは、少し待ってから、そのリビジョンを指定して読み直す。スナップショットがまだなければ、`snapshot_pending` が返る。
 - 利用者がブランチに push した新しい版は、worker が次に巡回したときに、読む側に出る（[版](../backend/apply-request.md)）。
-- Forge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。Forge から直接読むので、すぐに見える。
+- GitForge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。GitForge から直接読むので、すぐに見える。
 - worker が止まっていると、apply request の作成は `unavailable` を返す。少し待ってから送り直す。
 
 ## 同じ要求の繰り返し

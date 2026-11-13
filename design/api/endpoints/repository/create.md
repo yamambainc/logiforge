@@ -10,8 +10,8 @@
 ## すること
 
 - repository の名前と、根の仮説の主文を受け取る。
-- Forge アダプタから、その名前の provider_ref を求める。
-- Forge に repository を用意し、根の仮説を入れた最初のコミットを置く（[repository の用意](../../../backend/README.md)）。
+- GitForge アダプタから、その名前の provider_ref を求める。
+- GitForge に repository を用意し、根の仮説を入れた最初のコミットを置く（[repository の用意](../../../backend/README.md)）。
 - 根の仮説を、最初のリビジョンとして書き込む。
 - 同じ名前の repository があれば作らない。
 

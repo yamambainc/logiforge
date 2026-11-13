@@ -12,7 +12,7 @@ opener や reviewer が、次にする作業を見つけるときに読む。
 ## 着手できる作業
 
 Logiforge は、いま着手できる作業を返す問い合わせを提供する。
-[Forge](../concepts/glossary.md) の「レビューを頼まれた pull request の一覧」に相当する。
+[GitForge](../concepts/glossary.md) の「レビューを頼まれた pull request の一覧」に相当する。
 
 問い合わせは、次のものを返す。
 

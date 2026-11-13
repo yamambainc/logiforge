@@ -33,8 +33,8 @@
 
 利用者が repository の名前と根の主文を送ったら、バックエンドは次の順に処理する。
 
-1. Forge のポートの「名前から provider_ref を求める」を呼ぶ（[repository の登録](../adapters/README.md)）。
-2. Forge のポートの「repository を用意する」を呼ぶ。根の仮説だけを入れた最初のコミットを、`main` に置く。
+1. GitForge のポートの「名前から provider_ref を求める」を呼ぶ（[repository の登録](../adapters/README.md)）。
+2. GitForge のポートの「repository を用意する」を呼ぶ。根の仮説だけを入れた最初のコミットを、`main` に置く。
    - 最初のコミットの中身は、どの構成でも同じである。
 3. worker を起こし、`latest` が出るまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - `latest` があると、repository が API から見えるようになる（下の「状態を持たない」）。
@@ -56,12 +56,12 @@
 - 利用者は、ファイルを変えたブランチを push する。バックエンドは、その差分のスナップショットから、操作を復元する。
   - 4 種類の操作として読めない変化は、[差分の検査](checks.md) で拒む。
   - なぜ：操作を別に保存しなくても、差分だけで API の応答を作れるようにするため。
-- バックエンドが自分でファイルを書き出す（serialize）のは、最初のコミットだけである。反映は、Forge の squash merge である。git のファイルを読んで解析しない。
+- バックエンドが自分でファイルを書き出す（serialize）のは、最初のコミットだけである。反映は、GitForge の squash merge である。git のファイルを読んで解析しない。
 - 版の作り方と、apply request の作成・更新の順は、[apply request の作成と更新](apply-request.md) に書く。
 
 ## 計算
 
-バックエンドは、次のものを [スナップショット](snapshot.md) と、Forge から読んだやりとりから計算する。
+バックエンドは、次のものを [スナップショット](snapshot.md) と、GitForge から読んだやりとりから計算する。
 
 - 値と、葉・要再検討・inactive
   - worker がスナップショットを作るときに計算して入れたものを、そのまま使う。
@@ -69,7 +69,7 @@
   - 有効な検証結果の部分木の引用ごとに、部分木のノードの変更の一覧に、引用したリビジョンの番号より大きい番号があるかを見る。
 - 着手できる作業
   - 木の作業は、スナップショットの木から計算する。
-  - apply request と人への依頼の作業は、[ブランチの履歴](snapshot.md) と、Forge から読んだ提案、レビュー、人への依頼から計算する。
+  - apply request と人への依頼の作業は、[ブランチの履歴](snapshot.md) と、GitForge から読んだ提案、レビュー、人への依頼から計算する。
 - 作業の終わりの判定
   - 根拠部分木をスナップショットの木から求め、上の着手できる作業のうち、根拠部分木にあるものを数える。
 
@@ -78,9 +78,9 @@
 - バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい。
   - 保持するのは、外のサービス（正本）、worker（clone）、置き場（スナップショット）である。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request の作成と更新](apply-request.md)）。
-- git に触れず、clone も作らない。git に書くのは、Forge の API で、repository の用意と pull request の merge だけである（[Forge のポート](ports/forge.md)）。
-- 置き場と Forge から読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
-- 認証も、要求ごとに Forge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
+- git に触れず、clone も作らない。git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
+- 置き場と GitForge から読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
+- 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
 - repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot.md)）。
   - `latest` がある repository だけが入る。`latest` のないものは `not_found` に見える。
   - なぜ：用意が途中で止まった repository を、木のない repository として見せないため。同じ名前で作り直せば、用意の続きから終わる。

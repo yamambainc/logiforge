@@ -13,7 +13,7 @@ apply request が、どういう条件で反映され、論理レビューがど
   - apply request が更新されたら、それまでの `approve` は無効になる。
 - 最新の差分に対するレビューのうち、最後のものが `approve` である。
 
-この条件は、Forge の「承認を必須にする」設定（required review）に相当する。
+この条件は、GitForge の「承認を必須にする」設定（required review）に相当する。
 
 - 論理レビューは、CLI を使う主体が行う。人も reviewer になれる。
 - WebUI には、`approve` の操作を置かない。

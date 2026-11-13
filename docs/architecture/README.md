@@ -21,7 +21,7 @@ flowchart TB
 
 - [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。
   - なぜ：エージェントと人間が、同じ規則で同じデータを扱うため。
-- Logiforge は、[Forge](../concepts/glossary.md) に近い情報管理基盤である。
+- Logiforge は、[GitForge](../concepts/glossary.md) に近い情報管理基盤である。
   - 構造化された木を、規則付きで管理する。
   - ファイルと artifact を保存する（[artifact](../tree/verdict.md)）。
   - 履歴を残す。
@@ -31,14 +31,14 @@ flowchart TB
 
 - 木（仮説・ストーリー・検証結果・レポート）は、git リポジトリで管理する。
   - なぜ：既存の git の道具（clone、diff、履歴）で、状態を扱えるようにするため。
-- git リポジトリは、[Forge](../concepts/glossary.md) に置く。どの Forge を使うかは、選べる。
+- git リポジトリは、[GitForge](../concepts/glossary.md) に置く。どの GitForge を使うかは、選べる。
 
 ## 監査
 
 - すべての変更を履歴に残す。
 - 誰が、いつ、何をしたかは、監査のための記録を新しく作らず、すでにある記録から辿る。
   - 木の変更：`main` のコミット。誰が、いつ、どの apply request で変えたかを、コミットに記録する。
-  - apply request、レビュー、人への依頼：Forge の pull request と issue の履歴。
+  - apply request、レビュー、人への依頼：GitForge の pull request と issue の履歴。
   - なぜ：同じことを 2 か所に記録すると、食い違ったときにどちらが正しいか決まらないから。
 - 履歴は append-only にする。
   - 書き換えも削除もしない。

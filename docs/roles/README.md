@@ -40,4 +40,4 @@ reviewer の決まりは、[論理レビュー](../apply-request/review.md) に�
 - 誰がいつ作業するかは、この仕様では決めない。
   - 作業の探し方は、[着手できる作業](../work/README.md) に書く。
 - repository ごとの読み取りの制限
-  - [Forge](../concepts/glossary.md) が repository ごとの読み取りの権限を持つときは、それに従う。
+  - [GitForge](../concepts/glossary.md) が repository ごとの読み取りの権限を持つときは、それに従う。

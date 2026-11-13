@@ -6,7 +6,7 @@
 
 - リビジョンは、`main` ブランチの first-parent の並びにあるコミットである。
 - apply request が 1 件反映されるたびに、`main` に 1 つのコミットができる（[反映の手順](../backend/merge.md)）。
-  - 反映は、Forge の pull request の squash merge である。1 つの apply request の変更は、すべて同じコミットで反映される。
+  - 反映は、GitForge の pull request の squash merge である。1 つの apply request の変更は、すべて同じコミットで反映される。
 - リビジョンの順番は、first-parent の並びで決まる。
   - 数で表したいときは、根のコミットからの first-parent の数を使う。
 
@@ -33,7 +33,7 @@
 
 - 最初のリビジョンは、`Logiforge-Apply-Request:` を持たない。
 - `main` の first-parent の並びのうち、`Logiforge-Apply-Request:` のないコミットは、反映によらない変更とみなす。最初のリビジョンは除く。
-  - `main` は、Forge の保護で、バックエンドの merge でしか進まない（[main を守る](../adapters/pull-requests.md)）。この記録は、保護が外れたときに気づくためのものである。
+  - `main` は、GitForge の保護で、バックエンドの merge でしか進まない（[main を守る](../adapters/pull-requests.md)）。この記録は、保護が外れたときに気づくためのものである。
   - 署名は付けない。なぜ：`main` に書けるのはバックエンドだけで、保護が正しければ、記録を偽れる主体がいないから。
 
 ## セッション
@@ -49,4 +49,4 @@
 - いつ：コミットの時刻
 - どの apply request で：`Logiforge-Apply-Request:`
 
-レビューの記録は、[Forge のポート](../backend/ports/forge.md) に置く。
+レビューの記録は、[GitForge のポート](../backend/ports/gitforge.md) に置く。

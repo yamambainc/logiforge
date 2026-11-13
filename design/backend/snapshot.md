@@ -84,7 +84,7 @@
 - apply request の版は、この一覧から求める（[版](apply-request.md)）。
 - 反映は squash merge なので、版のコミットは `main` から辿れない。ブランチを消すと、git からも辿れなくなる。
   - 版のスナップショットとブランチの履歴は、worker が置き場に残し、消さない。そのため、反映や close のあとも、版の差分とレビューした版を読める。
-  - Forge も、pull request の最後の版のコミットを ref に残す（[アダプタ](../adapters/README.md)）。途中の版は、置き場にしか残らない。
+  - GitForge も、pull request の最後の版のコミットを ref に残す（[アダプタ](../adapters/README.md)）。途中の版は、置き場にしか残らない。
 - ブランチの履歴と、消えたブランチの版のスナップショットは、git から作り直せない。置き場のうち、ここだけはバックアップを取る（[組み合わせ](../adapters/README.md)）。
 
 ## 読む

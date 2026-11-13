@@ -60,7 +60,7 @@ paths:
       summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
         repository の用意の手順は ../../design/backend/README.md に従う。
-        Forge 側の参照は、Forge アダプタから求める（../../design/adapters/README.md）。
+        GitForge 側の参照は、GitForge アダプタから求める（../../design/adapters/README.md）。
         送り直しは、repository の用意の判定で見分ける。Idempotency-Key は使わない。
       requestBody:
         required: true
@@ -622,8 +622,8 @@ paths:
       summary: 人への依頼に回答する（user だけ。1 回だけ）
       description: |
         送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
-        回答と添付は、git ではなく、Forge の側に置く（../../design/files/artifacts.md）。
-        Forge がコメントにファイルを添付できない構成では、添付は link だけで、file は validation_failed で受け付けない。
+        回答と添付は、git ではなく、GitForge の側に置く（../../design/files/artifacts.md）。
+        GitForge がコメントにファイルを添付できない構成では、添付は link だけで、file は validation_failed で受け付けない。
       parameters:
         - $ref: '#/components/parameters/HumanRequestId'
       requestBody:

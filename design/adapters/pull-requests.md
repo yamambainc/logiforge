@@ -1,7 +1,7 @@
-# Forge アダプタの共通の書き方
+# GitForge アダプタの共通の書き方
 
-GitHub アダプタと Forgejo アダプタが、[Forge](../backend/ports/forge.md) のポートを、同じ形で実装するところを確かめるときに読む。
-Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダプタ](forgejo.md) に書く。
+GitHub アダプタと Forgejo アダプタが、[GitForge](../backend/ports/gitforge.md) のポートを、同じ形で実装するところを確かめるときに読む。
+GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダプタ](forgejo.md) に書く。
 
 ## 対応
 
@@ -19,7 +19,7 @@ Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダ�
 | 一覧のカーソル | pull request と issue の番号。時刻は使わない |
 
 - 1 つのブランチに、open の pull request は 1 つまでである。
-- ラベル（`logiforge/pvr`、`logiforge/decision`、`logiforge/answered`）は、Forge の画面で見分けるためだけに付ける。バックエンドは読まない。
+- ラベル（`logiforge/pvr`、`logiforge/decision`、`logiforge/answered`）は、GitForge の画面で見分けるためだけに付ける。バックエンドは読まない。
 
 ## 記録のコメント
 
@@ -38,7 +38,7 @@ Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダ�
 - すべての記録のコメントの trailer の最後に、`Logiforge-Record-Mac:` を書く。
   - 値は、本文とほかの trailer に対する HMAC-SHA256 である。鍵は、バックエンドの設定に置く（[設定と秘密情報](README.md)）。
   - バックエンドは、読むたびに MAC を確かめる。合わない記録は数えず、警告する。
-  - なぜ：編集されたかを、Forge の `updated_at` に頼らずに見分けるため。添付を足すと `updated_at` が変わる Forge がある。
+  - なぜ：編集されたかを、GitForge の `updated_at` に頼らずに見分けるため。添付を足すと `updated_at` が変わる GitForge がある。
 - 回答の添付は、`answer` の記録に書いた sha256 で守る。添付を読むときに sha256 を確かめ、合わなければ返さずに警告する。
 - 一覧の API は、repository のコメントの一覧（`GET /repos/{owner}/{repo}/issues/comments`）から、まとめて読む。GitHub と Forgejo の両方にある。
 - 1 件を読む API は、その pull request か issue のコメントだけを読む（`GET /repos/{owner}/{repo}/issues/{index}/comments`）。
@@ -48,7 +48,7 @@ Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダ�
 ## レビューの書き方
 
 - レビューは、すべてコメントの種類の review として書く。
-  - なぜ：pull request を作った書き込み主体は、その pull request を approve できない Forge があるから。Forge の approve の状態は、反映の条件に使わない。
+  - なぜ：pull request を作った書き込み主体は、その pull request を approve できない GitForge があるから。GitForge の approve の状態は、反映の条件に使わない。
 - レビューの本文の末尾に、次の trailer を書く。
   - `Logiforge-Review-Id:`（レビューの識別子）
   - `Logiforge-Review-Kind: approve|request_changes|comment`
@@ -69,15 +69,15 @@ Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダ�
 
 | 状態 | 決め方 |
 |---|---|
-| merged | Forge の pull request が merged |
+| merged | GitForge の pull request が merged |
 | closed | 書き込み主体の `close` の記録がある。pull request が reopen されていても、closed とする |
-| closed | Forge の pull request が closed（画面からの close と、ブランチを消したとき） |
+| closed | GitForge の pull request が closed（画面からの close と、ブランチを消したとき） |
 | closed | pull request は open だが、head のブランチがない。worker の [ブランチの履歴](../backend/snapshot.md) で、消えたことがわかる |
 | open | それ以外 |
 
-- 画面から close された pull request は、Forge の状態に従う。画面から reopen されれば、open に戻る。
+- 画面から close された pull request は、GitForge の状態に従う。画面から reopen されれば、open に戻る。
   - なぜ：close の記録がないので、バックエンドを通した close と見分けられないから。
-- head のブランチがないときの扱いは、ブランチを消したときに Forge が pull request を閉じるかどうかによらない。
+- head のブランチがないときの扱いは、ブランチを消したときに GitForge が pull request を閉じるかどうかによらない。
 
 ## main を守る
 
@@ -91,9 +91,9 @@ Forge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダ�
 
 - ブランチに push できる主体は、他人のブランチも消せる。消せば、他人の open の apply request を close にできる。
   - 消されても、反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request.md)）。
-- repository に書く権限を持つ人は、Forge の画面から、pull request を close し、reopen できる。
+- repository に書く権限を持つ人は、GitForge の画面から、pull request を close し、reopen できる。
   - 書き込み主体が close したものは、reopen されても closed のままである。
-  - 画面から close されたものは、Forge の状態に従う。
+  - 画面から close されたものは、GitForge の状態に従う。
 - 本文、ラベル、コメントの書き換えでは、記録は変わらない（上の「書き込み主体が書いたものだけを信じる」）。
 - repository に書く権限を持つ人は、書き込み主体のコメントを消すこともできる。消された記録は戻らない。
   - GitHub では、これを防げない。Forgejo では、利用者の権限を絞って防ぐ（[Forgejo アダプタ](forgejo.md)）。

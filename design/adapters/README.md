@@ -7,23 +7,23 @@
 
 | ポート | アダプタ | ページ |
 |---|---|---|
-| Forge | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
+| GitForge | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
 | スナップショットの置き場 | 静的ファイルストレージ、手元のディレクトリ | [スナップショットの置き場のアダプタ](snapshot-store.md) |
 | 認証 | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
 
 - [worker](../backend/worker.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
-- GitHub アダプタと Forgejo アダプタに共通するところは、[Forge アダプタの共通の書き方](pull-requests.md) に書く。
+- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
 
-## Forge アダプタに求めること
+## GitForge アダプタに求めること
 
-バックエンドとクライアントは、Forge に次の性質を求める。どの Forge でも、アダプタがこれを満たす。
+バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
 
 - pull request を、head の SHA を指定して squash merge できる。
 - `main` への push を禁じ、merge を書き込み主体だけにできる。
-- git の HTTP の Basic 認証のパスワードに、Forge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
+- git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
 - pull request の最後の版のコミットを、ref に残す。
 
-Forge ごとに違う性質は、次のとおりである。
+GitForge ごとに違う性質は、次のとおりである。
 
 | 性質 | GitHub | Forgejo |
 |---|---|---|
@@ -59,9 +59,9 @@ flowchart TB
   - なぜ：repository ごとに構成を選べると、組み合わせが増えて単純さを失うから。
 - worker は、どちらの構成でも同じ実装である。リモートの URL と認証情報だけが違う。worker は git を読み、置き場に書く。
 - 置き場を読むのは、スナップショットの置き場のアダプタ（バックエンド）である。
-- git に書くのは、GitHub アダプタか Forgejo アダプタが、Forge の API で行う repository の用意と pull request の merge だけである。
+- git に書くのは、GitHub アダプタか Forgejo アダプタが、GitForge の API で行う repository の用意と pull request の merge だけである。
 - やりとりと認証は、同じアダプタが実装する。
-  - なぜ：どちらの正本も、同じ Forge にあるから。
+  - なぜ：どちらの正本も、同じ GitForge にあるから。
 - GitHub で PR（pull request）や issue としてやりとりを見たいなら、GitHub を使う構成にする。
 - GitHub を使わずに動かしたいなら、Forgejo を使う構成にする（[Forgejo アダプタ](forgejo.md)）。
 - GitHub を使う構成は、複数人で使い、バックエンドを何台か並べることを想定する。そのため、置き場を、どのプロセスからも読める静的ファイルストレージにする。
@@ -103,7 +103,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
 バックエンド：
 
 - 構成（GitHub を使う / Forgejo を使う）
-- 記録のコメントの MAC の鍵（[Forge アダプタの共通の書き方](pull-requests.md)）
+- 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
 - worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
 - GitHub を使う構成だけ
@@ -129,4 +129,4 @@ repository の名前の正本は、構成ごとに次のとおりである。
 鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
 
 - ほかの主体には、鍵を置く場所を読ませない。
-- worker は、git と Forge に書く鍵を持たない。
+- worker は、git と GitForge に書く鍵を持たない。

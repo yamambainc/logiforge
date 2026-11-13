@@ -7,17 +7,17 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
-1. 反映の条件を、Forge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
+1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - 今の版（head のコミット）に対する最後のレビューが `approve` である。
    - 今の版に、書いたセッションの trailer がある（[セッション](../files/revisions.md)）。
    - その reviewer のセッションが、どの版を書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。
-   - Forge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
+   - GitForge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
    - 版の差分を今の `main` に当てはめた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
-4. Forge の pull request の squash merge を、版のコミットの SHA を指定して呼ぶ。
+4. GitForge の pull request の squash merge を、版のコミットの SHA を指定して呼ぶ。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. worker を起こし、`latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
 6. 手順 1〜4 で反映できなければ、失敗の理由をやりとりに記録する。apply request は open のまま残る。
@@ -39,11 +39,11 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 ## 衝突
 
-- 手順 3 を通っても、git の衝突で merge できないことがある（例：同じ `background.md` の末尾への追加どうし）。Forge の merge が失敗したら、反映の失敗の理由を `conflict` として記録する。
+- 手順 3 を通っても、git の衝突で merge できないことがある（例：同じ `background.md` の末尾への追加どうし）。GitForge の merge が失敗したら、反映の失敗の理由を `conflict` として記録する。
   - opener は、ブランチを今の `main` に合わせて直し、push する。新しい版になるので、レビューからやり直す。
-- 手順 4 で、pull request の head が指定した SHA でなければ、Forge の merge が失敗する。バックエンドは `version_conflict` を返す。
+- 手順 4 で、pull request の head が指定した SHA でなければ、GitForge の merge が失敗する。バックエンドは `version_conflict` を返す。
   - なぜ：レビューのあとに push された版を、レビューなしに反映しないため。
-- `main` に追いついていることを merge の条件にする Forge の保護と、ブランチを `main` に追いつかせる操作は、使わない。
+- `main` に追いついていることを merge の条件にする GitForge の保護と、ブランチを `main` に追いつかせる操作は、使わない。
   - なぜ：衝突しない変更まで、`main` が進むたびに作り直しになるから。手順 3 と git の衝突で足りる。
 
 ## 検査と merge のすき間
