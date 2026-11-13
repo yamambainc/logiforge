@@ -351,7 +351,7 @@ paths:
                 kind: { $ref: '#/components/schemas/ReviewKind' }
                 version:
                   type: integer
-                  description: レビューした差分の版。今の版と違えば受け付けない
+                  description: レビューした差分の版。今の版と違えば version_conflict で受け付けない
                 body: { type: string }
                 prompt_revision:
                   type: string
@@ -720,17 +720,21 @@ components:
         code:
           type: string
           description: |
-            validation_failed：文字数や形が正しくない。
-            unauthenticated：トークンがない、または正しくない。
-            forbidden：主体の種類が、その操作を使えない。
-            session_required：Logiforge-Session-Id がない。
-            not_found：対象がない。
-            same_session：差分を書いたどれかのセッションと同じセッションでレビューした。
-            not_open：open でない apply request を変えようとした。
-            too_large：ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた。
-            repository_exists：同じ名前の repository がすでにある。
-            repository_not_registered：その名前の repository が、サーバの設定に登録されていない。
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, too_large, repository_exists, repository_not_registered]
+            エラーの種類。code と HTTP の status は 1 対 1 である。
+            | code | status | 意味 |
+            |---|---|---|
+            | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
+            | unauthenticated | 401 | トークンがない、または正しくない |
+            | forbidden | 403 | 主体の種類が、その操作を使えない |
+            | session_required | 400 | Logiforge-Session-Id がない |
+            | not_found | 404 | 対象がない |
+            | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
+            | not_open | 409 | open でない apply request を変えようとした |
+            | version_conflict | 409 | レビューした版が、今の版と違う |
+            | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
+            | repository_exists | 409 | 同じ名前の repository がすでにある |
+            | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。GitHub を使う構成だけで起きる |
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, repository_not_registered]
 
     Tree:
       type: object
@@ -1086,8 +1090,13 @@ components:
         kind: { $ref: '#/components/schemas/WorkKind' }
         subject_id:
           type: string
-          description: ノード、apply request、人への依頼、引用のいずれかの識別子
-        node_id: { $ref: '#/components/schemas/NodeId' }
+          description: |
+            作業の対象の識別子。
+            undecided_leaf と needs_reconsideration では仮説、review_waiting と fix_waiting では apply request、
+            human_request_answered では人への依頼、citation_changed では引用している検証結果（v-…）の識別子である。
+        node_id:
+          $ref: '#/components/schemas/NodeId'
+          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である
     Completion:
       type: object
       required: [revision, root_value, decided, remaining_work, done]

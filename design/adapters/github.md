@@ -1,7 +1,7 @@
 # GitHub アダプタ
 
 GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-木の読み書きは、[git アダプタ](git.md) の GitHub のリモートで扱う。
+木の読み書きは、[git アダプタ](git.md) が、GitHub リポジトリをリモートとして扱う。
 
 ## 書き込み主体
 
@@ -25,6 +25,7 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 |---|---|
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
 | 提案 | pull request |
+| 提案の識別子 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` |
 | 版 | pull request の head のコミット |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
 | 反映されたことの記録 | バックエンドが pull request に反映したコミットを書き、close する |
@@ -33,6 +34,9 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 | 回答 | バックエンドの App が、利用者の回答として書いたコメント |
 
 - pull request は merge しない。`main` は [git アダプタ](git.md) の「main を進める」で進める。
+- 版のコミットは、pull request の head ブランチのほかに、版ごとの ref（[名前を付けたリビジョン](git.md)）にも置く。
+  - なぜ：head ブランチは最新の版だけを指すので、古い版のコミットが git gc で消えないようにするため。
+  - GitHub が `refs/logiforge/` の下への push を受け付けるかは、GitHub アダプタを作るときに確かめる。
   - なぜ：検査したときの `main` から進めることを、確実にするため。
 
 ## repository を用意する
@@ -42,7 +46,9 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 3. 管理者が、書き込み権限を App だけに与え、ほかの主体を read にする（下の「main への書き込みを守る」）。
 4. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
 5. 利用者が、名前と根の主文で repository を作る。
-6. バックエンドは、GitHub リポジトリが空であることと、App が書き込めることを確かめて、根の仮説を最初のリビジョンとして書き込む。
+6. バックエンドは、[repository の用意](../backend/README.md) の手順で、根の仮説を最初のリビジョンとして書き込む。
+   - git アダプタの「用意する」は、App が書き込めることだけを確かめる。
+   - GitHub リポジトリに `main` がすでにあるかは、「最初のリビジョンで main を作る」の結果で判定する。
 
 - App は、organization に GitHub リポジトリを作らない。
   - なぜ：App に、organization の Administration write という強い権限を持たせないため。

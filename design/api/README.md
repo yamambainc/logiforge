@@ -16,7 +16,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 ## 認証
 
 - リクエストは、`Authorization: Bearer <トークン>` で主体を示す。
-  - トークンの発行元は、構成による（[GitHub アダプタ](../adapters/github.md)、[SQLite アダプタ](../adapters/sqlite.md)）。
+  - トークンの発行元は、構成による（[GitHub アダプタ](../adapters/github.md)、[独自フォージのアダプタ](../adapters/forge.md)）。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
@@ -68,8 +68,8 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 
 - POST には、`Idempotency-Key` ヘッダーを付けられる。
 - 同じキーの POST が 24 時間以内に来たら、最初の応答を返す。
-  - キーと最初の応答は、[サーバの状態](../backend/ports/server-state.md) に置く。
-  - サーバの状態を作り直したあとは、それより前の要求を見分けられない。
+  - キーと最初の応答は、[サーバの状態](../backend/server-state.md) に置く。
+  - 再起動したあとは、それより前の要求を見分けられない。
   - なぜ：通信が切れて送り直しても、apply request や人への依頼が二重にできないようにするため。
   - 24 時間は、クライアントが送り直す最も長い間隔として見込んだ値である。
 

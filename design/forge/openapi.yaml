@@ -1,0 +1,570 @@
+openapi: 3.1.0
+info:
+  title: 独自フォージ API
+  version: 0.1.0
+  description: |
+    独自フォージの API。使うのは、バックエンドの独自フォージのアダプタだけである（../adapters/forge.md）。
+    独自フォージの役割と主体は、README.md に書く。
+    git リポジトリの読み書きは、この API ではなく、git の smart HTTP で行う（git-hosting.md）。
+    独自フォージは、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
+    識別子（apr_、rev_、hrq_）は、バックエンドが決めたものを受け取る。
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /v1
+    description: 独自フォージを置いたホストからの相対パス
+security:
+  - bearerAuth: []
+tags:
+  - name: repository
+    description: repository の作成と一覧
+  - name: token
+    description: トークンの確認
+  - name: apply-request
+    description: 提案、版、レビュー、反映の失敗
+  - name: human-request
+    description: 人への依頼と回答
+
+paths:
+  /repositories:
+    get:
+      tags: [repository]
+      operationId: listRepositories
+      summary: repository の一覧（名前の順）
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: repository の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Repository' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    put:
+      tags: [repository]
+      operationId: putRepository
+      summary: repository を作る。すでにあれば何もしない
+      description: 空の bare リポジトリを作る（git-hosting.md）。
+      responses:
+        '200':
+          description: すでにあった repository
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Repository' }
+        '201':
+          description: 作った repository
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Repository' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /tokens/verify:
+    post:
+      tags: [token]
+      operationId: verifyToken
+      summary: トークンを確かめ、主体と主体の種類を返す
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: 確かめた結果。正しくないトークンでも 200 で、valid が偽になる
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid]
+                properties:
+                  valid: { type: boolean }
+                  principal: { $ref: '#/components/schemas/Principal' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    get:
+      tags: [apply-request]
+      operationId: listApplyRequests
+      summary: 提案の一覧（識別子の順）
+      parameters:
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/ApplyRequestState' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 提案の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApplyRequest' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [apply-request]
+      operationId: createApplyRequest
+      summary: 提案を作り、版 1 を足す
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, revision]
+              properties:
+                id: { $ref: '#/components/schemas/ApplyRequestId' }
+                description: { type: string }
+                revision: { $ref: '#/components/schemas/Revision' }
+      responses:
+        '201':
+          description: 作った提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    get:
+      tags: [apply-request]
+      operationId: getApplyRequest
+      summary: 提案と、版・レビュー・反映の失敗
+      responses:
+        '200':
+          description: 提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [apply-request]
+      operationId: updateApplyRequestDescription
+      summary: 説明欄を書き換える
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description]
+              properties:
+                description: { type: string }
+      responses:
+        '200':
+          description: 書き換えた提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    post:
+      tags: [apply-request]
+      operationId: addVersion
+      summary: 版の番号を指定して、版を足す
+      description: 同じ番号の版がすでにあれば、already_exists で受け付けない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, revision]
+              properties:
+                version: { type: integer, minimum: 2 }
+                revision: { $ref: '#/components/schemas/Revision' }
+      responses:
+        '201':
+          description: 版を足した提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    post:
+      tags: [apply-request]
+      operationId: addReview
+      summary: レビューを記録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Review' }
+      responses:
+        '201':
+          description: 記録したレビュー
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Review' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/merge-failures:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    post:
+      tags: [apply-request]
+      operationId: addMergeFailure
+      summary: 反映の失敗を記録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MergeFailure' }
+      responses:
+        '201':
+          description: 記録した反映の失敗
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeFailure' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/close:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    post:
+      tags: [apply-request]
+      operationId: closeApplyRequest
+      summary: open の提案を close する
+      description: open でなければ、not_open で受け付けない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, session_id]
+              properties:
+                reason: { type: string, minLength: 1 }
+                session_id: { $ref: '#/components/schemas/SessionId' }
+      responses:
+        '200':
+          description: close した提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/merged:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/ApplyRequestIdPath'
+    post:
+      tags: [apply-request]
+      operationId: markMerged
+      summary: 提案が反映されたことを記録し、提案を閉じる
+      description: すでに merged なら、何もせずに 200 を返す。closed なら、not_open で受け付けない。
+      responses:
+        '200':
+          description: merged にした提案
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/human-requests:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    get:
+      tags: [human-request]
+      operationId: listHumanRequests
+      summary: 人への依頼の一覧（識別子の順）
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/HumanRequestKind' }
+        - name: answered
+          in: query
+          schema: { type: boolean }
+        - name: node_id
+          in: query
+          schema: { type: string, pattern: '^[hs]-' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 人への依頼の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/HumanRequest' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [human-request]
+      operationId: createHumanRequest
+      summary: 人への依頼を記録する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, node_id, kind, body, created_by_session_id]
+              properties:
+                id: { $ref: '#/components/schemas/HumanRequestId' }
+                node_id: { type: string, pattern: '^[hs]-' }
+                kind: { $ref: '#/components/schemas/HumanRequestKind' }
+                body: { type: string, minLength: 1 }
+                created_by_session_id: { $ref: '#/components/schemas/SessionId' }
+      responses:
+        '201':
+          description: 記録した人への依頼
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HumanRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/human-requests/{humanRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/HumanRequestIdPath'
+    get:
+      tags: [human-request]
+      operationId: getHumanRequest
+      summary: 人への依頼と、その回答
+      responses:
+        '200':
+          description: 人への依頼
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HumanRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/human-requests/{humanRequestId}/answer:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+      - $ref: '#/components/parameters/HumanRequestIdPath'
+    post:
+      tags: [human-request]
+      operationId: answerHumanRequest
+      summary: 回答を記録する
+      description: |
+        すでに回答があれば、already_answered で受け付けない。
+        answered_at は、バックエンドが回答のファイルに書いたものと同じ日時を送る（../files/artifacts.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HumanRequestAnswer' }
+      responses:
+        '201':
+          description: 回答した人への依頼
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HumanRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 主体の種類が writer のトークン。ほかの種類のトークンは forbidden になる
+
+  parameters:
+    RepositoryName:
+      name: repository
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/RepositoryNameValue' }
+    ApplyRequestIdPath:
+      name: applyRequestId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ApplyRequestId' }
+    HumanRequestIdPath:
+      name: humanRequestId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/HumanRequestId' }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+  responses:
+    Problem:
+      description: エラー
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    RepositoryNameValue:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+    ApplyRequestId:
+      type: string
+      pattern: '^apr_[0-9A-HJKMNP-TV-Z]{26}$'
+    ReviewId:
+      type: string
+      pattern: '^rev_[0-9A-HJKMNP-TV-Z]{26}$'
+    HumanRequestId:
+      type: string
+      pattern: '^hrq_[0-9A-HJKMNP-TV-Z]{26}$'
+    SessionId:
+      type: string
+      minLength: 1
+      maxLength: 128
+    Revision:
+      type: string
+      minLength: 1
+      description: 木の読み書きのリビジョン。不透明な文字列として置く
+    NextCursor:
+      type: [string, 'null']
+
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          description: |
+            エラーの種類。code と HTTP の status は 1 対 1 である。
+            | code | status | 意味 |
+            |---|---|---|
+            | validation_failed | 422 | 形が正しくない |
+            | unauthenticated | 401 | トークンがない、または正しくない |
+            | forbidden | 403 | 主体の種類が writer でない |
+            | not_found | 404 | 対象がない |
+            | already_exists | 409 | 同じ識別子の提案、同じ番号の版、同じ識別子のレビューか人への依頼が、すでにある |
+            | not_open | 409 | open でない提案を close するか、closed の提案を merged にしようとした |
+            | already_answered | 409 | 回答がすでにある |
+          enum: [validation_failed, unauthenticated, forbidden, not_found, already_exists, not_open, already_answered]
+
+    Repository:
+      type: object
+      required: [name, git_url]
+      properties:
+        name: { $ref: '#/components/schemas/RepositoryNameValue' }
+        git_url:
+          type: string
+          description: git の smart HTTP の URL（git-hosting.md）
+
+    Principal:
+      type: object
+      required: [id, kind]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [writer, user, client] }
+
+    ApplyRequestState:
+      type: string
+      enum: [open, merged, closed]
+    ApplyRequest:
+      type: object
+      required: [id, state, versions, reviews, merge_failures]
+      properties:
+        id: { $ref: '#/components/schemas/ApplyRequestId' }
+        description: { type: [string, 'null'] }
+        state: { $ref: '#/components/schemas/ApplyRequestState' }
+        closed_reason: { type: [string, 'null'] }
+        closed_by_session_id: { type: [string, 'null'] }
+        versions:
+          type: array
+          description: 版の番号の順
+          items:
+            type: object
+            required: [version, revision]
+            properties:
+              version: { type: integer, minimum: 1 }
+              revision: { $ref: '#/components/schemas/Revision' }
+        reviews:
+          type: array
+          description: 記録した順
+          items: { $ref: '#/components/schemas/Review' }
+        merge_failures:
+          type: array
+          description: 記録した順
+          items: { $ref: '#/components/schemas/MergeFailure' }
+    Review:
+      type: object
+      required: [id, version, kind, reviewer_session_id]
+      properties:
+        id: { $ref: '#/components/schemas/ReviewId' }
+        version: { type: integer, minimum: 1 }
+        kind: { type: string, enum: [approve, request_changes, comment] }
+        body: { type: [string, 'null'] }
+        reviewer_session_id: { $ref: '#/components/schemas/SessionId' }
+        prompt_revision: { type: [string, 'null'] }
+    MergeFailure:
+      type: object
+      required: [version, reason, detail]
+      properties:
+        version: { type: integer, minimum: 1 }
+        reason: { type: string, enum: [stale_target, invariant_violation] }
+        detail: { type: string }
+
+    HumanRequestKind:
+      type: string
+      enum: [pvr, decision]
+    HumanRequestAnswer:
+      type: object
+      required: [body, answered_by_principal_id, answered_at]
+      properties:
+        body: { type: string, minLength: 1 }
+        answered_by_principal_id: { type: string }
+        answered_at: { type: string, format: date-time }
+    HumanRequest:
+      type: object
+      required: [id, node_id, kind, body, created_by_session_id, created_at, answer]
+      properties:
+        id: { $ref: '#/components/schemas/HumanRequestId' }
+        node_id: { type: string, pattern: '^[hs]-' }
+        kind: { $ref: '#/components/schemas/HumanRequestKind' }
+        body: { type: string }
+        created_by_session_id: { $ref: '#/components/schemas/SessionId' }
+        created_at: { type: string, format: date-time }
+        answer:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/HumanRequestAnswer'

@@ -30,6 +30,7 @@
 |---|---|---|
 | `Logiforge-Session-Id:` | 版、反映 | 差分を書いたセッション |
 | `Logiforge-Apply-Request:` | 版、反映 | apply request の識別子 |
+| `Logiforge-Version:` | 反映 | 反映した版の番号と、版のリビジョン（例：`3 <commit SHA>`） |
 | `Logiforge-Human-Request:` | 回答 | 人への依頼の識別子 |
 | `Logiforge-Signature:` | 最初のリビジョン、版、反映、回答 | バックエンドの署名 |
 
