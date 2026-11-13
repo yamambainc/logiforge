@@ -60,9 +60,8 @@ paths:
       summary: repository を作る（user だけ。根の仮説の主文を一緒に受け取る）
       description: |
         repository の用意の手順は ../../design/backend/README.md に従う。
-        プロバイダ側の参照は、管理者がサーバの設定に登録したものを使う。
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        プロバイダ側の参照は、やりとりのアダプタから求める（../../design/adapters/README.md）。
+        送り直しは、repository の用意の判定で見分ける。Idempotency-Key は使わない。
       requestBody:
         required: true
         content:
@@ -590,9 +589,10 @@ paths:
       tags: [human-request]
       operationId: answerHumanRequest
       summary: 人への依頼に回答する（user だけ。1 回だけ）
+      description: |
+        送り直しは、回答のリビジョンがすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
       parameters:
         - $ref: '#/components/parameters/HumanRequestId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -663,7 +663,11 @@ components:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      schema: { type: string, maxLength: 128 }
+      description: |
+        送り直しを見分けるキー。repository の名前・主体・キーから、作るものの識別子を決定的に作る。
+        同じ識別子のものがすでにあれば、新しく作らずに、それを返す。要求の中身は比べない。
+        決まりは ../../design/api/README.md の「同じ要求の繰り返し」に従う。
+      schema: { type: string, minLength: 1, maxLength: 128 }
 
   responses:
     Problem:
@@ -729,7 +733,7 @@ components:
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
-            | not_open | 409 | open でない apply request を変えようとした |
+            | not_open | 409 | open でない apply request を変えようとした。または、回答済みの人への依頼に回答しようとした |
             | version_conflict | 409 | レビューした版が、今の版と違う |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |

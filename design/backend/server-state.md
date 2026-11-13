@@ -15,10 +15,13 @@
 |---|---|---|
 | repository の登録（名前と provider_ref） | 起動したとき | やりとりの「repository を列挙する」（[やりとり](ports/interaction.md)） |
 | 突き合わせの状態（前回の `main`） | 次の突き合わせ | 今の `main` |
-| Idempotency-Key と最初の応答 | 作り直さない | なし |
 
 - 起動処理は、要求を受け付ける前に、repository の登録を作る。
+  - 登録に入れるのは、`main` がある repository だけである。
+  - `main` のない repository は、API からは `not_found` に見える。
+  - なぜ：用意が途中で止まった repository を、木のない repository として見せないため。同じ名前で作り直せば、用意の続きから終わる（[repository の用意](README.md)）。
 - repository を作ったときは、登録に足す（[repository の用意](README.md)）。
+- Idempotency-Key は、サーバの状態に置かない（[同じ要求の繰り返し](../api/README.md)）。
 
 ## 失ったときの影響
 
@@ -28,7 +31,8 @@
 |---|---|
 | repository の登録 | 起動時に作り直す |
 | 突き合わせの状態 | 再起動の前後に起きた force push は、検出できない |
-| Idempotency-Key | 前に送った要求を送り直すと、二重に処理されることがある |
 
-- 複数のプロセスで動かすときは、サーバの状態をプロセスごとに持つ。
-  - そのため、送り直しが別のプロセスに届くと、二重に処理されることがある。
+## 制約
+
+- バックエンドは、1 つのプロセスで動かす。複数のプロセスで動かすことは、範囲外である。
+  - なぜ：反映を repository ごとに直列にする仕組み（[反映の手順](merge.md)）と、サーバの状態を、プロセスの中だけで持つから。

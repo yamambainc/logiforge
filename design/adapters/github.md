@@ -26,18 +26,19 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
 | 提案 | pull request |
 | 提案の識別子 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` |
-| 版 | pull request の head のコミット |
+| 版の一覧 | `refs/logiforge/apply-requests/<識別子>/*` の ref。REST の matching-refs（`GET /repos/{owner}/{repo}/git/matching-refs/logiforge/apply-requests/<識別子>/`）で読み、版の番号は ref の名前から取る |
+| 今の版 | pull request の head ブランチ。GitHub アダプタが、git refs の API で、今の版のコミットに動かす |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
 | 反映されたことの記録 | バックエンドが pull request に反映したコミットを書き、close する |
 | レビュー | `event=COMMENT` の pull request review |
 | 人への依頼 | issue（ラベル `logiforge/pvr` か `logiforge/decision`） |
+| 人への依頼の識別子 | issue の本文の末尾の trailer `Logiforge-Human-Request:` |
 | 回答 | バックエンドの App が、利用者の回答として書いたコメント |
 
 - pull request は merge しない。`main` は [git アダプタ](git.md) の「main を進める」で進める。
 - 版のコミットは、pull request の head ブランチのほかに、版ごとの ref（[名前を付けたリビジョン](git.md)）にも置く。
   - なぜ：head ブランチは最新の版だけを指すので、古い版のコミットが git gc で消えないようにするため。
   - GitHub が `refs/logiforge/` の下への push を受け付けるかは、GitHub アダプタを作るときに確かめる。
-  - なぜ：検査したときの `main` から進めることを、確実にするため。
 
 ## repository を用意する
 
@@ -84,6 +85,7 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - レビューは、すべて `event=COMMENT` の review として書く。
   - なぜ：pull request を作った App は、その pull request を approve できないから。
 - レビューの本文の末尾に、次の trailer を書く。
+  - `Logiforge-Review-Id:`（レビューの識別子）
   - `Logiforge-Review-Kind: approve|request_changes|comment`
   - `Logiforge-Session-Id:`
   - `Logiforge-Prompt-Revision:`
@@ -99,6 +101,7 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - owner と admin は、それでも `main` に直接 push できる。
   - バックエンドは、突き合わせで、反映の手順によらないコミットと force push を検出して警告する（[突き合わせ](../backend/README.md)）。
 - Team 以上のプランでは、ブランチ保護（またはルールセット）でも、`main` への書き込みをバックエンドの App だけに限る。
+  - App は、git の push で `main` を進める（[git アダプタ](git.md)）。そのため、App をその制限の例外にしておく。
 
 ## GitHub の制約への対処
 

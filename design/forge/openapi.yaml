@@ -104,7 +104,7 @@ paths:
     get:
       tags: [apply-request]
       operationId: listApplyRequests
-      summary: 提案の一覧（識別子の順）
+      summary: 提案の一覧（作った順）
       parameters:
         - name: state
           in: query
@@ -303,7 +303,7 @@ paths:
     get:
       tags: [human-request]
       operationId: listHumanRequests
-      summary: 人への依頼の一覧（識別子の順）
+      summary: 人への依頼の一覧（作った順）
       parameters:
         - name: kind
           in: query

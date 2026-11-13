@@ -21,6 +21,8 @@
 - 主体ごとに、次のことを許す（[主体](README.md)）。
   - fetch と clone：すべての主体
   - push：`writer` だけ
+- push の可否は、receive-pack の広告（`info/refs?service=git-receive-pack`）の時点で確かめる。
+  - なぜ：push の中身を受け取る前に断れるから。git アダプタの「用意する」の `git push --dry-run` も、この時点で書き込めるかがわかる。
 
 ## push で確かめること
 

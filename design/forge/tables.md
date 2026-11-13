@@ -11,12 +11,13 @@
   - `apply_request` の `description` を、更新の API で書き換える。
     - なぜ：説明欄は、レビューの材料にも、版の差分にも含まないから（[レビューの材料](../../docs/apply-request/review.md)）。
 - 識別子は、バックエンドが決めたものを、そのまま使う（[やりとり](../backend/ports/interaction.md)）。
+- 一覧は、行を作った順に返す。識別子の順ではない（[ページング](../api/README.md)）。
 
 ## apply_request
 
 | 列 | 内容 |
 |---|---|
-| `id` | `apr_` と ULID |
+| `id` | `apr_` と 26 文字（[識別子](../backend/ports/interaction.md)） |
 | `description` | 説明欄 |
 | `state` | `open` / `merged` / `closed` |
 | `closed_reason` | close の理由 |
@@ -36,7 +37,7 @@
 
 | 列 | 内容 |
 |---|---|
-| `id` | `rev_` と ULID |
+| `id` | `rev_` と 26 文字 |
 | `apply_request_id` | 対象の提案 |
 | `version` | レビューした版 |
 | `kind` | `approve` / `request_changes` / `comment` |
@@ -57,7 +58,7 @@
 
 | テーブル | 列 |
 |---|---|
-| `human_request` | `id`（`hrq_` と ULID）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
+| `human_request` | `id`（`hrq_` と 26 文字）、`node_id`、`kind`（`pvr` / `decision`）、`body`、`created_by_session_id`、`created_at` |
 | `human_request_answer` | `human_request_id`（主キー）、`body`、`answered_by_principal_id`、`answered_at` |
 
 - `human_request_answer` の主キーで、回答を 1 回だけにする。
