@@ -21,16 +21,16 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true)
+	v, err := b.mainAt(ctx, repo, "")
+	if err != nil {
+		return ReviewMaterial{}, err
+	}
+	d, err := b.applyRequest(ctx, repo, ref, ar, true, v)
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
 	if d.branch == nil {
 		return ReviewMaterial{}, fail(CodeSnapshotPending, "今の版 %s のスナップショットが、まだない", d.current.Revision)
-	}
-	v, err := b.mainAt(ctx, repo, "")
-	if err != nil {
-		return ReviewMaterial{}, err
 	}
 	open, err := b.readOpen(ctx, repo, ref, v)
 	if err != nil {
@@ -74,7 +74,7 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 				addSiblings(s.Parent, s.ID)
 			}
 		case tree.OpVerdictSubmit, tree.OpNodeEdit:
-			target = op.Hypothesis + op.HypothesisID
+			target = op.HypothesisID
 			if h := v.tree.Hypotheses[target]; h != nil && h.Parent != nil {
 				addAncestors(h.Parent.Parent)
 				addSiblings(h.Parent.Parent, h.Parent.ID)
@@ -92,10 +92,13 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 					mc.Nodes = cv.subtree(ci.NodeID, -1, claims{})
 				}
 			case "artifact":
-				for i := range op.Artifacts {
-					if op.Artifacts[i].SHA256 == ci.SHA256 {
-						mc.Artifact = &op.Artifacts[i]
+				// 同じ操作の artifact か、今の木の検証結果が参照する artifact から引く。
+				mc.Artifact = findArtifact(op.Artifacts, ci.SHA256)
+				for _, vid := range sortedKeys(v.tree.Verdicts) {
+					if mc.Artifact != nil {
+						break
 					}
+					mc.Artifact = findArtifact(v.tree.Verdicts[vid].Artifacts, ci.SHA256)
 				}
 			}
 			m.Citations = append(m.Citations, mc)
@@ -109,4 +112,14 @@ func parentHyp(h *tree.Hypothesis) *tree.Hypothesis {
 		return nil
 	}
 	return h.Parent.Parent
+}
+
+func findArtifact(as []tree.ArtifactRef, sha string) *tree.ArtifactRef {
+	for i := range as {
+		if as[i].Kind == "file" && as[i].SHA256 == sha {
+			a := as[i]
+			return &a
+		}
+	}
+	return nil
 }

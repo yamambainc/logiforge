@@ -387,3 +387,63 @@ func TestExport(t *testing.T) {
 		}
 	}
 }
+
+func TestAwaiting(t *testing.T) {
+	approve := []ports.Review{{Kind: ports.ReviewApprove, Revision: "h"}}
+	cases := []struct {
+		name     string
+		reviews  []ports.Review
+		failures []ports.MergeFailure
+		want     string
+	}{
+		{"決めるレビューなし", nil, nil, "review"},
+		{"request_changes", []ports.Review{{Kind: ports.ReviewRequestChanges, Revision: "h"}}, nil, "fix"},
+		{"approve で反映待ち", approve, nil, ""},
+		{"conflict で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "conflict"}}, "fix"},
+		{"stale_target で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "stale_target"}}, "fix"},
+		{"snapshot_pending で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "snapshot_pending"}}, "review"},
+		{"前の版の失敗は数えない", approve, []ports.MergeFailure{{Revision: "old", Reason: "conflict"}}, ""},
+	}
+	for _, c := range cases {
+		got := awaiting("h", c.reviews, c.failures)
+		if (got == nil && c.want != "") || (got != nil && *got != c.want) {
+			t.Fatalf("%s: %v", c.name, got)
+		}
+	}
+}
+
+// 回答を引用した検証結果が反映されたら、回答済みの依頼は作業から外れる。背景情報にたまたま書いた識別子では、外れない。
+func TestAnsweredRequestLeavesWork(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	answered := func() bool {
+		w, err := f.b.ListWork(ctx, f.caller, "q", WorkQuery{Kinds: []string{"human_request_answered"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(w.Items) == 1
+	}
+	if !answered() {
+		t.Fatal("回答済みの依頼が、作業にない")
+	}
+	sha := tree.SHA256Hex([]byte("jpg"))
+	// 背景情報に識別子を書いても、外れない（open の提案 apr_2 の差分に足す）。
+	f.r.git("checkout", "--quiet", "b")
+	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("hrq_1 の回答を見た\n"))
+	head := f.r.commit("版 2")
+	f.forge.ars[1].HeadRevision = head
+	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w.SyncAll(ctx)
+	if !answered() {
+		t.Fatal("背景情報の識別子で、作業から外れた")
+	}
+	// 検証結果が回答の添付の URL を引用すると、外れる。
+	f.r.write(dH2+"/"+S2+"/"+H3+"/verdicts/v-8888888888.md", tree.MarshalVerdict(tree.VerdictContent{ID: "v-8888888888", Value: true, Report: "r\n",
+		Artifacts: []tree.ArtifactRef{{Kind: "link", Name: "写真", URI: "https://logiforge.example.com/v1/repositories/q/human-requests/hrq_1/attachments/" + sha, SHA256: sha}}}))
+	head = f.r.commit("版 3")
+	f.forge.ars[1].HeadRevision = head
+	w.SyncAll(ctx)
+	if answered() {
+		t.Fatal("回答を引用した検証結果があるのに、作業から外れない")
+	}
+}

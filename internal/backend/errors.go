@@ -24,6 +24,8 @@ const (
 	CodeUnavailable             Code = "unavailable"
 	CodeSnapshotPending         Code = "snapshot_pending"
 	CodeRepositoryNotRegistered Code = "repository_not_registered"
+	// CodeInternal は、バックエンドの内部の誤りである。詳しいことは、ログにだけ書く。
+	CodeInternal Code = "internal"
 )
 
 // Error は、API の利用者に返すエラーである。

@@ -28,6 +28,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
 	backend.CodeSnapshotPending:         http.StatusServiceUnavailable,
 	backend.CodeRepositoryNotRegistered: http.StatusUnprocessableEntity,
+	backend.CodeInternal:                http.StatusInternalServerError,
 }
 
 // problem は、RFC 9457 の application/problem+json の応答である。
@@ -105,8 +106,7 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 		e := backend.AsError(err)
 		if e == nil {
 			s.log.Error("内部の誤り", "method", r.Method, "path", r.URL.Path, "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+			e = &backend.Error{Code: backend.CodeInternal, Detail: "内部の誤り"}
 		}
 		writeProblem(w, e)
 	}

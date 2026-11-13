@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
@@ -25,18 +26,24 @@ func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 	return ar.State
 }
 
+// clockSlack は、worker と GitForge の時計のずれとして見込む時間である。
+const clockSlack = 5 * time.Minute
+
 // versions は、ブランチの履歴から、提案の版の一覧を作る（design/backend/apply-request.md の「版」）。
 //   - 提案を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に番号を付ける。
 //   - 先頭が前に見た SHA に戻ったら（A → B → A）、新しい版にしない。
 //
 // GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、その版を、base のない最後の版として足す。
 func versions(ar ports.ApplyRequest, h store.BranchHistory) []Version {
+	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、「ブランチを読む」から提案を作るまでの間を見込み、
+	// 作った時刻に余裕を足して比べる。
+	created := ar.CreatedAt.Add(clockSlack)
 	start := -1
 	for i, e := range h.Entries {
 		if e.Deleted {
 			continue
 		}
-		if e.Head == ar.FirstRevision && (start < 0 || !e.SeenAt.After(ar.CreatedAt)) {
+		if e.Head == ar.FirstRevision && (start < 0 || !e.SeenAt.After(created)) {
 			start = i
 		}
 	}
@@ -80,7 +87,9 @@ type arDetail struct {
 }
 
 // applyRequest は、提案を読み、応答を作る。
-func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports.ApplyRequest, withOps bool) (*arDetail, error) {
+// latest は、呼ぶ側が 1 度だけ読んだ、今の main の木である（merged の提案の、反映のコミットを探すのに使う）。
+// 1 回の要求の中で、同じものを読み直さないため。
+func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports.ApplyRequest, withOps bool, latest *view) (*arDetail, error) {
 	h, err := b.Snap.BranchHistory(ctx, repo, ar.Branch)
 	if err != nil {
 		return nil, err
@@ -127,13 +136,11 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		a := awaiting(d.current.Revision, reviews.Items, ar.MergeFailures)
 		m.Awaiting = a
 	}
-	if m.State == string(ports.StateMerged) {
-		if latest, err := b.mainAt(ctx, repo, ""); err == nil {
-			for _, e := range latest.main.Tree.History {
-				if e.ApplyRequest == ar.ID {
-					r := e.Revision
-					m.MergedRevision = &r
-				}
+	if m.State == string(ports.StateMerged) && latest != nil {
+		for _, e := range latest.main.Tree.History {
+			if e.ApplyRequest == ar.ID {
+				r := e.Revision
+				m.MergedRevision = &r
 			}
 		}
 	}
@@ -159,8 +166,10 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 }
 
 // awaiting は、open の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（docs/work/README.md）。
-//   - 修正待ち：今の版への最後の決めるレビュー（approve か request_changes）が request_changes か、今の版の反映が失敗した。
-//   - レビュー待ち：今の版への決めるレビューがない。
+//   - 修正待ち：今の版への最後の決めるレビュー（approve か request_changes）が request_changes か、
+//     今の版の反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
+//   - レビュー待ち：今の版への決めるレビューがないか、approve のあと、そのほかの理由（snapshot_pending など）で反映に失敗した
+//     （approve し直しを待つ）。
 //   - 今の版への最後の決めるレビューが approve で、反映の失敗もなければ、どちらでもない（反映を待っている）。
 func awaiting(current string, reviews []ports.Review, failures []ports.MergeFailure) *string {
 	var last ports.ReviewKind
@@ -169,18 +178,22 @@ func awaiting(current string, reviews []ports.Review, failures []ports.MergeFail
 			last = r.Kind
 		}
 	}
-	failed := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current })
+	failed := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current && openerFixes[f.Reason] })
+	retry := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current && !openerFixes[f.Reason] })
 	var s string
 	switch {
 	case last == ports.ReviewRequestChanges || failed:
 		s = "fix"
-	case last == "":
+	case last == "" || retry:
 		s = "review"
 	default:
 		return nil
 	}
 	return &s
 }
+
+// openerFixes は、opener が直すべき反映の失敗の理由である。修正待ちにする。
+var openerFixes = map[string]bool{"stale_target": true, "invariant_violation": true, "conflict": true}
 
 // operations は、版の差分を、その base の main に重ねて検査し、操作を復元する。
 func (b *Backend) operations(ctx context.Context, repo string, br *snapshot.Branch) ([]Operation, *view, error) {
@@ -219,7 +232,7 @@ func toOperation(pos int, op tree.Operation) Operation {
 	case tree.OpVerdictSubmit:
 		v := op.Verdict
 		value := v.Value
-		o.VerdictID, o.Hypothesis, o.Value, o.ReportBody = v.ID, op.HypothesisID, &value, v.Report
+		o.VerdictID, o.HypothesisID, o.Value, o.ReportBody = v.ID, op.HypothesisID, &value, v.Report
 		o.Supersedes, o.Artifacts, o.Citations = v.Supersedes, v.Artifacts, v.Citations
 	case tree.OpNodeEdit:
 		o.HypothesisID, o.AppendBackground = op.HypothesisID, op.AppendBackground

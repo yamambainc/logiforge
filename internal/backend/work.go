@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"path"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
 // 作業の種類（docs/work/README.md）。並びは、この順である。
@@ -70,7 +72,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 
 	// レビュー待ちと修正待ちの提案。
 	for _, ar := range open.ars {
-		d, err := b.applyRequest(ctx, repo, ref, ar, false)
+		d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -90,11 +92,12 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 	}
 
 	// 回答済みの人への依頼。
+	refs := b.usedAnswers(ctx, repo, v, open)
 	for _, hr := range open.hrs {
 		if hr.Answer == nil || !active(hr.TargetNode) {
 			continue
 		}
-		done, err := b.answerUsed(ctx, repo, v, open, hr)
+		done, err := b.answerUsed(ctx, repo, v, refs, hr)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -120,20 +123,75 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 	return items, arTargets, nil
 }
 
-// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md）。
-//   - 回答を引用した apply request が open である（版の差分に、依頼の識別子が書かれている）。
-//   - 回答のあとに、対象ノードを変えた反映がある（反映された、回答を引用した apply request を含む）。
-func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, open *openState, hr ports.HumanRequest) (bool, error) {
+// answerRefPattern は、回答の添付を読む API の URL である（design/files/artifacts.md：回答の引用は、この URL の link にする）。
+var answerRefPattern = regexp.MustCompile(`/human-requests/(hrq_[0-9A-Z]+)/attachments/([0-9a-f]{64})`)
+
+// answerRefs は、検証結果が引用している回答である。依頼の識別子と、添付の sha256 を持つ。
+type answerRefs struct {
+	ids  map[string]bool
+	shas map[string]bool
+}
+
+func (r answerRefs) add(v tree.VerdictContent) {
+	for _, a := range v.Artifacts {
+		if m := answerRefPattern.FindStringSubmatch(a.URI); m != nil {
+			r.ids[m[1]] = true
+			r.shas[m[2]] = true
+		}
+		if a.SHA256 != "" {
+			r.shas[a.SHA256] = true
+		}
+	}
+	for _, c := range v.Citations {
+		if c.TargetKind == "artifact" {
+			r.shas[c.SHA256] = true
+		}
+	}
+}
+
+func (r answerRefs) cites(hr ports.HumanRequest) bool {
+	if r.ids[hr.ID] {
+		return true
+	}
+	for _, a := range hr.Answer.Attachments {
+		if r.shas[a.SHA256] {
+			return true
+		}
+	}
+	return false
+}
+
+// usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
+//   - 今の main の木の検証結果（反映された）
+//   - open の提案の、今の版の差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
+func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
+	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
+	for _, tv := range v.tree.Verdicts {
+		refs.add(tv.VerdictContent)
+	}
 	for _, ar := range open.ars {
 		br, err := b.Snap.Branch(ctx, repo, ar.HeadRevision)
 		if err != nil {
 			continue
 		}
 		for _, e := range br.Diff.Entries {
-			if e.File != nil && e.File.Content != nil && strings.Contains(*e.File.Content, hr.ID) {
-				return true, nil
+			if e.File == nil || e.File.Content == nil || path.Base(path.Dir(e.Path)) != tree.VerdictsDir {
+				continue
+			}
+			if vc, err := tree.ParseVerdict([]byte(*e.File.Content)); err == nil {
+				refs.add(vc)
 			}
 		}
+	}
+	return refs
+}
+
+// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md）。
+//   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
+//   - 回答のあとに、対象ノードを変えた反映がある。
+func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
+	if refs.cites(hr) {
+		return true, nil
 	}
 	n := v.main.Tree.Nodes[hr.TargetNode]
 	if n == nil || len(n.Changes) == 0 {
@@ -261,6 +319,11 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 			out.RemainingWork++
 		}
 	}
-	out.Done = out.Decided && out.RemainingWork == 0
+	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの提案があれば、根拠部分木にあるかもしれないので、終わりとしない。
+	unknown := slices.ContainsFunc(all, func(it WorkItem) bool {
+		ts, ok := arTargets[it.SubjectID]
+		return ok && len(ts) == 0
+	})
+	out.Done = out.Decided && out.RemainingWork == 0 && !unknown
 	return out, nil
 }

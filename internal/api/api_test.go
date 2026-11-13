@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,10 +16,15 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 )
 
-// emptySnap は、repository のない置き場である。
-type emptySnap struct{}
+// emptySnap は、repository のない置き場である。broken なら、一覧を読めない。
+type emptySnap struct{ broken bool }
 
-func (emptySnap) Repositories(context.Context) ([]string, error) { return nil, nil }
+func (s emptySnap) Repositories(context.Context) ([]string, error) {
+	if s.broken {
+		return nil, errors.New("置き場が壊れている")
+	}
+	return nil, nil
+}
 func (emptySnap) Latest(context.Context, string) (string, error) { return "", ports.ErrNotFound }
 func (emptySnap) Commit(context.Context, string, string) (snapshot.Commit, error) {
 	return snapshot.Commit{}, ports.ErrNotFound
@@ -91,5 +97,21 @@ func TestProblems(t *testing.T) {
 	}
 	if err := json.NewDecoder(res.Body).Decode(&page); err != nil || res.StatusCode != 200 || page.Items == nil || page.NextCursor != nil {
 		t.Fatalf("list: %d %+v %v", res.StatusCode, page, err)
+	}
+}
+
+func TestInternalErrorIsProblem(t *testing.T) {
+	srv := httptest.NewServer(NewHandler(&backend.Backend{Auth: auth{}, Snap: emptySnap{broken: true}}, nil))
+	defer srv.Close()
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/repositories", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p problem
+	_ = json.NewDecoder(res.Body).Decode(&p)
+	if res.StatusCode != 500 || p.Code != "internal" || strings.Contains(p.Detail, "壊れている") {
+		t.Fatalf("%d %+v", res.StatusCode, p)
 	}
 }

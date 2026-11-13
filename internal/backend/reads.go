@@ -334,13 +334,17 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 	if err != nil {
 		return Page[ApplyRequest]{}, err
 	}
+	latest, err := b.mainAt(ctx, repo, "")
+	if err != nil {
+		return Page[ApplyRequest]{}, err
+	}
 	out := Page[ApplyRequest]{Items: []ApplyRequest{}}
 	last := after
 	for _, ar := range all {
 		if ar.Number <= after {
 			continue
 		}
-		d, err := b.applyRequest(ctx, repo, ref, ar, false)
+		d, err := b.applyRequest(ctx, repo, ref, ar, false, latest)
 		if err != nil {
 			return Page[ApplyRequest]{}, err
 		}
@@ -368,7 +372,11 @@ func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string
 	if err != nil {
 		return ApplyRequest{}, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true)
+	latest, err := b.mainAt(ctx, repo, "")
+	if err != nil {
+		return ApplyRequest{}, err
+	}
+	d, err := b.applyRequest(ctx, repo, ref, ar, true, latest)
 	if err != nil {
 		return ApplyRequest{}, err
 	}

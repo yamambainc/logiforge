@@ -115,13 +115,12 @@ type Operation struct {
 	Reason             string          `json:"reason,omitempty"`
 	// verdict.submit
 	VerdictID  string             `json:"verdict_id,omitempty"`
-	Hypothesis string             `json:"hypothesis,omitempty"`
 	Value      *bool              `json:"value,omitempty"`
 	ReportBody string             `json:"report_body,omitempty"`
 	Supersedes []string           `json:"supersedes,omitempty"`
 	Artifacts  []tree.ArtifactRef `json:"artifacts,omitempty"`
 	Citations  []tree.Citation    `json:"citations,omitempty"`
-	// node.edit
+	// verdict.submit と node.edit の対象の仮説
 	HypothesisID     string `json:"hypothesis_id,omitempty"`
 	AppendBackground string `json:"append_background,omitempty"`
 }
