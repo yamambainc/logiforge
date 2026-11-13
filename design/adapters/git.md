@@ -71,7 +71,7 @@ git push --porcelain --force-with-lease=<ref>:<期待する値> <リモート> <
 - 独自フォージでは、`writer` のトークンを Basic 認証のパスワードとして渡す（[git のホスティング](../forge/git-hosting.md)）。
 - GitHub では、GitHub App のインストールのトークンを渡す。
   - このトークンは 1 時間で切れる。アダプタは、切れる前に App の秘密鍵から作り直す。
-- GitHub では、App が `main` に push できるように、管理者がルールセットかブランチ保護を設定しておく（[main への書き込みを守る](github-worker.md)）。
+- GitHub では、App が `main` に push できるように、管理者がルールセットかブランチ保護を設定しておく（[main への書き込みを守る](github-main.md)）。
 
 ## 名前を付けたリビジョン
 

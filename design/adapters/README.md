@@ -83,11 +83,15 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - なぜ：git リポジトリは、人やエージェントが読めるから。
 - 署名の鍵と設定は、バックエンドが持つ唯一の正本である。署名の鍵を失うと、それまでの版と回答の署名を確かめられなくなるので、バックアップを取る。
 
-GitHub を使う構成の [worker](../backend/worker.md) には、次のものを、GitHub Actions の secrets で渡す。
+GitHub を使う構成の [worker](../backend/worker.md) には、次のものを、worker を動かす環境の設定に置く。
 
+- GitHub App の秘密鍵（`git ls-remote` と fetch で、GitHub リポジトリを読むため）
 - 版の署名の鍵（署名を確かめるため）
 - 静的ファイルストレージの接続先と、読み書きの鍵
+- repository の名前と `owner/name` の組（バックエンドと同じもの）
+- `main` を確かめる間隔
 
-- worker が git を読むのは、GitHub Actions が標準で渡すトークンで足りる。やりとりは使わないので、GitHub App の秘密鍵は渡さない。
-- worker を動かすワークフローは、GitHub リポジトリの owner と admin が書き換えられる。そのため、owner と admin は、これらの鍵を取り出せる。
-  - この構成では、owner と admin を信頼する（[前提：owner と admin を信頼する](github.md)）。
+鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
+
+- その管理者は、署名の鍵を取り出せば、反映によらない変更を、署名付きの変更に見せかけられる。
+- ほかの主体には、鍵を置く場所を読ませない。

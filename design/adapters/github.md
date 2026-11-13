@@ -6,9 +6,8 @@ GitHub を使って Logiforge を動かすときに、[やりとり](../backend/
 ## 前提：owner と admin を信頼する
 
 - この構成では、GitHub リポジトリの owner と admin を信頼する。
-  - owner と admin は、`main` に直接 push できる（[main への書き込みを守る](github-worker.md)）。
-  - owner と admin は、worker のワークフローから、署名の鍵などを取り出せる（[設定と秘密情報](README.md)）。
-  - そのため、owner と admin は、反映によらない変更を、署名付きの変更に見せかけられる。
+  - owner と admin は、`main` に直接 push できる（[main への書き込みを守る](github-main.md)）。
+  - 反映によらない変更は、[worker](../backend/worker.md) が見つけて警告する。防ぐことはできない。
 - Logiforge が守るのは、それ以外の主体（read の主体）からの変更である。
 
 ## 書き込み主体
@@ -56,7 +55,7 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 
 1. 管理者が、空の GitHub リポジトリを作る。
 2. 管理者が、その GitHub リポジトリに App を入れる（機械用のユーザーアカウントなら、書き込み権限を与える）。
-3. 管理者が、書き込み権限を App だけに与え、ほかの主体を read にする（[main への書き込みを守る](github-worker.md)）。
+3. 管理者が、書き込み権限を App だけに与え、ほかの主体を read にする（[main への書き込みを守る](github-main.md)）。
 4. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
 5. 利用者が、名前と根の主文で repository を作る。
 6. バックエンドは、[repository の用意](../backend/README.md) の手順で、根の仮説を最初のリビジョンとして書き込む。
@@ -88,7 +87,7 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
   - なぜ：要求ごとに GitHub に問い合わせると、GitHub の API のレート制限に当たるから。
   - なぜ 5 分：権限や登録を外したことが、遅くとも 5 分で効くようにするため。
 - repository を読めるかは、GitHub リポジトリの権限で確かめる。
-  - 書き込み主体（App）以外の主体には、read だけを与える（[main への書き込みを守る](github-worker.md)）。
+  - 書き込み主体（App）以外の主体には、read だけを与える（[main への書き込みを守る](github-main.md)）。
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
 - そのため、この構成では、サーバに正本が残らない（[組み合わせ](README.md)）。
 
@@ -107,4 +106,4 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - 「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue に `logiforge/answered` ラベルを付けて閉じる。
 
-`main` への書き込みの守り方、worker、GitHub の制約への対処は、[GitHub での main の守りと worker](github-worker.md) に書く。
+`main` への書き込みの守り方と、GitHub の制約への対処は、[GitHub での main の守りと制約](github-main.md) に書く。
