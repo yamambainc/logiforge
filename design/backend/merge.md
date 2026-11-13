@@ -15,6 +15,7 @@ apply request を main に反映するとき、バックエンドが何を確か
    - その reviewer のセッションが、どの版を書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。
    - GitForge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
+   - GitForge の `main` は、GitForge のポートの「`main` の先頭を読む」で読む（[GitForge のポート](ports/gitforge.md)）。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
    - 版の差分を、今の `main` に重ねる。差分が変えたファイルが、base のあとに `main` でも変わっていれば重ねられないので、`conflict`（[スナップショット](snapshot.md) のブランチの木）。
@@ -62,3 +63,12 @@ apply request を main に反映するとき、バックエンドが何を確か
 - apply request は、open のまま残る。
 - opener は、ブランチを直して push する。新しい版になる。
   - それまでの approve は、新しい版には効かない（[反映の条件](../../docs/apply-request/review.md)）。
+- 修正待ちになるのは、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）のときだけである。`snapshot_pending` のあとは、reviewer が `approve` し直す（[計算](README.md)）。
+
+## レビューの鎖が切れたとき
+
+- レビューの鎖が切れた apply request には、レビューも反映もできない（[レビューの書き方](../adapters/pull-requests.md)）。
+- レビューの API は、`not_open` を返す。応答の `detail` に、opener の手を書く。
+- opener の手：その apply request を close し、同じブランチから、apply request を作り直す。
+  - 新しい apply request は、新しい pull request なので、レビューの鎖は空から始まる。
+  - なぜ作り直すか：切れた鎖を、正しい形に戻す手段がないから。数えないレビューを消すことは、GitForge の権限で防いでいる。

@@ -13,6 +13,7 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 - repository を用意する。git リポジトリを作り（作れる GitForge だけ）、根の仮説を入れた最初のコミットを `main` に置く。
   - `main` がすでにあれば、そのことがわかる形で失敗する（[repository の用意](../README.md)）。
   - バックエンドは、gitforge_ref と、最初のコミットに入れるファイルを渡す。
+- `main` の先頭を読む。GitForge の今の `main` の SHA を返す。反映の前に、worker が追いついているかを確かめるのに使う（[反映の手順](../merge.md)）。
 - ほかの操作は、どれも repository を指定して行う。
 
 ## 提案

@@ -341,6 +341,9 @@ paths:
       description: |
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
         反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
+        今の版のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
+        レビューの鎖が切れていれば、not_open で受け付けない。opener は、close して、同じブランチから作り直す（../../design/backend/merge.md の「レビューの鎖が切れたとき」）。
+        reviewer の主体が、apply request を作った主体と同じなら、応答の apply_request.warnings に警告を入れる。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
         - $ref: '#/components/parameters/SessionId'
@@ -777,7 +780,7 @@ components:
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
-            | not_open | 409 | open でない apply request を変えようとした。または、回答済みの人への依頼に回答しようとした |
+            | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした |
             | version_conflict | 409 | レビューした版、または更新のもとにした版が、今の版と違う |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
