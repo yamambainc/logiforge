@@ -1,6 +1,6 @@
 # CLI
 
-エージェントや人が、opener や reviewer として forge を使うときの、CLI の決まりを確かめるときに読む。
+エージェントや人が、opener や reviewer として Logiforge を使うときの、CLI の決まりを確かめるときに読む。
 
 ## 形
 

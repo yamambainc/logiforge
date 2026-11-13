@@ -5,7 +5,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 
 ## apply request と pull request
 
-| apply request | プロバイダ（GitHub か Forgejo） |
+| apply request | Forge |
 |---|---|
 | apply request | 利用者のブランチから `main` への pull request |
 | 版 | pull request の head のコミット |
@@ -15,11 +15,11 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 | close | pull request の close |
 
 - サーバの側が git に書くのは、pull request の merge と、repository の用意だけである。
-  - なぜ：版や `main` の更新を、プロバイダの pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
+  - なぜ：版や `main` の更新を、Forge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
 - 1 つのブランチにつき、open の apply request は 1 つまでである。
 - 利用者がブランチを消すと、apply request は close になる。
   - head のブランチがない open の pull request は、バックエンドが closed として扱う。worker の [ブランチの履歴](snapshot.md) で、消えたことがわかる。
-  - なぜ：ブランチを消したときに、プロバイダが pull request を閉じるかどうかによらずに、同じ結果にするため。
+  - なぜ：ブランチを消したときに、Forge が pull request を閉じるかどうかによらずに、同じ結果にするため。
 - 状態（open、merged、closed）は、pull request の状態と、書き込み主体の記録から決める（[提案の状態](../adapters/pull-requests.md)）。
 - apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、書き込み主体のコメントに置く（[記録のコメント](../adapters/pull-requests.md)）。
   - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。
@@ -40,15 +40,15 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 ## 作成
 
 1. 識別子を求める（[同じ要求の繰り返し](../api/writes.md)）。
-2. プロバイダで、その識別子の apply request を読む。あれば、それを返して終わる。中身は比べない。
+2. Forge で、その識別子の apply request を読む。あれば、それを返して終わる。中身は比べない。
 3. worker に、ブランチを読んでもらい、先頭のコミットと base と、差分のスナップショットを得る（[worker の内部 API](worker-api.md)）。
    - 要求に `revision` があり、ブランチの先頭と違えば、`validation_failed` で受け付けない。
 4. スナップショットの差分に、[差分の検査](checks.md) を行う。4 種類の操作として読めない変化があれば、`validation_failed` で受け付けない。
-5. プロバイダに、pull request を作り、識別子と、作ったときの先頭のコミットを、記録のコメントに書く。
+5. Forge に、pull request を作り、識別子と、作ったときの先頭のコミットを、記録のコメントに書く。
    - そのブランチに open の pull request がすでにあれば、`validation_failed` で受け付けない。
 6. 応答する。
 
-- 人への依頼の起票は、手順 2 のあと、プロバイダに記録して応答する。git には書かない。
+- 人への依頼の起票は、手順 2 のあと、Forge に記録して応答する。git には書かない。
 
 ## 更新
 
@@ -59,15 +59,15 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 
 ## close
 
-1. プロバイダで、pull request を close する。
-2. プロバイダに、close の理由とセッションを記録する。
+1. Forge で、pull request を close する。
+2. Forge に、close の理由とセッションを記録する。
 3. 応答する。
 
 - すでに閉じていれば、今の状態を返す。
 
 ## 回答
 
-1. 回答の本文と添付を、プロバイダに記録する（[人への依頼の回答](../files/artifacts.md)）。
+1. 回答の本文と添付を、Forge に記録する（[人への依頼の回答](../files/artifacts.md)）。
    - すでに回答があり、本文と回答した利用者が同じなら、送り直しとみなして成功とする。違えば `not_open` で受け付けない。
 2. 応答する。
 

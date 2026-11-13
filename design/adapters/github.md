@@ -1,7 +1,7 @@
 # GitHub アダプタ
 
-GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、書き込み主体が作ったものだけを数えること、main を守ること）は、[pull request のプロバイダの共通の書き方](pull-requests.md) に書く。
+GitHub を使って Logiforge を動かすときに、[Forge](../backend/ports/forge.md) のポートをどう実装するかを確かめるために読む。
+Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、書き込み主体が作ったものだけを数えること、main を守ること）は、[Forge アダプタの共通の書き方](pull-requests.md) に書く。
 [worker](../backend/worker.md) は、[git アダプタ](git.md) で、GitHub リポジトリを読む。
 
 ## 前提：main を守る設定

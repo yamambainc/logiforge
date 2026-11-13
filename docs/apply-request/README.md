@@ -64,7 +64,7 @@ stateDiagram-v2
   - 一部だけが反映されることはない。
 - 不変条件は、apply request が反映されるたびに、常に成り立つ。
   - 反映すると不変条件を満たさなくなる apply request は、反映しない。
-  - ただし、反映の直前の確認と反映の間に、別の apply request が反映されることがある。そのときに不変条件が破れたら、forge は反映のあとに警告する。直すのは、新しい apply request である。
+  - ただし、反映の直前の確認と反映の間に、別の apply request が反映されることがある。そのときに不変条件が破れたら、Logiforge は反映のあとに警告する。直すのは、新しい apply request である。
   - 不変条件は、[仮説とストーリーの木](../tree/README.md) と [inactive 化](../tree/inactive.md) に書く。
 - apply request を作ったあとに、その操作の対象ノードが別の apply request によって変わっていたら、反映しない。
   - その apply request は、理由を残して `open` に戻す。

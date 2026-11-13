@@ -24,12 +24,12 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 
 ## 人への依頼の回答
 
-- 回答の本文と添付は、git に置かない。プロバイダのやりとりの側に置く（[やりとり](../backend/ports/interaction.md)）。
-  - Forgejo：issue のコメントに本文を書き、添付をコメントの添付にする（[Forgejo アダプタ](../adapters/forgejo.md)）
-  - GitHub：issue のコメントに本文を書く。GitHub の API ではコメントにファイルを添付できないので、添付はリンクだけにする。利用者が、ファイルを外に置いてリンクを書く（[GitHub アダプタ](../adapters/github.md)）
-    - なぜ：バックエンドがデータを保持せず、置き場に書くのを worker だけにするため。
+- 回答の本文と添付は、git に置かない。Forge の側に置く（[Forge のポート](../backend/ports/forge.md)）。
   - なぜ：回答は、利用者が WebUI から行い、git を使わないから。サーバの側が git に書くのを、pull request の操作と repository の用意だけにするため。
-- Forgejo を使う構成の添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
+  - なぜ：バックエンドがデータを保持せず、置き場に書くのを worker だけにするため。
+- 添付は、Forge の性質によって次のように扱う。各 Forge の対応は、[アダプタ](../adapters/README.md) の各ページに書く。
+  - Forge が、API でコメントにファイルを添付できるとき：添付をファイルで受け付け、Forge に置く。添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
+  - 添付できないとき：添付はリンクだけにする。利用者が、ファイルを外に置いてリンクを書く。
 - opener が検証結果で回答を引用するときは、`link` の artifact にする。
   - URL は、その添付を読む API の URL である。`sha256` も書く。
   - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。

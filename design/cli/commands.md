@@ -46,7 +46,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 
 - `ar create` は、ブランチが push 済みで、手元の先頭と remote の先頭が同じかを確かめてから API を呼ぶ。`revision` に手元の先頭を入れて送る。
   - なぜ：push し忘れた変更を、知らないまま取り込まないため。
-- ブランチの名前に、`main` は使えない。プロバイダが push を拒む。
+- ブランチの名前に、`main` は使えない。Forge が push を拒む。
 - 版の更新は、同じブランチへの `git push` だけである。コマンドはない。`ar edit` は説明欄だけを書き換える。
 - `ar review` は、`--version` の番号を、`ar view` で SHA に引き直してから、`revision` として送る。版の正体は SHA である（[版](../backend/apply-request.md)）。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。

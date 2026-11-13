@@ -1,11 +1,11 @@
 # Forgejo アダプタ
 
-自前で持つ構成で、[Forgejo](https://forgejo.org/) を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) と [認証](../backend/ports/authentication.md) のポートをどう実装するかを確かめるために読む。
-GitHub アダプタと共通のところは、[pull request のプロバイダの共通の書き方](pull-requests.md) に書く。
+自前で持つ構成で、[Forgejo](https://forgejo.org/) を使って Logiforge を動かすときに、[Forge のポート](../backend/ports/forge.md) と [認証](../backend/ports/authentication.md) のポートをどう実装するかを確かめるために読む。
+GitHub アダプタと共通のところは、[Forge アダプタの共通の書き方](pull-requests.md) に書く。
 
 ## Forgejo を使う理由
 
-- 自前で持つ構成のプロバイダに、Forgejo を使う。pull request、レビュー、issue、添付、ブランチの保護、トークン、API を、Forgejo がすでに持つ。
+- 自前で持つ構成の Forge に、Forgejo を使う。pull request、レビュー、issue、添付、ブランチの保護、トークン、API を、Forgejo がすでに持つ。
   - なぜ：これらを自前で作らずに済み、GitHub を使う構成と同じ pull request の形で扱えるから。
 - Forgejo は、別のプロセス（単体のバイナリかコンテナ）として動かす。Logiforge は、Forgejo の HTTP の API と git だけを使う。
 - Forgejo のライセンスは GPL である。Logiforge は、Forgejo のコードをリンクせず、別のプロセスとして使う。

@@ -8,7 +8,7 @@ opener と reviewer が使う CLI（`logiforge`）を作るときと、使い方
 - CLI は、git とセットで使う。
   - 木を変えるときは、git で clone し、ファイルを変えてコミットし、ブランチを push する。CLI は、ファイルのひな形を作ることと、push したブランチから apply request を作ることを受け持つ。
   - なぜ：gh と同じく、コミットや push は git に任せ、エージェントが使い慣れた手順のままにするため。
-- remote は、GitHub を使う構成では GitHub、Forgejo を使う構成では Forgejo である。どちらも、API の `Repository` の `git_url` から求める（[openapi.yaml](../api/openapi.yaml)）。
+- remote は、[Forge](../README.md#用語) の git リポジトリである。API の `Repository` の `git_url` から求める（[openapi.yaml](../api/openapi.yaml)）。
 - CLI のほかのコマンドは、バックエンドの API を呼ぶだけである（[コマンドの一覧](commands.md)）。
 
 ## 流れ
@@ -30,17 +30,17 @@ sequenceDiagram
 
 - ひな形と `check` は、手元のファイルだけを扱う（[ひな形と check](local.md)）。
 - 版を更新するときは、同じブランチに push するだけである。新しい先頭が、新しい版になる（[版](../backend/apply-request.md)）。
-- apply request は、プロバイダの pull request である。GitHub の構成では、GitHub の画面でも見られる。
+- apply request は、Forge の pull request である。Forge の画面でも見られる。
 
 ## 認証
 
-- CLI は、プロバイダ（GitHub か Forgejo）のトークンを、バックエンドの API と git の両方で使う。
+- CLI は、Forge のトークンを、バックエンドの API と git の両方で使う。
 - トークンの置き場所は、次の順に探す。
   1. 環境変数 `LOGIFORGE_TOKEN`
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`
 - `logiforge auth login` は、トークンを受け取って設定ファイルに書く。設定ファイルは、本人だけが読めるようにする。
 - git には、CLI の credential helper で同じトークンを渡す（`logiforge auth setup-git`）。
-  - GitHub も Forgejo も、git の HTTP の Basic 認証のパスワードに、トークンを入れれば読み書きできる。
+  - Forge には、git の HTTP の Basic 認証のパスワードに、トークンを入れて読み書きできることを求める（[アダプタ](../adapters/README.md)）。
 - バックエンドの URL は、環境変数 `LOGIFORGE_HOST` か、設定ファイルの `host` に置く。
 
 ## セッション

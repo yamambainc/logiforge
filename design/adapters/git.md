@@ -6,7 +6,7 @@
 ## 読むのは worker だけ
 
 - サーバの側で git を読むのは、worker だけである。バックエンドは git を読まず、clone も作らない。
-- サーバの側が git に書くのは、プロバイダの API による repository の用意と、pull request の squash merge だけである（[やりとり](../backend/ports/interaction.md)）。
+- サーバの側が git に書くのは、Forge の API による repository の用意と、pull request の squash merge だけである（[Forge のポート](../backend/ports/forge.md)）。
   - そのため、このアダプタには、書く操作がない。
 
 ## リモートと clone
