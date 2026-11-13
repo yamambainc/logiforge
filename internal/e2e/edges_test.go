@@ -173,4 +173,96 @@ func TestE2EEdges(t *testing.T) {
 			return len(tr.Warnings) > 0 && strings.Contains(strings.Join(tr.Warnings, "\n"), "反映の記録がない")
 		})
 	})
+
+	// ---- 引用元の変化、差し替え、inactive 化 ----
+	t.Run("引用元の変化と差し替えと inactive 化", func(t *testing.T) {
+		agent.session = "s-a6"
+		merge := func(branch string) applyRequest {
+			t.Helper()
+			ar := agent.create(branch)
+			got, code, out := reviewer.review(ar.ID, "approve", 1)
+			if code != 0 || got.State != "merged" {
+				t.Fatalf("%s の approve：%d %s", branch, code, out)
+			}
+			return got
+		}
+		mainRevision := func() string {
+			var tr struct {
+				Revision string `json:"revision"`
+			}
+			agent.must(&tr, "tree", "view")
+			return tr.Revision
+		}
+		agent.branch("c1")
+		var sc scaffold
+		agent.must(&sc, "story", "new", "--parent", repo.Root, "--title", "道筋", "--summary", "s", "--hypothesis", "A", "--hypothesis", "B")
+		story := sc.IDs["story_id"].(string)
+		hyps := sc.IDs["hypothesis_ids"].([]any)
+		hA, hB := hyps[0].(string), hyps[1].(string)
+		agent.commitPush("c1", "分解")
+		merge("c1")
+
+		agent.branch("c2")
+		agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("ra.md", "A\n"))
+		agent.commitPush("c2", "A")
+		merge("c2")
+		rA := mainRevision()
+
+		agent.branch("c3")
+		var vb scaffold
+		agent.must(&vb, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA+"@"+rA)
+		agent.commitPush("c3", "B は A を引用")
+		merge("c3")
+		oldVerdict := vb.IDs["verdict_id"].(string)
+		citationChanged := func() bool {
+			var page struct {
+				Items []map[string]string `json:"items"`
+			}
+			agent.must(&page, "work", "list", "--kind", "citation_changed")
+			for _, it := range page.Items {
+				if it["subject_id"] == oldVerdict && it["node_id"] == hB {
+					return true
+				}
+			}
+			return false
+		}
+		if citationChanged() {
+			t.Fatal("引用元が変わる前に、citation_changed が出た")
+		}
+
+		agent.branch("c4")
+		agent.must(nil, "node", "edit", hA, "--append-background", agent.file("ba.md", "A の背景を足した\n"))
+		agent.commitPush("c4", "A を変える")
+		merge("c4")
+		if !citationChanged() {
+			t.Fatal("引用元が変わったのに、citation_changed が出ない")
+		}
+
+		// 見直して、引用を今のリビジョンにした検証結果で差し替えると、作業から外れる。
+		agent.branch("c5")
+		agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb2.md", "見直した\n"),
+			"--cite", "subtree:"+hA+"@"+mainRevision(), "--supersedes", oldVerdict)
+		agent.commitPush("c5", "B を見直す")
+		merge("c5")
+		if citationChanged() {
+			t.Fatal("差し替えたのに、citation_changed が残る")
+		}
+
+		agent.branch("c6")
+		agent.must(nil, "story", "inactivate", story, "--reason", "別の道筋にする")
+		agent.commitPush("c6", "inactive")
+		merge("c6")
+		var nodes struct {
+			Nodes []map[string]any `json:"nodes"`
+		}
+		agent.must(&nodes, "tree", "nodes")
+		for _, n := range nodes.Nodes {
+			if n["id"] == story && (n["state"] != "inactive" || n["reason"] == nil) {
+				t.Fatalf("inactive にならない：%+v", n)
+			}
+			if n["id"] == hA && n["inactive"] != true {
+				t.Fatalf("子の仮説が inactive にならない：%+v", n)
+			}
+		}
+	})
 }

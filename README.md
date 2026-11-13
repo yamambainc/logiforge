@@ -31,7 +31,7 @@ E2E（[internal/e2e](internal/e2e/)）も、同じ Forgejo で動かす。テス
 go test -count=1 -timeout 20m -v ./internal/e2e/
 ```
 
-大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS`（既定 300）で、main のコミットの数を変えて測る。
+大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS`（main のコミットの数。例：300）を付けたときだけ測る。
 
 ## パッケージ
 
