@@ -42,6 +42,7 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
    - 解析の前に、blob の大きさと種類を確かめる。上限を超える blob と、普通のファイルでないもの（シンボリックリンク、実行の属性、submodule）は、読まずに誤りとして記録する（[差分の検査](checks.md)）。
    - ブランチの先頭は、`main` と分かれた点からの差分のスナップショットにする。
 3. 先頭が変わったブランチについて、[ブランチの履歴](snapshot.md) に足す。消えたブランチは、履歴に消えたことを記録する。
+   - 消えたブランチは、置き場を列挙せず、前に fetch したときの手元の ref と、`ls-remote` の結果を比べて見つける。
 4. [latest](snapshot.md) の規則で、`latest` を書く。
 5. `main` の新しいコミットについて、次のことを確かめ、破れていれば警告として記録する。
    - 反映の記録（`Logiforge-Apply-Request:`）がある（[記録の形式](../files/revisions.md)）。
@@ -49,6 +50,9 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
    - 反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていない（[対象ノードの変化](merge.md)）。
      - base は、反映した版のコミット（反映のコミットの `Logiforge-Version:`）と、反映の直前の `main` の分かれた点である。worker は、自分の clone の `git merge-base` で求める。
      - 比べる範囲は、ノードの変更の一覧のうち、base の番号より大きく、その反映のコミットの番号より小さいものである。反映のコミット自身は除く。
+     - 対象ノードは、反映のコミットで変わったファイルから求める。検証結果と背景情報はその仮説、新しいストーリーは親の仮説、inactive 化はそのストーリーである。
+     - 版のコミットは、ブランチが消えても、`refs/pull/*/head` を fetch して読む。版のコミットか base が見つからなければ、確かめられなかったことを警告する（`overlap_unchecked`）。
+   - 警告の種類は、`no_apply_request`、新しく破れた不変条件の規則、`overlap`、`overlap_unchecked`、`main_rewritten`（[latest](snapshot.md)）である。
    - なぜ：`main` の保護が外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
 6. `repositories` を書き直す。
 

@@ -33,7 +33,7 @@
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
 - worker の資格情報は、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
   - GitHub：contents の read だけを持つ、worker のための GitHub App
-  - Forgejo：`read:repository` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
+  - Forgejo：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 
 ## 制約
 

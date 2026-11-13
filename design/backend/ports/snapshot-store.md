@@ -7,11 +7,14 @@
 | キー | 中身 | 変わるか |
 |---|---|---|
 | `<repository>/commits/<SHA>` | スナップショットのコミットの記録 | 変わらない |
-| `<repository>/snapshots/<SHA>` | スナップショットの木 | 変わらない |
+| `<repository>/snapshots/<SHA>` | スナップショットの木（`main`）か差分（ブランチ） | 変わらない |
 | `<repository>/artifacts/<sha256>` | artifact のファイルの中身 | 変わらない |
 | `<repository>/latest` | 今の `main` の SHA（[latest](../snapshot.md)） | 変わる |
-| `<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md)）。git から作り直せないので、バックアップを取る | 変わる |
+| `<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md)）。git から作り直せないので、バックアップを取る。ブランチの名前は、パスとしてエスケープする（`/` を `%2F` に） | 変わる |
 | `repositories` | `latest` がある repository の名前の一覧 | 変わる |
+
+- `commits` と `snapshots` は、形の版（`format_version`）を持つ。worker は、木を先に置き、コミットの記録をあとに置く。コミットの記録があれば、木もある。
+- ブランチの名前をエスケープするのは、`a` と `a/b` が、ファイルとディレクトリでぶつからないようにするため。
 
 ## 操作
 

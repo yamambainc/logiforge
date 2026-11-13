@@ -122,7 +122,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
 - git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
   - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
-  - Forgejo を使う構成：`read:repository` だけを持つ、worker のためのユーザーのトークン
+  - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
 - 内部 API の鍵（バックエンドと同じもの）
 - 置き場の接続先と、書く鍵
 - 巡回の間隔と、内部 API を受ける HTTP のエンドポイント
