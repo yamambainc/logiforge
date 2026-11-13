@@ -24,7 +24,9 @@ artifacts/
   workflows/                         worker のワークフロー（GitHub を使う構成だけ）
 ```
 
-- `.github/workflows/` は、GitHub を使う構成で、バックエンドが最初のリビジョンに入れる（[worker](../adapters/github.md)）。
+- `.github/` は、木のファイル配置の外のものである。
+  - GitHub を使う構成で、バックエンドが最初のリビジョンに worker のワークフローを入れる（[GitHub での main の守りと worker](../adapters/github-worker.md)）。
+  - 木として読まない。[差分の検査](../backend/checks.md) の、木の形の検査の対象にもしない。
 - 仮説は `h-`、ストーリーは `s-`、検証結果は `v-` で始まるディレクトリかファイルにする。
 - 仮説のディレクトリの子は、ストーリーのディレクトリだけにする。
 - ストーリーのディレクトリの子は、仮説のディレクトリだけにする。

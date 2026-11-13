@@ -3,6 +3,14 @@
 GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
 木の読み書きは、[git アダプタ](git.md) が、GitHub リポジトリをリモートとして扱う。
 
+## 前提：owner と admin を信頼する
+
+- この構成では、GitHub リポジトリの owner と admin を信頼する。
+  - owner と admin は、`main` に直接 push できる（[main への書き込みを守る](github-worker.md)）。
+  - owner と admin は、worker のワークフローから、署名の鍵などを取り出せる（[設定と秘密情報](README.md)）。
+  - そのため、owner と admin は、反映によらない変更を、署名付きの変更に見せかけられる。
+- Logiforge が守るのは、それ以外の主体（read の主体）からの変更である。
+
 ## 書き込み主体
 
 GitHub アダプタに必要なのは、バックエンドだけが使う、専用の書き込み主体である。
@@ -99,24 +107,4 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - 「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue に `logiforge/answered` ラベルを付けて閉じる。
 
-## main への書き込みを守る
-
-- GitHub リポジトリへの書き込み権限は、バックエンドの App だけに与える。人とエージェントは read にする。
-- owner と admin は、それでも `main` に直接 push できる。
-  - バックエンドは、突き合わせで、反映の手順によらないコミットと force push を検出して警告する（[突き合わせ](../backend/README.md)）。
-- Team 以上のプランでは、ブランチ保護（またはルールセット）でも、`main` への書き込みをバックエンドの App だけに限る。
-  - App は、git の push で `main` を進める（[git アダプタ](git.md)）。そのため、App をその制限の例外にしておく。
-
-## GitHub の制約への対処
-
-- GitHub が、短い間の多くの書き込みに制限をかけたら、待ってからやり直す。
-  - なぜ：バックエンドはロックを取らないので、間隔を 1 か所でそろえられない。やり直しで足りる（[同時に走る反映](../backend/merge.md)）。
-- 外の仕組みは、GitHub の webhook や Actions のトリガーを、直接使ってよい。
-
-## worker
-
-- [worker](../backend/worker.md) は、`main` への push で走る GitHub Actions のワークフローで動かす。
-- ワークフローのファイルは、バックエンドが、最初のリビジョンに `.github/workflows/` として入れる。
-  - なぜ：push で走るワークフローは、push された `main` の中にある必要があるから。管理者が先に置くと、GitHub リポジトリが空でなくなり、用意の判定と合わなくなる。
-  - このファイルは、ほかのファイルと同じく、あとから変えない（[差分の検査](../backend/checks.md)）。
-- 渡す鍵は、管理者が GitHub リポジトリの Actions の secrets に置く（[設定と秘密情報](README.md)）。
+`main` への書き込みの守り方、worker、GitHub の制約への対処は、[GitHub での main の守りと worker](github-worker.md) に書く。
