@@ -25,6 +25,14 @@ kill "$FORGEJO_PID"
 
 FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ばす。
 
+E2E（[internal/e2e](internal/e2e/)）も、同じ Forgejo で動かす。テストが logiforge をビルドし、`serve` と `worker` を起動し、CLI と API で利用の流れを通す。
+
+```sh
+go test -count=1 -timeout 20m -v ./internal/e2e/
+```
+
+大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS`（既定 300）で、main のコミットの数を変えて測る。
+
 ## パッケージ
 
 | パッケージ | 中身 |
@@ -39,6 +47,7 @@ FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ば�
 | [internal/backend](internal/backend/) | バックエンド（認可、読む API と書く API、反映の手順、着手できる作業、作業の終わりの判定、書き出し） |
 | [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json |
 | [internal/cli](internal/cli/) | opener と reviewer の CLI（認証、clone、ひな形、check、commit、apply request、作業、木、人への依頼。`--json` と終了コード） |
+| [internal/e2e](internal/e2e/) | Forgejo と logiforge（serve、worker、CLI）をつないだ E2E |
 | [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（API）、`logiforge worker`、それ以外は CLI（`logiforge help`） |
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
