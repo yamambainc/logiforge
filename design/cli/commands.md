@@ -8,11 +8,12 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | コマンド | API | git |
 |---|---|---|
 | `auth login --token <トークン>` | なし | なし |
-| `auth setup-git` | なし | credential helper を設定する |
+| `auth setup-git [--url <GitForge の URL>]` | `listRepositories`（URL を求めるときだけ） | GitForge の URL にだけ、credential helper を設定する |
+| `auth git-credential get` | なし | credential helper の本体。git が呼ぶ |
 | `commit [git commit の引数]` | なし | `git commit` に、セッションの trailer を付けて呼ぶ |
 | `repo list` | `listRepositories` | なし |
 | `repo view <repository>` | `getRepository` | なし |
-| `repo clone <repository>` | `getRepository`（`git_url` を得る） | `git clone` |
+| `repo clone <repository> [<ディレクトリ>]` | `getRepository`（`git_url` を得る） | `git clone`。clone の git の設定に `logiforge.repository` を書く |
 
 - repository の作成は、利用者が WebUI で行う（[役割](../../docs/roles/README.md)）。CLI には置かない。
 
@@ -50,7 +51,8 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 - 版の更新は、同じブランチへの `git push` だけである。コマンドはない。`ar edit` は説明欄だけを書き換える。
 - `ar review` は、`--version` の番号を、`ar view` で SHA に引き直してから、`revision` として送る。版の正体は SHA である（[版](../backend/apply-request.md)）。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
-- `ar create` は、`Idempotency-Key` を自動で付ける。送り直すときは、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
+- `ar create` は、`Idempotency-Key` を自動で付ける。キーは、repository、ブランチ、手元の先頭から作る。同じブランチの同じ先頭なら、送り直しても同じキーになる（[同じ要求の繰り返し](../api/writes.md)）。
+- `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
 
 ## 作業と人への依頼
 

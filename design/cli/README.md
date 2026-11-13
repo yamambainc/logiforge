@@ -40,8 +40,18 @@ sequenceDiagram
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`
 - `logiforge auth login` は、トークンを受け取って設定ファイルに書く。設定ファイルは、本人だけが読めるようにする。
 - git には、CLI の credential helper で同じトークンを渡す（`logiforge auth setup-git`）。
-  - GitForge には、git の HTTP の Basic 認証のパスワードに、トークンを入れて読み書きできることを求める（[アダプタ](../adapters/README.md)）。
+  - GitForge には、git の HTTP の Basic 認証のパスワードに、トークンを入れて読み書きできることを求める（[アダプタ](../adapters/README.md)）。ユーザー名は `logiforge` にする。
+  - helper は、GitForge の URL にだけ設定する（`credential.<URL>.helper`）。ほかの URL に、トークンを渡さないため。URL は、`--url` か、repository の `git_url` から求める。
+  - helper の本体は、`logiforge auth git-credential` である。
 - バックエンドの URL は、環境変数 `LOGIFORGE_HOST` か、設定ファイルの `host` に置く。
+
+## repository
+
+- repository の名前は、次の順に探す。
+  1. フラグ `--repo`
+  2. 環境変数 `LOGIFORGE_REPO`
+  3. clone の git の設定 `logiforge.repository`（`repo clone` が書く）
+- なぜ：clone の中では、名前を毎回書かずに済むようにするため。
 
 ## セッション
 
@@ -62,6 +72,8 @@ sequenceDiagram
   - ひな形のコマンドは、作ったファイルのパスと、決めた識別子を書く。
   - `check` は、見つけた誤りの一覧を書く。
 - エラーのときは、終了コードを 0 以外にし、`--json` では API の `Problem` をそのまま書く。
+  - CLI の中のエラー（git の失敗など）は、`code` が `cli_error` の `Problem` の形で書く。
+- 終了コードは、成功が 0、エラー（API のエラー、`check` の誤り、git の失敗）が 1、使い方の誤り（知らないコマンド、引数の誤り）が 2 である。
 
 ## 要件との対応
 
