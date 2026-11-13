@@ -13,6 +13,8 @@ import (
 type API interface {
 	// WriterLogin は、書き込み主体のログイン名である。
 	WriterLogin() string
+	// RepoID は、GitForge の中で変わらない repository の識別子を返す。記録の MAC に使う。
+	RepoID(ctx context.Context, repo string) (string, error)
 
 	CreatePull(ctx context.Context, repo, head, title, body string) (Pull, error)
 	GetPull(ctx context.Context, repo string, number int) (Pull, error)

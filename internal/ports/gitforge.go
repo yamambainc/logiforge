@@ -92,6 +92,15 @@ type Review struct {
 	CreatedAt      time.Time
 }
 
+// Reviews は、提案のレビューの一覧である。
+type Reviews struct {
+	// Items は、数えたレビューを、記録した順に並べたもの。
+	Items []Review
+	// ChainBroken は、レビューの鎖が切れていること（数えないレビューがある、など）である。切れていれば、反映しない。
+	ChainBroken bool
+	Warnings    []string
+}
+
 // HumanRequestKind は、人への依頼の種類である。
 type HumanRequestKind string
 
@@ -166,7 +175,7 @@ type GitForge interface {
 	RecordMergeFailure(ctx context.Context, repo, id, reason string) error
 
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
-	ListReviews(ctx context.Context, repo, applyRequestID string) ([]Review, error)
+	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
 
 	CreateHumanRequest(ctx context.Context, repo string, hr NewHumanRequest) (HumanRequest, error)
 	GetHumanRequest(ctx context.Context, repo, id string) (HumanRequest, error)

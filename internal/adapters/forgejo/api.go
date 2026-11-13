@@ -46,6 +46,24 @@ func (p pullJSON) pull() pullreq.Pull {
 
 func (a api) WriterLogin() string { return a.cfg.Writer }
 
+// RepoID は、Forgejo の repository の id を返す。名前を変えても、organization を移しても変わらない。
+func (a api) RepoID(ctx context.Context, repo string) (string, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return "", err
+	}
+	var r struct {
+		ID int64 `json:"id"`
+	}
+	if err := a.w(ctx, http.MethodGet, rp, nil, &r); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return "", ports.ErrNotFound
+		}
+		return "", err
+	}
+	return "forgejo:" + strconv.FormatInt(r.ID, 10), nil
+}
+
 func (a api) w(ctx context.Context, method, path string, in, out any) error {
 	return a.do(ctx, a.cfg.WriterToken, method, path, in, out)
 }

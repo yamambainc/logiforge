@@ -26,6 +26,7 @@ const (
 	KeyMergeFailure   = "Logiforge-Merge-Failure"
 	KeyReviewID       = "Logiforge-Review-Id"
 	KeyReviewKind     = "Logiforge-Review-Kind"
+	KeyPreviousReview = "Logiforge-Previous-Review"
 	KeyReviewRevision = "Logiforge-Review-Revision"
 	KeyPromptRevision = "Logiforge-Prompt-Revision"
 )
@@ -90,8 +91,9 @@ var ErrBadMac = errors.New("記録の MAC が合わない")
 
 // Scope は、記録を置いた場所である。MAC に含め、記録をほかの pull request や issue に写して使い回せないようにする。
 type Scope struct {
-	// Ref は、repository の gitforge_ref（owner/name）。
-	Ref string
+	// RepoID は、GitForge の中で変わらない repository の識別子（Forgejo の repository の id、GitHub の node_id）。
+	// 名前（owner/name）は使わない。名前を変えたり、別の organization に移したりしても、記録が壊れないようにするため。
+	RepoID string
 	// Number は、記録のコメントを置いた pull request か issue の番号。
 	Number int
 }
@@ -115,7 +117,7 @@ func (k Keyring) Format(r Record, at Scope) (string, error) {
 // mac は、置いた場所と記録の本文に対する HMAC-SHA256 を返す。
 func mac(key []byte, at Scope, text string) string {
 	m := hmac.New(sha256.New, key)
-	fmt.Fprintf(m, "%s#%d\n", at.Ref, at.Number)
+	fmt.Fprintf(m, "%s#%d\n", at.RepoID, at.Number)
 	m.Write([]byte(text))
 	return hex.EncodeToString(m.Sum(nil))
 }

@@ -248,7 +248,7 @@ func TestForgejo(t *testing.T) {
 		t.Fatal(err)
 	}
 	reviews, err := gf.ListReviews(ctx, ref, "apr_1")
-	if err != nil || len(reviews) != 1 || reviews[0].Kind != ports.ReviewApprove || reviews[0].Revision != head1 || reviews[0].Session != "s2" {
+	if err != nil || reviews.ChainBroken || len(reviews.Items) != 1 || reviews.Items[0].Kind != ports.ReviewApprove || reviews.Items[0].Revision != head1 || reviews.Items[0].Session != "s2" {
 		t.Fatalf("reviews: %+v %v", reviews, err)
 	}
 
@@ -360,6 +360,17 @@ func TestForgejo(t *testing.T) {
 	if err != nil || len(ars) != 3 { // apr_1、apr_a、apr_b（apr_c の記録は編集されたので数えない）
 		t.Fatalf("list: %d %v", len(ars), err)
 	}
+
+	// ---- repository の名前を変えても、記録は壊れない（MAC は repository の id で求める） ----
+	e.call(e.admin, "PATCH", "/repos/"+ref, map[string]string{"name": "q-renamed"}, nil, 200)
+	renamed := e.org + "/q-renamed"
+	if got, err := gf.GetApplyRequest(ctx, renamed, "apr_b"); err != nil || got.State != ports.StateClosed || got.CloseReason != "やめる" {
+		t.Fatalf("名前を変えたあと：%+v %v", got, err)
+	}
+	if got, err := gf.ListReviews(ctx, renamed, "apr_1"); err != nil || got.ChainBroken || len(got.Items) != 1 {
+		t.Fatalf("名前を変えたあとのレビュー：%+v %v", got, err)
+	}
+	e.call(e.admin, "PATCH", "/repos/"+renamed, map[string]string{"name": "q"}, nil, 200)
 
 	// ---- 認証 ----
 	for who, want := range map[string]ports.PrincipalKind{"alice": ports.PrincipalUser, "agent": ports.PrincipalClient} {

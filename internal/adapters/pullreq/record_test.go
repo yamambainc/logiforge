@@ -8,7 +8,7 @@ import (
 
 var ring = Keyring{Current: "k2", Keys: map[string][]byte{"k1": []byte("old"), "k2": []byte("new")}}
 
-var here = Scope{Ref: "o/r", Number: 1}
+var here = Scope{RepoID: "id-1", Number: 1}
 
 func TestRecordRoundTrip(t *testing.T) {
 	r := Record{Body: "理由です。\r\n\r\n2 段落目\n\n", Trailers: []Trailer{{KeyRecord, RecordClose}, {KeySession, "s\n1"}}}
@@ -41,7 +41,7 @@ func TestRecordTampered(t *testing.T) {
 		}
 	}
 	// ほかの場所に写した記録は、MAC が合わない。
-	for _, at := range []Scope{{Ref: "o/r", Number: 2}, {Ref: "o/other", Number: 1}} {
+	for _, at := range []Scope{{RepoID: "id-1", Number: 2}, {RepoID: "id-2", Number: 1}} {
 		if _, err := ring.Parse(text, at); !errors.Is(err, ErrBadMac) {
 			t.Fatalf("%+v に写した記録を読んだ：%v", at, err)
 		}
