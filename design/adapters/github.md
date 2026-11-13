@@ -111,4 +111,6 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 
 - 反映は、1 分に 1 件を目安にする。
   - なぜ：GitHub は、短い間に多くのコミットの作成を行うと、制限をかけることがあるから。
+  - 間隔は、repository のロック（[反映の手順](../backend/merge.md)）を持ったまま待って作らない。ロックを取る前に待つ。
+    - なぜ：ロックを持ったまま待つと、同じ repository のほかの書き込みまで止まるから。
 - 外の仕組みは、GitHub の webhook や Actions のトリガーを、直接使ってよい。

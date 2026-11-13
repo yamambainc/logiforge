@@ -462,6 +462,7 @@ paths:
                     additionalProperties: { type: integer }
                   items:
                     type: array
+                    description: 作業の種類の順、次にノードの識別子の順、次に subject_id の順。カーソルは revision に結びつける（../../design/api/README.md のページング）
                     items: { $ref: '#/components/schemas/WorkItem' }
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
