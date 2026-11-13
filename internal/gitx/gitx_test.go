@@ -3,6 +3,7 @@ package gitx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,11 +107,6 @@ func TestReadAndDiff(t *testing.T) {
 	fp, err := r.FirstParents(ctx, second)
 	if err != nil || len(fp) != 2 || fp[0] != first {
 		t.Fatalf("first parents: %v %v", fp, err)
-	}
-
-	only, err := r.ReadPaths(ctx, second, []string{"tree/h-0000000000/background.md", "nothing"}, 50)
-	if err != nil || len(only) != 1 {
-		t.Fatalf("read paths: %v %v", only, err)
 	}
 
 	if _, err := r.ReadCommit(ctx, strings.Repeat("0", 40)); err != ErrNotFound {
@@ -224,5 +220,38 @@ func TestNextFilesFromSnapshot(t *testing.T) {
 	}
 	if len(changes) != 3 || len(changed) != 2 {
 		t.Fatalf("changes: %+v files: %d", changes, len(changed))
+	}
+}
+
+// 変わったパスが多くても読める（パスをコマンドの引数に並べない）。大きいものとシンボリックリンクは中身を読まない。
+func TestChangedFilesManyPaths(t *testing.T) {
+	ctx := context.Background()
+	w := newWork(t)
+	w.write("a", "1")
+	base := w.commit("1")
+	for i := 0; i < 3000; i++ {
+		w.write(fmt.Sprintf("tree/d%04d/a-long-file-name-to-make-the-argument-list-long.md", i), "x")
+	}
+	w.write("big", strings.Repeat("y", 100))
+	if err := os.Symlink("a", filepath.Join(w.dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	head := w.commit("2")
+	r := &Repo{Dir: w.dir}
+	changes, files, err := r.ChangedFiles(ctx, base, head, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 3002 || len(files) != 3002 {
+		t.Fatalf("changes %d files %d", len(changes), len(files))
+	}
+	if f := files["big"]; f.Content != nil || f.Size != 100 {
+		t.Fatalf("big: %+v", f)
+	}
+	if f := files["link"]; f.Content != nil || f.Mode != "120000" {
+		t.Fatalf("link: %+v", f)
+	}
+	if f := files["tree/d0001/a-long-file-name-to-make-the-argument-list-long.md"]; string(f.Content) != "x" || f.Size != 1 {
+		t.Fatalf("file: %+v", f)
 	}
 }
