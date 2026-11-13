@@ -40,8 +40,10 @@ type Config struct {
 	Interval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
-	Now         func() time.Time
-	Log         *slog.Logger
+	// ReadBranchWait は、「ブランチを読む」の中で、main の取り込みを待つ時間の上限。0 なら 60 秒。
+	ReadBranchWait time.Duration
+	Now            func() time.Time
+	Log            *slog.Logger
 }
 
 // Worker は、worker である。repository ごとに、1 つずつ順に処理する。
@@ -59,6 +61,9 @@ type Worker struct {
 func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Interval == 0 {
 		cfg.Interval = time.Minute
+	}
+	if cfg.ReadBranchWait == 0 {
+		cfg.ReadBranchWait = 60 * time.Second
 	}
 	if cfg.MaxFileSize == 0 {
 		cfg.MaxFileSize = tree.MaxArtifactSize
@@ -469,14 +474,26 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 	return nil
 }
 
+// ErrSnapshotPending は、「ブランチを読む」の中で、main の取り込みが時間の上限までに終わらなかったことを表す。
+// 取り込みは、裏で続ける。少し待って、もう一度頼めばよい。
+var ErrSnapshotPending = errors.New("worker: main の取り込みが、まだ終わらない")
+
 // ReadBranch は、ブランチを fetch し、先頭のコミットと base を求め、差分のスナップショットを作る（worker の内部 API の「ブランチを読む」）。
+// base のスナップショットのために、先に main を進める。その取り込みが上限（Config.ReadBranchWait）までに終わらなければ、
+// 取り込みを裏で続けたまま、ErrSnapshotPending を返す。
 func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (BranchResult, error) {
 	ref, err := w.src.GitForgeRef(ctx, repoName)
 	if err != nil {
 		return BranchResult{}, err
 	}
 	r := &ports.Repository{Name: repoName, GitForgeRef: ref}
-	defer w.lock(r.Name)()
+	unlock := w.lock(r.Name)
+	locked := true
+	defer func() {
+		if locked {
+			unlock()
+		}
+	}()
 	g, err := w.repo(ctx, r.Name)
 	if err != nil {
 		return BranchResult{}, err
@@ -495,8 +512,24 @@ func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (Branc
 	}
 	// ブランチの base（main と分かれた点）のスナップショットがないと、バックエンドは差分を検査できない。先に main を進める。
 	if mainSHA, ok := heads["main"]; ok {
-		if err := w.syncMain(ctx, g, r.Name, mainSHA); err != nil {
-			return BranchResult{}, fmt.Errorf("main: %w", err)
+		done := make(chan error, 1)
+		// 要求が切れても、取り込みは続ける。
+		go func() { done <- w.syncMain(context.WithoutCancel(ctx), g, r.Name, mainSHA) }()
+		select {
+		case err := <-done:
+			if err != nil {
+				return BranchResult{}, fmt.Errorf("main: %w", err)
+			}
+		case <-time.After(w.cfg.ReadBranchWait):
+			// 取り込みが終わるまで、repository のロックを持ち続ける。終わったら放す。
+			locked = false
+			go func() {
+				if err := <-done; err != nil {
+					w.cfg.Log.Error("main の取り込みに失敗した", "repository", r.Name, "err", err)
+				}
+				unlock()
+			}()
+			return BranchResult{}, ErrSnapshotPending
 		}
 	}
 	return w.syncBranch(ctx, g, r.Name, branch, head, heads["main"])

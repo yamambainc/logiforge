@@ -18,6 +18,9 @@ const (
 	PathWake       = "/internal/v1/wake"
 )
 
+// HeaderSnapshotPending は、「ブランチを読む」が、main の取り込みを待ちきれなかったことを表す応答のヘッダーである。
+const HeaderSnapshotPending = "Logiforge-Snapshot-Pending"
+
 // ReadBranchRequest は、「ブランチを読む」の要求である。
 type ReadBranchRequest struct {
 	Repository string `json:"repository"`
@@ -43,6 +46,10 @@ func (w *Worker) Handler(key string) http.Handler {
 		switch {
 		case errors.Is(err, ports.ErrNotFound):
 			http.Error(rw, "not found", http.StatusNotFound)
+		case errors.Is(err, ErrSnapshotPending):
+			// 送り直しても、すぐには終わらない。送り直さないよう、ヘッダーで見分けさせる。
+			rw.Header().Set(HeaderSnapshotPending, "true")
+			http.Error(rw, "snapshot pending", http.StatusServiceUnavailable)
 		case err != nil:
 			w.cfg.Log.Error("ブランチを読めない", "repository", req.Repository, "branch", req.Branch, "err", err)
 			http.Error(rw, "unavailable", http.StatusServiceUnavailable)

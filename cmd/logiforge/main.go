@@ -65,7 +65,8 @@ func env(name string) (string, error) {
 //	LOGIFORGE_INTERNAL_KEY     内部 API の鍵（バックエンドと同じもの）
 //	LOGIFORGE_WORKER_ADDR      内部 API を待ち受けるアドレス（既定は 127.0.0.1:8081）
 //	LOGIFORGE_WORKER_INTERVAL  巡回の間隔（既定は 1m）
-//	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file）
+//	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
+//	LOGIFORGE_READ_BRANCH_TIMEOUT 「ブランチを読む」で main の取り込みを待つ上限（既定は 60s）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
 func runWorker(ctx context.Context) error {
@@ -108,9 +109,26 @@ func runWorker(ctx context.Context) error {
 	gitEnv := src.GitEnv()
 	// git で使える転送の方式。既定は https と file だけ。テストの GitForge が http で動くときなどに、足す。
 	if v := os.Getenv("LOGIFORGE_GIT_ALLOW_PROTOCOL"); v != "" {
+		for _, p := range strings.Split(v, ":") {
+			switch p {
+			case "https", "file":
+			case "http":
+				slog.Warn("git で http を許している。読むだけのトークンが平文で流れる。テストのときだけ使う")
+			default:
+				return fmt.Errorf("LOGIFORGE_GIT_ALLOW_PROTOCOL には、https、http、file だけを、: でつないで書く：%q", p)
+			}
+		}
 		gitEnv = append(gitEnv, "GIT_ALLOW_PROTOCOL="+v)
 	}
-	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval}, src, &store.Dir{Root: cfg.storeDir})
+	readWait := time.Duration(0)
+	if v := os.Getenv("LOGIFORGE_READ_BRANCH_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("LOGIFORGE_READ_BRANCH_TIMEOUT: %w", err)
+		}
+		readWait = d
+	}
+	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, ReadBranchWait: readWait}, src, &store.Dir{Root: cfg.storeDir})
 
 	srv := &http.Server{Addr: addr, Handler: w.Handler(cfg.key), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 2)

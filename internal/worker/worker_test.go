@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -359,4 +360,37 @@ func TestSecondWorkerDoesNotStart(t *testing.T) {
 		t.Fatalf("止まったあとに起動できない：%v", err)
 	}
 	again()
+}
+
+// 「ブランチを読む」の中の main の取り込みが、上限までに終わらなければ、ErrSnapshotPending を返し、取り込みは裏で続ける。
+func TestReadBranchPendingKeepsIngesting(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	for i := 0; i < 30; i++ {
+		r.write(h2+"/background.md", []byte(fmt.Sprintf("%d\n", i)))
+		r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
+	}
+	mainSHA := r.git("rev-parse", "main")
+	r.git("checkout", "--quiet", "-b", "b")
+	r.write(h1+"/background.md", []byte("b\n"))
+	r.commit("b")
+	st := &store.Dir{Root: t.TempDir()}
+	w := New(Config{Dir: t.TempDir(), ReadBranchWait: time.Nanosecond}, source{r.dir}, st)
+	if _, err := w.ReadBranch(ctx, "q", "b"); !errors.Is(err, ErrSnapshotPending) {
+		t.Fatalf("got %v", err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if latest, _ := store.GetLatest(ctx, st, "q"); latest == mainSHA {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("裏の取り込みが終わらない")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	w.cfg.ReadBranchWait = time.Minute
+	if res, err := w.ReadBranch(ctx, "q", "b"); err != nil || res.Base != mainSHA {
+		t.Fatalf("取り込みのあと：%+v %v", res, err)
+	}
 }
