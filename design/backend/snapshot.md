@@ -85,7 +85,7 @@
 - 反映は squash merge なので、版のコミットは `main` から辿れない。ブランチを消すと、git からも辿れなくなる。
   - 版のスナップショットとブランチの履歴は、worker が置き場に残し、消さない。そのため、反映や close のあとも、版の差分とレビューした版を読める。
   - プロバイダも、版のコミットを ref に残す。
-    - 独自フォージ：pull request ごと・版ごとの ref（`refs/pull/<識別子>/<版の番号>`）を、フォージが持つ（[git のホスティング](../forge/git-hosting.md)）。
+    - 独自フォージ：pull request ごと・版の SHA ごとの ref（`refs/pull/<識別子>/<SHA>`）を、フォージが持つ（[git のホスティング](../forge/git-hosting.md)）。
     - GitHub：`refs/pull/<number>/head` で、最後の版が取れる。途中の版は、置き場にしか残らない。
 - ブランチの履歴と、消えたブランチの版のスナップショットは、git から作り直せない。置き場のうち、ここだけはバックアップを取る（[組み合わせ](../adapters/README.md)）。
 

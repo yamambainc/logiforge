@@ -47,6 +47,8 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
    - 反映の記録（`Logiforge-Apply-Request:`）がある（[記録の形式](../files/revisions.md)）。
    - 木の不変条件が成り立つ（[差分の検査](checks.md) の「head の木で確かめること」）。
    - 反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていない（[対象ノードの変化](merge.md)）。
+     - base は、反映した版のコミット（反映のコミットの `Logiforge-Version:`）と、反映の直前の `main` の分かれた点である。worker は、自分の clone の `git merge-base` で求める。
+     - 比べる範囲は、ノードの変更の一覧のうち、base の番号より大きく、その反映のコミットの番号より小さいものである。反映のコミット自身は除く。
    - なぜ：`main` の保護が外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
 6. `repositories` を書き直す。
 

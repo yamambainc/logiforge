@@ -25,7 +25,7 @@
 | `refs/heads/main` | すべての主体 | だれもできない。merge の API だけが進める |
 | `refs/heads/logiforge/` の下 | すべての主体 | だれもできない（予約） |
 | そのほかのブランチ（`refs/heads/` の下） | すべての主体 | `user` と `client` |
-| `refs/pull/<識別子>/<版の番号>` | すべての主体 | だれもできない。独自フォージが書く |
+| `refs/pull/<識別子>/<SHA>` | すべての主体 | だれもできない。独自フォージが書く。番号は持たせない（版の正体は SHA。[版](../backend/apply-request.md)） |
 | そのほかの ref（タグなど） | すべての主体 | だれもできない |
 
 - `user` と `client` がブランチに push できるのは、apply request のもとになるブランチを置くためである（[CLI](../cli/README.md)）。
@@ -38,7 +38,7 @@
   - なぜ：GitHub で、ブランチを消すと pull request が閉じるのと同じ振る舞いにするため。
 - 信頼の境界：push できる主体は、他人のブランチも消せる。そのため、他人の open の apply request を close にできる。
   - 消されても、反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request.md)）。版のコミットは、下の `refs/pull/` に残る。
-- 独自フォージは、提案のブランチの先頭が変わるたびに、その版のコミットを `refs/pull/<識別子>/<版の番号>` に置く。
+- 独自フォージは、提案のブランチの先頭が変わるたびに、その版のコミットを `refs/pull/<識別子>/<SHA>` に置く。
   - なぜ：squash merge とブランチの削除のあとも、版のコミットを git から辿れるようにするため（[ブランチの履歴](../backend/snapshot.md)）。
 - push の資格は、receive-pack の広告（`info/refs?service=git-receive-pack`）の時点で確かめる。どの ref に書けるかは、push を受け取ってから確かめる。
 
