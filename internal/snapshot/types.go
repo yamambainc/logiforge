@@ -11,8 +11,9 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
-// FormatVersion は、スナップショットの形の版である。形を変えるときは、置き場の接頭辞ごと新しくする。
-const FormatVersion = 1
+// FormatVersion は、スナップショットの形の版である。項目を足すときも上げる。
+// 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
+const FormatVersion = 2
 
 // Kind は、コミットの種類である。
 type Kind string
@@ -45,7 +46,8 @@ type Commit struct {
 	Kind        Kind      `json:"kind"`
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
-	// Warnings は、main のコミットだけ。反映の記録がない、不変条件が破れている、など。
+	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
+	// 前から破れている不変条件は、Tree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`
 	// Changes は、main のコミットだけ。親から直接変わったファイルの、ノードと種類の組。
 	Changes []NodeChange `json:"changes,omitempty"`
@@ -101,8 +103,9 @@ type File struct {
 
 // Main は、main のコミットのスナップショットである。
 type Main struct {
-	Commit Commit `json:"commit"`
-	Tree   Tree   `json:"tree"`
+	FormatVersion int    `json:"format_version"`
+	Commit        Commit `json:"commit"`
+	Tree          Tree   `json:"tree"`
 }
 
 // Tree は、main のコミットの木である。すべてのノードを持つ。
@@ -115,6 +118,8 @@ type Tree struct {
 	Other []File `json:"other,omitempty"`
 	// History は、最初のリビジョンからこのコミットまでの、main のコミットの一覧である（番号の順）。
 	History []HistoryEntry `json:"history"`
+	// Broken は、この木で破れている不変条件のすべてである（前のコミットから破れているものを含む）。
+	Broken []tree.Violation `json:"broken,omitempty"`
 }
 
 // NodeKind は、ノードの種類である。
@@ -155,19 +160,31 @@ type HistoryEntry struct {
 	Number       int    `json:"number"`
 	Revision     string `json:"revision"`
 	ApplyRequest string `json:"apply_request,omitempty"`
-	Warned       bool   `json:"warned,omitempty"`
+	// NoApplyRequest は、反映の記録がない（反映によらない変更）ことである。
+	NoApplyRequest bool `json:"no_apply_request,omitempty"`
+	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
+	NewlyBroken bool `json:"newly_broken,omitempty"`
 }
 
 // Branch は、利用者が push したブランチの先頭のコミットのスナップショットである。base からの差分だけを持つ。
 type Branch struct {
-	Commit Commit `json:"commit"`
-	Diff   Diff   `json:"diff"`
+	FormatVersion int    `json:"format_version"`
+	Commit        Commit `json:"commit"`
+	Diff          Diff   `json:"diff"`
 }
 
 // Diff は、base から先頭への、ファイルの差分である。
 type Diff struct {
 	Base    string      `json:"base"`
 	Entries []DiffEntry `json:"entries"`
+}
+
+// Delta は、ブランチのスナップショットを作るために、git の差分から読んだ 1 つのパスの変化である。
+type Delta struct {
+	Path   string
+	Status Status
+	// BaseSHA は、base での blob の SHA。加わったときは空。
+	BaseSHA string
 }
 
 // DiffEntry は、1 つのパスの変化である。

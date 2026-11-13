@@ -112,7 +112,7 @@ func TestBuildMainChangesAndHistory(t *testing.T) {
 	if v := m2.Tree.Nodes[H1].Value; v == nil || !*v || !m2.Tree.Nodes[H1].Leaf {
 		t.Fatalf("H1 の値: %+v", m2.Tree.Nodes[H1])
 	}
-	if want := []HistoryEntry{{1, rev(1), "", false}, {2, rev(2), "apr_2", false}}; !reflect.DeepEqual(m2.Tree.History, want) {
+	if want := []HistoryEntry{{Number: 1, Revision: rev(1)}, {Number: 2, Revision: rev(2), ApplyRequest: "apr_2"}}; !reflect.DeepEqual(m2.Tree.History, want) {
 		t.Fatalf("history: %v", m2.Tree.History)
 	}
 
@@ -133,8 +133,66 @@ func TestBuildMainChangesAndHistory(t *testing.T) {
 	f4 := f3.clone()
 	f4.put("README.md", []byte("x"))
 	m4 := mustMain(t, f4, info(rev(4), ""), m3)
-	if !hasRule(m4.Commit.Warnings, RuleNoApplyRequest) || !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) || !m4.Tree.History[3].Warned {
-		t.Fatalf("warnings: %v", m4.Commit.Warnings)
+	if h := m4.Tree.History[3]; !hasRule(m4.Commit.Warnings, RuleNoApplyRequest) || !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) || !h.NoApplyRequest || !h.NewlyBroken {
+		t.Fatalf("warnings: %v %+v", m4.Commit.Warnings, h)
+	}
+
+	// 前から破れている条件は、次のコミットの警告にしない。Tree.Broken に残る。
+	f5 := f4.clone()
+	f5.put(dH2+"/background.md", []byte("背景\n"))
+	m5 := mustMain(t, f5, info(rev(5), "apr_5"), m4)
+	if len(m5.Commit.Warnings) != 0 || !hasRule(m5.Tree.Broken, tree.RuleOutsideTree) || m5.Tree.History[4].NewlyBroken {
+		t.Fatalf("warnings: %v broken: %v", m5.Commit.Warnings, m5.Tree.Broken)
+	}
+}
+
+func TestInitTrailerIsNotWarned(t *testing.T) {
+	m1 := mustMain(t, baseFiles(), info(rev(1), ""), nil)
+	f2 := baseFiles()
+	f2.put(dH2+"/background.md", []byte("x\n"))
+	ci := info(rev(2), "")
+	ci.Trailers = []Trailer{{Key: TrailerInit, Value: "1"}}
+	if m2 := mustMain(t, f2, ci, m1); len(m2.Commit.Warnings) != 0 {
+		t.Fatalf("warnings: %v", m2.Commit.Warnings)
+	}
+}
+
+func TestSubtreeChangedAfter(t *testing.T) {
+	f1 := baseFiles()
+	m1 := mustMain(t, f1, info(rev(1), ""), nil)
+	f2 := f1.clone()
+	f2.put(dH2+"/background.md", []byte("x\n"))
+	m2 := mustMain(t, f2, info(rev(2), "apr_2"), m1)
+	cases := []struct {
+		node   string
+		number int
+		want   bool
+	}{
+		{S1, 1, true},  // 子孫の H2 が 2 で変わった
+		{H1, 1, false}, // H1 の部分木は変わっていない
+		{H2, 2, false},
+		{H0, 1, true},
+		{"h-zzzzzzzzzz", 1, true}, // ない
+	}
+	for _, c := range cases {
+		if got := m2.Tree.SubtreeChangedAfter(c.node, c.number); got != c.want {
+			t.Fatalf("%s after %d: %v", c.node, c.number, got)
+		}
+	}
+}
+
+func TestEncodeIsStableAndVersioned(t *testing.T) {
+	m := mustMain(t, baseFiles(), info(rev(1), ""), nil)
+	a, _ := Encode(m)
+	b, _ := Encode(m)
+	if string(a) != string(b) {
+		t.Fatal("2 回の Encode が違う")
+	}
+	m.FormatVersion = FormatVersion - 1
+	old, _ := Encode(m)
+	var got Main
+	if err := Decode(old, &got); err == nil {
+		t.Fatal("古い形の版を読んでしまった")
 	}
 }
 
@@ -202,7 +260,7 @@ func TestBranchOverlayAndCheck(t *testing.T) {
 	head.put(dH1+"/"+S2+"/story.md", tree.MarshalStory(tree.StoryContent{ID: S2, Title: "新", Summary: "s"}))
 	head.put(dH1+"/"+S2+"/"+H3+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H3, Statement: "孫"}))
 	head.put(dH2+"/background.md", []byte("一\n二\n"))
-	br := BuildBranch(rev(1), tree.Files(base), tree.Files(head), info(rev(10), ""))
+	br := mustBranch(t, base, head, info(rev(10), ""))
 	if len(br.Diff.Entries) != 3 || len(br.Commit.Paths) != 3 {
 		t.Fatalf("diff: %+v", br.Diff.Entries)
 	}
@@ -246,7 +304,7 @@ func TestBranchDiffEncodes(t *testing.T) {
 	art := []byte("data")
 	head.put(tree.ArtifactPath(tree.SHA256Hex(art)), art)
 	delete(head, dH2+"/hypothesis.md")
-	br := BuildBranch(rev(1), tree.Files(base), tree.Files(head), info(rev(2), ""))
+	br := mustBranch(t, base, head, info(rev(2), ""))
 	data, err := Encode(br)
 	if err != nil {
 		t.Fatal(err)
@@ -269,5 +327,87 @@ func TestBranchDiffEncodes(t *testing.T) {
 				t.Fatalf("deleted: %+v", e)
 			}
 		}
+	}
+}
+
+// mustBranch は、gitx の ChangedFiles と同じく、差分と、先頭で変わったファイルだけからブランチのスナップショットを作る。
+func mustBranch(t *testing.T, base, head fs, ci CommitInfo) *Branch {
+	t.Helper()
+	var deltas []Delta
+	changed := tree.Files{}
+	for _, p := range tree.ChangedPaths(tree.Files(base), tree.Files(head)) {
+		d := Delta{Path: p}
+		bf, inBase := base[p]
+		hf, inHead := head[p]
+		switch {
+		case !inBase:
+			d.Status = Added
+		case !inHead:
+			d.Status = Deleted
+		default:
+			d.Status = Modified
+		}
+		if inBase {
+			d.BaseSHA = bf.SHA
+		}
+		if inHead {
+			changed[p] = hf
+		}
+		deltas = append(deltas, d)
+	}
+	b, err := BuildBranch(rev(1), deltas, changed, ci)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// Overlay の振る舞いを、パスの変わり方の組み合わせで網羅する。
+func TestOverlayTable(t *testing.T) {
+	a, b, c := []byte("a"), []byte("b"), []byte("c")
+	file := func(content []byte) *File {
+		f := fromTreeFile(tree.File{Path: "p", Mode: tree.RegularMode, SHA: blobSHA(content), Size: int64(len(content)), Content: content}, false)
+		return &f
+	}
+	cases := []struct {
+		name     string
+		main     []byte // nil はファイルがない
+		entry    DiffEntry
+		conflict bool
+		want     []byte // nil はファイルがない
+	}{
+		{"加える・main になし", nil, DiffEntry{Status: Added, File: file(b)}, false, b},
+		{"加える・main に同じもの", b, DiffEntry{Status: Added, File: file(b)}, false, b},
+		{"加える・main に別のもの", c, DiffEntry{Status: Added, File: file(b)}, true, nil},
+		{"変える・main は base のまま", a, DiffEntry{Status: Modified, BaseSHA: blobSHA(a), File: file(b)}, false, b},
+		{"変える・main も変えた", c, DiffEntry{Status: Modified, BaseSHA: blobSHA(a), File: file(b)}, true, nil},
+		{"変える・main も同じに変えた", b, DiffEntry{Status: Modified, BaseSHA: blobSHA(a), File: file(b)}, false, b},
+		{"変える・main で消えた", nil, DiffEntry{Status: Modified, BaseSHA: blobSHA(a), File: file(b)}, true, nil},
+		{"消す・main は base のまま", a, DiffEntry{Status: Deleted, BaseSHA: blobSHA(a)}, false, nil},
+		{"消す・main でも消えた", nil, DiffEntry{Status: Deleted, BaseSHA: blobSHA(a)}, false, nil},
+		{"消す・main で変えた", c, DiffEntry{Status: Deleted, BaseSHA: blobSHA(a)}, true, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := fs{}
+			if tc.main != nil {
+				base.put("p", tc.main)
+			}
+			tc.entry.Path = "p"
+			got, conflicts, err := Overlay(tree.Files(base), Diff{Entries: []DiffEntry{tc.entry}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (len(conflicts) > 0) != tc.conflict {
+				t.Fatalf("conflicts: %v", conflicts)
+			}
+			if tc.conflict {
+				return
+			}
+			f, ok := got["p"]
+			if (tc.want == nil) != !ok || (ok && string(f.Content) != string(tc.want)) {
+				t.Fatalf("got %+v", f)
+			}
+		})
 	}
 }

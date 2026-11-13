@@ -2,11 +2,15 @@ package gitx
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
 // work は、テスト用の作業ツリーつきのリポジトリである。
@@ -137,8 +141,88 @@ func TestFetchAndMergeBase(t *testing.T) {
 	if err := clone.Fetch(ctx, w.dir); err != nil {
 		t.Fatal(err)
 	}
-	mb, err := clone.MergeBase(ctx, "refs/remotes/origin/main", "refs/remotes/origin/topic")
+	mb, err := clone.MergeBase(ctx, heads["main"], heads["topic"])
 	if err != nil || mb != base {
 		t.Fatalf("merge-base: %v %v", mb, err)
+	}
+}
+
+func TestRejectsNonSHA(t *testing.T) {
+	ctx := context.Background()
+	w := newWork(t)
+	w.write("a", "1")
+	w.commit("1")
+	r := &Repo{Dir: w.dir}
+	for _, rev := range []string{"main", "--output=/tmp/x", "HEAD~1", strings.Repeat("g", 40)} {
+		if _, err := r.ReadFiles(ctx, rev, 10); !errors.Is(err, ErrBadRevision) {
+			t.Fatalf("%q: %v", rev, err)
+		}
+		if _, err := r.Diff(ctx, rev, rev); !errors.Is(err, ErrBadRevision) {
+			t.Fatalf("%q: %v", rev, err)
+		}
+	}
+}
+
+// main のスナップショットから戻したファイルに、変わったパスだけを読んで重ねると、全体を読んだのと同じになる。
+func TestNextFilesFromSnapshot(t *testing.T) {
+	ctx := context.Background()
+	w := newWork(t)
+	w.write("tree/h-0000000000/hypothesis.md", "---\nid: h-0000000000\nstatement: 根\n---\n")
+	w.write("tree/h-0000000000/background.md", "一\n")
+	art := "data"
+	sha := tree.SHA256Hex([]byte(art))
+	w.write(tree.ArtifactPath(sha), art)
+	c1 := w.commit("1")
+	w.write("tree/h-0000000000/background.md", "一\n二\n")
+	art2 := "data2"
+	sha2 := tree.SHA256Hex([]byte(art2))
+	w.write(tree.ArtifactPath(sha2), art2)
+	if err := os.Remove(filepath.Join(w.dir, tree.ArtifactPath(sha))); err != nil {
+		t.Fatal(err)
+	}
+	c2 := w.commit("2")
+
+	r := &Repo{Dir: w.dir}
+	f1, err := r.ReadFiles(ctx, c1, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m1, err := snapshot.BuildMain(f1, snapshot.CommitInfo{Revision: c1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := m1.Tree.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := r.NextFiles(ctx, parent, c1, c2, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := r.ReadFiles(ctx, c2, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tree.ChangedPaths(full, next); len(got) != 0 {
+		t.Fatalf("違うパス: %v", got)
+	}
+	// 加わった artifact だけ中身を読む。
+	if f := next[tree.ArtifactPath(sha2)]; f.Content == nil {
+		t.Fatal("加わった artifact を読んでいない")
+	}
+	m2, err := snapshot.BuildMain(next, snapshot.CommitInfo{Revision: c2}, m1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m2.Tree.Artifacts) != 1 || m2.Tree.Artifacts[0].SHA256 != sha2 {
+		t.Fatalf("artifacts: %+v", m2.Tree.Artifacts)
+	}
+
+	changes, changed, err := r.ChangedFiles(ctx, c1, c2, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 3 || len(changed) != 2 {
+		t.Fatalf("changes: %+v files: %d", changes, len(changed))
 	}
 }

@@ -1,5 +1,8 @@
 // Package gitx は、git の CLI で、木の git リポジトリを読む（design/adapters/git.md）。
 // 読むだけで、書く操作は持たない。worker と、CLI の check が使う。
+//
+// コミットを受ける関数は、コミットの SHA（40 か 64 文字の 16 進）だけを受け付ける。
+// ブランチの名前は、LsRemote の結果で SHA に引いてから使う。オプションが引数に紛れ込むのを防ぐため。
 package gitx
 
 import (
@@ -10,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,17 +25,47 @@ import (
 type Repo struct {
 	// Dir は、clone のディレクトリ（bare でもよい）。
 	Dir string
-	// Env は、git に足す環境変数（例：credential helper の設定）。
+	// Env は、git に足す環境変数である。手元の git の設定は読まないので、
+	// credential helper などは GIT_CONFIG_COUNT、GIT_CONFIG_KEY_n、GIT_CONFIG_VALUE_n で渡す。
 	Env []string
 }
 
 // ErrNotFound は、コミットやブランチがないことを表す。
 var ErrNotFound = errors.New("gitx: not found")
 
-func (r *Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
+// ErrBadRevision は、コミットの SHA の形でない引数を表す。
+var ErrBadRevision = errors.New("gitx: コミットの SHA でない")
+
+var revPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+func checkRevs(revs ...string) error {
+	for _, r := range revs {
+		if !revPattern.MatchString(r) {
+			return fmt.Errorf("%w: %q", ErrBadRevision, r)
+		}
+	}
+	return nil
+}
+
+// isolatedEnv は、手元の git の設定から切り離した環境変数である。
+var isolatedEnv = []string{
+	"GIT_TERMINAL_PROMPT=0",
+	"LC_ALL=C",
+	"GIT_CONFIG_GLOBAL=/dev/null",
+	"GIT_CONFIG_NOSYSTEM=1",
+	"GIT_ALLOW_PROTOCOL=https:file",
+	// パスを、glob ではなく、そのままのパスとして扱う。
+	"GIT_LITERAL_PATHSPECS=1",
+}
+
+func (r *Repo) command(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir}, args...)...)
-	cmd.Env = append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
-	cmd.Env = append(cmd.Env, r.Env...)
+	cmd.Env = append(append(cmd.Environ(), isolatedEnv...), r.Env...)
+	return cmd
+}
+
+func (r *Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
+	cmd := r.command(ctx, args...)
 	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -43,7 +77,8 @@ func (r *Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte
 
 // Init は、空の bare リポジトリを作る。すでにあれば何もしない。
 func Init(ctx context.Context, dir string) (*Repo, error) {
-	cmd := exec.CommandContext(ctx, "git", "init", "--bare", "--quiet", dir)
+	cmd := exec.CommandContext(ctx, "git", "init", "--bare", "--quiet", "--", dir)
+	cmd.Env = append(cmd.Environ(), isolatedEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("git init: %w: %s", err, out)
 	}
@@ -52,7 +87,7 @@ func Init(ctx context.Context, dir string) (*Repo, error) {
 
 // LsRemote は、リモートのブランチの先頭を、ブランチの名前から引く。
 func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, error) {
-	out, err := r.run(ctx, nil, "ls-remote", "--heads", remote)
+	out, err := r.run(ctx, nil, "ls-remote", "--heads", "--", remote)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +103,10 @@ func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, 
 }
 
 // Fetch は、リモートのブランチを、手元の refs/remotes/origin/ に取ってくる。消えたブランチは消す。
+//
+// TODO(④ worker)：pull request の最後の版を読むため、refspec に refs/pull/*/head を足す。
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
-	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", remote, "+refs/heads/*:refs/remotes/origin/*")
+	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", "--end-of-options", remote, "+refs/heads/*:refs/remotes/origin/*")
 	return err
 }
 
@@ -90,7 +127,10 @@ type Trailer struct {
 
 // ReadCommit は、コミットの情報を読む。
 func (r *Repo) ReadCommit(ctx context.Context, rev string) (Commit, error) {
-	out, err := r.run(ctx, nil, "show", "-s", "--format=%H%n%P%n%ct%n%B", rev, "--")
+	if err := checkRevs(rev); err != nil {
+		return Commit{}, err
+	}
+	out, err := r.run(ctx, nil, "show", "-s", "--format=%H%n%P%n%ct%n%B", "--end-of-options", rev, "--")
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown revision") || strings.Contains(err.Error(), "bad object") {
 			return Commit{}, ErrNotFound
@@ -130,7 +170,10 @@ func (r *Repo) parseTrailers(ctx context.Context, msg string) ([]Trailer, error)
 
 // FirstParents は、rev から根までの first-parent の並びを、根から順に返す。
 func (r *Repo) FirstParents(ctx context.Context, rev string) ([]string, error) {
-	out, err := r.run(ctx, nil, "rev-list", "--first-parent", "--reverse", rev, "--")
+	if err := checkRevs(rev); err != nil {
+		return nil, err
+	}
+	out, err := r.run(ctx, nil, "rev-list", "--first-parent", "--reverse", "--end-of-options", rev, "--")
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +182,10 @@ func (r *Repo) FirstParents(ctx context.Context, rev string) ([]string, error) {
 
 // MergeBase は、2 つのコミットの分かれた点を返す。
 func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
-	out, err := r.run(ctx, nil, "merge-base", a, b)
+	if err := checkRevs(a, b); err != nil {
+		return "", err
+	}
+	out, err := r.run(ctx, nil, "merge-base", "--end-of-options", a, b)
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +207,10 @@ func (r *Repo) ReadPaths(ctx context.Context, rev string, paths []string, maxSiz
 }
 
 func (r *Repo) readFiles(ctx context.Context, rev string, paths []string, maxSize int64) (tree.Files, error) {
-	args := []string{"ls-tree", "-r", "-l", "-z", "--full-tree", rev}
+	if err := checkRevs(rev); err != nil {
+		return nil, err
+	}
+	args := []string{"ls-tree", "-r", "-l", "-z", "--full-tree", "--end-of-options", rev}
 	if paths != nil {
 		args = append(append(args, "--"), paths...)
 	}
@@ -200,20 +249,42 @@ func (r *Repo) readFiles(ctx context.Context, rev string, paths []string, maxSiz
 	return files, nil
 }
 
-// catBlobs は、git cat-file --batch で、ファイルの中身をまとめて読む。
-func (r *Repo) catBlobs(ctx context.Context, files tree.Files, paths []string) error {
+// catBlobs は、git cat-file --batch で、ファイルの中身を読む。出力を溜めず、1 つずつ切り分けて読む。
+func (r *Repo) catBlobs(ctx context.Context, files tree.Files, paths []string) (err error) {
 	if len(paths) == 0 {
 		return nil
 	}
-	var in bytes.Buffer
-	for _, p := range paths {
-		in.WriteString(files[p].SHA + "\n")
-	}
-	out, err := r.run(ctx, &in, "cat-file", "--batch")
+	cmd := r.command(ctx, "cat-file", "--batch")
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
 	}
-	br := bufio.NewReader(bytes.NewReader(out))
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	defer func() {
+		if werr := cmd.Wait(); err == nil && werr != nil {
+			err = fmt.Errorf("git cat-file: %w: %s", werr, strings.TrimSpace(errb.String()))
+		}
+	}()
+	go func() {
+		w := bufio.NewWriter(stdin)
+		for _, p := range paths {
+			if _, err := w.WriteString(files[p].SHA + "\n"); err != nil {
+				break
+			}
+		}
+		_ = w.Flush()
+		_ = stdin.Close()
+	}()
+	br := bufio.NewReader(stdout)
+	defer func() { _, _ = io.Copy(io.Discard, br) }()
 	for _, p := range paths {
 		header, err := br.ReadString('\n')
 		if err != nil {
@@ -251,7 +322,10 @@ type Change struct {
 
 // Diff は、a から b への、変わったファイルを返す。名前の変更は、消えたと加わったの組にする。
 func (r *Repo) Diff(ctx context.Context, a, b string) ([]Change, error) {
-	out, err := r.run(ctx, nil, "diff-tree", "-r", "-z", "--no-renames", "--no-commit-id", a, b)
+	if err := checkRevs(a, b); err != nil {
+		return nil, err
+	}
+	out, err := r.run(ctx, nil, "diff-tree", "-r", "-z", "--no-renames", "--no-commit-id", "--end-of-options", a, b)
 	if err != nil {
 		return nil, err
 	}
@@ -265,4 +339,53 @@ func (r *Repo) Diff(ctx context.Context, a, b string) ([]Change, error) {
 		cs = append(cs, Change{OldMode: meta[0], NewMode: meta[1], OldSHA: meta[2], NewSHA: meta[3], Status: meta[4], Path: recs[i+1]})
 	}
 	return cs, nil
+}
+
+// NextFiles は、parent の木のファイル（from のコミット）に、from から to への差分だけを読んで重ね、to の木のファイルを返す。
+// 読むのは、加わったか変わったパスだけである。parent のファイルは、そのまま引き継ぐ。
+// parent は、ひとつ前の main のスナップショットから Tree.Files で戻したものを渡す。
+func (r *Repo) NextFiles(ctx context.Context, parent tree.Files, from, to string, maxSize int64) (tree.Files, error) {
+	changes, err := r.Diff(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	next := tree.Files{}
+	for p, f := range parent {
+		next[p] = f
+	}
+	var read []string
+	for _, c := range changes {
+		delete(next, c.Path)
+		if c.Status != "D" {
+			read = append(read, c.Path)
+		}
+	}
+	got, err := r.ReadPaths(ctx, to, read, maxSize)
+	if err != nil {
+		return nil, err
+	}
+	for p, f := range got {
+		next[p] = f
+	}
+	return next, nil
+}
+
+// ChangedFiles は、base から head への差分と、head での、加わったか変わったファイルだけを返す。
+// ブランチのスナップショットを、base の木の全体を読まずに作るために使う。
+func (r *Repo) ChangedFiles(ctx context.Context, base, head string, maxSize int64) ([]Change, tree.Files, error) {
+	changes, err := r.Diff(ctx, base, head)
+	if err != nil {
+		return nil, nil, err
+	}
+	var read []string
+	for _, c := range changes {
+		if c.Status != "D" {
+			read = append(read, c.Path)
+		}
+	}
+	files, err := r.ReadPaths(ctx, head, read, maxSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	return changes, files, nil
 }

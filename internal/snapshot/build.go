@@ -15,16 +15,20 @@ const RuleNoApplyRequest tree.Rule = "no_apply_request"
 // TrailerApplyRequest は、反映のコミットの、apply request の識別子の trailer である（design/files/revisions.md）。
 const TrailerApplyRequest = "Logiforge-Apply-Request"
 
+// TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
+const TrailerInit = "Logiforge-Init"
+
 // BuildMain は、main のコミットのスナップショットを作る。parent は、first-parent のスナップショット（最初のリビジョンでは nil）。
 // files は、そのコミットの木のファイルである。artifact は中身か SHA256 を持つ。
+// 親があるときは、gitx の NextFiles で、親のファイルに変わったパスだけを重ねて作る。
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	t := tree.Build(files)
 	vals := tree.Compute(t)
-	m := &Main{Commit: Commit{
+	m := &Main{FormatVersion: FormatVersion, Commit: Commit{
 		Revision:    info.Revision,
 		Number:      1,
 		Kind:        KindMain,
-		CommittedAt: info.CommittedAt,
+		CommittedAt: info.CommittedAt.UTC(),
 		Trailers:    info.Trailers,
 	}}
 	var parentFiles tree.Files
@@ -106,50 +110,79 @@ func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 		}
 	}
 
-	// 警告。
+	// 警告。不変条件は、このコミットで新しく破れたものだけを警告にする。前から破れているものは Tree.Broken に持つ。
 	ar := trailer(info.Trailers, TrailerApplyRequest)
-	if ar == "" && parent != nil {
+	noAR := ar == "" && parent != nil && trailer(info.Trailers, TrailerInit) == ""
+	if noAR {
 		m.Commit.Warnings = append(m.Commit.Warnings, tree.Violation{Rule: RuleNoApplyRequest, Node: info.Revision, Detail: "反映の記録のないコミット"})
 	}
-	m.Commit.Warnings = append(m.Commit.Warnings, tree.Check(t)...)
+	m.Tree.Broken = tree.Check(t)
+	var parentBroken []tree.Violation
+	if parent != nil {
+		parentBroken = parent.Tree.Broken
+	}
+	newly, _ := tree.NewlyBroken(parentBroken, m.Tree.Broken)
+	m.Commit.Warnings = append(m.Commit.Warnings, newly...)
 
 	if parent != nil {
 		m.Tree.History = append(m.Tree.History, parent.Tree.History...)
 	}
-	m.Tree.History = append(m.Tree.History, HistoryEntry{Number: m.Commit.Number, Revision: info.Revision, ApplyRequest: ar, Warned: len(m.Commit.Warnings) > 0})
+	m.Tree.History = append(m.Tree.History, HistoryEntry{Number: m.Commit.Number, Revision: info.Revision, ApplyRequest: ar, NoApplyRequest: noAR, NewlyBroken: len(newly) > 0})
 	return m, nil
 }
 
-// BuildBranch は、ブランチの先頭のコミットのスナップショットを作る。base は main と分かれた点のコミットの SHA、
-// baseFiles と headFiles は、その 2 つのコミットの木のファイルである。
-func BuildBranch(baseSHA string, baseFiles, headFiles tree.Files, info CommitInfo) *Branch {
+// BuildBranch は、ブランチの先頭のコミットのスナップショットを作る。base は main と分かれた点のコミットの SHA である。
+// deltas は base から先頭への差分、head は、先頭での、加わったか変わったファイルだけでよい（gitx の ChangedFiles）。
+// base の木の全体は読まない。
+func BuildBranch(baseSHA string, deltas []Delta, head tree.Files, info CommitInfo) (*Branch, error) {
 	b := &Branch{
-		Commit: Commit{Revision: info.Revision, Parent: &baseSHA, Kind: KindBranch, CommittedAt: info.CommittedAt, Trailers: info.Trailers},
-		Diff:   Diff{Base: baseSHA, Entries: []DiffEntry{}},
+		FormatVersion: FormatVersion,
+		Commit:        Commit{Revision: info.Revision, Parent: &baseSHA, Kind: KindBranch, CommittedAt: info.CommittedAt.UTC(), Trailers: info.Trailers},
+		Diff:          Diff{Base: baseSHA, Entries: []DiffEntry{}},
 	}
-	for _, p := range tree.ChangedPaths(baseFiles, headFiles) {
-		e := DiffEntry{Path: p}
-		bf, inBase := baseFiles[p]
-		hf, inHead := headFiles[p]
-		switch {
-		case !inBase:
-			e.Status = Added
-		case !inHead:
-			e.Status = Deleted
-		default:
-			e.Status = Modified
-		}
-		if inBase {
-			e.BaseSHA = bf.SHA
-		}
-		if inHead {
-			f := fromTreeFile(hf, strings.HasPrefix(p, tree.ArtifactsDir+"/"))
+	sorted := append([]Delta(nil), deltas...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
+	for _, d := range sorted {
+		e := DiffEntry{Path: d.Path, Status: d.Status, BaseSHA: d.BaseSHA}
+		if d.Status != Deleted {
+			hf, ok := head[d.Path]
+			if !ok {
+				return nil, fmt.Errorf("snapshot: %s の先頭のファイルがない", d.Path)
+			}
+			f := fromTreeFile(hf, strings.HasPrefix(d.Path, tree.ArtifactsDir+"/"))
 			e.File = &f
 		}
 		b.Diff.Entries = append(b.Diff.Entries, e)
-		b.Commit.Paths = append(b.Commit.Paths, PathChange{Path: p, Status: e.Status})
+		b.Commit.Paths = append(b.Commit.Paths, PathChange{Path: d.Path, Status: d.Status})
 	}
-	return b
+	return b, nil
+}
+
+// SubtreeChangedAfter は、nodeID のノードか、その子孫のどれかが、number より大きい番号の main のコミットで変わったかを返す。
+// 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot.md の「ノードの変更の一覧」）。
+// ノードがこの木になければ、変わったものとみなす。
+func (t *Tree) SubtreeChangedAfter(nodeID string, number int) bool {
+	if _, ok := t.Nodes[nodeID]; !ok {
+		return true
+	}
+	children := map[string][]string{}
+	for id, n := range t.Nodes {
+		if n.Parent != "" {
+			children[n.Parent] = append(children[n.Parent], id)
+		}
+	}
+	stack := []string{nodeID}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		for _, r := range t.Nodes[id].Changes {
+			if r.Number > number {
+				return true
+			}
+		}
+		stack = append(stack, children[id]...)
+	}
+	return false
 }
 
 // Files は、main のスナップショットの木を、tree.Files に戻す。artifact は中身を持たず、SHA256 を持つ。
@@ -184,6 +217,10 @@ func (t *Tree) Files() (tree.Files, error) {
 // Overlay は、base の木に、ブランチの差分を重ねた木を返す。base は、差分の base でなくてもよい（反映の直前の、今の main）。
 // 差分が変えたパスが、差分の base のあとに base の側でも変わっていれば、重ねられないので、そのパスを conflicts に返す。
 // git の merge と同じく、両方で同じ中身になったパスは、重ねられる。
+//
+// ファイルの単位で比べるので、行の単位で 3 方向の merge をする git より厳しい。
+// ただし、4 種類の操作（ファイルを加える操作と、background.md の末尾への追加）では、git と同じ結果になる。
+// 同じ background.md の末尾に両方で足すと、git でも衝突するからである。
 func Overlay(base tree.Files, d Diff) (head tree.Files, conflicts []string, err error) {
 	head = tree.Files{}
 	for p, f := range base {
