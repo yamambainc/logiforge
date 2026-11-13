@@ -771,7 +771,7 @@ components:
             | code | status | 意味 |
             |---|---|---|
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
-            | unauthenticated | 401 | トークンがない、または正しくない |
+            | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない |
             | forbidden | 403 | 主体の種類が、その操作を使えない |
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |

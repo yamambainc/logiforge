@@ -17,9 +17,12 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - サーバの側が git に書くのは、pull request の merge と、repository の用意だけである。
   - なぜ：版や `main` の更新を、プロバイダの pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
 - 1 つのブランチにつき、open の apply request は 1 つまでである。
-- 利用者がブランチを消すと、pull request は閉じる。バックエンドは、それを close として扱う。
-  - GitHub では、これは GitHub の決まりである。Forgejo も、同じように振る舞う（[Forgejo アダプタ](../adapters/forgejo.md)）。
-- 状態（open、merged、closed）は、pull request の状態をそのまま使う。
+- 利用者がブランチを消すと、apply request は close になる。
+  - head のブランチがない open の pull request は、バックエンドが closed として扱う。worker の [ブランチの履歴](snapshot.md) で、消えたことがわかる。
+  - なぜ：ブランチを消したときに、プロバイダが pull request を閉じるかどうかによらずに、同じ結果にするため。
+- 状態（open、merged、closed）は、pull request の状態と、書き込み主体の記録から決める（[提案の状態](../adapters/pull-requests.md)）。
+- apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、書き込み主体のコメントに置く（[記録のコメント](../adapters/pull-requests.md)）。
+  - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。
 
 ## 版
 
@@ -41,7 +44,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 3. worker に、ブランチを読んでもらい、先頭のコミットと base と、差分のスナップショットを得る（[worker の内部 API](worker-api.md)）。
    - 要求に `revision` があり、ブランチの先頭と違えば、`validation_failed` で受け付けない。
 4. スナップショットの差分に、[差分の検査](checks.md) を行う。4 種類の操作として読めない変化があれば、`validation_failed` で受け付けない。
-5. プロバイダに、pull request を作る。本文の末尾に、識別子と、作ったときの先頭のコミットを書く。
+5. プロバイダに、pull request を作り、識別子と、作ったときの先頭のコミットを、記録のコメントに書く。
    - そのブランチに open の pull request がすでにあれば、`validation_failed` で受け付けない。
 6. 応答する。
 

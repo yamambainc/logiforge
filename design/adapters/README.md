@@ -49,8 +49,8 @@ flowchart TB
 
 | 構成 | 正本の置き場所 | バックアップ |
 |---|---|---|
-| GitHub を使う構成 | GitHub | GitHub に任せる |
-| Forgejo を使う構成 | Forgejo | Forgejo のバックアップの仕組み（`forgejo dump` など）で取る |
+| GitHub を使う構成 | GitHub と、置き場の `branches/` | GitHub は GitHub に任せる。置き場の `branches/` は、置き場の仕組みで取る |
+| Forgejo を使う構成 | Forgejo と、置き場の `branches/` | Forgejo は、Forgejo のバックアップの仕組み（`forgejo dump` など）で取る。置き場の `branches/` は、手元のディレクトリを写して取る |
 
 - どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
 - worker の clone と、置き場の多くは、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
