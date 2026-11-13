@@ -171,6 +171,7 @@ paths:
       tags: [history]
       operationId: exportTree
       summary: 木を JSON か Markdown で書き出す
+      description: 形は ../../design/api/export.md に従う。
       parameters:
         - $ref: '#/components/parameters/Revision'
         - name: format

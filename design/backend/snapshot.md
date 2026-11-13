@@ -32,7 +32,7 @@
 | `committed_at` | コミットの時刻 |
 | `trailers` | コミットの trailer（[記録の形式](../files/revisions.md)） |
 | `warnings` | `main` のコミットだけ。反映の記録がない（`Logiforge-Init:` のある最初の用意のコミットを除く）ことと、このコミットで新しく破れた不変条件の警告（[すること](worker.md)） |
-| `changes` | `main` のコミットだけ。`parent` から変わったもの。ノードの識別子と、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）の組 |
+| `changes` | `main` のコミットだけ。`parent` から変わったもの。ノードの識別子、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）、ファイルのパスの組。パスは、検証結果が加わったコミットを探すのに使う |
 | `paths` | `branch` のコミットだけ。base から変わったファイルのパスと、変わり方（`added`、`modified`、`deleted`） |
 
 木：
