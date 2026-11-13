@@ -31,7 +31,8 @@ git を読み書きし、スナップショットを作り続ける worker を�
 - worker は、repository ごとに、要求を 1 つずつ順に処理する。repository が違えば、並行してよい。
   - なぜ：同じ repository の書き込みどうしが、clone の中でぶつからないようにするため。
 - 処理は、次のどちらかで始まる。
-  - バックエンドからの書き込みの要求（[worker の内部 API](worker-api.md)）
+  - バックエンドからの要求（[worker の内部 API](worker-api.md)）。ブランチを読む、版を書く、書く
+    - ブランチを読むときは、利用者が push したブランチを fetch し、`main` と分かれた点からの差分のスナップショットを作る。解析は、ここでも worker だけが行う。
   - 巡回：設定した間隔ごとに、`git ls-remote` で `main` と `refs/logiforge/` の下の ref を読み、`latest` と違えば追いつく
 
 ## 書き込みの要求

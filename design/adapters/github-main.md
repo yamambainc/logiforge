@@ -5,11 +5,10 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 
 ## main への書き込みを守る
 
-- GitHub リポジトリへの書き込み権限は、バックエンドの App だけに与える。人とエージェントは read にする。
-- owner と admin は、それでも `main` に直接 push できる。
-  - [worker](../backend/worker.md) が、反映の手順によらないコミットと force push を見つけ、スナップショットを作って警告する。
-- Team 以上のプランでは、ブランチ保護（またはルールセット）でも、`main` への書き込みをバックエンドの App だけに限る。
-  - App は、git の push で `main` を進める（[git アダプタ](git.md)）。そのため、App をその制限の例外にしておく。
+- 利用者とエージェントは、GitHub リポジトリに、apply request のもとになるブランチを push する（[CLI](../cli/README.md)）。
+- `main` と `refs/logiforge/` を守る設定（ルールセットかブランチ保護）は、運用する人が用意する。
+- 用意しないときは、push できる人を信頼する。[worker](../backend/worker.md) が、反映の手順によらない `main` の変化を見つけて警告する。
+- App は、git の push で `main` と `refs/logiforge/` を書く（[git アダプタ](git.md)）。守る設定では、App をその例外にしておく。
 
 ## GitHub の API の使い方
 

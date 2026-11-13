@@ -16,3 +16,4 @@ Logiforge のバックエンドを実装するときに読む。
 7. [アダプタ](adapters/README.md)
 8. [独自フォージ](forge/README.md)
 9. [API](api/README.md)
+10. [CLI](cli/README.md)

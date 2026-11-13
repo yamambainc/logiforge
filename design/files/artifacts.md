@@ -16,9 +16,10 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 
 ## 反映の前のファイル
 
-- `file` の中身は、apply request の操作（`verdict.submit`）に含めて送る。
-- バックエンドは、その中身を、版のリビジョンの `artifacts/sha256/` に入れる。
-  - なぜ：アップロードの置き場所を別に持たず、版と同じ git のリビジョンで扱えるから。
+- `file` は、ただのファイルとして、利用者がブランチのコミットに入れる。
+  - CLI のひな形が、ファイルを `artifacts/sha256/` の正しい名前に置く（[CLI](../cli/README.md)）。
+  - なぜ：アップロードの API と置き場所を別に持たず、版と同じ git のコミットで扱えるから。
+- 大きさの上限は、CLI の `check` と、バックエンドの [差分の検査](../backend/checks.md) の両方で確かめる。
 - reviewer は、版のリビジョンを指定して、反映の前のファイルを読む。
 
 ## 人への依頼の回答
@@ -35,9 +36,9 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
   - 違えば、もう回答されているので、`not_open` で失敗する。
   - やりとりの「回答を記録する」が「すでに回答がある」で失敗したときも、同じく `not_open` に当たる（[回答](../backend/apply-request.md)）。
 - なぜ：GitHub の API では issue のコメントにファイルを添付できず、独自フォージにファイルの置き場所を足すと仕組みが増えるため。版と同じ仕組みで済ませる。
-- opener が `verdict.submit` で回答のファイルを引用すると、バックエンドは、回答のファイルと添付を、版の差分に加える。
-  - 加える前に、回答のリビジョンのスナップショットで、署名が正しいことを確かめる（[スナップショット](../backend/snapshot.md)）。
-  - ファイルの中身は、置き場の artifact から読む。git からは読まない。
+- opener が検証結果で回答のファイルを引用するときは、回答のファイルと添付を、自分のブランチの `artifacts/sha256/` にも入れる。
+  - CLI は、回答の ref（`refs/logiforge/human-requests/<識別子>`）を fetch して、そのファイルを写す（[CLI](../cli/README.md)）。
+  - バックエンドは、入れたファイルの sha256 が、署名の正しい回答のリビジョンにあることを確かめる（[差分の検査](../backend/checks.md)）。
 
 回答のファイルの front matter は、次のとおり。
 

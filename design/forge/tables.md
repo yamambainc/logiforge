@@ -21,6 +21,7 @@
 |---|---|
 | `id` | `apr_` と 26 文字（[識別子](../backend/ports/interaction.md)） |
 | `description` | 説明欄 |
+| `branch` | apply request のもとになったブランチの名前 |
 | `state` | `open` / `merged` / `closed` |
 | `closed_reason` | close の理由 |
 | `closed_by_session_id` | close したセッション |

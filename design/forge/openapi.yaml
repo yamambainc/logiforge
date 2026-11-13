@@ -136,10 +136,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [id]
+              required: [id, branch]
               properties:
                 id: { $ref: '#/components/schemas/ApplyRequestId' }
                 description: { type: string }
+                branch:
+                  type: string
+                  minLength: 1
+                  description: apply request のもとになったブランチの名前（refs/heads/ の後ろ）
       responses:
         '201':
           description: 作った提案
@@ -475,9 +479,10 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, reviews, merge_failures]
+      required: [id, branch, state, reviews, merge_failures]
       properties:
         id: { $ref: '#/components/schemas/ApplyRequestId' }
+        branch: { type: string }
         description: { type: [string, 'null'] }
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         closed_reason: { type: [string, 'null'] }

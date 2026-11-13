@@ -24,17 +24,20 @@
 
 ## 記録の形式
 
-バックエンドが作るコミットには、メッセージの末尾に次の trailer を書く。
+worker が作るコミットと、版の記録（タグ）には、メッセージの末尾に次の trailer を書く。
 
-| trailer | 書くコミット | 内容 |
+| trailer | 書くもの | 内容 |
 |---|---|---|
-| `Logiforge-Session-Id:` | 版、反映 | 差分を書いたセッション |
-| `Logiforge-Apply-Request:` | 版、反映 | apply request の識別子 |
-| `Logiforge-Version:` | 反映 | 反映した版の番号と、版のリビジョン（例：`3 <commit SHA>`） |
+| `Logiforge-Session-Id:` | 版の記録、反映 | 差分を取り込んだ API の呼び出しのセッション |
+| `Logiforge-Apply-Request:` | 版の記録、反映 | apply request の識別子 |
+| `Logiforge-Version:` | 版の記録、反映 | 版の番号。反映では、版の番号と、版のコミット（例：`3 <commit SHA>`） |
+| `Logiforge-Base:` | 版の記録 | 版の差分の base（[版と ref](../backend/apply-request.md)） |
 | `Logiforge-Human-Request:` | 回答 | 人への依頼の識別子 |
-| `Logiforge-Signature:` | 最初のリビジョン、版、反映、回答 | worker の署名 |
+| `Logiforge-Signature:` | 最初のリビジョン、版の記録、反映、回答 | worker の署名 |
 
-- `Logiforge-Signature:` は、コミットの tree、親、ほかの trailer に対する HMAC-SHA256（鍵付きのハッシュによる署名）である。
+- 版の記録は、利用者のコミットを指す、注釈付きのタグである（[版の記録](../backend/apply-request.md)）。利用者のコミットには、何も書き足さない。
+- 利用者のコミットのメッセージにある trailer は、記録として扱わない。
+- `Logiforge-Signature:` は、コミットの tree と親（タグでは、指すコミット）、ほかの trailer に対する HMAC-SHA256（鍵付きのハッシュによる署名）である。
   - 鍵は、worker だけが持つ（[設定と秘密情報](../adapters/README.md)）。署名を付けるのも、確かめるのも worker である。git に書くのは worker だけだからである。
   - なぜ：どのアダプタを使っても、版と回答がバックエンドの作ったものかを、同じ方法で確かめられるようにするため。
 - 反映のコミットには、反映したすべての版のセッションを、`Logiforge-Session-Id:` に並べて書く。
@@ -43,7 +46,7 @@
 
 ## 誰が、いつ、どの apply request で
 
-- 誰が：`Logiforge-Session-Id:` と、apply request を出したセッション
+- 誰が：反映のコミットと、版の記録の `Logiforge-Session-Id:`
 - いつ：コミットの時刻
 - どの apply request で：`Logiforge-Apply-Request:`
 

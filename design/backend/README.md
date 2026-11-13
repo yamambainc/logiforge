@@ -52,15 +52,15 @@
 
 ## 操作と差分
 
-- API が受け取る 4 種類の操作（[操作](../../docs/apply-request/README.md)）を、バックエンドが木の変化に変える。
-  - `story.create`：仮説とストーリーを加える。
-  - `story.inactivate`：ストーリーを inactive にする。
-  - `verdict.submit`：検証結果と artifact を加える。
-  - `node.edit`：背景情報の末尾に文章を加える。
-- バックエンドは、[スナップショット](snapshot.md) の木に操作を当てはめ、変わったファイルだけを [木のファイル配置](../files/layout.md) の形に書き出す。
-  - 書き出す方向（serialize）だけを持ち、git のファイルを読んで解析しない。
-- 操作とファイルの変化は 1 対 1 なので、版のスナップショットの差分から操作を復元できる。
+- 4 種類の操作（[操作](../../docs/apply-request/README.md)）と、ファイルの変化は、1 対 1 に対応する。
+  - `story.create`：仮説とストーリーのディレクトリを、ファイルごと加える。
+  - `story.inactivate`：`inactivated.md` を加える。
+  - `verdict.submit`：`verdicts/` に検証結果のファイルを、`artifacts/sha256/` に artifact のファイルを加える。
+  - `node.edit`：`background.md` の末尾に文章を加える。
+- 利用者は、ファイルを変えたブランチを push する。バックエンドは、その差分のスナップショットから、操作を復元する。
+  - 4 種類の操作として読めない変化は、[差分の検査](checks.md) で拒む。
   - なぜ：操作を別に保存しなくても、差分だけで API の応答を作れるようにするため。
+- バックエンドが自分でファイルを書き出す（serialize）のは、最初のリビジョン、反映、回答のときだけである。git のファイルを読んで解析しない。
 - 版の作り方と、apply request の作成・更新の順は、[apply request の作成と更新](apply-request.md) に書く。
 
 ## 計算

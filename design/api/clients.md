@@ -9,11 +9,11 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | 要件 | API |
 |---|---|
 | すべてのコマンドで JSON を出す | すべての API が JSON を返す |
-| 木を変えるコマンドは apply request を作るか、更新する | [作る](endpoints/apply-request/create.md)、[更新する](endpoints/apply-request/update.md) |
+| 木を変えるときは apply request を作るか、更新する | git でブランチを push し、[作る](endpoints/apply-request/create.md)、[更新する](endpoints/apply-request/update.md)（[CLI](../cli/README.md)） |
 | 着手できる作業を問い合わせる | [着手できる作業を読む](endpoints/work/list.md) |
 | 作業の終わりを判定する | [作業の終わりを判定する](endpoints/tree/completion.md) |
 | 論理レビューを行う | [レビューの材料を読む](endpoints/apply-request/review-material.md)、[レビューする](endpoints/apply-request/review.md) |
-| 検証結果に添えるファイルを置く | [apply request を作る](endpoints/apply-request/create.md)（ファイルは `verdict.submit` に含める） |
+| 検証結果に添えるファイルを置く | ブランチのコミットに入れる（[artifact の置き方](../files/artifacts.md)） |
 | 人への依頼を起票する | [人への依頼を起票する](endpoints/human-request/create.md) |
 | 外の仕組みが次の作業を知る | [着手できる作業を読む](endpoints/work/list.md) |
 

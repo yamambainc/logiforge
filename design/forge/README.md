@@ -24,14 +24,14 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 | 種類 | 使う者 | できること |
 |---|---|---|
 | `writer` | バックエンドと worker | バックエンドは独自フォージの API を使う。worker は git リポジトリを読み、push する |
-| `user` | WebUI を使う利用者 | git リポジトリを読む |
-| `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む |
+| `user` | WebUI を使う利用者 | git リポジトリを読む。`main` と `refs/logiforge/` 以外のブランチに push する |
+| `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む。`main` と `refs/logiforge/` 以外のブランチに push する |
 
 - `user` と `client` のトークンは、バックエンドの API で使う。バックエンドが、要求ごとに独自フォージに問い合わせて確かめる。
-- 独自フォージの API と git への push は、`writer` だけに許す。
+- 独自フォージの API と、`main` と `refs/logiforge/` への push は、`writer` だけに許す（[git のホスティング](git-hosting.md)）。
   - なぜ：`main` を進めるのは、バックエンドの [反映の手順](../backend/merge.md) だけだから。
-- `user` と `client` には、git リポジトリを読むことを許す。
-  - なぜ：既存の git の道具（clone、diff、履歴）で状態を扱えるようにするため（[木の置き場所](../../docs/architecture/README.md)）。
+- `user` と `client` には、git リポジトリを読むことと、そのほかのブランチに push することを許す。
+  - なぜ：既存の git の道具（clone、diff、履歴）で状態を扱い、apply request のもとになるブランチを置けるようにするため（[木の置き場所](../../docs/architecture/README.md)、[CLI](../cli/README.md)）。
 - すべての主体が、すべての repository を読める。
 - 主体とトークンは、管理者が独自フォージのコマンドで登録する。
   - トークンの発行は、独自フォージの API の範囲外である。

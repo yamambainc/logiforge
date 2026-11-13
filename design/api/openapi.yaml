@@ -253,6 +253,9 @@ paths:
       tags: [apply-request]
       operationId: createApplyRequest
       summary: apply request を作る（client だけ）
+      description: |
+        push したブランチの差分を、版 1 として取り込む。手順は ../../design/backend/apply-request.md に従う。
+        差分が 4 種類の操作として読めなければ、validation_failed で受け付けない。操作は、差分から復元して応答に入れる。
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -262,15 +265,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [operations]
+              required: [branch]
               properties:
+                branch: { $ref: '#/components/schemas/BranchName' }
+                revision:
+                  $ref: '#/components/schemas/Revision'
+                  description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない。指定しなければ、ブランチの今の先頭
                 description:
                   type: string
                   description: 説明欄。レビューの材料には含めない
-                operations:
-                  type: array
-                  minItems: 1
-                  items: { $ref: '#/components/schemas/OperationInput' }
       responses:
         '201':
           description: 作った apply request
@@ -300,7 +303,7 @@ paths:
       operationId: updateApplyRequest
       summary: apply request を更新する（client なら、どのセッションからでもよい）
       description: |
-        `operations` を指定すると、操作をすべて置き換えた新しい版を作る。
+        ブランチの今の先頭を、新しい版として取り込む。版の差分は、ブランチと main の分かれた点からの差分で、それまでの版を置き換える。
         新しい版には、更新したセッションを `author_session_id` として記録する。
         それまでの approve の扱いは、[反映の条件](../../docs/apply-request/review.md) に従う。
       parameters:
@@ -318,11 +321,13 @@ paths:
                   type: integer
                   minimum: 1
                   description: もとにした版の番号。今の版と違えば version_conflict で受け付けない
+                branch:
+                  $ref: '#/components/schemas/BranchName'
+                  description: 取り込むブランチ。指定しなければ、apply request のブランチ
+                revision:
+                  $ref: '#/components/schemas/Revision'
+                  description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない
                 description: { type: string }
-                operations:
-                  type: array
-                  minItems: 1
-                  items: { $ref: '#/components/schemas/OperationInput' }
       responses:
         '200':
           description: 更新した apply request
@@ -689,9 +694,12 @@ components:
       description: repository の名前。forge の中で一意
     Repository:
       type: object
-      required: [name, root_hypothesis_id]
+      required: [name, root_hypothesis_id, git_url]
       properties:
         name: { $ref: '#/components/schemas/RepositoryNameValue' }
+        git_url:
+          type: string
+          description: 木の git リポジトリの URL。CLI は、ここから clone し、ブランチを push する
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
     Revision:
@@ -866,7 +874,7 @@ components:
             target_kind: { type: string, const: artifact }
             sha256:
               $ref: '#/components/schemas/Sha256'
-              description: 回答のファイルを指定すると、バックエンドが回答のリビジョンから回答のファイルと添付を版に加える
+              description: 回答のファイルを引用するときは、回答のファイルと添付を、同じ版のブランチにも入れる（../../design/files/artifacts.md）
         - type: object
           required: [target_kind, node_id, revision]
           properties:
@@ -912,7 +920,12 @@ components:
             sha256: { $ref: '#/components/schemas/Sha256' }
             media_type: { type: string }
 
+    BranchName:
+      type: string
+      minLength: 1
+      description: git のブランチの名前（refs/heads/ の後ろ）。main は使えない
     OperationInput:
+      description: 差分から復元した操作。ファイルの変化と 1 対 1 に対応する（../../design/backend/README.md の「操作と差分」）
       oneOf:
         - $ref: '#/components/schemas/StoryCreate'
         - $ref: '#/components/schemas/StoryInactivate'
@@ -966,7 +979,7 @@ components:
         report_body: { type: string, minLength: 1 }
         artifacts:
           type: array
-          items: { $ref: '#/components/schemas/ArtifactInput' }
+          items: { $ref: '#/components/schemas/Artifact' }
         citations:
           type: array
           items: { $ref: '#/components/schemas/Citation' }
@@ -993,9 +1006,12 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, version, versions, operations, reviews, merge_failures, awaiting]
+      required: [id, state, branch, version, versions, operations, reviews, merge_failures, awaiting]
       properties:
         id: { type: string, pattern: '^apr_' }
+        branch:
+          $ref: '#/components/schemas/BranchName'
+          description: apply request を作ったときのブランチ
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         version:
           type: integer
@@ -1005,11 +1021,18 @@ components:
           description: 版ごとの、差分を書いたセッション
           items:
             type: object
-            required: [version, revision, author_session_id]
+            required: [version, revision, base_revision, author_session_id]
             properties:
               version: { type: integer }
-              revision: { $ref: '#/components/schemas/Revision' }
-              author_session_id: { type: string }
+              revision:
+                $ref: '#/components/schemas/Revision'
+                description: 版として取り込んだコミット
+              base_revision:
+                $ref: '#/components/schemas/Revision'
+                description: そのコミットと main の分かれた点。版の差分は、ここからの差分である
+              author_session_id:
+                type: string
+                description: 版を取り込んだ API の呼び出しのセッション。コミットの trailer ではない
         description: { type: string }
         operations:
           type: array

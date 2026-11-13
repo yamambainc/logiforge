@@ -8,8 +8,11 @@
   - なぜ：エージェントは gh のような CLI を使い慣れているから。
 - すべてのコマンドに `--json` を付けられる。
   - なぜ：エージェントが出力を機械的に読めるようにするため。
-- 木を変えるコマンドは、どれも [apply request](../apply-request/README.md) を作るか、既存の apply request に操作を加える。
+- CLI は、git とセットで使う。
+  - 木を変えるときは、木の git リポジトリを clone し、ファイルを変えてコミットし、ブランチを push する。
+  - CLI は、ファイルのひな形を作り、手元で検査し、push したブランチから [apply request](../apply-request/README.md) を作るか、既存の apply request を更新する。
   - なぜ：正式なデータを変えられるのは、承認された apply request の反映だけだから（[変更の経路](../tree/README.md)）。
+  - なぜ git とセットか：コミットや push は git に任せ、エージェントが使い慣れた手順のままにするため。
 - CLI から、[着手できる作業](../work/README.md) を問い合わせられる。
 
 ## 使う主体

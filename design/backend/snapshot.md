@@ -23,13 +23,13 @@
 | 項目 | 内容 |
 |---|---|
 | `revision` | コミットの SHA |
-| `parent` | first-parent のコミットの SHA。最初のリビジョンでは null |
+| `parent` | first-parent のコミットの SHA。最初のリビジョンでは null。`branch` では、base（`main` と分かれた点） |
 | `number` | `main` のコミットだけ。最初のリビジョンを 1 とする、first-parent の番号 |
-| `kind` | `main`（`main` のコミット）、`version`（版）、`answer`（回答） |
+| `kind` | `main`（`main` のコミット）、`branch`（利用者が push したブランチの先頭）、`answer`（回答） |
 | `committed_at` | コミットの時刻 |
 | `trailers` | コミットの trailer（[記録の形式](../files/revisions.md)） |
 | `signed` | 署名が正しいか |
-| `changes` | `parent` から変わったもの。ノードの識別子と、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）の組 |
+| `changes` | `parent` から変わったもの。ノードの識別子と、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）の組。`branch` では、変わったファイルのパスと blob の SHA と、木の外のファイルの変化も持つ |
 
 木：
 
@@ -41,8 +41,10 @@
 
 - `main` のコミットの木は、すべてのノードを持つ。数百 KB から数 MB で、圧縮して置く。
   - 重くなったら、根の子の部分木ごとに分けて置く。今は分けない。
-- 版と回答の木は、親からの差分だけを持つ。
+- ブランチと回答の木は、親からの差分だけを持つ。
   - なぜ：版と回答は、`main` よりずっと多く作られるから（[費用と規模の見積もり](../estimates.md)）。
+- ブランチのスナップショットは、コミットの SHA ごとに作る。版になるかどうかに関わらない。
+  - 版の記録（タグ）の署名とセッションは、`latest` の ref の一覧に、版ごとに入れる（下の「latest」）。
 - 値は、作るときに計算して入れる（[真偽値の伝播](../../docs/tree/propagation.md)）。
   - なぜ：読むたびに計算しないため。スナップショットは正本ではないので、値を持ってもファイルと食い違わない。
 - artifact の中身は、スナップショットとは別に、sha256 の名前で置き場に置く。
@@ -70,7 +72,7 @@
 | 項目 | 内容 |
 |---|---|
 | `main` | 今の `main` の SHA |
-| `refs` | `refs/logiforge/` の下の ref と、それが指す SHA の一覧（ref の一覧） |
+| `refs` | `refs/logiforge/` の下の ref と、それが指す SHA の一覧（ref の一覧）。版の ref では、版の記録の、コミット、base、セッション、署名が正しいかも持つ |
 | `force_pushes` | これまでの force push の記録 |
 
 - ref の一覧から、版の一覧と今の版（`head`）、回答のリビジョンがわかる（[apply request の作成と更新](apply-request.md)）。

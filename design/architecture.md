@@ -52,7 +52,8 @@ flowchart TB
 
 ## レイヤー
 
-- **Client**：CLI と WebUI。バックエンドの API だけを使う（[クライアントの要件との対応](api/clients.md)）。
+- **Client**：CLI と WebUI。バックエンドの API を使う（[クライアントの要件との対応](api/clients.md)）。
+  - CLI は、git とセットで使う。木を変えるときは、git でブランチを、GitHub か独自フォージに push する（[CLI](cli/README.md)）。図では、この線を省いた。
 - **バックエンド（core）**：外向きのインターフェースが API、内向きのインターフェースがポートである。その間でルールを判定する。
   - API：[API](api/README.md)
   - ルール：[バックエンド](backend/README.md)、反映の流れは [反映の手順](backend/merge.md)
