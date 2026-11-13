@@ -21,6 +21,8 @@ import (
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/pullreq"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
 )
 
 type env struct {
@@ -44,10 +46,16 @@ func setup(t *testing.T) *env {
 		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}})
 	clients := e.team("agents", map[string]any{"permission": "read",
 		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}})
-	for name, team := range map[string]int64{"writer": writers, "alice": users, "agent": clients, "outsider": 0} {
+	readers := e.team("readers", map[string]any{"permission": "read",
+		"units_map": map[string]string{"repo.code": "read"}})
+	for name, team := range map[string]int64{"writer": writers, "alice": users, "agent": clients, "outsider": 0, "reader": readers} {
 		login := e.org + name
 		e.call(admin, "POST", "/admin/users", map[string]any{"username": login, "email": login + "@example.com", "password": "pw-" + login + "-12345", "must_change_password": false}, nil, 201)
-		e.tokens[name] = e.token(login)
+		scopes := []string{"all"}
+		if name == "reader" {
+			scopes = []string{"read:repository", "read:organization"}
+		}
+		e.tokens[name] = e.token(login, scopes)
 		if team != 0 {
 			e.call(admin, "PUT", fmt.Sprintf("/teams/%d/members/%s", team, login), nil, nil, 204)
 		}
@@ -67,8 +75,8 @@ func (e *env) team(name string, body map[string]any) int64 {
 	return out.ID
 }
 
-func (e *env) token(login string) string {
-	b, _ := json.Marshal(map[string]any{"name": "t", "scopes": []string{"all"}})
+func (e *env) token(login string, scopes []string) string {
+	b, _ := json.Marshal(map[string]any{"name": "t", "scopes": scopes})
 	req, _ := http.NewRequest("POST", e.url+"/api/v1/users/"+login+"/tokens", bytes.NewReader(b))
 	req.SetBasicAuth(login, "pw-"+login+"-12345")
 	req.Header.Set("Content-Type", "application/json")
@@ -371,6 +379,25 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("名前を変えたあとのレビュー：%+v %v", got, err)
 	}
 	e.call(e.admin, "PATCH", "/repos/"+renamed, map[string]string{"name": "q"}, nil, 200)
+
+	// ---- worker：読むだけのユーザーで、repository を列挙し、git を読む ----
+	src := NewWorkerSource(cfg, e.login("reader"), e.tokens["reader"])
+	st := &store.Dir{Root: t.TempDir()}
+	// テストの Forgejo は http で動くので、http を許す（本番は https だけ）。
+	w := worker.New(worker.Config{Dir: t.TempDir(), GitEnv: append(src.GitEnv(), "GIT_ALLOW_PROTOCOL=http:https:file")}, src, st)
+	w.SyncAll(ctx)
+	mustGit(t, alice, "fetch", "-q", "origin")
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != mustGit(t, alice, "rev-parse", "origin/main") {
+		t.Fatalf("worker の latest：%q", latest)
+	}
+	if h, _ := store.GetBranchHistory(ctx, st, "q", "a"); len(h.Entries) != 1 {
+		t.Fatalf("worker のブランチの履歴：%+v", h)
+	}
+	m, err := store.GetMain(ctx, st, "q", mustGit(t, alice, "rev-parse", "origin/main"))
+	if err != nil || len(m.Tree.History) < 3 {
+		t.Fatalf("worker のスナップショット：%v", err)
+	}
+	t.Log("確かめた：read:repository と read:organization のトークンで、worker が repository を列挙し、credential helper で git を読める")
 
 	// ---- 認証 ----
 	for who, want := range map[string]ports.PrincipalKind{"alice": ports.PrincipalUser, "agent": ports.PrincipalClient} {

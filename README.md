@@ -33,6 +33,9 @@ FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ば�
 | [internal/tree](internal/tree/) | 木のファイルの読み書き、値の計算、不変条件と差分の検査。git には触れない |
 | [internal/snapshot](internal/snapshot/) | スナップショットの形（Go の型が正本）、作り方、tree.Files への戻し方、ブランチの差分の重ね方（Overlay）。git には触れない |
 | [internal/gitx](internal/gitx/) | git の CLI で、木の git リポジトリを読む。書く操作はない |
+| [internal/store](internal/store/) | スナップショットの置き場（キーの決まり、スナップショットの読み書き、手元のディレクトリ） |
+| [internal/worker](internal/worker/) | worker（巡回、スナップショットと latest とブランチの履歴、反映の重なりの警告、内部 API） |
+| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。今は `logiforge worker` だけ |
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |

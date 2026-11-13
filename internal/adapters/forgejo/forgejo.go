@@ -27,11 +27,15 @@ func (r repos) w(ctx context.Context, method, path string, in, out any) error {
 }
 
 func (r repos) ListRepositories(ctx context.Context) ([]ports.Repository, error) {
+	return r.list(ctx, r.cfg.WriterToken)
+}
+
+func (r repos) list(ctx context.Context, token string) ([]ports.Repository, error) {
 	type repoJSON struct {
 		Name     string `json:"name"`
 		FullName string `json:"full_name"`
 	}
-	rs, err := list[repoJSON](ctx, r.client, r.cfg.WriterToken, "/orgs/"+url.PathEscape(r.cfg.Org)+"/repos")
+	rs, err := list[repoJSON](ctx, r.client, token, "/orgs/"+url.PathEscape(r.cfg.Org)+"/repos")
 	if err != nil {
 		return nil, err
 	}

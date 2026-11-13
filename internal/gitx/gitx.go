@@ -27,6 +27,7 @@ type Repo struct {
 	Dir string
 	// Env は、git に足す環境変数である。手元の git の設定は読まないので、
 	// credential helper などは GIT_CONFIG_COUNT、GIT_CONFIG_KEY_n、GIT_CONFIG_VALUE_n で渡す。
+	// 手元から切り離す環境変数より後ろに足すので、同じ名前なら Env が勝つ（例：テストで GIT_ALLOW_PROTOCOL に http を足す）。
 	Env []string
 }
 
@@ -102,12 +103,38 @@ func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, 
 	return heads, nil
 }
 
-// Fetch は、リモートのブランチを、手元の refs/remotes/origin/ に取ってくる。消えたブランチは消す。
-//
-// TODO(④ worker)：pull request の最後の版を読むため、refspec に refs/pull/*/head を足す。
+// Fetch は、リモートのブランチを手元の refs/remotes/origin/ に、pull request の最後の版を refs/remotes/pull/ に取ってくる。
+// 消えたブランチは消す。pull request の版は、ブランチが消えたあとも、反映の重なりを確かめるのに使う（design/backend/worker.md）。
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
-	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", "--end-of-options", remote, "+refs/heads/*:refs/remotes/origin/*")
+	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", "--end-of-options", remote,
+		"+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/pull/*")
 	return err
+}
+
+// LocalHeads は、前に取ってきたブランチの先頭を、ブランチの名前から引く。
+func (r *Repo) LocalHeads(ctx context.Context) (map[string]string, error) {
+	out, err := r.run(ctx, nil, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/origin/")
+	if err != nil {
+		return nil, err
+	}
+	heads := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		sha, ref, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		heads[strings.TrimPrefix(ref, "refs/remotes/origin/")] = sha
+	}
+	return heads, nil
+}
+
+// HasCommit は、手元にそのコミットがあるかを返す。
+func (r *Repo) HasCommit(ctx context.Context, rev string) (bool, error) {
+	if err := checkRevs(rev); err != nil {
+		return false, err
+	}
+	_, err := r.run(ctx, nil, "cat-file", "-e", "--end-of-options", rev+"^{commit}")
+	return err == nil, nil
 }
 
 // Commit は、コミットの情報である。

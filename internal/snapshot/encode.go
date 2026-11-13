@@ -39,17 +39,38 @@ func Decode(data []byte, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("snapshot: %w", err)
 	}
-	var got int
-	switch s := v.(type) {
-	case *Main:
-		got = s.FormatVersion
-	case *Branch:
-		got = s.FormatVersion
-	default:
+	vd, ok := v.(versioned)
+	if !ok {
 		return nil
 	}
-	if got != FormatVersion {
+	if got := vd.formatVersion(); got != FormatVersion {
 		return fmt.Errorf("snapshot: 形の版が %d で、%d でない", got, FormatVersion)
 	}
 	return nil
+}
+
+type versioned interface{ formatVersion() int }
+
+func (m *Main) formatVersion() int      { return m.FormatVersion }
+func (b *Branch) formatVersion() int    { return b.FormatVersion }
+func (d *CommitDoc) formatVersion() int { return d.FormatVersion }
+func (d *TreeDoc) formatVersion() int   { return d.FormatVersion }
+func (d *DiffDoc) formatVersion() int   { return d.FormatVersion }
+
+// CommitDoc は、置き場の <repository>/commits/<SHA> に置く、コミットの記録である。
+type CommitDoc struct {
+	FormatVersion int    `json:"format_version"`
+	Commit        Commit `json:"commit"`
+}
+
+// TreeDoc は、置き場の <repository>/snapshots/<SHA> に置く、main のコミットの木である。
+type TreeDoc struct {
+	FormatVersion int  `json:"format_version"`
+	Tree          Tree `json:"tree"`
+}
+
+// DiffDoc は、置き場の <repository>/snapshots/<SHA> に置く、ブランチの先頭の差分である。
+type DiffDoc struct {
+	FormatVersion int  `json:"format_version"`
+	Diff          Diff `json:"diff"`
 }
