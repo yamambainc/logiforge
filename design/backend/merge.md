@@ -9,6 +9,7 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
+   - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
    - 今の版（head のコミット）に対する最後のレビューが `approve` である。
    - 今の版に、書いたセッションの trailer がある（[セッション](../files/revisions.md)）。
    - その reviewer のセッションが、どの版を書いたセッションとも違う。
