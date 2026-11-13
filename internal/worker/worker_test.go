@@ -379,6 +379,12 @@ func TestReadBranchPendingKeepsIngesting(t *testing.T) {
 	if _, err := w.ReadBranch(ctx, "q", "b"); !errors.Is(err, ErrSnapshotPending) {
 		t.Fatalf("got %v", err)
 	}
+	// 裏の取り込みの最中の、2 つ目の「ブランチを読む」も、ロックを待ちきれずに、上限で ErrSnapshotPending を返す。
+	w.cfg.ReadBranchWait = 20 * time.Millisecond
+	start := time.Now()
+	if _, err := w.ReadBranch(ctx, "q", "b"); !errors.Is(err, ErrSnapshotPending) || time.Since(start) > 2*time.Second {
+		t.Fatalf("2 つ目：%v %v", err, time.Since(start))
+	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		if latest, _ := store.GetLatest(ctx, st, "q"); latest == mainSHA {
@@ -392,5 +398,41 @@ func TestReadBranchPendingKeepsIngesting(t *testing.T) {
 	w.cfg.ReadBranchWait = time.Minute
 	if res, err := w.ReadBranch(ctx, "q", "b"); err != nil || res.Base != mainSHA {
 		t.Fatalf("取り込みのあと：%+v %v", res, err)
+	}
+}
+
+// 裏の取り込みは、Run の ctx が終われば止まる。
+func TestBackgroundIngestStopsWithRun(t *testing.T) {
+	r := setupRemote(t)
+	for i := 0; i < 30; i++ {
+		r.write(h2+"/background.md", []byte(fmt.Sprintf("%d\n", i)))
+		r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
+	}
+	r.git("checkout", "--quiet", "-b", "b")
+	r.write(h1+"/background.md", []byte("b\n"))
+	r.commit("b")
+	st := &store.Dir{Root: t.TempDir()}
+	w := New(Config{Dir: t.TempDir(), Interval: time.Hour, ReadBranchWait: time.Nanosecond}, source{r.dir}, st)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = w.Run(ctx); close(done) }()
+	time.Sleep(50 * time.Millisecond) // Run が ctx を持つまで
+	// Run の最初の巡回が、ロックを持っているかもしれない。その間は、すぐに ErrSnapshotPending になる。
+	if _, err := w.ReadBranch(context.Background(), "q", "b"); err != nil && !errors.Is(err, ErrSnapshotPending) {
+		t.Fatal(err)
+	}
+	cancel()
+	<-done
+	// 止めたあとは、ロックが放される（裏の取り込みも止まっている）。
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if unlock := w.tryLock("q", time.Now()); unlock != nil {
+			unlock()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Run を止めても、裏の取り込みがロックを放さない")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

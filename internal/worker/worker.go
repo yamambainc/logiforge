@@ -53,8 +53,10 @@ type Worker struct {
 	store store.Writer
 
 	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	locks map[string]chan struct{} // repository ごとのロック（容量 1。入れたら取った、抜いたら放した）
 	wake  chan string
+	// runCtx は、Run の ctx である。裏の取り込みは、これで止まる。Run の前は context.Background()。
+	runCtx context.Context
 }
 
 // New は、worker を作る。
@@ -74,19 +76,49 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Worker{cfg: cfg, src: src, store: st, locks: map[string]*sync.Mutex{}, wake: make(chan string, 64)}
+	return &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, wake: make(chan string, 64), runCtx: context.Background()}
 }
 
-func (w *Worker) lock(repo string) func() {
+func (w *Worker) repoLock(repo string) chan struct{} {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	l, ok := w.locks[repo]
 	if !ok {
-		l = &sync.Mutex{}
+		l = make(chan struct{}, 1)
 		w.locks[repo] = l
 	}
-	w.mu.Unlock()
-	l.Lock()
-	return l.Unlock
+	return l
+}
+
+// lock は、repository のロックを取るまで待つ。戻り値は、放す関数である。
+func (w *Worker) lock(repo string) func() {
+	l := w.repoLock(repo)
+	l <- struct{}{}
+	return func() { <-l }
+}
+
+// tryLock は、repository のロックを、deadline までに取れれば、放す関数を返す。取れなければ nil を返す。
+func (w *Worker) tryLock(repo string, deadline time.Time) func() {
+	l := w.repoLock(repo)
+	select {
+	case l <- struct{}{}:
+		return func() { <-l }
+	default:
+	}
+	t := time.NewTimer(time.Until(deadline))
+	defer t.Stop()
+	select {
+	case l <- struct{}{}:
+		return func() { <-l }
+	case <-t.C:
+		return nil
+	}
+}
+
+func (w *Worker) backgroundCtx() context.Context {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.runCtx
 }
 
 // Wake は、repository の巡回を、すぐに始めさせる。待たずに返る。
@@ -99,6 +131,9 @@ func (w *Worker) Wake(repo string) {
 
 // Run は、間隔ごとと、起こされたときに巡回する。ctx が終わるまで返らない。
 func (w *Worker) Run(ctx context.Context) error {
+	w.mu.Lock()
+	w.runCtx = ctx
+	w.mu.Unlock()
 	t := time.NewTicker(w.cfg.Interval)
 	defer t.Stop()
 	w.SyncAll(ctx)
@@ -114,7 +149,7 @@ func (w *Worker) Run(ctx context.Context) error {
 				w.cfg.Log.Error("gitforge_ref を求められない", "repository", name, "err", err)
 				continue
 			}
-			if err := w.Sync(ctx, ports.Repository{Name: name, GitForgeRef: ref}); err != nil {
+			if err := w.syncIfFree(ctx, ports.Repository{Name: name, GitForgeRef: ref}); err != nil {
 				w.cfg.Log.Error("巡回に失敗した", "repository", name, "err", err)
 			}
 		}
@@ -133,7 +168,7 @@ func (w *Worker) SyncAll(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := w.Sync(ctx, r); err != nil {
+			if err := w.syncIfFree(ctx, r); err != nil {
 				w.cfg.Log.Error("巡回に失敗した", "repository", r.Name, "err", err)
 			}
 		}()
@@ -162,8 +197,24 @@ func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 }
 
 // Sync は、1 つの repository を巡回する（design/backend/worker.md の「すること」）。何度動かしても、結果は同じになる。
+// repository のロックを取るまで待つ。
 func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	defer w.lock(r.Name)()
+	return w.syncLocked(ctx, r)
+}
+
+// syncIfFree は、repository のロックがすぐに取れるときだけ巡回する。取れなければ（ブランチを読むときの裏の取り込みなどが
+// 動いている）、その回は飛ばす。次の巡回で追いつく。1 つの repository の長い取り込みが、ほかの repository の巡回を遅らせないため。
+func (w *Worker) syncIfFree(ctx context.Context, r ports.Repository) error {
+	unlock := w.tryLock(r.Name, time.Now())
+	if unlock == nil {
+		return nil
+	}
+	defer unlock()
+	return w.syncLocked(ctx, r)
+}
+
+func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	g, err := w.repo(ctx, r.Name)
 	if err != nil {
 		return err
@@ -487,7 +538,13 @@ func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (Branc
 		return BranchResult{}, err
 	}
 	r := &ports.Repository{Name: repoName, GitForgeRef: ref}
-	unlock := w.lock(r.Name)
+	// ロックを取るのを待つ時間も、main の取り込みを待つ時間も、1 つの上限の中に収める。
+	deadline := time.Now().Add(w.cfg.ReadBranchWait)
+	unlock := w.tryLock(r.Name, deadline)
+	if unlock == nil {
+		// ほかの取り込み（前の「ブランチを読む」の裏の取り込みなど）が、まだ動いている。
+		return BranchResult{}, ErrSnapshotPending
+	}
 	locked := true
 	defer func() {
 		if locked {
@@ -513,14 +570,14 @@ func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (Branc
 	// ブランチの base（main と分かれた点）のスナップショットがないと、バックエンドは差分を検査できない。先に main を進める。
 	if mainSHA, ok := heads["main"]; ok {
 		done := make(chan error, 1)
-		// 要求が切れても、取り込みは続ける。
-		go func() { done <- w.syncMain(context.WithoutCancel(ctx), g, r.Name, mainSHA) }()
+		// 要求が切れても、取り込みは続ける。Run の ctx が終われば止まる。
+		go func() { done <- w.syncMain(w.backgroundCtx(), g, r.Name, mainSHA) }()
 		select {
 		case err := <-done:
 			if err != nil {
 				return BranchResult{}, fmt.Errorf("main: %w", err)
 			}
-		case <-time.After(w.cfg.ReadBranchWait):
+		case <-time.After(time.Until(deadline)):
 			// 取り込みが終わるまで、repository のロックを持ち続ける。終わったら放す。
 			locked = false
 			go func() {
