@@ -390,7 +390,7 @@ func TestForgejo(t *testing.T) {
 	if latest, _ := store.GetLatest(ctx, st, "q"); latest != mustGit(t, alice, "rev-parse", "origin/main") {
 		t.Fatalf("worker の latest：%q", latest)
 	}
-	if h, _ := store.GetBranchHistory(ctx, st, "q", "a"); len(h.Entries) != 1 {
+	if h, _, _ := store.GetBranchHistory(ctx, st, "q", "a"); len(h.Entries) != 1 {
 		t.Fatalf("worker のブランチの履歴：%+v", h)
 	}
 	m, err := store.GetMain(ctx, st, "q", mustGit(t, alice, "rev-parse", "origin/main"))

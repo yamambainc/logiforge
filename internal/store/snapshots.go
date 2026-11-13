@@ -130,29 +130,51 @@ type BranchHistory struct {
 }
 
 // GetBranchHistory は、ブランチの履歴を読む。なければ、空の履歴を返す。
-func GetBranchHistory(ctx context.Context, r Reader, repo, branch string) (BranchHistory, error) {
+// raw は、読んだときの中身で、PutBranchHistory の条件に渡す（なければ nil）。
+func GetBranchHistory(ctx context.Context, r Reader, repo, branch string) (h BranchHistory, raw []byte, err error) {
 	b, err := r.Get(ctx, BranchKey(repo, branch))
 	if errors.Is(err, ErrNotFound) {
-		return BranchHistory{FormatVersion: snapshot.FormatVersion, Branch: branch}, nil
+		return BranchHistory{FormatVersion: snapshot.FormatVersion, Branch: branch}, nil, nil
 	}
 	if err != nil {
-		return BranchHistory{}, err
+		return BranchHistory{}, nil, err
 	}
-	var h BranchHistory
 	if err := json.Unmarshal(b, &h); err != nil {
-		return BranchHistory{}, err
+		return BranchHistory{}, nil, err
 	}
-	return h, nil
+	return h, b, nil
 }
 
-// PutBranchHistory は、ブランチの履歴を書く。書くのは worker だけで、1 つだけ動かす前提である。
-func PutBranchHistory(ctx context.Context, w Writer, repo string, h BranchHistory) error {
+// PutBranchHistory は、ブランチの履歴を、今の中身が raw のときだけ書く（条件付きの書き込み）。
+// worker は 1 つだけ動かす前提だが、誤って 2 つ動いても、履歴の項目を落とさないようにするため。
+func PutBranchHistory(ctx context.Context, w Writer, repo string, h BranchHistory, raw []byte) error {
 	h.FormatVersion = snapshot.FormatVersion
 	b, err := json.Marshal(h)
 	if err != nil {
 		return err
 	}
-	return w.Put(ctx, BranchKey(repo, h.Branch), b)
+	return w.PutIf(ctx, BranchKey(repo, h.Branch), b, raw)
+}
+
+// GetBranchIndex は、履歴のあるブランチの名前の一覧を読む（名前の順）。raw は、PutBranchIndex の条件に渡す。
+func GetBranchIndex(ctx context.Context, r Reader, repo string) (names []string, raw []byte, err error) {
+	b, err := r.Get(ctx, BranchIndexKey(repo))
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return names, b, json.Unmarshal(b, &names)
+}
+
+// PutBranchIndex は、ブランチの名前の一覧を、今の中身が raw のときだけ書く。
+func PutBranchIndex(ctx context.Context, w Writer, repo string, names []string, raw []byte) error {
+	b, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return w.PutIf(ctx, BranchIndexKey(repo), b, raw)
 }
 
 // GetRepositories は、latest がある repository の名前の一覧を読む。

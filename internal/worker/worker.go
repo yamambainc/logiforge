@@ -24,6 +24,8 @@ import (
 // Source は、worker が読む repository の一覧と、その git の URL である。GitForge ごとに違う。
 type Source interface {
 	ListRepositories(ctx context.Context) ([]ports.Repository, error)
+	// GitForgeRef は、repository の名前から gitforge_ref を求める。GitForge に問い合わせない。
+	GitForgeRef(ctx context.Context, name string) (string, error)
 	// GitURL は、gitforge_ref から、git で読む URL を返す。
 	GitURL(gitForgeRef string) string
 }
@@ -102,17 +104,13 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-t.C:
 			w.SyncAll(ctx)
 		case name := <-w.wake:
-			repos, err := w.src.ListRepositories(ctx)
+			ref, err := w.src.GitForgeRef(ctx, name)
 			if err != nil {
-				w.cfg.Log.Error("repository の一覧を読めない", "err", err)
+				w.cfg.Log.Error("gitforge_ref を求められない", "repository", name, "err", err)
 				continue
 			}
-			for _, r := range repos {
-				if r.Name == name {
-					if err := w.Sync(ctx, r); err != nil {
-						w.cfg.Log.Error("巡回に失敗した", "repository", r.Name, "err", err)
-					}
-				}
+			if err := w.Sync(ctx, ports.Repository{Name: name, GitForgeRef: ref}); err != nil {
+				w.cfg.Log.Error("巡回に失敗した", "repository", name, "err", err)
 			}
 		}
 	}
@@ -179,6 +177,11 @@ func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 			return err
 		}
 	}
+	// 消えたブランチは、置き場のブランチの一覧と比べて見つける。手元の ref と比べると、fetch のあとに止まったとき、記録が失われるから。
+	// main より先に行う。main で誤りが出ても、巻き込まれないようにするため。
+	if err := w.markDeleted(ctx, r.Name, heads); err != nil {
+		return err
+	}
 	if mainSHA, ok := heads["main"]; ok {
 		if err := w.syncMain(ctx, g, r.Name, mainSHA); err != nil {
 			return fmt.Errorf("main: %w", err)
@@ -195,14 +198,6 @@ func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	for _, name := range names {
 		if _, err := w.syncBranch(ctx, g, r.Name, name, heads[name], heads["main"]); err != nil {
 			w.cfg.Log.Error("ブランチを読めない", "repository", r.Name, "branch", name, "err", err)
-		}
-	}
-	for name := range old {
-		if _, ok := heads[name]; ok || name == "main" {
-			continue
-		}
-		if err := w.markDeleted(ctx, r.Name, name); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -371,7 +366,7 @@ type BranchResult struct {
 
 // syncBranch は、ブランチの先頭のスナップショットを作り、ブランチの履歴に足す。先頭が変わっていなければ、何もしない。
 func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head, mainSHA string) (BranchResult, error) {
-	h, err := store.GetBranchHistory(ctx, w.store, repo, name)
+	h, raw, err := store.GetBranchHistory(ctx, w.store, repo, name)
 	if err != nil {
 		return BranchResult{}, err
 	}
@@ -393,9 +388,13 @@ func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head,
 	} else if err != nil {
 		return BranchResult{}, err
 	}
+	// ブランチの名前の一覧に、先に足す。履歴を書いたあとに止まっても、消えたことを見つけられるようにするため。
+	if err := w.addToIndex(ctx, repo, name); err != nil {
+		return BranchResult{}, err
+	}
 	// 一覧に足すのは、スナップショットを作り終えたコミットだけである。
 	h.Entries = append(h.Entries, store.BranchEntry{Head: head, Base: base, SeenAt: w.cfg.Now().UTC()})
-	if err := store.PutBranchHistory(ctx, w.store, repo, h); err != nil {
+	if err := store.PutBranchHistory(ctx, w.store, repo, h, raw); err != nil {
 		return BranchResult{}, err
 	}
 	return BranchResult{Head: head, Base: base, Key: store.CommitKey(repo, head)}, nil
@@ -431,33 +430,51 @@ func (w *Worker) buildBranch(ctx context.Context, g *gitx.Repo, repo, base, head
 	return store.PutBranch(ctx, w.store, repo, b)
 }
 
-func (w *Worker) markDeleted(ctx context.Context, repo, name string) error {
-	h, err := store.GetBranchHistory(ctx, w.store, repo, name)
+func (w *Worker) addToIndex(ctx context.Context, repo, name string) error {
+	names, raw, err := store.GetBranchIndex(ctx, w.store, repo)
 	if err != nil {
 		return err
 	}
-	if n := len(h.Entries); n == 0 || h.Entries[n-1].Deleted {
+	if slices.Contains(names, name) {
 		return nil
 	}
-	h.Entries = append(h.Entries, store.BranchEntry{SeenAt: w.cfg.Now().UTC(), Deleted: true})
-	return store.PutBranchHistory(ctx, w.store, repo, h)
+	names = append(names, name)
+	sort.Strings(names)
+	return store.PutBranchIndex(ctx, w.store, repo, names, raw)
+}
+
+// markDeleted は、置き場のブランチの一覧のうち、履歴の最後が「消えた」でなく、今のリモートにないものに、「消えた」を足す。
+func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]string) error {
+	names, _, err := store.GetBranchIndex(ctx, w.store, repo)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if _, ok := heads[name]; ok {
+			continue
+		}
+		h, raw, err := store.GetBranchHistory(ctx, w.store, repo, name)
+		if err != nil {
+			return err
+		}
+		if n := len(h.Entries); n == 0 || h.Entries[n-1].Deleted {
+			continue
+		}
+		h.Entries = append(h.Entries, store.BranchEntry{SeenAt: w.cfg.Now().UTC(), Deleted: true})
+		if err := store.PutBranchHistory(ctx, w.store, repo, h, raw); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ReadBranch は、ブランチを fetch し、先頭のコミットと base を求め、差分のスナップショットを作る（worker の内部 API の「ブランチを読む」）。
 func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (BranchResult, error) {
-	repos, err := w.src.ListRepositories(ctx)
+	ref, err := w.src.GitForgeRef(ctx, repoName)
 	if err != nil {
 		return BranchResult{}, err
 	}
-	var r *ports.Repository
-	for i := range repos {
-		if repos[i].Name == repoName {
-			r = &repos[i]
-		}
-	}
-	if r == nil {
-		return BranchResult{}, ports.ErrNotFound
-	}
+	r := &ports.Repository{Name: repoName, GitForgeRef: ref}
 	defer w.lock(r.Name)()
 	g, err := w.repo(ctx, r.Name)
 	if err != nil {

@@ -25,6 +25,11 @@ func (s *WorkerSource) ListRepositories(ctx context.Context) ([]ports.Repository
 	return repos{s.c}.list(ctx, s.Token)
 }
 
+// GitForgeRef は、名前から gitforge_ref（<organization>/<名前>）を求める。Forgejo に問い合わせない。
+func (s *WorkerSource) GitForgeRef(_ context.Context, name string) (string, error) {
+	return s.c.cfg.Org + "/" + name, nil
+}
+
 // GitURL は、git で読む URL を返す。資格情報は、URL に入れず、GitEnv の credential helper で渡す。
 func (s *WorkerSource) GitURL(gitForgeRef string) string {
 	return strings.TrimRight(s.c.cfg.URL, "/") + "/" + gitForgeRef + ".git"
@@ -35,7 +40,8 @@ func (s *WorkerSource) GitURL(gitForgeRef string) string {
 func (s *WorkerSource) GitEnv() []string {
 	return []string{
 		"GIT_CONFIG_COUNT=1",
-		"GIT_CONFIG_KEY_0=credential.helper",
+		// helper は、Forgejo の URL にだけ使う。ほかの URL に、トークンを渡さないため。
+		"GIT_CONFIG_KEY_0=credential." + strings.TrimRight(s.c.cfg.URL, "/") + ".helper",
 		`GIT_CONFIG_VALUE_0=!f() { if [ "$1" = get ]; then echo username="$LOGIFORGE_GIT_USERNAME"; echo password="$LOGIFORGE_GIT_PASSWORD"; fi; }; f`,
 		"LOGIFORGE_GIT_USERNAME=" + s.Login,
 		"LOGIFORGE_GIT_PASSWORD=" + s.Token,

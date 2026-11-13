@@ -88,6 +88,12 @@ func runWorker(ctx context.Context) error {
 		}
 		interval = d
 	}
+	// worker は 1 つだけ動かす。ほかの worker が同じディレクトリで動いていれば、起動しない。
+	release, err := worker.Lock(cfg.dir)
+	if err != nil {
+		return err
+	}
+	defer release()
 	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
 	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: src.GitEnv(), Interval: interval}, src, &store.Dir{Root: cfg.storeDir})
 

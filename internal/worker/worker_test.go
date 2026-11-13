@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,6 +77,9 @@ func (s source) ListRepositories(context.Context) ([]ports.Repository, error) {
 	return []ports.Repository{{Name: "q", GitForgeRef: "o/q"}}, nil
 }
 func (s source) GitURL(string) string { return s.dir }
+func (s source) GitForgeRef(_ context.Context, name string) (string, error) {
+	return "o/" + name, nil
+}
 
 const (
 	h0 = "tree/h-0000000000"
@@ -137,7 +141,7 @@ func TestSyncMainAndOverlap(t *testing.T) {
 		t.Fatalf("latest: %s", latest)
 	}
 	for _, b := range []string{"x", "y"} {
-		h, _ := store.GetBranchHistory(ctx, st, "q", b)
+		h, _, _ := store.GetBranchHistory(ctx, st, "q", b)
 		if len(h.Entries) != 1 || h.Entries[0].Base != base {
 			t.Fatalf("%s: %+v", b, h)
 		}
@@ -182,7 +186,7 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	// ブランチを消すと、履歴に消えたことを足す。
 	r.git("branch", "-D", "x")
 	syncRepo(t, w)
-	if h, _ := store.GetBranchHistory(ctx, st, "q", "x"); len(h.Entries) != 2 || !h.Entries[1].Deleted {
+	if h, _, _ := store.GetBranchHistory(ctx, st, "q", "x"); len(h.Entries) != 2 || !h.Entries[1].Deleted {
 		t.Fatalf("消えたブランチ：%+v", h)
 	}
 
@@ -274,7 +278,7 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 	r.git("reset", "--quiet", "--hard", v1)
 	syncRepo(t, w)
 	syncRepo(t, w)
-	h, _ := store.GetBranchHistory(ctx, st, "q", "feature/a")
+	h, _, _ := store.GetBranchHistory(ctx, st, "q", "feature/a")
 	var heads []string
 	for _, e := range h.Entries {
 		heads = append(heads, e.Head)
@@ -282,4 +286,63 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 	if want := []string{v1, v2, v1}; strings.Join(heads, ",") != strings.Join(want, ",") {
 		t.Fatalf("履歴：%v", heads)
 	}
+}
+
+// fetch のあと、「消えた」を書く前に止まっても、次の巡回で、消えたことを記録する。
+func TestDeletedBranchSurvivesStop(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	r.git("checkout", "--quiet", "-b", "x")
+	r.write(h2+"/background.md", []byte("x\n"))
+	r.commit("x")
+	r.git("checkout", "--quiet", "main")
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	r.git("branch", "-D", "x")
+	// worker が fetch したところで止まった：手元の ref は、すでに消えている。
+	g, err := w.repo(ctx, "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Fetch(ctx, r.dir); err != nil {
+		t.Fatal(err)
+	}
+	syncRepo(t, w)
+	if h, _, _ := store.GetBranchHistory(ctx, st, "q", "x"); len(h.Entries) != 2 || !h.Entries[1].Deleted {
+		t.Fatalf("消えたことを記録していない：%+v", h)
+	}
+}
+
+// 前の形の版の置き場があっても、worker は今の版の接頭辞に作り直して進む。
+func TestOldFormatStoreIsIgnored(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	w, st := newWorker(t, r)
+	if err := st.Put(ctx, "v1/q/latest", []byte("garbage\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put(ctx, "q/latest", []byte("garbage\n")); err != nil {
+		t.Fatal(err)
+	}
+	syncRepo(t, w)
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != r.git("rev-parse", "main") {
+		t.Fatalf("latest: %q", latest)
+	}
+}
+
+func TestSecondWorkerDoesNotStart(t *testing.T) {
+	dir := t.TempDir()
+	release, err := Lock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Lock(dir); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("2 つ目の worker が起動した：%v", err)
+	}
+	release()
+	again, err := Lock(dir)
+	if err != nil {
+		t.Fatalf("止まったあとに起動できない：%v", err)
+	}
+	again()
 }
