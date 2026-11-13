@@ -10,12 +10,13 @@ apply request を main に反映するとき、バックエンドが何を確か
 1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
-   - 今の版（head のコミット）に対する最後のレビューが `approve` である。
+   - 今の版（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。
    - 今の版に、書いたセッションの trailer がある（[セッション](../files/revisions.md)）。
    - その reviewer のセッションが、どの版を書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。
    - GitForge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
    - GitForge の `main` は、GitForge のポートの「`main` の先頭を読む」で読む（[GitForge のポート](ports/gitforge.md)）。
+   - 待ち始めに読んだ `main` の先頭が、`latest` の `history` に入ったら、待つのをやめる。そのあとに `main` がさらに進んでもよい。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
    - 版の差分を、今の `main` に重ねる。差分が変えたファイルが、base のあとに `main` でも変わっていれば重ねられないので、`conflict`（[スナップショット](snapshot.md) のブランチの木）。
@@ -33,7 +34,7 @@ apply request を main に反映するとき、バックエンドが何を確か
 - 各操作の対象ノードについて、「変わった」とみなすパスを決める。
   - 仮説：自分の `hypothesis.md`、`background.md`、`verdicts/`、子ストーリーの `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
   - ストーリー：自分の `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
-  - 引用した部分木のノード
+  - 引用した部分木のノード（部分木のどれかのノードの変更の一覧に、base の番号より大きい番号があれば、変わったとみなす）
 - 今の `main` のスナップショットで、対象ノードの [ノードの変更の一覧](snapshot.md) に、base の番号より大きい番号があれば、変わったとみなす。
   - 1 つのスナップショットを読むだけで確かめられる。
   - base が今の `main` の `history` になければ、変わったものとみなす。

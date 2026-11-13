@@ -51,6 +51,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 6. 応答する。
 
 - 人への依頼の起票は、手順 2 のあと、GitForge に記録して応答する。git には書かない。
+  - 対象は、今の `main` の木の、active な仮説で、葉か要再検討であるものに限る（[人への依頼](../../docs/human-requests/README.md)）。違えば `validation_failed` にする。
 
 ## 更新
 
