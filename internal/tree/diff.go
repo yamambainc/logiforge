@@ -281,19 +281,31 @@ func checkVerdictInInactive(v *Verdict, bt *Tree, newlyInactivated map[string]bo
 // changedPaths は、base と head で、加わったか、変わったか、消えたパスを返す。
 func changedPaths(base, head Files) []string {
 	var out []string
-	for p, hf := range head {
+	for _, p := range sortedKeys(head) {
+		hf := head[p]
 		bf, ok := base[p]
-		if !ok || bf.Mode != hf.Mode || bf.Size != hf.Size || !bytes.Equal(bf.Content, hf.Content) {
+		if !ok || !sameFile(bf, hf) {
 			out = append(out, p)
 		}
 	}
-	for p := range base {
+	for _, p := range sortedKeys(base) {
 		if _, ok := head[p]; !ok {
 			out = append(out, p)
 		}
 	}
 	sort.Strings(out)
 	return out
+}
+
+// sameFile は、2 つのファイルが同じかを返す。両方に blob の SHA があれば、SHA で比べる。
+func sameFile(a, b File) bool {
+	if a.Mode != b.Mode {
+		return false
+	}
+	if a.SHA != "" && b.SHA != "" {
+		return a.SHA == b.SHA
+	}
+	return a.Size == b.Size && bytes.Equal(a.Content, b.Content)
 }
 
 var opOrder = map[string]int{OpStoryCreate: 0, OpStoryInactivate: 1, OpVerdictSubmit: 2, OpNodeEdit: 3}

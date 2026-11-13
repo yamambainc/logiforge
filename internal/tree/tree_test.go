@@ -20,7 +20,7 @@ func TestBuildProblems(t *testing.T) {
 		rule   Rule
 	}{
 		"仮説の下に仮説":  {func(b *fb, d map[string]string) { b.hyp(d[H0], H3, "x") }, RuleAlternation},
-		"木の外のファイル": {func(b *fb, _ map[string]string) { b.put(".github/workflows/x.yml", []byte("x")) }, RuleOutsideTree},
+		"木の外のファイル": {func(b *fb, _ map[string]string) { b.put("ci/config.yml", []byte("x")) }, RuleOutsideTree},
 		"シンボリックリンク": {func(b *fb, d map[string]string) {
 			b.files[d[H1]+"/background.md"] = File{Path: d[H1] + "/background.md", Mode: "120000", Size: 3, Content: []byte("../")}
 		}, RuleNotRegularFile},

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
+
+	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
 )
 
 // ファイルとディレクトリの名前（design/files/layout.md）。
@@ -41,28 +44,29 @@ type Citation struct {
 
 // HypothesisContent は hypothesis.md の中身である。
 type HypothesisContent struct {
-	ID        string
-	Statement string
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
 }
 
 // StoryContent は story.md の中身である。
 type StoryContent struct {
-	ID      string
-	Title   string
-	Summary string
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
 }
 
 // VerdictContent は verdicts/v-*.md の中身である。
 type VerdictContent struct {
-	ID         string
-	Value      bool
-	Supersedes string
-	Artifacts  []ArtifactRef
-	Citations  []Citation
-	Report     string
+	ID         string        `json:"id"`
+	Value      bool          `json:"value"`
+	Supersedes string        `json:"supersedes,omitempty"`
+	Artifacts  []ArtifactRef `json:"artifacts,omitempty"`
+	Citations  []Citation    `json:"citations,omitempty"`
+	Report     string        `json:"report"`
 }
 
-var sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+// commitPattern は、git のコミットの SHA の形である（SHA-1 の 40 文字か、SHA-256 の 64 文字）。
+var commitPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // SHA256Hex は、中身の sha256 を 16 進で返す。
 func SHA256Hex(content []byte) string {
@@ -106,7 +110,7 @@ func MarshalVerdict(c VerdictContent) []byte {
 
 func onlyKeys(data map[string]any, allowed ...string) error {
 	var extra []string
-	for k := range data {
+	for _, k := range sortedKeys(data) {
 		found := false
 		for _, a := range allowed {
 			if k == a {
@@ -253,7 +257,14 @@ func parseArtifacts(v any) ([]ArtifactRef, error) {
 		if a.Name, err = str(m, "name"); err != nil {
 			return nil, err
 		}
-		for key, dst := range map[string]*string{"sha256": &a.SHA256, "uri": &a.URI, "media_type": &a.MediaType} {
+		if strings.TrimSpace(a.Name) == "" {
+			return nil, fmt.Errorf("artifact の name が空")
+		}
+		for _, kv := range []struct {
+			key string
+			dst *string
+		}{{"sha256", &a.SHA256}, {"uri", &a.URI}, {"media_type", &a.MediaType}} {
+			key, dst := kv.key, kv.dst
 			if raw, ok := m[key]; ok {
 				s, ok := raw.(string)
 				if !ok {
@@ -264,14 +275,14 @@ func parseArtifacts(v any) ([]ArtifactRef, error) {
 		}
 		switch a.Kind {
 		case "file":
-			if !sha256Pattern.MatchString(a.SHA256) {
+			if !ids.Sha256Pattern.MatchString(a.SHA256) {
 				return nil, fmt.Errorf("file の artifact に正しい sha256 がない")
 			}
 		case "link":
 			if a.URI == "" {
 				return nil, fmt.Errorf("link の artifact に uri がない")
 			}
-			if a.SHA256 != "" && !sha256Pattern.MatchString(a.SHA256) {
+			if a.SHA256 != "" && !ids.Sha256Pattern.MatchString(a.SHA256) {
 				return nil, fmt.Errorf("link の artifact の sha256 が正しくない")
 			}
 		default:
@@ -303,7 +314,7 @@ func parseCitations(v any) ([]Citation, error) {
 				return nil, fmt.Errorf("引用: %w", err)
 			}
 			sha, _ := m["sha256"].(string)
-			if !sha256Pattern.MatchString(sha) {
+			if !ids.Sha256Pattern.MatchString(sha) {
 				return nil, fmt.Errorf("artifact の引用の sha256 が正しくない")
 			}
 			out = append(out, Citation{TargetKind: kind, SHA256: sha})
@@ -313,8 +324,11 @@ func parseCitations(v any) ([]Citation, error) {
 			}
 			node, _ := m["node_id"].(string)
 			rev, _ := m["revision"].(string)
-			if node == "" || rev == "" {
-				return nil, fmt.Errorf("部分木の引用に node_id と revision がない")
+			if k := ids.KindOf(node); k != ids.Hypothesis && k != ids.Story {
+				return nil, fmt.Errorf("部分木の引用の node_id が、仮説かストーリーの識別子でない: %q", node)
+			}
+			if !commitPattern.MatchString(rev) {
+				return nil, fmt.Errorf("部分木の引用の revision が、コミットの SHA でない: %q", rev)
 			}
 			out = append(out, Citation{TargetKind: kind, NodeID: node, Revision: rev})
 		default:

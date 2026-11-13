@@ -62,3 +62,19 @@ func TestParseRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestVerdictFieldChecks(t *testing.T) {
+	cases := map[string]string{
+		"artifact の name が空":     "artifacts:\n  - kind: link\n    name: \"\"\n    uri: https://example.com\n",
+		"引用の node_id が識別子でない":    "citations:\n  - target_kind: subtree\n    node_id: x\n    revision: " + strings.Repeat("a", 40) + "\n",
+		"引用の revision が SHA でない": "citations:\n  - target_kind: subtree\n    node_id: " + H1 + "\n    revision: main\n",
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "---\nid: " + V1 + "\nvalue: true\n" + extra + "---\nレポート\n"
+			if _, err := ParseVerdict([]byte(src)); err == nil {
+				t.Fatal("受け付けてしまった")
+			}
+		})
+	}
+}

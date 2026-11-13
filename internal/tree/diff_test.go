@@ -309,7 +309,7 @@ func TestChangeNotAllowed(t *testing.T) {
 			func(b *fb, d map[string]string) { b.verdict(d[H1], V1, true, "") },
 			func(h *fb, d map[string]string) { h.verdict(d[H1], V1, false, "") },
 		},
-		"木の外のファイル": {none, func(h *fb, _ map[string]string) { h.put(".github/workflows/x.yml", []byte("on: push\n")) }},
+		"木の外のファイル": {none, func(h *fb, _ map[string]string) { h.put("ci/config.yml", []byte("on: push\n")) }},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -365,4 +365,59 @@ func TestOperationsAreSorted(t *testing.T) {
 	if got := opKinds(res.Operations); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
+}
+
+// すでに破れているノードが、さらに悪くなったら拒む。
+func TestAlreadyBrokenGetsWorse(t *testing.T) {
+	b, d := base()
+	b.verdict(d[H1], V1, true, "")
+	b.verdict(d[H1], V2, false, "") // 有効な検証結果が 2 つ
+	h := b.clone()
+	h.verdict(d[H1], "v-aaaaaaaaaa", true, "") // 3 つにする
+	res := mustCheck(t, b, h, Context{})
+	wantRejected(t, res, RuleMultipleValidVerdicts)
+	if v := res.Rejected[0]; !reflect.DeepEqual(v.IDs, []string{V1, V2, "v-aaaaaaaaaa"}) {
+		t.Fatalf("ids: %v", v.IDs)
+	}
+
+	// 1 つを置き換えて 2 つのままでも、新しい識別子が加わるので拒む。
+	h2 := b.clone()
+	h2.verdict(d[H1], "v-aaaaaaaaaa", true, V2)
+	wantRejected(t, mustCheck(t, b, h2, Context{}), RuleMultipleValidVerdicts)
+}
+
+func TestChangedPathsUsesBlobSHA(t *testing.T) {
+	b := newFB().put("tree/a.md", []byte("x"))
+	h := b.clone()
+	f := h.files["tree/a.md"]
+	f.Content = nil // 中身を読まなくても、SHA が同じなら変わっていない
+	h.files["tree/a.md"] = f
+	if got := changedPaths(b.files, h.files); len(got) != 0 {
+		t.Fatalf("got %v", got)
+	}
+	f.SHA = blobSHA([]byte("y"))
+	h.files["tree/a.md"] = f
+	if got := changedPaths(b.files, h.files); !reflect.DeepEqual(got, []string{"tree/a.md"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestProblemsOrderIsStable(t *testing.T) {
+	b, _ := base()
+	for _, p := range []string{"z.txt", "a.txt", "m.txt", "tree/x.txt", "tree/b.txt", "artifacts/q.txt", "artifacts/c.txt"} {
+		b.put(p, []byte("x"))
+	}
+	first := Build(b.files).Problems
+	for i := 0; i < 20; i++ {
+		if got := Build(b.files).Problems; !reflect.DeepEqual(got, first) {
+			t.Fatalf("順が変わった:\n%v\n%v", first, got)
+		}
+	}
+}
+
+func TestInactivatedNeedsReason(t *testing.T) {
+	b, d := base()
+	h := b.clone()
+	h.inactivate(d[S1], " \n")
+	wantRejected(t, mustCheck(t, b, h, Context{}), RuleParse)
 }

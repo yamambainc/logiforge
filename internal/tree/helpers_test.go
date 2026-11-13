@@ -1,6 +1,11 @@
 package tree
 
-import "testing"
+import (
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+	"testing"
+)
 
 // fb は、テスト用にファイルの一覧を組み立てる。
 type fb struct{ files Files }
@@ -16,8 +21,16 @@ func (b *fb) clone() *fb {
 }
 
 func (b *fb) put(path string, content []byte) *fb {
-	b.files[path] = File{Path: path, Mode: RegularMode, Size: int64(len(content)), Content: content}
+	b.files[path] = File{Path: path, Mode: RegularMode, SHA: blobSHA(content), Size: int64(len(content)), Content: content}
 	return b
+}
+
+// blobSHA は、git の blob の SHA-1 を返す。
+func blobSHA(content []byte) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "blob %d\x00", len(content))
+	h.Write(content)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (b *fb) del(path string) *fb { delete(b.files, path); return b }

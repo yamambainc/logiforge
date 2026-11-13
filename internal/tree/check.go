@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"sort"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -60,6 +61,9 @@ type Violation struct {
 	Rule   Rule   `json:"rule"`
 	Node   string `json:"node"`
 	Detail string `json:"detail"`
+	// IDs は、数を数える規則で、問題になっている識別子の集合である（整列済み）。
+	// base でも破れていた違反で、head の IDs に base にない識別子が加われば、新しく破ったものとみなす。
+	IDs []string `json:"ids,omitempty"`
 }
 
 func (v Violation) key() string { return string(v.Rule) + "\x00" + v.Node }
@@ -73,8 +77,16 @@ func Check(t *Tree) []Violation {
 	add := func(r Rule, node, format string, args ...any) {
 		out = append(out, Violation{Rule: r, Node: node, Detail: fmt.Sprintf(format, args...)})
 	}
+	addIDs := func(r Rule, node string, ids []string, format string, args ...any) {
+		sort.Strings(ids)
+		out = append(out, Violation{Rule: r, Node: node, Detail: fmt.Sprintf(format, args...), IDs: ids})
+	}
 	if len(t.Roots) != 1 {
-		add(RuleSingleRoot, TreeDir, "根の仮説が %d 個ある", len(t.Roots))
+		var roots []string
+		for _, r := range t.Roots {
+			roots = append(roots, r.ID)
+		}
+		addIDs(RuleSingleRoot, TreeDir, roots, "根の仮説が %d 個ある", len(t.Roots))
 	}
 	for _, id := range sortedKeys(t.Hypotheses) {
 		h := t.Hypotheses[id]
@@ -86,10 +98,14 @@ func Check(t *Tree) []Violation {
 		}
 		valid := h.ValidVerdicts()
 		if len(valid) > 1 {
-			add(RuleMultipleValidVerdicts, id, "有効な検証結果が %d 個ある", len(valid))
+			addIDs(RuleMultipleValidVerdicts, id, verdictIDs(valid), "有効な検証結果が %d 個ある", len(valid))
 		}
-		if len(valid) > 0 && len(h.ActiveStories()) > 0 {
-			add(RuleVerdictWithActiveStory, id, "検証結果と active な子ストーリーを同時に持つ")
+		if active := h.ActiveStories(); len(valid) > 0 && len(active) > 0 {
+			ids := verdictIDs(valid)
+			for _, s := range active {
+				ids = append(ids, s.ID)
+			}
+			addIDs(RuleVerdictWithActiveStory, id, ids, "検証結果と active な子ストーリーを同時に持つ")
 		}
 		for _, v := range h.Verdicts {
 			if v.Supersedes == "" {
@@ -116,19 +132,45 @@ func Check(t *Tree) []Violation {
 	return out
 }
 
+func verdictIDs(vs []*Verdict) []string {
+	var out []string
+	for _, v := range vs {
+		out = append(out, v.ID)
+	}
+	return out
+}
+
 // NewlyBroken は、head で破れていて、base では破れていなかったものを返す。比べる単位は「規則 × ノード」である。
-// もう 1 つの戻り値は、base でもすでに破れていたもので、警告にする。
+// base でも破れていても、数を数える規則で、問題の識別子が base より増えていれば、新しく破ったものとする。
+// もう 1 つの戻り値は、base でもすでに破れていて、悪くなっていないもので、警告にする。
 func NewlyBroken(base, head []Violation) (newly, existing []Violation) {
-	seen := map[string]bool{}
+	seen := map[string]map[string]bool{}
 	for _, v := range base {
-		seen[v.key()] = true
+		set := seen[v.key()]
+		if set == nil {
+			set = map[string]bool{}
+			seen[v.key()] = set
+		}
+		for _, id := range v.IDs {
+			set[id] = true
+		}
 	}
 	for _, v := range head {
-		if seen[v.key()] {
+		set, ok := seen[v.key()]
+		if ok && subset(v.IDs, set) {
 			existing = append(existing, v)
 		} else {
 			newly = append(newly, v)
 		}
 	}
 	return newly, existing
+}
+
+func subset(ids []string, set map[string]bool) bool {
+	for _, id := range ids {
+		if !set[id] {
+			return false
+		}
+	}
+	return true
 }

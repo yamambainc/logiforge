@@ -16,6 +16,8 @@ type File struct {
 	Path string
 	// Mode は git のモード（例："100644"）。
 	Mode string
+	// SHA は git の blob の SHA。worker は git から読んだ値を入れる。空なら、中身で比べる。
+	SHA  string
 	Size int64
 	// Content は中身。大きすぎて読まなかったときは nil。
 	Content []byte
@@ -119,7 +121,7 @@ func Build(files Files) *Tree {
 		}
 		cur.files[parts[len(parts)-1]] = f
 	}
-	for name := range top.files {
+	for _, name := range sortedKeys(top.files) {
 		t.problem(RuleOutsideTree, name, "木の外のファイル")
 	}
 	for _, name := range sortedKeys(top.dirs) {
@@ -135,7 +137,7 @@ func Build(files Files) *Tree {
 	if !ok {
 		return t
 	}
-	for name := range treeDir.files {
+	for _, name := range sortedKeys(treeDir.files) {
 		t.problem(RuleOutsideTree, TreeDir+"/"+name, "決まっていないファイル")
 	}
 	for _, name := range sortedKeys(treeDir.dirs) {
@@ -162,7 +164,7 @@ func (t *Tree) tooLarge(p string, f File) bool {
 }
 
 func (t *Tree) readArtifacts(dir *dirEntry) {
-	for name := range dir.files {
+	for _, name := range sortedKeys(dir.files) {
 		t.problem(RuleOutsideTree, "artifacts/"+name, "決まっていないファイル")
 	}
 	for _, sub := range sortedKeys(dir.dirs) {
@@ -171,19 +173,19 @@ func (t *Tree) readArtifacts(dir *dirEntry) {
 			continue
 		}
 		shaDir := dir.dirs[sub]
-		for name := range shaDir.files {
+		for _, name := range sortedKeys(shaDir.files) {
 			t.problem(RuleArtifactName, ArtifactsDir+"/"+name, "artifact のファイル名が正しくない")
 		}
 		for _, prefix := range sortedKeys(shaDir.dirs) {
 			pd := shaDir.dirs[prefix]
-			for d := range pd.dirs {
+			for _, d := range sortedKeys(pd.dirs) {
 				t.problem(RuleArtifactName, ArtifactsDir+"/"+prefix+"/"+d+"/", "artifact の置き場に、ディレクトリがある")
 			}
 			for _, rest := range sortedKeys(pd.files) {
 				p := ArtifactsDir + "/" + prefix + "/" + rest
 				f := pd.files[rest]
 				sha := prefix + rest
-				if !sha256Pattern.MatchString(sha) || len(prefix) != 2 {
+				if !ids.Sha256Pattern.MatchString(sha) || len(prefix) != 2 {
 					t.problem(RuleArtifactName, p, "artifact のファイル名が正しくない")
 					continue
 				}
@@ -246,7 +248,7 @@ func (t *Tree) readHypothesis(name string, d *dirEntry, dir string, parent *Stor
 }
 
 func (t *Tree) readVerdicts(h *Hypothesis, d *dirEntry, dir string) {
-	for sub := range d.dirs {
+	for _, sub := range sortedKeys(d.dirs) {
 		t.problem(RuleOutsideTree, dir+"/"+sub+"/", "決まっていないディレクトリ")
 	}
 	for _, fn := range sortedKeys(d.files) {
@@ -300,6 +302,9 @@ func (t *Tree) readStory(name string, d *dirEntry, dir string, parent *Hypothesi
 	if f, ok := d.files[InactivatedFile]; ok && !t.tooLarge(dir+"/"+InactivatedFile, f) {
 		s.Inactivated = true
 		s.Reason = string(f.Content)
+		if strings.TrimSpace(s.Reason) == "" {
+			t.problem(RuleParse, dir+"/"+InactivatedFile, "inactive にした理由がない")
+		}
 	}
 	for _, fn := range sortedKeys(d.files) {
 		if fn != StoryFile && fn != InactivatedFile {
