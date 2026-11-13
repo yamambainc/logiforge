@@ -8,7 +8,7 @@
 ## repository
 
 - repository を列挙する。名前と provider_ref の組を返す。
-  - サーバの状態の、repository の登録を作り直すときに使う（[サーバの状態](../server-state.md)）。
+  - API が repository の一覧と有無を確かめるときに使う（[状態を持たない](../README.md)）。
 - 名前から provider_ref を求める。
 - repository の、やりとりの側を用意する。すでに済んでいれば、何もしない。
   - バックエンドは、provider_ref を渡す。
@@ -25,7 +25,8 @@
 - 反映の失敗の理由を記録する。
 - 提案を close する。理由と、close したセッションを記録する。
 - 提案が反映されたことを記録し、提案を閉じる。
-  - この操作を呼ぶのは、[反映の手順](../merge.md) と [突き合わせ](../README.md) だけである。
+  - この操作を呼ぶのは、[反映の手順](../merge.md) と [worker](../worker.md) だけである。
+  - close 済みの提案も、merged にする。なぜ：`main` に入った反映が正本だから（[同時に走る反映](../merge.md)）。
 
 ## レビュー
 

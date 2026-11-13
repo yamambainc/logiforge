@@ -3,35 +3,34 @@
 [木の読み書き](../backend/ports/tree-read-write.md) のポートを、git でどう実装するかを確かめるときに読む。
 ファイルの形式は、[木のファイル配置](../files/README.md) に従う。
 
-## リモートと手元の複製
+## リモートと使い捨ての clone
 
 - 正本は、リモートの git リポジトリである。リモートは、GitHub か [独自フォージ](../forge/README.md) である。
 - どちらのリモートでも、同じ実装にする。違うのは、リモートの URL と認証情報だけである。
   - なぜ：git の smart HTTP の push と fetch だけを使えば、どちらのリモートにも同じ手順で読み書きできるから。
-- アダプタは、repository ごとに、手元に bare の複製を持つ。
-  - 読む操作は、手元の複製で行う。
-  - 書く操作は、手元の複製でコミットを作り、リモートに push する。
-  - 手元の複製は、正本ではない。消えても、リモートから fetch し直せる。
-- 手元の複製を置くディレクトリは、サーバの設定に書く（[設定と秘密情報](README.md)）。
+- アダプタは、手元に clone を持ち続けない。
+  - 書き込みと、スナップショットを作る 1 回ごとに、使い捨ての clone を作り、終わったら消す。
+  - なぜ：プロセスの台数と repository の数を掛けた数の clone を持たずに済むから（[費用と規模の見積もり](../estimates.md)）。
+  - なぜ：バックエンドの読む経路は、git ではなく [スナップショット](../backend/snapshot.md) を読むから。
+- 使い捨ての clone は、深さ 1 で、ファイルの中身を取らずに作る（`git clone --bare --depth 1 --filter=blob:none`）。
+  - 取るのは、ディレクトリの構造（git の tree）だけである。ファイルの中身は、読むときに、そのファイルだけを取る。
+  - 版の差分を読むときは、版の ref を深さ 2 で fetch する。版のコミットと、その親（base）が取れる。
 
 ## 操作と git の対応
 
 | 操作 | git での実装 |
 |---|---|
-| 用意する | 手元の複製がなければ作り、`git push --dry-run` で書き込めることを確かめる |
-| 今の main を読む | `git fetch` のあと、手元の `refs/heads/main` を読む |
-| 最初のリビジョンで main を作る | `git commit-tree`（親なし）のあと、下の「ref を書く」で `refs/heads/main` を、ないことを期待して書く |
+| 用意する | `git push --dry-run` で書き込めることを確かめる |
+| 今の main を読む | `git ls-remote <リモート> refs/heads/main` |
+| 最初のリビジョンで main を作る | 空の bare リポジトリで `git commit-tree`（親なし）のあと、下の「ref を書く」で `refs/heads/main` を、ないことを期待して書く |
 | 木を読む | `git ls-tree` と `git cat-file`（リビジョンを指定する） |
 | リビジョンの情報を読む | `git cat-file commit <リビジョン>` |
-| 変更を列挙する | `git log <a>..<b> --first-parent -- <パス>` |
-| 共通の祖先を求める | `git merge-base <a> <b>` |
-| リビジョンの並びを読む | `git rev-list --first-parent --reverse main` |
+| 変わったファイルを読む | `git diff-tree -r <親> <リビジョン>` のあと、変わったファイルだけを `git cat-file` で読む |
 | リビジョンを作る | `git commit-tree` で作る。名前があれば、下の「ref を書く」で、その名前の ref を、ないことを期待して書く |
-| 名前でリビジョンを読む | `git fetch` のあと、手元の `refs/logiforge/<名前の ref>` を読む |
+| 名前でリビジョンを読む | `git ls-remote <リモート> refs/logiforge/<名前の ref>` |
 | main を進める | 下の「ref を書く」で、`refs/heads/main` を、期待する親を期待して書く |
 
-- 手元の複製にないリビジョンを読むときは、先に `git fetch` する。
-- `git fetch` は、`refs/heads/main` と `refs/logiforge/` の下の ref を取る。
+- 使い捨ての clone にないリビジョンを読むときは、そのリビジョンを深さ 1 で fetch する。
 
 ## ref を書く
 
@@ -45,7 +44,7 @@ git push --porcelain --force-with-lease=<ref>:<期待する値> <リモート> <
 - 期待する値は、push の要求に含まれ、リモートが ref を更新するときに確かめる。
   - そのため、確かめてから書くまでの間に、別の push が割り込めない。
 - 値を省いた `--force-with-lease` は使わない。
-  - なぜ：値を省くと、手元の複製にある古い値を期待する値にするので、fetch の時点によって結果が変わるから。
+  - なぜ：値を省くと、clone にある古い値を期待する値にするので、fetch の時点によって結果が変わるから。
 - 結果は、`--porcelain` の出力を ref ごとに読む。
   - lease で拒まれたときは、[失敗の種類](../backend/ports/tree-read-write.md) の失敗として返す。
     - `refs/heads/main` を、ないことを期待して書いたとき：「`main` がすでにある」
@@ -58,7 +57,7 @@ git push --porcelain --force-with-lease=<ref>:<期待する値> <リモート> <
 
 リモートが push を受け付けたあと、応答を受け取る前に通信が切れると、結果がわからない。
 
-- アダプタは、fetch し直して、ref の今の値を読む。
+- アダプタは、`git ls-remote` で、ref の今の値を読む。
   - ref が書いた値になっていれば、成功とする。
   - それ以外なら、ほかの失敗として返す。
 - `refs/heads/main`（最初の main と、main を進めるとき）と、名前の ref の、すべての push に当てはめる。
@@ -89,7 +88,4 @@ git push --porcelain --force-with-lease=<ref>:<期待する値> <リモート> <
 
 ## 制約
 
-- 読む操作のたびに fetch する。
-  - なぜ：owner や admin が直接 push しても、古い木を返さないようにするため（[main への書き込みを守る](github.md)）。
-  - 必要になったら、短い時間だけ fetch を省く。
 - Windows でクローンするときは、git の `core.longpaths` を有効にする必要がある（[深さの上限](../files/parent-child.md)）。

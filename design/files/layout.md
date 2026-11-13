@@ -20,8 +20,11 @@ tree/
         ...
 artifacts/
   sha256/<先頭 2 文字>/<残りの 62 文字>   artifact のファイル（[artifact の置き方](artifacts.md)）
+.github/
+  workflows/                         worker のワークフロー（GitHub を使う構成だけ）
 ```
 
+- `.github/workflows/` は、GitHub を使う構成で、バックエンドが最初のリビジョンに入れる（[worker](../adapters/github.md)）。
 - 仮説は `h-`、ストーリーは `s-`、検証結果は `v-` で始まるディレクトリかファイルにする。
 - 仮説のディレクトリの子は、ストーリーのディレクトリだけにする。
 - ストーリーのディレクトリの子は、仮説のディレクトリだけにする。

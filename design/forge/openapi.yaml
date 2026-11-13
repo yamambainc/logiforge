@@ -288,7 +288,9 @@ paths:
       tags: [apply-request]
       operationId: markMerged
       summary: 提案が反映されたことを記録し、提案を閉じる
-      description: すでに merged なら、何もせずに 200 を返す。closed なら、not_open で受け付けない。
+      description: |
+        すでに merged なら、何もせずに 200 を返す。
+        closed でも merged にする。main に入った反映が正本だから（../backend/merge.md の「同時に走る反映」）。
       responses:
         '200':
           description: merged にした提案
@@ -477,7 +479,7 @@ components:
             | forbidden | 403 | 主体の種類が writer でない |
             | not_found | 404 | 対象がない |
             | already_exists | 409 | 同じ識別子の提案、同じ番号の版、同じ識別子のレビューか人への依頼が、すでにある |
-            | not_open | 409 | open でない提案を close するか、closed の提案を merged にしようとした |
+            | not_open | 409 | open でない提案を close しようとした |
             | already_answered | 409 | 回答がすでにある |
           enum: [validation_failed, unauthenticated, forbidden, not_found, already_exists, not_open, already_answered]
 

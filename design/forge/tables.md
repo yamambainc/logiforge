@@ -7,7 +7,8 @@
 
 - やりとりのテーブルは、すべて `repository_name` を持つ。
 - 作った行は変えない。例外は、次のものだけである。
-  - `apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに 1 度だけ埋める。
+  - `apply_request` の `state`、`closed_reason`、`closed_by_session_id` を、close か反映のときに埋める。
+    - `state` は、close のあとに反映が記録されたときだけ、`closed` から `merged` に変わる（[同時に走る反映](../backend/merge.md)）。
   - `apply_request` の `description` を、更新の API で書き換える。
     - なぜ：説明欄は、レビューの材料にも、版の差分にも含まないから（[レビューの材料](../../docs/apply-request/review.md)）。
 - 識別子は、バックエンドが決めたものを、そのまま使う（[やりとり](../backend/ports/interaction.md)）。
