@@ -16,7 +16,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 ## 認証
 
 - リクエストは、`Authorization: Bearer <トークン>` で主体を示す。
-  - トークンの発行元は、構成による（[GitHub アダプタ](../adapters/github.md)、[独自フォージのアダプタ](../adapters/forge.md)）。
+  - トークンの発行元は、構成による（[GitHub アダプタ](../adapters/github.md)、[Forgejo アダプタ](../adapters/forgejo.md)）。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
@@ -85,7 +85,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 | ノードの履歴 | 新しい順 |
 
 - 作った順は、識別子の順ではない。`Idempotency-Key` から作った識別子は、作った順に並ばないから。
-  - カーソルには、プロバイダの連番を使う（[テーブル](../forge/tables.md)、[GitHub アダプタ](../adapters/github.md)）。
+  - カーソルには、プロバイダの連番（pull request と issue の番号）を使う（[pull request のプロバイダの共通の書き方](../adapters/pull-requests.md)）。
 - ノードの履歴のカーソルは、次に読むコミットの番号である。今の `main` のスナップショットの、ノードの変更の一覧から続きを返す（[スナップショット](../backend/snapshot.md)）。
 - 着手できる作業のカーソルは、応答の `revision` に結びつける。
   - なぜ：作業は、`main` のリビジョンから計算するので、ページの間に `main` が進むと並びがずれるから。

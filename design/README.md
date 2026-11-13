@@ -14,6 +14,6 @@ Logiforge のバックエンドを実装するときに読む。
 6. [worker](backend/worker.md)
    - [worker の内部 API](backend/worker-api.md)
 7. [アダプタ](adapters/README.md)
-8. [独自フォージ](forge/README.md)
+8. [Forgejo アダプタ](adapters/forgejo.md)
 9. [API](api/README.md)
 10. [CLI](cli/README.md)

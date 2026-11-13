@@ -18,13 +18,13 @@ flowchart TB
   end
   subgraph AD["アダプタ"]
     GHA["GitHub アダプタ"]
-    NFA["独自フォージのアダプタ"]
+    NFA["Forgejo アダプタ"]
     SSA["スナップショットの置き場のアダプタ"]
   end
   subgraph EX["外のサービス"]
     W["worker"]
     GH["GitHub"]
-    NF["独自フォージ"]
+    NF["Forgejo"]
     OBJ["静的ファイルストレージ"]
   end
   CL --> API
@@ -42,29 +42,29 @@ flowchart TB
 - 点線は実装を表す。下のアダプタが、上のポートを実装する。
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
 - 外のサービスは、構成ごとに使うものが決まる（[組み合わせ](adapters/README.md)）。
-- 独自フォージを使う構成では、静的ファイルストレージの代わりに、手元のディレクトリを使う。
+- Forgejo を使う構成では、静的ファイルストレージの代わりに、手元のディレクトリを使う。
 - [worker](backend/worker.md) は、バックエンドと同じコードの、別のプロセスである。サーバの側で git を読むのは、worker だけである。
   - バックエンドのスナップショットの置き場のアダプタが、worker にブランチの取り込みを頼む。そのため、worker は、バックエンドから見て、外のサービスの段に置いた。
-  - worker は、GitHub か独自フォージの git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
+  - worker は、GitHub か Forgejo の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
 - 外のサービスの段の中の矢印は、worker が読む先と書く先を表す。
 - ポートの一覧とアダプタの対応は、[ポート](backend/ports/README.md) に書く。
 
 ## レイヤー
 
 - **Client**：CLI と WebUI。バックエンドの API を使う（[クライアントの要件との対応](api/clients.md)）。
-  - CLI は、git とセットで使う。木を変えるときは、git でブランチを、GitHub か独自フォージに push する（[CLI](cli/README.md)）。図では、この線を省いた。
+  - CLI は、git とセットで使う。木を変えるときは、git でブランチを、GitHub か Forgejo に push する（[CLI](cli/README.md)）。図では、この線を省いた。
 - **バックエンド（core）**：外向きのインターフェースが API、内向きのインターフェースがポートである。その間でルールを判定する。
   - API：[API](api/README.md)
   - ルール：[バックエンド](backend/README.md)、反映の流れは [反映の手順](backend/merge.md)
   - ポート：[ポート](backend/ports/README.md)
 - **アダプタ**：ポートを実装する（[アダプタ](adapters/README.md)）。
-- **外のサービス**：git リポジトリ、pull request とやりとり、主体とトークンを持つ GitHub か [独自フォージ](forge/README.md)。読むための木を置く静的ファイルストレージ。git を読んでスナップショットを作る [worker](backend/worker.md)。
+- **外のサービス**：git リポジトリ、pull request とやりとり、主体とトークンを持つ GitHub か Forgejo（[Forgejo アダプタ](adapters/forgejo.md)）。読むための木を置く静的ファイルストレージ。git を読んでスナップショットを作る [worker](backend/worker.md)。
 
 バックエンドはデータを保持しない。保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 
 ## このレイヤー構造にした理由
 
-ねらいは、GitHub を使う構成と独自フォージを使う構成を、同じ API・同じルールのまま差し替えられることである。
+ねらいは、GitHub を使う構成と Forgejo を使う構成を、同じ API・同じルールのまま差し替えられることである。
 
 - バックエンドの API を 1 つにする。
   - なぜ：CLI と WebUI が、どちらの構成でも同じ API を使えるようにするため。
@@ -73,14 +73,16 @@ flowchart TB
   - アダプタと外のサービスは、ルールを判定しない。
 - ポートを置き、依存の向きを、アダプタからポートへの 1 方向にする（ports and adapters）。
   - なぜ：構成を、バックエンドを変えずに差し替えられるようにするため。
-- 独自フォージは、GitHub と同じ役割の、別のプロセスのサービスにする。
+- 自前で持つ構成のプロバイダには、Forgejo を使う。GitHub と同じ役割の、別のプロセスのサービスである。
+  - なぜ：pull request、レビュー、issue、添付、ブランチの保護、トークンを、Forgejo がすでに持つから。自前で作らずに、GitHub と同じ pull request の形で扱える。
   - なぜ：どちらの構成でも、git リポジトリ・やりとり・主体の正本をバックエンドの外に置けるから。バックエンドの形が、構成によって変わらない。
+  - Forgejo のライセンスは GPL である。Logiforge は、Forgejo を別のプロセスとして使い、コードをリンクしない。
 - apply request は、プロバイダの pull request に寄せる（[apply request と pull request](backend/apply-request.md)）。
   - 木を変えるのは、利用者が push したブランチと、バックエンドが API で行う pull request の merge である。サーバの側が git に書くのは、merge と repository の用意だけである。
   - なぜ：版、反映、衝突の扱いを、プロバイダの pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
   - なぜ git か：木を git リポジトリで管理するという要件（[木の置き場所](../docs/architecture/README.md)）を満たし、変更の履歴と任意の時点の木を、git の仕組みでそのまま扱うため。
 - 認証も、ポートにする（[認証](backend/ports/authentication.md)）。
-  - なぜ：主体の正本が、GitHub か独自フォージにあり、どちらに問い合わせるかをアダプタの差し替えだけで吸収するため。
+  - なぜ：主体の正本が、GitHub か Forgejo にあり、どちらに問い合わせるかをアダプタの差し替えだけで吸収するため。
 - 木を読むときは、git ではなく、worker が書いた [スナップショット](backend/snapshot.md) を、置き場から読む。
   - なぜ：バックエンドの台数と repository の数を掛けた数の clone を持たずに済むから。
   - なぜ：木の読みでは、GitHub の API のレート制限に当たらないから。
@@ -97,7 +99,7 @@ flowchart TB
 ## 起動時の組み立て
 
 - サーバの起動処理（composition root）が、設定を読む。
-- 起動処理は、構成（GitHub を使う / 独自フォージを使う）に合ったアダプタを作り、バックエンドのポートに差し込む（依存性の注入）。
+- 起動処理は、構成（GitHub を使う / Forgejo を使う）に合ったアダプタを作り、バックエンドのポートに差し込む（依存性の注入）。
   - 構成とアダプタの組み合わせは、[組み合わせ](adapters/README.md) に書く。
   - 読む設定は、[設定と秘密情報](adapters/README.md) に書く。
 - 起動処理は、バックエンドの外側に置く。

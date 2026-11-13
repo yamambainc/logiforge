@@ -1,7 +1,8 @@
 # GitHub アダプタ
 
 GitHub を使って Logiforge を動かすときに、[やりとり](../backend/ports/interaction.md) のポートをどう実装するかを確かめるために読む。
-木の書き込みは、[git アダプタ](git.md) が、GitHub リポジトリをリモートとして扱う。
+Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、書き込み主体が作ったものだけを数えること、main を守ること）は、[pull request のプロバイダの共通の書き方](pull-requests.md) に書く。
+[worker](../backend/worker.md) は、[git アダプタ](git.md) で、GitHub リポジトリを読む。
 
 ## 前提：main を守る設定
 
@@ -22,25 +23,17 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 
 ## 対応
 
+GitHub に固有のところだけを書く。
+
 | やりとりの操作 | GitHub での実装 |
 |---|---|
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
 | repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
-| 提案 | 利用者のブランチから `main` への pull request。App が作る |
-| 提案の識別子と、作ったときの先頭 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` と `Logiforge-First-Revision:` |
-| 版 | pull request の head のコミット（[版](../backend/apply-request.md)） |
 | 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（版のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
-| close | pull request を close する。理由とセッションは、コメントに書く |
+| レビュー | `event=COMMENT` の pull request review |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
-| レビュー | `event=COMMENT` の pull request review。`commit_id` に版のコミットを入れる |
-| 人への依頼 | issue（ラベル `logiforge/pvr` か `logiforge/decision`） |
-| 人への依頼の識別子 | issue の本文の末尾の trailer `Logiforge-Human-Request:` |
-| 回答 | App が、利用者の回答として書いたコメント |
-| 回答の添付 | リンクだけ。ファイルは受け付けない。独自フォージの構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |
-| 一覧のカーソル | pull request と issue の number。時刻は使わない |
+| 回答の添付 | リンクだけ。ファイルは受け付けない。Forgejo を使う構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |
 
-- 1 つのブランチに、open の pull request は 1 つまでである。GitHub も、同じ head と base の pull request を 2 つ開けない。
-- 利用者がブランチを消すと、GitHub は pull request を閉じる。バックエンドは、それを close として扱う。
 - 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、2 つ目のコミットで足す。
   - 用意のコミットには、trailer `Logiforge-Init:` を付ける。worker は、これを反映によらない変更として扱わない。
 - GitHub アダプタを作るときに、次のことを確かめる。
@@ -58,13 +51,6 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 - App は、organization に GitHub リポジトリを作らない。
   - なぜ：App に、organization の Administration write という強い権限を持たせないため。
 
-## バックエンドの App が作ったものだけを数える
-
-- 提案は、App が作った pull request だけを数える。
-- レビューは、作者が App のものだけを数える。
-- 回答は、App が書いたコメントだけを数える。
-- なぜ：セッション ID とプロンプトのリビジョンを、バックエンドを通したものだけに限るため（[保証の範囲](../../docs/apply-request/review.md)）。
-
 ## 認証
 
 GitHub を使う構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。認証は GitHub に任せる。
@@ -81,19 +67,4 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
 - そのため、この構成では、サーバに正本が残らない（[組み合わせ](README.md)）。
 
-## コメントとレビューの書き方
-
-- レビューは、すべて `event=COMMENT` の review として書く。
-  - なぜ：pull request を作った App は、その pull request を approve できないから。
-- レビューの本文の末尾に、次の trailer を書く。
-  - `Logiforge-Review-Id:`（レビューの識別子）
-  - `Logiforge-Review-Kind: approve|request_changes|comment`
-  - `Logiforge-Session-Id:`
-  - `Logiforge-Prompt-Revision:`
-- GitHub 上の approve の状態は、反映の条件に使わない。
-- 提案の close と、人への依頼の起票では、App が書くコメントの末尾に `Logiforge-Session-Id:` を書く。
-- 人への依頼の issue の本文の先頭に、対象ノードの識別子を書く。
-- 「回答は 1 回だけ」の判定は、バックエンドが行う。
-  - 回答を書いたら、バックエンドは issue に `logiforge/answered` ラベルを付けて閉じる。
-
-`main` への書き込みの守り方と、GitHub の制約への対処は、[GitHub での main の守りと制約](github-main.md) に書く。
+GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub での main の守りと制約](github-main.md) に書く。

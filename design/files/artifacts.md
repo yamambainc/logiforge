@@ -25,11 +25,11 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 ## 人への依頼の回答
 
 - 回答の本文と添付は、git に置かない。プロバイダのやりとりの側に置く（[やりとり](../backend/ports/interaction.md)）。
-  - 独自フォージ：独自フォージのデータベースとファイルの置き場（[テーブル](../forge/tables.md)）
+  - Forgejo：issue のコメントに本文を書き、添付をコメントの添付にする（[Forgejo アダプタ](../adapters/forgejo.md)）
   - GitHub：issue のコメントに本文を書く。GitHub の API ではコメントにファイルを添付できないので、添付はリンクだけにする。利用者が、ファイルを外に置いてリンクを書く（[GitHub アダプタ](../adapters/github.md)）
     - なぜ：バックエンドがデータを保持せず、置き場に書くのを worker だけにするため。
   - なぜ：回答は、利用者が WebUI から行い、git を使わないから。サーバの側が git に書くのを、pull request の操作と repository の用意だけにするため。
-- 独自フォージの構成の添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
+- Forgejo を使う構成の添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
 - opener が検証結果で回答を引用するときは、`link` の artifact にする。
   - URL は、その添付を読む API の URL である。`sha256` も書く。
   - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。

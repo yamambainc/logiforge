@@ -11,7 +11,7 @@
 
 ## リモートと clone
 
-- 正本は、リモートの git リポジトリである。リモートは、GitHub か [独自フォージ](../forge/README.md) である。
+- 正本は、リモートの git リポジトリである。リモートは、GitHub か [Forgejo アダプタ](forgejo.md) である。
 - どちらのリモートでも、同じ実装にする。違うのは、リモートの URL と認証情報だけである。
   - なぜ：git の smart HTTP の fetch だけを使えば、どちらのリモートにも同じ手順で読めるから。
 - worker は、repository ごとの clone を、永続するストレージに持ち続ける。
@@ -33,7 +33,7 @@
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
 - worker の資格情報は、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
   - GitHub：contents の read だけを持つ、worker のための GitHub App
-  - 独自フォージ：`reader` の種類のトークン（[主体](../forge/README.md)）
+  - Forgejo：`read:repository` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 
 ## 制約
 

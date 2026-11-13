@@ -5,7 +5,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 
 ## apply request と pull request
 
-| apply request | プロバイダ（GitHub か独自フォージ） |
+| apply request | プロバイダ（GitHub か Forgejo） |
 |---|---|
 | apply request | 利用者のブランチから `main` への pull request |
 | 版 | pull request の head のコミット |
@@ -18,7 +18,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
   - なぜ：版や `main` の更新を、プロバイダの pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
 - 1 つのブランチにつき、open の apply request は 1 つまでである。
 - 利用者がブランチを消すと、pull request は閉じる。バックエンドは、それを close として扱う。
-  - GitHub では、これは GitHub の決まりである。独自フォージも、同じように振る舞う（[独自フォージ](../forge/README.md)）。
+  - GitHub では、これは GitHub の決まりである。Forgejo も、同じように振る舞う（[Forgejo アダプタ](../adapters/forgejo.md)）。
 - 状態（open、merged、closed）は、pull request の状態をそのまま使う。
 
 ## 版
