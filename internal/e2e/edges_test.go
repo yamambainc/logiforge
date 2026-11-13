@@ -80,11 +80,7 @@ func TestE2EEdges(t *testing.T) {
 		if code != 1 || !strings.Contains(out, "version_conflict") {
 			t.Fatalf("古い版の approve：%d %s", code, out)
 		}
-		w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool {
-			var got applyRequest
-			agent.must(&got, "ar", "view", ar.ID)
-			return got.Version == 2
-		})
+		w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool { return agent.versionReady(ar.ID, 2) })
 		if got, code, out := reviewer.review(ar.ID, "approve", 2); code != 0 || got.State != "merged" {
 			t.Fatalf("新しい版の approve：%d %s", code, out)
 		}

@@ -78,6 +78,18 @@ func (u *user) create(branch string) applyRequest {
 	return ar
 }
 
+// versionReady は、apply request の今の版が version で、worker がそのスナップショットを作り終えた（base がある）かを返す。
+func (u *user) versionReady(id string, version int) bool {
+	var ar struct {
+		Version  int `json:"version"`
+		Versions []struct {
+			Base string `json:"base_revision"`
+		} `json:"versions"`
+	}
+	u.must(&ar, "ar", "view", id)
+	return ar.Version == version && len(ar.Versions) == version && ar.Versions[version-1].Base != ""
+}
+
 func (u *user) review(id, kind string, version int) (applyRequest, int, string) {
 	u.w.t.Helper()
 	args := []string{"ar", "review", id, "--" + kind, "--version", fmt.Sprint(version), "--repo", "q", "--json"}
@@ -159,11 +171,7 @@ func TestE2E(t *testing.T) {
 	old, _ := os.ReadFile(reports[0])
 	_ = os.WriteFile(reports[0], []byte(strings.Replace(string(old), "初版", "直した版", 1)), 0o644)
 	agent.commitPush("b2", "A の検証を直した")
-	w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool {
-		var ar applyRequest
-		agent.must(&ar, "ar", "view", ar2.ID)
-		return ar.Version == 2
-	})
+	w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool { return agent.versionReady(ar2.ID, 2) })
 	if got, code, out := reviewer.review(ar2.ID, "approve", 2); code != 0 || got.State != "merged" {
 		t.Fatalf("版 2 の approve：%d %s", code, out)
 	}
