@@ -155,7 +155,9 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 		case http.StatusConflict:
 			// head_commit_id が今の head と違う（"head out of date"）。
 			return "", ports.ErrHeadMoved
-		case http.StatusMethodNotAllowed:
+		case http.StatusMethodNotAllowed, http.StatusInternalServerError:
+			// 405：Forgejo が、merge できるかをまだ確かめている。500：衝突のある merge を試みて失敗した（Forgejo 17 で、ときどき起きる）。
+			// どちらも、pull request を読み直して決める。
 			p, gerr := a.getPull(ctx, repo, number)
 			if gerr != nil {
 				return "", gerr
