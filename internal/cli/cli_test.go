@@ -153,11 +153,14 @@ func TestApplyRequestCommands(t *testing.T) {
 	git(t, dir, "commit", "--quiet", "-m", "x")
 	head := git(t, dir, "rev-parse", "HEAD")
 	var st stub
-	fail503 := false
+	fail503, failN := false, 0
 	host := st.server(t, func(r *http.Request) (int, string, string) {
 		switch {
-		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/apply-requests") && fail503:
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/apply-requests") && (fail503 || failN > 0):
 			fail503 = false
+			if failN > 0 {
+				failN--
+			}
 			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"unavailable"}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
 			return 200, "application/json", `{"id":"apr_1","state":"open","versions":[{"version":1,"revision":"` + head + `"}]}`
@@ -201,6 +204,18 @@ func TestApplyRequestCommands(t *testing.T) {
 	}
 	if p := posts(); len(p) != 4 || p[2].Header.Get("Idempotency-Key") != p[3].Header.Get("Idempotency-Key") {
 		t.Fatalf("送り直しのキー：%d", len(p))
+	}
+	// 送り直しまで失敗しても、使ったキーが、標準エラーとエラーの --json の出力に残る。
+	failN = 2
+	var stderr bytes.Buffer
+	a := &App{Stdout: new(bytes.Buffer), Stderr: &stderr, Getenv: e.get, Dir: dir}
+	if code := a.Run(context.Background(), []string{"ar", "create", "--branch", "work", "--json"}); code != ExitError {
+		t.Fatalf("2 回とも失敗：%d", code)
+	}
+	var prob map[string]any
+	if json.Unmarshal(a.Stdout.(*bytes.Buffer).Bytes(), &prob) != nil || prob["code"] != "unavailable" || prob["idempotency_key"] == nil ||
+		!strings.Contains(stderr.String(), prob["idempotency_key"].(string)) {
+		t.Fatalf("キーが残らない：%v %s", prob, stderr.String())
 	}
 	// 外からキーを渡せる。
 	run(t, dir, e, "", "ar", "create", "--branch", "work", "--idempotency-key", "k1")

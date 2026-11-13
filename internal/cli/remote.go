@@ -378,6 +378,9 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 		}
 		k = "cli-" + hex.EncodeToString(b[:])
 	}
+	// 送り直しまで失敗しても、使ったキーが残るように、API を呼ぶ前に書く。エラーの --json の出力にも入れる。
+	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
+	a.errorExtra = map[string]any{"idempotency_key": k}
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session, idempotency: k, retry: true,
 		body: map[string]string{"branch": *branch, "revision": local, "description": *desc}})
 	if err != nil {
@@ -392,7 +395,6 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 		v["idempotency_key"] = k
 		return a.writeJSON(v)
 	}
-	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
 	return a.show(res, a.printAR)
 }
 

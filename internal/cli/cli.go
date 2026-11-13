@@ -39,6 +39,8 @@ type App struct {
 	HTTP *http.Client
 
 	json bool
+	// errorExtra は、エラーの --json の出力（Problem）に足す項目である（例：ar create の idempotency_key）。
+	errorExtra map[string]any
 }
 
 // usageError は、コマンドや引数の誤りである。
@@ -100,18 +102,14 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		return ExitUsage
 	case errors.As(err, &p):
 		if a.json {
-			if p.raw != nil {
-				a.Stdout.Write(p.raw)
-			} else {
-				_ = json.NewEncoder(a.Stdout).Encode(p)
-			}
+			a.writeProblem(p.raw, p)
 		} else {
 			fmt.Fprintln(a.Stderr, "logiforge:", p.Error())
 		}
 		return ExitError
 	default:
 		if a.json {
-			_ = json.NewEncoder(a.Stdout).Encode(problem{Type: "about:blank", Title: "CLI error", Code: "cli_error", Detail: err.Error()})
+			a.writeProblem(nil, problem{Type: "about:blank", Title: "CLI error", Code: "cli_error", Detail: err.Error()})
 		} else {
 			fmt.Fprintln(a.Stderr, "logiforge:", err)
 		}
@@ -523,4 +521,17 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// writeProblem は、エラーの Problem を書く。raw があれば、それに errorExtra の項目を足す。
+func (a *App) writeProblem(raw []byte, p any) {
+	v := map[string]any{}
+	if raw == nil || json.Unmarshal(raw, &v) != nil {
+		b, _ := json.Marshal(p)
+		_ = json.Unmarshal(b, &v)
+	}
+	for k, x := range a.errorExtra {
+		v[k] = x
+	}
+	_ = json.NewEncoder(a.Stdout).Encode(v)
 }
