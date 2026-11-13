@@ -65,6 +65,7 @@ func env(name string) (string, error) {
 //	LOGIFORGE_INTERNAL_KEY     内部 API の鍵（バックエンドと同じもの）
 //	LOGIFORGE_WORKER_ADDR      内部 API を待ち受けるアドレス（既定は 127.0.0.1:8081）
 //	LOGIFORGE_WORKER_INTERVAL  巡回の間隔（既定は 1m）
+//	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
 func runWorker(ctx context.Context) error {
@@ -104,7 +105,12 @@ func runWorker(ctx context.Context) error {
 	}
 	defer release()
 	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
-	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: src.GitEnv(), Interval: interval}, src, &store.Dir{Root: cfg.storeDir})
+	gitEnv := src.GitEnv()
+	// git で使える転送の方式。既定は https と file だけ。テストの GitForge が http で動くときなどに、足す。
+	if v := os.Getenv("LOGIFORGE_GIT_ALLOW_PROTOCOL"); v != "" {
+		gitEnv = append(gitEnv, "GIT_ALLOW_PROTOCOL="+v)
+	}
+	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval}, src, &store.Dir{Root: cfg.storeDir})
 
 	srv := &http.Server{Addr: addr, Handler: w.Handler(cfg.key), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 2)
