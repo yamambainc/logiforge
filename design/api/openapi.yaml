@@ -342,6 +342,7 @@ paths:
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
         反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
         今の版のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
+        今の版が GitForge にはあるが、worker がまだスナップショットにしていなければ、snapshot_pending を返す。少し待って送り直す。
         レビューの鎖が切れていれば、not_open で受け付けない。opener は、close して、同じブランチから作り直す（../../design/backend/merge.md の「レビューの鎖が切れたとき」）。
         reviewer の主体が、apply request を作った主体と同じなら、応答の apply_request.warnings に警告を入れる。
       parameters:
