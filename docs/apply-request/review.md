@@ -33,7 +33,7 @@ Logiforge は、apply request ごとに「レビューの材料」を返す問�
 - 差分そのもの
 - 操作の対象ノードの、現在の値
 - 親仮説から根までの、各仮説の主文
-- 兄弟ストーリーの、タイトルと概要と値
+- 兄弟ストーリーの、タイトルと概要と値（兄弟ストーリーの決め方は、[レビューの材料を読む](../../design/api/endpoints/apply-request/review-material.md) に書く）
 - 引用している部分木（固定したリビジョンのもの）と artifact
 
 apply request の説明欄は、材料に含めない。

@@ -784,7 +784,8 @@ components:
             | unavailable | 503 | worker が止まっていて、ブランチを読めない。少し待って送り直す |
             | snapshot_pending | 503 | 指定したリビジョンのスナップショットが、まだない。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。repository の登録をサーバの設定で行う構成だけで起きる |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered]
+            | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
 
     Tree:
       type: object
@@ -960,7 +961,7 @@ components:
       minLength: 1
       description: git のブランチの名前（refs/heads/ の後ろ）。main は使えない
     OperationInput:
-      description: 差分から復元した操作。ファイルの変化と 1 対 1 に対応する（../../design/backend/README.md の「操作と差分」）
+      description: 差分から復元した操作。ファイルの変化と 1 対 1 に対応する（../../design/backend/README.md の「操作と差分」）。識別子は、差分のファイルに書かれたものである
       oneOf:
         - $ref: '#/components/schemas/StoryCreate'
         - $ref: '#/components/schemas/StoryInactivate'
@@ -975,12 +976,11 @@ components:
           node.edit: '#/components/schemas/NodeEdit'
     StoryCreate:
       type: object
-      required: [kind, parent_hypothesis_id, title, summary, hypotheses]
+      required: [kind, story_id, parent_hypothesis_id, title, summary, hypotheses]
       properties:
         kind: { type: string, const: story.create }
-        parent_hypothesis_id:
-          type: string
-          description: 親仮説の識別子か、同じ apply request で作る仮説の ref
+        story_id: { type: string, pattern: '^s-' }
+        parent_hypothesis_id: { type: string, pattern: '^h-' }
         title: { $ref: '#/components/schemas/Title' }
         summary: { $ref: '#/components/schemas/Summary' }
         hypotheses:
@@ -988,11 +988,9 @@ components:
           minItems: 1
           items:
             type: object
-            required: [statement]
+            required: [id, statement]
             properties:
-              ref:
-                type: string
-                description: 同じ apply request のほかの操作から、この仮説を指す名前
+              id: { type: string, pattern: '^h-' }
               statement: { $ref: '#/components/schemas/Statement' }
               background: { type: string }
     StoryInactivate:
@@ -1004,12 +1002,11 @@ components:
         reason: { type: string, minLength: 1 }
     VerdictSubmit:
       type: object
-      required: [kind, hypothesis, value, report_body]
+      required: [kind, verdict_id, hypothesis_id, value, report_body]
       properties:
         kind: { type: string, const: verdict.submit }
-        hypothesis:
-          type: string
-          description: 仮説の識別子か、同じ apply request で作る仮説の ref
+        verdict_id: { type: string, pattern: '^v-' }
+        hypothesis_id: { type: string, pattern: '^h-' }
         value: { type: boolean }
         report_body: { type: string, minLength: 1 }
         supersedes:
