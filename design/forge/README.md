@@ -10,7 +10,7 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 | 持つもの | GitHub を使う構成でのもの | ページ |
 |---|---|---|
 | git リポジトリ（bare） | GitHub リポジトリ | [git のホスティング](git-hosting.md) |
-| 提案・版・レビュー・反映の失敗・人への依頼 | pull request と issue | [テーブル](tables.md) |
+| 提案・レビュー・反映の失敗・人への依頼 | pull request と issue | [テーブル](tables.md) |
 | 主体とトークン | GitHub のアカウントとトークン | [テーブル](tables.md) |
 
 - 独自フォージは、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
@@ -23,11 +23,11 @@ GitHub を使わずに Logiforge を動かすときの、独自フォージ（Gi
 
 | 種類 | 使う者 | できること |
 |---|---|---|
-| `writer` | バックエンド | 独自フォージの API を使う。git リポジトリに push する |
+| `writer` | バックエンドと worker | 独自フォージの API を使う。git リポジトリに push する（push するのはバックエンドだけ） |
 | `user` | WebUI を使う利用者 | git リポジトリを読む |
 | `client` | CLI を使う主体（エージェントか人） | git リポジトリを読む |
 
-- `user` と `client` のトークンは、バックエンドの API で使う。バックエンドが、独自フォージに問い合わせて確かめる。
+- `user` と `client` のトークンは、バックエンドの API で使う。バックエンドが、要求ごとに独自フォージに問い合わせて確かめる。
 - 独自フォージの API と git への push は、`writer` だけに許す。
   - なぜ：`main` を進めるのは、バックエンドの [反映の手順](../backend/merge.md) だけだから。
 - `user` と `client` には、git リポジトリを読むことを許す。

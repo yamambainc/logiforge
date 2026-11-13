@@ -28,4 +28,5 @@
 
 - push の中身（ファイルの形や不変条件）は、確かめない。
   - なぜ：ルールはバックエンドにだけ置くから。`writer` はバックエンドだけである。
-- ref の期待する値（`--force-with-lease`）は、git の標準のとおりに確かめる（[ref を書く](../adapters/git.md)）。
+- ref の期待する値（`--force-with-lease`）と、`--atomic` の push は、git の標準のとおりに扱う（[ref を書く](../adapters/git.md)）。
+  - git の receive-pack が `atomic` を広告することを、作るときに確かめる。

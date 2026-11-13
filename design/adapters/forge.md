@@ -2,7 +2,7 @@
 
 独自フォージを使う構成で、[やりとり](../backend/ports/interaction.md) と [認証](../backend/ports/authentication.md) のポートをどう実装するかを確かめるときに読む。
 独自フォージそのものは、[独自フォージ](../forge/README.md) に書く。
-木の読み書きは、[git アダプタ](git.md) が、独自フォージの git リポジトリをリモートとして扱う。
+木の書き込みは、[git アダプタ](git.md) が、独自フォージの git リポジトリをリモートとして扱う。
 
 ## 形
 
@@ -20,15 +20,15 @@
 | 名前から provider_ref を求める | API を呼ばない。名前を返す |
 | repository の、やりとりの側を用意する | `putRepository`。git リポジトリもできる |
 | 提案を作る | `createApplyRequest` |
-| 版を足す | `addVersion` |
 | 説明欄を書き換える | `updateApplyRequestDescription` |
-| 提案と版を読む | `getApplyRequest`、`listApplyRequests` |
 | 反映の失敗を記録する | `addMergeFailure` |
-| 提案を close する | `closeApplyRequest` |
+| close を記録する | `closeApplyRequest` |
 | 反映されたことを記録する | `markMerged` |
-| レビューを記録する・読む | `addReview`、`getApplyRequest` |
-| 人への依頼を記録する・読む | `createHumanRequest`、`getHumanRequest`、`listHumanRequests` |
+| レビューを記録する | `addReview` |
+| 人への依頼を記録する | `createHumanRequest` |
 | 回答を記録する | `answerHumanRequest` |
+| 提案、レビュー、人への依頼を読む | `listApplyRequests`、`getApplyRequest`、`listHumanRequests`、`getHumanRequest` |
+
 
 送り直しの扱い：
 

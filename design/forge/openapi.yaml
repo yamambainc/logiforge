@@ -128,18 +128,18 @@ paths:
     post:
       tags: [apply-request]
       operationId: createApplyRequest
-      summary: 提案を作り、版 1 を足す
+      summary: 提案を作る
+      description: 版は、git の ref が正本なので、ここには記録しない（../backend/apply-request.md）。
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, revision]
+              required: [id]
               properties:
                 id: { $ref: '#/components/schemas/ApplyRequestId' }
                 description: { type: string }
-                revision: { $ref: '#/components/schemas/Revision' }
       responses:
         '201':
           description: 作った提案
@@ -179,33 +179,6 @@ paths:
       responses:
         '200':
           description: 書き換えた提案
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ApplyRequest' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
-  /repositories/{repository}/apply-requests/{applyRequestId}/versions:
-    parameters:
-      - $ref: '#/components/parameters/RepositoryName'
-      - $ref: '#/components/parameters/ApplyRequestIdPath'
-    post:
-      tags: [apply-request]
-      operationId: addVersion
-      summary: 版の番号を指定して、版を足す
-      description: 同じ番号の版がすでにあれば、already_exists で受け付けない。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [version, revision]
-              properties:
-                version: { type: integer, minimum: 2 }
-                revision: { $ref: '#/components/schemas/Revision' }
-      responses:
-        '201':
-          description: 版を足した提案
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -288,9 +261,7 @@ paths:
       tags: [apply-request]
       operationId: markMerged
       summary: 提案が反映されたことを記録し、提案を閉じる
-      description: |
-        すでに merged なら、何もせずに 200 を返す。
-        closed でも merged にする。main に入った反映が正本だから（../backend/merge.md の「同時に走る反映」）。
+      description: すでに merged なら、何もせずに 200 を返す。closed なら、not_open で受け付けない。
       responses:
         '200':
           description: merged にした提案
@@ -456,7 +427,7 @@ components:
     Revision:
       type: string
       minLength: 1
-      description: 木の読み書きのリビジョン。不透明な文字列として置く
+      description: 木の書き込みのリビジョン。不透明な文字列として置く
     NextCursor:
       type: [string, 'null']
 
@@ -478,8 +449,8 @@ components:
             | unauthenticated | 401 | トークンがない、または正しくない |
             | forbidden | 403 | 主体の種類が writer でない |
             | not_found | 404 | 対象がない |
-            | already_exists | 409 | 同じ識別子の提案、同じ番号の版、同じ識別子のレビューか人への依頼が、すでにある |
-            | not_open | 409 | open でない提案を close しようとした |
+            | already_exists | 409 | 同じ識別子の提案、レビュー、人への依頼が、すでにある |
+            | not_open | 409 | open でない提案を close するか、closed の提案を merged にしようとした |
             | already_answered | 409 | 回答がすでにある |
           enum: [validation_failed, unauthenticated, forbidden, not_found, already_exists, not_open, already_answered]
 
@@ -504,22 +475,13 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, versions, reviews, merge_failures]
+      required: [id, state, reviews, merge_failures]
       properties:
         id: { $ref: '#/components/schemas/ApplyRequestId' }
         description: { type: [string, 'null'] }
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         closed_reason: { type: [string, 'null'] }
         closed_by_session_id: { type: [string, 'null'] }
-        versions:
-          type: array
-          description: 版の番号の順
-          items:
-            type: object
-            required: [version, revision]
-            properties:
-              version: { type: integer, minimum: 1 }
-              revision: { $ref: '#/components/schemas/Revision' }
         reviews:
           type: array
           description: 記録した順
@@ -543,7 +505,7 @@ components:
       required: [version, reason, detail]
       properties:
         version: { type: integer, minimum: 1 }
-        reason: { type: string, enum: [stale_target, invariant_violation] }
+        reason: { type: string, enum: [stale_target, invariant_violation, snapshot_pending] }
         detail: { type: string }
 
     HumanRequestKind:
@@ -551,9 +513,12 @@ components:
       enum: [pvr, decision]
     HumanRequestAnswer:
       type: object
-      required: [body, answered_by_principal_id, answered_at]
+      required: [body, answered_by_principal_id, answered_at, revision]
       properties:
         body: { type: string, minLength: 1 }
+        revision:
+          $ref: '#/components/schemas/Revision'
+          description: 回答のリビジョン（../files/artifacts.md）
         answered_by_principal_id: { type: string }
         answered_at: { type: string, format: date-time }
     HumanRequest:

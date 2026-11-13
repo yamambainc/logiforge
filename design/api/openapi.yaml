@@ -76,6 +76,8 @@ paths:
       responses:
         '201':
           description: 作った repository
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Repository' }
@@ -274,6 +276,8 @@ paths:
       responses:
         '201':
           description: 作った apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -326,6 +330,8 @@ paths:
       responses:
         '200':
           description: 更新した apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -363,6 +369,8 @@ paths:
       responses:
         '201':
           description: 付けたレビューと、その後の apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema:
@@ -398,6 +406,8 @@ paths:
       responses:
         '200':
           description: close した apply request
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -614,6 +624,8 @@ paths:
       responses:
         '201':
           description: 回答した人への依頼。回答と添付は、回答のリビジョンの artifacts/ に入る
+          headers:
+            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HumanRequest' }
@@ -672,8 +684,15 @@ components:
       description: |
         送り直しを見分けるキー。repository の名前・主体・キーから、作るものの識別子を決定的に作る。
         同じ識別子のものがすでにあれば、新しく作らずに、それを返す。要求の中身は比べない。
-        決まりは ../../design/api/README.md の「同じ要求の繰り返し」に従う。
+        決まりは ../../design/api/writes.md の「同じ要求の繰り返し」に従う。
       schema: { type: string, minLength: 1, maxLength: 128 }
+
+  headers:
+    PendingRevision:
+      description: |
+        書いたものが、待つ時間の上限までに読む側に出なかったときに付ける。値は書いたリビジョン。
+        決まりは ../../design/api/writes.md の「書いた直後の読み」に従う
+      schema: { type: string }
 
   responses:
     Problem:
@@ -1047,7 +1066,10 @@ components:
       required: [version, reason, detail]
       properties:
         version: { type: integer }
-        reason: { type: string, enum: [stale_target, invariant_violation] }
+        reason:
+          type: string
+          enum: [stale_target, invariant_violation, snapshot_pending]
+          description: snapshot_pending は、今の main のスナップショットがまだないために確かめられなかったこと。少し待って approve し直す
         detail: { type: string }
     ReviewMaterial:
       type: object
