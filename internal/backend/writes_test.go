@@ -383,3 +383,15 @@ func TestHumanRequestTarget(t *testing.T) {
 		}
 	}
 }
+
+// 今の版を、worker がまだスナップショットにしていなければ、レビューは snapshot_pending にする。
+func TestReviewBeforeSnapshot(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	f.forge.ar(id).HeadRevision = strings.Repeat("a", 40) // GitForge にはあるが、worker はまだ見ていない版
+	_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Revision: strings.Repeat("a", 40), Session: "s9", PromptRevision: "p"})
+	if code(err) != CodeSnapshotPending {
+		t.Fatalf("got %v", err)
+	}
+}
