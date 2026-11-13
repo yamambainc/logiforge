@@ -743,7 +743,7 @@ components:
             | version_conflict | 409 | レビューした版、または更新のもとにした版が、今の版と違う |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
-            | unavailable | 503 | worker が止まっていて、git に書けない。少し待って送り直す |
+            | unavailable | 503 | worker が止まっているか、書き込みがぶつかり続けて、git に書けない。少し待って送り直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。GitHub を使う構成だけで起きる |
           enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, repository_not_registered]
 

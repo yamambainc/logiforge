@@ -43,7 +43,7 @@ flowchart LR
 9. 手順 4 か 5 で反映できなければ、git を動かさず、失敗の理由をやりとりに記録する。apply request は open のまま残る。
 
 - base は、版のコミットの親である（[apply request の作成と更新](apply-request.md)）。
-- 手順 7 が、`main` が手順 2 の SHA でないことで失敗したら、別の反映か、owner や admin の直接の push が、先に `main` を進めている。手順 2 からやり直す。
+- 手順 7 が、`main` が手順 2 の SHA でないことで失敗したら、別の反映か、owner や admin の直接の push が、先に `main` を進めている。手順 2 からやり直す。やり直しは 3 回までとする（[失敗したとき](worker-api.md)）。
   - worker は、書く前に直接の push に追いついて `latest` を書き直すので、やり直しでは新しい `main` を読める（[書き込みの要求](worker.md)）。
   - なぜこの CAS を残すか：worker は repository ごとに順に処理するが、直接の push は worker を通らないから。
 - 手順 7 が、`head` が期待した版でないことで失敗したら、先に更新か close が通っている。反映しない。

@@ -83,7 +83,7 @@
   - 保持するのは、外のサービス（正本）、worker（clone）、置き場（スナップショット）である。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request の作成と更新](apply-request.md)）。
 - git に触れず、clone も作らない。git に書くときは、[worker の内部 API](worker-api.md) を呼ぶ。
-- 置き場とプロバイダから読んだものも、要求ごとに読み直す。速さが要るときは、置き場の手前の CDN などで受け持つ（[スナップショット](snapshot.md)）。
+- 置き場とプロバイダから読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとにプロバイダで確かめる。結果を保持しない（[認証](ports/authentication.md)）。
 - repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot.md)）。
   - `latest` がある repository だけが入る。`latest` のないものは `not_found` に見える。
