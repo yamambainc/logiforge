@@ -20,5 +20,7 @@ CI は、pull request ごとに同じことを行う（[.github/workflows/go.yml
 |---|---|
 | [internal/ids](internal/ids/) | ノードの識別子（`h-`、`s-`、`v-` と 10 文字）を作り、確かめる |
 | [internal/tree](internal/tree/) | 木のファイルの読み書き、値の計算、不変条件と差分の検査。git には触れない |
+| [internal/snapshot](internal/snapshot/) | スナップショットの形（Go の型が正本）、作り方、tree.Files への戻し方、ブランチの差分の重ね方（Overlay）。git には触れない |
+| [internal/gitx](internal/gitx/) | git の CLI で、木の git リポジトリを読む。書く操作はない |
 
 - `internal/tree` は、worker、CLI の `check`、バックエンドが同じものを使う（[差分の検査](design/backend/checks.md)、[ファイルの配置](design/files/layout.md)）。
