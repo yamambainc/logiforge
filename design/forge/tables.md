@@ -12,6 +12,7 @@
     - なぜ：説明欄は、レビューの材料にも、版の差分にも含まないから（[レビューの材料](../../docs/apply-request/review.md)）。
 - 識別子は、バックエンドが決めたものを、そのまま使う（[やりとり](../backend/ports/interaction.md)）。
 - 一覧は、行を作った順に返す。識別子の順ではない（[ページング](../api/README.md)）。
+  - カーソルには、行の連番（SQLite の rowid）を使う。時刻は使わない。
 
 ## apply_request
 

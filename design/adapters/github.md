@@ -26,8 +26,10 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。provider_ref は `owner/name` |
 | 提案 | pull request |
 | 提案の識別子 | pull request の本文の末尾の trailer `Logiforge-Apply-Request:` |
+| 一覧のカーソル | pull request と issue の number。時刻は使わない |
 | 版の一覧 | `refs/logiforge/apply-requests/<識別子>/*` の ref。REST の matching-refs（`GET /repos/{owner}/{repo}/git/matching-refs/logiforge/apply-requests/<識別子>/`）で読み、版の番号は ref の名前から取る |
-| 今の版 | pull request の head ブランチ。GitHub アダプタが、git refs の API で、今の版のコミットに動かす |
+| 今の版 | 版の一覧のうち、番号が最大のもの（[版](../backend/apply-request.md)） |
+| head ブランチ | pull request の画面で差分を見せるためのもの。GitHub アダプタが、git refs の API で、今の版のコミットに動かす |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
 | 反映されたことの記録 | バックエンドが pull request に反映したコミットを書き、close する |
 | レビュー | `event=COMMENT` の pull request review |
@@ -38,7 +40,9 @@ GitHub アダプタに必要なのは、バックエンドだけが使う、専�
 - pull request は merge しない。`main` は [git アダプタ](git.md) の「main を進める」で進める。
 - 版のコミットは、pull request の head ブランチのほかに、版ごとの ref（[名前を付けたリビジョン](git.md)）にも置く。
   - なぜ：head ブランチは最新の版だけを指すので、古い版のコミットが git gc で消えないようにするため。
-  - GitHub が `refs/logiforge/` の下への push を受け付けるかは、GitHub アダプタを作るときに確かめる。
+  - GitHub アダプタを作るときに、次のことを確かめる。
+    - GitHub が `refs/logiforge/` の下への push を受け付けるか
+    - matching-refs で `refs/logiforge/` の下を読めるか
 
 ## repository を用意する
 

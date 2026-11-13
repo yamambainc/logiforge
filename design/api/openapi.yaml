@@ -216,7 +216,7 @@ paths:
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: そのノードのパスを変えた、main のコミットの一覧
+          description: そのノードのパスを変えた、main のコミットの一覧（新しい順）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/NodeHistoryPage' }
@@ -312,7 +312,12 @@ paths:
           application/json:
             schema:
               type: object
+              required: [base_version]
               properties:
+                base_version:
+                  type: integer
+                  minimum: 1
+                  description: もとにした版の番号。今の版と違えば version_conflict で受け付けない
                 description: { type: string }
                 operations:
                   type: array
@@ -734,7 +739,7 @@ components:
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
             | not_open | 409 | open でない apply request を変えようとした。または、回答済みの人への依頼に回答しようとした |
-            | version_conflict | 409 | レビューした版が、今の版と違う |
+            | version_conflict | 409 | レビューした版、または更新のもとにした版が、今の版と違う |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。GitHub を使う構成だけで起きる |

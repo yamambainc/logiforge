@@ -8,6 +8,7 @@ Logiforge のバックエンドを実装するときに読む。
 1. [レイヤー構成](architecture.md)
 2. [木のファイル配置](files/README.md)
 3. [バックエンド](backend/README.md)
+   - [apply request の作成と更新](backend/apply-request.md)
 4. [ポート](backend/ports/README.md)
 5. [サーバの状態](backend/server-state.md)
 6. [アダプタ](adapters/README.md)
