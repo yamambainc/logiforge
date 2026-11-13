@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -31,12 +32,26 @@ func (a *App) abs(p string) string {
 
 func (a *App) authLogin(_ context.Context, args []string) error {
 	f := newFlags("auth login")
-	token, host := f.String("token", "", ""), f.String("host", "", "")
+	token, host := f.String("token", "", "トークン（コマンドの履歴に残るので、--with-token を勧める）"), f.String("host", "", "")
+	withToken := f.Bool("with-token", false, "トークンを標準入力から読む")
 	if err := f.parse(args); err != nil {
 		return err
 	}
+	if *withToken {
+		if a.Stdin == nil {
+			return usagef("--with-token は、標準入力からトークンを読む")
+		}
+		b, err := io.ReadAll(io.LimitReader(a.Stdin, 64<<10))
+		if err != nil {
+			return err
+		}
+		*token = strings.TrimSpace(string(b))
+		if *token == "" {
+			return usagef("標準入力にトークンがない")
+		}
+	}
 	if *token == "" && *host == "" {
-		return usagef("auth login には --token か --host が要る")
+		return usagef("auth login には --with-token か --token か --host が要る")
 	}
 	c, err := a.readConfig()
 	if err != nil {
@@ -78,6 +93,7 @@ func (a *App) authLogin(_ context.Context, args []string) error {
 func (a *App) authSetupGit(ctx context.Context, args []string) error {
 	f := newFlags("auth setup-git")
 	u := f.String("url", "", "GitForge の URL")
+	insecure := f.Bool("insecure", false, "https でない URL にも、トークンを渡す")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -99,6 +115,11 @@ func (a *App) authSetupGit(ctx context.Context, args []string) error {
 			return err
 		}
 		base = pu.Scheme + "://" + pu.Host
+	}
+	if pu, err := url.Parse(base); err != nil || pu.Host == "" {
+		return fmt.Errorf("GitForge の URL が正しくない：%s", base)
+	} else if pu.Scheme != "https" && !*insecure {
+		return fmt.Errorf("GitForge の URL %s が https でない。トークンが平文で流れるので、--insecure なしでは設定しない", base)
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -478,7 +499,11 @@ type checkResult struct {
 	Operations []tree.Operation `json:"operations"`
 }
 
-// check は、手元の作業ツリーを、origin/main と比べて検査する。バックエンドの差分の検査と同じコードを使う。
+// check は、手元の作業ツリーを検査する。バックエンドの差分の検査と同じコードを使い、base もサーバと同じにする（design/cli/local.md）。
+//   - base は、HEAD と origin/main の分かれた点（git merge-base）である。
+//   - 新しい識別子が、origin/main の木とぶつからないかも確かめる。
+//   - 差分を origin/main に重ねられないとき（origin/main でも同じファイルが変わった）は、警告する。
+//
 // 手元でできないもの（引用したリビジョンの確認、inactive になる前の状態）は省く。API は呼ばない。
 func (a *App) check(_ context.Context, args []string) error {
 	f := newFlags("check")
@@ -489,19 +514,30 @@ func (a *App) check(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	baseSHA, err := a.git("-C", w.root, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
+	mainSHA, err := a.git("-C", w.root, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
 	if err != nil {
 		return errors.New("origin/main がない。git fetch origin を先に行う")
+	}
+	baseSHA, err := a.git("-C", w.root, "merge-base", "HEAD", mainSHA)
+	if err != nil {
+		return err
 	}
 	repoDir, err := a.git("-C", w.root, "rev-parse", "--absolute-git-dir")
 	if err != nil {
 		return err
 	}
-	base, err := (&gitx.Repo{Dir: repoDir}).ReadFiles(context.Background(), baseSHA, tree.MaxArtifactSize)
+	g := &gitx.Repo{Dir: repoDir}
+	base, err := g.ReadFiles(context.Background(), baseSHA, tree.MaxArtifactSize)
 	if err != nil {
 		return err
 	}
-	res, err := tree.CheckChange(base, w.files, tree.Context{})
+	main := base
+	if mainSHA != baseSHA {
+		if main, err = g.ReadFiles(context.Background(), mainSHA, tree.MaxArtifactSize); err != nil {
+			return err
+		}
+	}
+	res, err := tree.CheckChange(base, w.files, tree.Context{Others: []*tree.Tree{tree.Build(main)}})
 	if err != nil {
 		return err
 	}
@@ -514,6 +550,21 @@ func (a *App) check(_ context.Context, args []string) error {
 	}
 	for _, v := range res.Warnings {
 		out.Warnings = append(out.Warnings, fmt.Sprintf("%s（%s）：%s（base でも破れている）", v.Rule, v.Node, v.Detail))
+	}
+	// origin/main に重ねられるか。差分が変えたファイルが、base のあとに origin/main でも変わっていれば、重ねられない。
+	if mainSHA != baseSHA {
+		mainChanged := map[string]bool{}
+		for _, p := range tree.ChangedPaths(base, main) {
+			mainChanged[p] = true
+		}
+		for _, p := range tree.ChangedPaths(base, w.files) {
+			if mainChanged[p] {
+				out.Warnings = append(out.Warnings, fmt.Sprintf("%s は、origin/main でも変わっている。今の main に重ねられないので、反映で conflict になる。origin/main に合わせて直す", p))
+			}
+		}
+	}
+	if status, _ := a.git("-C", w.root, "status", "--porcelain"); status != "" {
+		out.Warnings = append(out.Warnings, "コミットしていない変更がある。check は作業ツリーを見るが、push するのは HEAD である")
 	}
 	if trailer, _ := a.git("-C", w.root, "log", "-1", "--format=%(trailers:key=Logiforge-Session-Id,valueonly)"); strings.TrimSpace(trailer) == "" {
 		out.Warnings = append(out.Warnings, `先頭のコミットに Logiforge-Session-Id: がない。approve できないので、git commit --amend --trailer "Logiforge-Session-Id: <ID>" で付ける`)

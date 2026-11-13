@@ -68,9 +68,13 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	if a.HTTP == nil {
 		a.HTTP = http.DefaultClient
 	}
-	// --json は、どこに書いてもよい。
+	// --json は、どこに書いてもよい。ただし、-- のあと（git に渡す引数など）では取り除かない。
 	var rest []string
-	for _, arg := range args {
+	for i, arg := range args {
+		if arg == "--" {
+			rest = append(rest, args[i:]...)
+			break
+		}
 		if arg == "--json" {
 			a.json = true
 			continue
@@ -122,8 +126,8 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"auth login", "--token <トークン> [--host <URL>]", "トークンとバックエンドの URL を、設定ファイルに書く", (*App).authLogin},
-		{"auth setup-git", "[--url <GitForge の URL>]", "git が、このトークンで GitForge を読み書きするようにする", (*App).authSetupGit},
+		{"auth login", "--with-token | --token <トークン> [--host <URL>]", "トークン（--with-token なら標準入力から読む）とバックエンドの URL を、設定ファイルに書く", (*App).authLogin},
+		{"auth setup-git", "[--url <GitForge の URL>] [--insecure]", "git が、このトークンで GitForge を読み書きするようにする", (*App).authSetupGit},
 		{"auth git-credential", "get", "git の credential helper（auth setup-git が設定する）", (*App).authGitCredential},
 		{"repo list", "", "repository の一覧", (*App).repoList},
 		{"repo view", "<repository>", "repository", (*App).repoView},
@@ -142,7 +146,7 @@ func commands() []command {
 		{"tree completion", "", "作業の終わりの判定", (*App).treeCompletion},
 		{"tree export", "--format json|markdown [--revision <SHA>]", "木を書き出す", (*App).treeExport},
 		{"artifact get", "<sha256> [--revision <SHA>] [-o <ファイル>]", "artifact の中身を読む", (*App).artifactGet},
-		{"ar create", "--branch <ブランチ> [--description <説明>]", "push したブランチから apply request を作る", (*App).arCreate},
+		{"ar create", "--branch <ブランチ> [--description <説明>] [--idempotency-key <キー>]", "push したブランチから apply request を作る", (*App).arCreate},
 		{"ar edit", "<apply request> --description <説明>", "説明欄を書き換える", (*App).arEdit},
 		{"ar view", "<apply request>", "apply request の詳細", (*App).arView},
 		{"ar list", "[--state open|merged|closed]", "apply request の一覧", (*App).arList},
@@ -318,6 +322,8 @@ type request struct {
 	body         any
 	session      string
 	idempotency  string
+	// retry なら、通信の誤りか、502、503、504 のときに、同じ要求（同じ Idempotency-Key）を 1 度だけ送り直す。
+	retry bool
 }
 
 type response struct {
@@ -327,6 +333,17 @@ type response struct {
 }
 
 func (a *App) call(ctx context.Context, r request) (response, error) {
+	res, err := a.callOnce(ctx, r)
+	if r.retry && err != nil {
+		var p *problem
+		if !errors.As(err, &p) || p.Status == http.StatusBadGateway || p.Status == http.StatusServiceUnavailable || p.Status == http.StatusGatewayTimeout {
+			return a.callOnce(ctx, r)
+		}
+	}
+	return res, err
+}
+
+func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 	host, err := a.host()
 	if err != nil {
 		return response{}, err

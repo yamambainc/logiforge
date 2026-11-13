@@ -64,6 +64,7 @@ func clone(t *testing.T) string {
 	write("tree/"+H0+"/"+S1+"/"+H1+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H1, Statement: "子"}))
 	git(t, src, "add", "-A")
 	git(t, src, "commit", "--quiet", "-m", "用意")
+	git(t, src, "config", "receive.denyCurrentBranch", "ignore") // テストで main に push できるようにする
 	dir := filepath.Join(t.TempDir(), "q")
 	git(t, filepath.Dir(dir), "clone", "--quiet", src, dir)
 	git(t, dir, "config", "logiforge.repository", "q")
@@ -152,18 +153,12 @@ func TestApplyRequestCommands(t *testing.T) {
 	git(t, dir, "commit", "--quiet", "-m", "x")
 	head := git(t, dir, "rev-parse", "HEAD")
 	var st stub
-	closedCount := 0
+	fail503 := false
 	host := st.server(t, func(r *http.Request) (int, string, string) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/v1/repositories/q/apply-requests":
-			items := ""
-			for i := 0; i < closedCount; i++ {
-				if i > 0 {
-					items += ","
-				}
-				items += `{"id":"apr_old","branch":"work","state":"closed"}`
-			}
-			return 200, "application/json", `{"items":[` + items + `],"next_cursor":null}`
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/apply-requests") && fail503:
+			fail503 = false
+			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"unavailable"}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
 			return 200, "application/json", `{"id":"apr_1","state":"open","versions":[{"version":1,"revision":"` + head + `"}]}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
@@ -172,24 +167,6 @@ func TestApplyRequestCommands(t *testing.T) {
 		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","version":1}`
 	})
 	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_SESSION_ID": "s1"}
-
-	// push していないブランチでは、API を呼ばない。
-	if code, _, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != ExitError || !strings.Contains(errs, "push") || len(st.reqs) != 0 {
-		t.Fatalf("push 前：%d %s", code, errs)
-	}
-	git(t, dir, "push", "--quiet", "origin", "work")
-	code, out, _ := run(t, dir, e, "", "ar", "create", "--branch", "work", "--json")
-	var req *http.Request
-	for _, r := range st.reqs {
-		if r.Method == "POST" {
-			req = r
-		}
-	}
-	if code != 0 || req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || req.Header.Get("Idempotency-Key") == "" ||
-		!strings.Contains(st.body[len(st.body)-1], `"revision":"`+head+`"`) || !strings.HasPrefix(out, `{"id":"apr_1"`) {
-		t.Fatalf("ar create: %d %s %v %s", code, out, req.Header, st.body[0])
-	}
-	key := req.Header.Get("Idempotency-Key")
 	posts := func() []*http.Request {
 		var out []*http.Request
 		for _, r := range st.reqs {
@@ -199,15 +176,36 @@ func TestApplyRequestCommands(t *testing.T) {
 		}
 		return out
 	}
-	run(t, dir, e, "", "ar", "create", "--branch", "work")
-	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") != key {
-		t.Fatal("送り直しで、Idempotency-Key が変わった")
+
+	// push していないブランチでは、API を呼ばない。
+	if code, _, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != ExitError || !strings.Contains(errs, "push") || len(st.reqs) != 0 {
+		t.Fatalf("push 前：%d %s", code, errs)
 	}
-	// close したあと、同じブランチの同じ先頭から作り直すと、キーが変わる（新しい apply request になる）。
-	closedCount = 1
+	git(t, dir, "push", "--quiet", "origin", "work")
+	code, out, _ := run(t, dir, e, "", "ar", "create", "--branch", "work", "--json")
+	req := posts()[0]
+	var created map[string]any
+	if code != 0 || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "apr_1" || created["idempotency_key"] != req.Header.Get("Idempotency-Key") ||
+		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"revision":"`+head+`"`) {
+		t.Fatalf("ar create: %d %s %v", code, out, req.Header)
+	}
+	// 呼び出しごとに、キーは変わる（close して作り直すときに、閉じた apply request が返らないように）。
 	run(t, dir, e, "", "ar", "create", "--branch", "work")
-	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") == key {
-		t.Fatal("作り直しで、Idempotency-Key が変わらない")
+	if p := posts(); p[1].Header.Get("Idempotency-Key") == p[0].Header.Get("Idempotency-Key") {
+		t.Fatal("2 回目の呼び出しで、同じキーを使った")
+	}
+	// 呼び出しの中の送り直し（503）は、同じキーで送る。
+	fail503 = true
+	if code, _, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != 0 {
+		t.Fatalf("送り直し：%s", errs)
+	}
+	if p := posts(); len(p) != 4 || p[2].Header.Get("Idempotency-Key") != p[3].Header.Get("Idempotency-Key") {
+		t.Fatalf("送り直しのキー：%d", len(p))
+	}
+	// 外からキーを渡せる。
+	run(t, dir, e, "", "ar", "create", "--branch", "work", "--idempotency-key", "k1")
+	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") != "k1" {
+		t.Fatal("--idempotency-key を使っていない")
 	}
 
 	// --version は、SHA に引き直して送る。
@@ -255,5 +253,89 @@ func TestAuth(t *testing.T) {
 	}
 	if _, out, _ := run(t, "", e, "", "auth", "git-credential", "store"); out != "" {
 		t.Fatalf("store: %q", out)
+	}
+}
+
+// origin/main が進んだあとの check：base は分かれた点。同じファイルを origin/main でも変えていれば、警告する。
+// origin/main の木とぶつかる識別子は、誤りにする。
+func TestCheckAfterMainAdvanced(t *testing.T) {
+	dir := clone(t)
+	e := env{"LOGIFORGE_SESSION_ID": "s1"}
+	origin := git(t, dir, "remote", "get-url", "origin")
+	git(t, dir, "checkout", "--quiet", "-b", "work")
+	bg := filepath.Join(dir, "tree", H0, S1, H1, "background.md")
+	_ = os.WriteFile(bg, []byte("手元\n"), 0o644)
+	git(t, dir, "add", "-A")
+	if code, _, errs := run(t, dir, e, "", "commit", "-m", "背景"); code != 0 {
+		t.Fatal(errs)
+	}
+
+	// origin/main を進める：関係のない背景情報と、同じ背景情報。
+	other := filepath.Join(t.TempDir(), "o")
+	git(t, filepath.Dir(other), "clone", "--quiet", origin, other)
+	_ = os.WriteFile(filepath.Join(other, "tree", H0, "background.md"), []byte("根の背景\n"), 0o644)
+	git(t, other, "add", "-A")
+	git(t, other, "commit", "--quiet", "-m", "main 1")
+	git(t, other, "push", "--quiet", "origin", "main")
+	git(t, dir, "fetch", "--quiet", "origin")
+	code, out, _ := run(t, dir, e, "", "check", "--json")
+	var r checkResult
+	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || !r.OK || len(r.Warnings) != 0 || r.Base == git(t, dir, "rev-parse", "origin/main") {
+		t.Fatalf("関係のない変化：%d %s", code, out)
+	}
+
+	_ = os.WriteFile(filepath.Join(other, "tree", H0, S1, H1, "background.md"), []byte("main でも\n"), 0o644)
+	git(t, other, "add", "-A")
+	git(t, other, "commit", "--quiet", "-m", "main 2")
+	git(t, other, "push", "--quiet", "origin", "main")
+	git(t, dir, "fetch", "--quiet", "origin")
+	code, out, _ = run(t, dir, e, "", "check", "--json")
+	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "conflict") {
+		t.Fatalf("同じファイル：%d %s", code, out)
+	}
+
+	// origin/main にできたストーリーと同じ識別子を、手元でも使うと、誤り。
+	sid := "s-9999999999"
+	for _, d := range []string{other, dir} {
+		p := filepath.Join(d, "tree", H0, S1, H1, sid)
+		_ = os.MkdirAll(filepath.Join(p, "h-8888888888"), 0o755)
+		_ = os.WriteFile(filepath.Join(p, "story.md"), tree.MarshalStory(tree.StoryContent{ID: sid, Title: "t", Summary: "s"}), 0o644)
+		_ = os.WriteFile(filepath.Join(p, "h-8888888888", "hypothesis.md"), tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-8888888888", Statement: "x"}), 0o644)
+	}
+	git(t, other, "add", "-A")
+	git(t, other, "commit", "--quiet", "-m", "main 3")
+	git(t, other, "push", "--quiet", "origin", "main")
+	git(t, dir, "fetch", "--quiet", "origin")
+	code, out, _ = run(t, dir, e, "", "check", "--json")
+	if code != ExitError || !strings.Contains(out, "id_collision") || !strings.Contains(out, "コミットしていない変更がある") {
+		t.Fatalf("識別子の衝突：%d %s", code, out)
+	}
+}
+
+func TestAuthInputs(t *testing.T) {
+	home := t.TempDir()
+	e := env{"HOME": home}
+	if code, _, errs := run(t, "", e, "tok-from-stdin\n", "auth", "login", "--with-token"); code != 0 {
+		t.Fatal(errs)
+	}
+	if _, out, _ := run(t, "", e, "", "auth", "git-credential", "get"); !strings.Contains(out, "password=tok-from-stdin") {
+		t.Fatalf("with-token: %q", out)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+	if code, _, errs := run(t, "", e, "", "auth", "setup-git", "--url", "http://forge.example.com"); code != ExitError || !strings.Contains(errs, "https") {
+		t.Fatalf("http を断らない：%d %s", code, errs)
+	}
+	if code, _, errs := run(t, "", e, "", "auth", "setup-git", "--url", "http://forge.example.com", "--insecure"); code != 0 {
+		t.Fatalf("--insecure: %s", errs)
+	}
+}
+
+func TestJSONAfterDoubleDash(t *testing.T) {
+	var out, errb bytes.Buffer
+	a := &App{Stdout: &out, Stderr: &errb}
+	// -- のあとの --json は、取り除かない。
+	code := a.Run(context.Background(), []string{"nope", "--", "--json"})
+	if code != ExitUsage || a.json {
+		t.Fatalf("code %d json %v", code, a.json)
 	}
 }

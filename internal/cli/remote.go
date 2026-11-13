@@ -2,8 +2,9 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -338,12 +339,12 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 // ---- apply request ----
 
 // arCreate は、push したブランチから apply request を作る。手元の先頭と remote の先頭が同じかを確かめてから、revision に入れて送る。
-// Idempotency-Key は、repository・ブランチ・先頭と、そのブランチの閉じた（反映か close された）apply request の数から作る。
-//   - 同じブランチの同じ先頭なら、送り直しても同じ apply request になる。
-//   - close したあと、同じブランチの同じ先頭から作り直すと、閉じた数が増えているので、新しい apply request になる。
+// Idempotency-Key は、呼び出しごとに乱数で作り、その呼び出しの中で送り直すときだけ、同じキーを使う（--idempotency-key で外から渡せる）。
+// 同じブランチの二重の作成は、バックエンドが拒む。
 func (a *App) arCreate(ctx context.Context, args []string) error {
 	f := newFlags("ar create")
 	repo, branch, desc, sess := repoFlag(f), f.String("branch", "", ""), f.String("description", "", ""), f.String("session", "", "")
+	key := f.String("idempotency-key", "", "送り直しを見分けるキー。なければ乱数で作る")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -369,45 +370,30 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	if fields := strings.Fields(remote); len(fields) == 0 || fields[0] != local {
 		return fmt.Errorf("ブランチ %s の手元の先頭 %s が、remote の先頭と違う。先に git push する", *branch, local)
 	}
-	closed, err := a.closedOnBranch(ctx, name, *branch)
+	k := *key
+	if k == "" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return err
+		}
+		k = "cli-" + hex.EncodeToString(b[:])
+	}
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session, idempotency: k, retry: true,
+		body: map[string]string{"branch": *branch, "revision": local, "description": *desc}})
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256([]byte(name + "\n" + *branch + "\n" + local + "\n" + strconv.Itoa(closed)))
-	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session,
-		idempotency: "cli-" + hex.EncodeToString(sum[:16]),
-		body:        map[string]string{"branch": *branch, "revision": local, "description": *desc}})
-	if err != nil {
-		return err
+	if a.json {
+		// 応答に、使ったキーを足して書く。送り直すときは、--idempotency-key にこのキーを渡す。
+		var v map[string]any
+		if err := json.Unmarshal(res.body, &v); err != nil {
+			return err
+		}
+		v["idempotency_key"] = k
+		return a.writeJSON(v)
 	}
+	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
 	return a.show(res, a.printAR)
-}
-
-// closedOnBranch は、ブランチの、閉じた（反映か close された）apply request の数を返す。
-func (a *App) closedOnBranch(ctx context.Context, repo, branch string) (int, error) {
-	n := 0
-	cursor := ""
-	for {
-		var page struct {
-			Items []struct {
-				Branch string `json:"branch"`
-				State  string `json:"state"`
-			} `json:"items"`
-			NextCursor *string `json:"next_cursor"`
-		}
-		if err := a.getJSON(ctx, repoPath(repo)+"/apply-requests", query("limit", "200", "cursor", cursor), &page); err != nil {
-			return 0, err
-		}
-		for _, ar := range page.Items {
-			if ar.Branch == branch && ar.State != "open" {
-				n++
-			}
-		}
-		if page.NextCursor == nil {
-			return n, nil
-		}
-		cursor = *page.NextCursor
-	}
 }
 
 func (a *App) printAR(v map[string]any) {
@@ -640,24 +626,34 @@ func (a *App) arCleanup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	var page struct {
-		Items []struct {
-			Branch string `json:"branch"`
-			State  string `json:"state"`
-		} `json:"items"`
+	type arItem struct {
+		Branch string `json:"branch"`
+		State  string `json:"state"`
 	}
-	if err := a.getJSON(ctx, repoPath(name)+"/apply-requests", query("limit", "200"), &page); err != nil {
-		return err
+	var all []arItem
+	for cursor := ""; ; {
+		var page struct {
+			Items      []arItem `json:"items"`
+			NextCursor *string  `json:"next_cursor"`
+		}
+		if err := a.getJSON(ctx, repoPath(name)+"/apply-requests", query("limit", "200", "cursor", cursor), &page); err != nil {
+			return err
+		}
+		all = append(all, page.Items...)
+		if page.NextCursor == nil {
+			break
+		}
+		cursor = *page.NextCursor
 	}
 	open := map[string]bool{}
-	for _, ar := range page.Items {
+	for _, ar := range all {
 		if ar.State == "open" {
 			open[ar.Branch] = true
 		}
 	}
 	current, _ := a.git("symbolic-ref", "--short", "-q", "HEAD")
 	var deleted []string
-	for _, ar := range page.Items {
+	for _, ar := range all {
 		if ar.State == "open" || open[ar.Branch] || ar.Branch == current {
 			continue
 		}
