@@ -69,7 +69,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - `Logiforge-Record: review`
   - `Logiforge-Apply-Request:`（提案の識別子）
   - `Logiforge-Review-Id:`（レビューの識別子）
-  - `Logiforge-Previous-Review:`（その提案の直前のレビューの識別子。最初のレビューでは `-`）
+  - `Logiforge-Previous-Review:`（書いた時点で、その提案の最後のレビューの識別子。最初のレビューでは `-`）
   - `Logiforge-Review-Revision:`（レビューした版のコミット。GitForge のレビューの `commit_id` と同じ。違うものは数えない）
   - `Logiforge-Principal:`（reviewer の主体）
   - `Logiforge-Review-Kind: approve|request_changes|comment`
@@ -77,7 +77,10 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - `Logiforge-Prompt-Revision:`
   - `Logiforge-Record-Mac:`（記録のコメントと同じ。最後に書く）
 - レビューは、`Logiforge-Previous-Review:` で鎖にする。
-  - 書き込み主体のレビューに数えないもの（MAC が合わない、版が `commit_id` と違う、識別子が重なる）があるか、鎖がつながらなければ、鎖が切れたとする。
+  - 鎖の役目は、途中のレビューが丸ごと消されたことを見つけることだけである。
+  - 各レビューの `Logiforge-Previous-Review:` は、それより前に数えたレビューのどれか（最初は `-`）であればよい。
+    - なぜ：同時に来た 2 つのレビューが、同じレビューを指すのは正しいから。直前のものに限ると、攻撃がなくても鎖が切れたままになる。
+  - 書き込み主体のレビューに数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子や版が `commit_id` と違うもの、識別子が重なるものは、どれも書き換えられたものである。
   - 鎖が切れていれば、バックエンドは反映しない。レビューも足さない（[反映の手順](../backend/merge.md)）。
 
 ## 書き込み主体が書いたものだけを信じる
@@ -119,7 +122,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - 書き込み主体が close したものは、reopen されても closed のままである。
   - 画面から close されたものは、GitForge の状態に従う。
 - 本文、ラベル、コメントの書き換えでは、記録は変わらない（上の「書き込み主体が書いたものだけを信じる」）。
-- 書き換えたレビューを数えないだけでは、後の `request_changes` を壊して、前の `approve` を最後のレビューに戻せる。
+- 書き換えたレビューを数えないだけでは、後の `request_changes` を壊して（記録でない本文に書き換えることを含む）、前の `approve` を最後のレビューに戻せる。
   - そのため、レビューを鎖にし、鎖が切れていれば反映しない（上の「レビューの書き方」）。
   - 最後のレビューを丸ごと消されると、鎖からはわからない。レビューを消せるのは、repository の管理者だけである。
 - repository に書く権限を持つ人は、書き込み主体のコメントを消すこともできる。消された記録は戻らない。
