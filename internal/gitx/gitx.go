@@ -273,10 +273,14 @@ func (r *Repo) catBlobs(ctx context.Context, files tree.Files, paths []string) (
 			err = fmt.Errorf("git cat-file: %w: %s", werr, strings.TrimSpace(errb.String()))
 		}
 	}()
+	shas := make([]string, len(paths)) // goroutine は files を読まない（下で書き換えるため）
+	for i, p := range paths {
+		shas[i] = files[p].SHA
+	}
 	go func() {
 		w := bufio.NewWriter(stdin)
-		for _, p := range paths {
-			if _, err := w.WriteString(files[p].SHA + "\n"); err != nil {
+		for _, sha := range shas {
+			if _, err := w.WriteString(sha + "\n"); err != nil {
 				break
 			}
 		}
