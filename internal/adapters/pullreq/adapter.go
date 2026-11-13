@@ -15,11 +15,11 @@ import (
 // Repos は、repository の列挙と用意である。GitForge ごとに違うので、それぞれのアダプタが持つ。
 type Repos interface {
 	ListRepositories(ctx context.Context) ([]ports.Repository, error)
-	ProviderRef(ctx context.Context, name string) (string, error)
-	SetupRepository(ctx context.Context, providerRef string, files []ports.File, message string) error
+	GitForgeRef(ctx context.Context, name string) (string, error)
+	SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error
 }
 
-// Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は provider_ref である。
+// Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は gitforge_ref である。
 type Adapter struct {
 	Repos
 	API  API

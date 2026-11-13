@@ -168,7 +168,7 @@ func TestForgejo(t *testing.T) {
 	gf, auth := New(cfg, keys)
 
 	// ---- repository の用意 ----
-	ref, _ := gf.ProviderRef(ctx, "q")
+	ref, _ := gf.GitForgeRef(ctx, "q")
 	files := []ports.File{{Path: root, Content: []byte("---\nid: h-0000000000\nstatement: 根\n---\n")}}
 	if err := gf.SetupRepository(ctx, ref, files, "用意\n\nLogiforge-Init: 1"); err != nil {
 		t.Fatalf("確かめること：書き込み主体が organization に repository を作り、空の repository に contents で最初のコミットを置ける：%v", err)
@@ -183,7 +183,7 @@ func TestForgejo(t *testing.T) {
 	_ = gf.SetupRepository(ctx, ref, files, "x")
 	e.call(e.admin, "GET", "/repos/"+ref+"/branch_protections/main", nil, nil, 200)
 	rs, err := gf.ListRepositories(ctx)
-	if err != nil || len(rs) != 1 || rs[0].ProviderRef != ref {
+	if err != nil || len(rs) != 1 || rs[0].GitForgeRef != ref {
 		t.Fatalf("list: %v %v", rs, err)
 	}
 

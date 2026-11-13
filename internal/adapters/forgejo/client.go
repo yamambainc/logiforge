@@ -168,11 +168,11 @@ func (c *client) download(ctx context.Context, token, rawURL string) ([]byte, er
 	return data, nil
 }
 
-// repoPath は、provider_ref（owner/name）から、API のパスを作る。
+// repoPath は、gitforge_ref（owner/name）から、API のパスを作る。
 func repoPath(ref string) (string, error) {
 	owner, name, ok := strings.Cut(ref, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return "", fmt.Errorf("forgejo: provider_ref の形が正しくない: %q", ref)
+		return "", fmt.Errorf("forgejo: gitforge_ref の形が正しくない: %q", ref)
 	}
 	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
 }

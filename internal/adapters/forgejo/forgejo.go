@@ -37,14 +37,14 @@ func (r repos) ListRepositories(ctx context.Context) ([]ports.Repository, error)
 	}
 	out := make([]ports.Repository, 0, len(rs))
 	for _, x := range rs {
-		out = append(out, ports.Repository{Name: x.Name, ProviderRef: x.FullName})
+		out = append(out, ports.Repository{Name: x.Name, GitForgeRef: x.FullName})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-// ProviderRef は、名前から provider_ref（<organization>/<名前>）を求める。repository がまだなくてもよい。
-func (r repos) ProviderRef(_ context.Context, name string) (string, error) {
+// GitForgeRef は、名前から gitforge_ref（<organization>/<名前>）を求める。repository がまだなくてもよい。
+func (r repos) GitForgeRef(_ context.Context, name string) (string, error) {
 	return r.cfg.Org + "/" + name, nil
 }
 
@@ -54,12 +54,12 @@ func (r repos) ProviderRef(_ context.Context, name string) (string, error) {
 //  3. main を守る設定がなければ作る。
 //
 // 途中で止まっても、呼び直せば続きから行う。main が呼ぶ前からあったときは、守る設定を確かめたあとに ErrMainExists を返す。
-func (r repos) SetupRepository(ctx context.Context, providerRef string, files []ports.File, message string) error {
-	rp, err := repoPath(providerRef)
+func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error {
+	rp, err := repoPath(gitForgeRef)
 	if err != nil {
 		return err
 	}
-	owner, name, _ := strings.Cut(providerRef, "/")
+	owner, name, _ := strings.Cut(gitForgeRef, "/")
 	if err := r.w(ctx, http.MethodGet, rp, nil, nil); statusOf(err) == http.StatusNotFound {
 		body := map[string]any{"name": name, "auto_init": false, "default_branch": "main", "private": true}
 		if err := r.w(ctx, http.MethodPost, "/orgs/"+url.PathEscape(owner)+"/repos", body, nil); err != nil && statusOf(err) != http.StatusConflict {

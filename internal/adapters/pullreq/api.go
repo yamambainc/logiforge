@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// API は、GitForge ごとの REST の呼び方である。repo は、provider_ref（`owner/name`）である。
+// API は、GitForge ごとの REST の呼び方である。repo は、gitforge_ref（`owner/name`）である。
 // 一覧は、作った順（番号の順）に返す。
 type API interface {
 	// WriterLogin は、書き込み主体のログイン名である。

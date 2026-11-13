@@ -23,7 +23,7 @@ var (
 // Repository は、repository の名前と、GitForge の側の参照の組である。
 type Repository struct {
 	Name        string
-	ProviderRef string
+	GitForgeRef string
 }
 
 // File は、repository を用意するときに、最初のコミットに入れるファイルである。
@@ -150,10 +150,10 @@ type NewAttachment struct {
 // GitForge は、GitForge のポートである（design/backend/ports/gitforge.md）。
 type GitForge interface {
 	ListRepositories(ctx context.Context) ([]Repository, error)
-	ProviderRef(ctx context.Context, name string) (string, error)
+	GitForgeRef(ctx context.Context, name string) (string, error)
 	// SetupRepository は、repository を用意する。用意が途中で止まっていれば、続きから行う。
 	// main がすでにあり、用意が終わっていれば、ErrMainExists を返す。
-	SetupRepository(ctx context.Context, providerRef string, files []File, message string) error
+	SetupRepository(ctx context.Context, gitForgeRef string, files []File, message string) error
 
 	CreateApplyRequest(ctx context.Context, repo string, ar NewApplyRequest) (ApplyRequest, error)
 	GetApplyRequest(ctx context.Context, repo, id string) (ApplyRequest, error)
