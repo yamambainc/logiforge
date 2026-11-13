@@ -171,6 +171,8 @@ type GitForge interface {
 	GitForgeRef(ctx context.Context, name string) (string, error)
 	// GitURL は、gitforge_ref から、クライアントが clone と push に使う git の URL を返す。
 	GitURL(gitForgeRef string) string
+	// MainHead は、GitForge の今の main の SHA を返す。反映の前に、worker が追いついているかを確かめるのに使う。
+	MainHead(ctx context.Context, gitForgeRef string) (string, error)
 	// SetupRepository は、repository を用意する。用意が途中で止まっていれば、続きから行う。
 	// main がすでにあり、用意が終わっていれば、ErrMainExists を返す。
 	SetupRepository(ctx context.Context, gitForgeRef string, files []File, message string) error

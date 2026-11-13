@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,6 +73,9 @@ type fakeForge struct {
 	reviews map[string]ports.Reviews
 	hrs     []ports.HumanRequest
 	files   map[string][]byte
+	// remote は、squash merge を行う git リポジトリである。
+	remote *remote
+	next   int
 }
 
 func (f *fakeForge) ListRepositories(context.Context) ([]ports.Repository, error) { return nil, nil }
@@ -79,11 +83,40 @@ func (f *fakeForge) GitForgeRef(_ context.Context, name string) (string, error) 
 	return "o/" + name, nil
 }
 func (f *fakeForge) GitURL(ref string) string { return "https://forge.example.com/" + ref + ".git" }
-func (f *fakeForge) SetupRepository(context.Context, string, []ports.File, string) error {
+func (f *fakeForge) MainHead(context.Context, string) (string, error) {
+	if f.remote == nil {
+		return "", ports.ErrNotFound
+	}
+	return f.remote.git("rev-parse", "main"), nil
+}
+func (f *fakeForge) SetupRepository(_ context.Context, ref string, _ []ports.File, _ string) error {
+	if ref == "o/q" {
+		return ports.ErrMainExists
+	}
 	return errors.New("unused")
 }
-func (f *fakeForge) CreateApplyRequest(context.Context, string, ports.NewApplyRequest) (ports.ApplyRequest, error) {
-	return ports.ApplyRequest{}, errors.New("unused")
+func (f *fakeForge) number() int {
+	f.next++
+	return 100 + f.next
+}
+func (f *fakeForge) CreateApplyRequest(_ context.Context, _ string, n ports.NewApplyRequest) (ports.ApplyRequest, error) {
+	for _, ar := range f.ars {
+		if ar.Branch == n.Branch && ar.State == ports.StateOpen {
+			return ports.ApplyRequest{}, ports.ErrBranchHasOpen
+		}
+	}
+	ar := ports.ApplyRequest{ID: n.ID, Number: f.number(), Branch: n.Branch, Description: n.Description, FirstRevision: n.FirstRevision,
+		HeadRevision: n.FirstRevision, State: ports.StateOpen, Opener: n.Opener, CreatedAt: time.Now().UTC()}
+	f.ars = append(f.ars, ar)
+	return ar, nil
+}
+func (f *fakeForge) ar(id string) *ports.ApplyRequest {
+	for i := range f.ars {
+		if f.ars[i].ID == id {
+			return &f.ars[i]
+		}
+	}
+	return nil
 }
 func (f *fakeForge) GetApplyRequest(_ context.Context, _, id string) (ports.ApplyRequest, error) {
 	for _, ar := range f.ars {
@@ -96,20 +129,54 @@ func (f *fakeForge) GetApplyRequest(_ context.Context, _, id string) (ports.Appl
 func (f *fakeForge) ListApplyRequests(context.Context, string) ([]ports.ApplyRequest, error) {
 	return f.ars, nil
 }
-func (f *fakeForge) UpdateDescription(context.Context, string, string, string) error { return nil }
-func (f *fakeForge) Merge(context.Context, string, string, string, string, string) (string, error) {
-	return "", errors.New("unused")
-}
-func (f *fakeForge) Close(context.Context, string, string, string, string) error { return nil }
-func (f *fakeForge) RecordMergeFailure(context.Context, string, string, ports.MergeFailure) error {
+func (f *fakeForge) UpdateDescription(_ context.Context, _, id, d string) error {
+	f.ar(id).Description = d
 	return nil
 }
-func (f *fakeForge) AddReview(context.Context, string, string, ports.Review) error { return nil }
+
+// Merge は、版のコミットを、リモートの main に squash merge する。
+func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string) (string, error) {
+	ar := f.ar(id)
+	if ar.HeadRevision != head {
+		return "", ports.ErrHeadMoved
+	}
+	f.remote.git("checkout", "--quiet", "main")
+	cmd := exec.Command("git", "-C", f.remote.dir, "merge", "--squash", head)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		f.remote.git("reset", "--quiet", "--hard", "HEAD")
+		return "", fmt.Errorf("%w: %s", ports.ErrConflict, out)
+	}
+	sha := f.remote.commit(title + "\n\n" + message)
+	ar.State = ports.StateMerged
+	return sha, nil
+}
+func (f *fakeForge) Close(_ context.Context, _, id, reason, session string) error {
+	ar := f.ar(id)
+	ar.State, ar.CloseReason, ar.CloseSession = ports.StateClosed, reason, session
+	return nil
+}
+func (f *fakeForge) RecordMergeFailure(_ context.Context, _, id string, mf ports.MergeFailure) error {
+	ar := f.ar(id)
+	ar.MergeFailures = append(ar.MergeFailures, mf)
+	return nil
+}
+func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) error {
+	rs := f.reviews[id]
+	if rs.ChainBroken {
+		return errors.New("鎖が切れている")
+	}
+	rs.Items = append(rs.Items, r)
+	f.reviews[id] = rs
+	return nil
+}
 func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews, error) {
 	return f.reviews[id], nil
 }
-func (f *fakeForge) CreateHumanRequest(context.Context, string, ports.NewHumanRequest) (ports.HumanRequest, error) {
-	return ports.HumanRequest{}, errors.New("unused")
+func (f *fakeForge) CreateHumanRequest(_ context.Context, _ string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
+	hr := ports.HumanRequest{ID: n.ID, Number: f.number(), Kind: n.Kind, TargetNode: n.TargetNode, Body: n.Body, Requester: n.Requester, Session: n.Session}
+	f.hrs = append(f.hrs, hr)
+	return hr, nil
 }
 func (f *fakeForge) GetHumanRequest(_ context.Context, _, id string) (ports.HumanRequest, error) {
 	for _, hr := range f.hrs {
@@ -122,8 +189,27 @@ func (f *fakeForge) GetHumanRequest(_ context.Context, _, id string) (ports.Huma
 func (f *fakeForge) ListHumanRequests(context.Context, string) ([]ports.HumanRequest, error) {
 	return f.hrs, nil
 }
-func (f *fakeForge) Answer(context.Context, string, string, string, string, []ports.NewAttachment) error {
-	return nil
+func (f *fakeForge) Answer(_ context.Context, _, id, body, by string, files []ports.NewAttachment) error {
+	for i := range f.hrs {
+		if f.hrs[i].ID != id {
+			continue
+		}
+		if a := f.hrs[i].Answer; a != nil {
+			if a.Body == body && a.AnsweredBy == by {
+				return nil
+			}
+			return ports.ErrAlreadyAnswered
+		}
+		ans := &ports.Answer{Body: body, AnsweredBy: by, CreatedAt: time.Now().UTC()}
+		for _, file := range files {
+			sha := tree.SHA256Hex(file.Content)
+			f.files[sha] = file.Content
+			ans.Attachments = append(ans.Attachments, ports.Attachment{Name: file.Name, SHA256: sha, ID: sha})
+		}
+		f.hrs[i].Answer = ans
+		return nil
+	}
+	return ports.ErrNotFound
 }
 func (f *fakeForge) ReadAttachment(_ context.Context, _, _, sha string) ([]byte, error) {
 	if b, ok := f.files[sha]; ok {
@@ -446,4 +532,10 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	if answered() {
 		t.Fatal("回答を引用した検証結果があるのに、作業から外れない")
 	}
+}
+
+// GetCommitForTest は、コミットの記録の trailer を読む。
+func (b *Backend) GetCommitForTest(ctx context.Context, repo, sha string) ([]snapshotTrailer, error) {
+	c, err := b.Snap.Commit(ctx, repo, sha)
+	return c.Trailers, err
 }

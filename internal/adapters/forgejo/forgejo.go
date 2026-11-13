@@ -57,6 +57,26 @@ func (r repos) GitURL(gitForgeRef string) string {
 	return strings.TrimRight(r.cfg.URL, "/") + "/" + gitForgeRef + ".git"
 }
 
+// MainHead は、main の先頭のコミットの SHA を返す。
+func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error) {
+	rp, err := repoPath(gitForgeRef)
+	if err != nil {
+		return "", err
+	}
+	var br struct {
+		Commit struct {
+			ID string `json:"id"`
+		} `json:"commit"`
+	}
+	if err := r.w(ctx, http.MethodGet, rp+"/branches/main", nil, &br); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return "", ports.ErrNotFound
+		}
+		return "", err
+	}
+	return br.Commit.ID, nil
+}
+
 // SetupRepository は、repository を用意する（design/adapters/forgejo.md の「repository の用意」）。
 //  1. repository がなければ作る（auto_init なし）。
 //  2. main がなければ、files を 1 つのコミットで main に置く。
