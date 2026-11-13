@@ -49,6 +49,10 @@ func (b *fb) story(parentDir, id, title string) string {
 }
 
 func (b *fb) verdict(hypDir, id string, value bool, supersedes string, arts ...ArtifactRef) {
+	b.verdictMulti(hypDir, id, value, list(supersedes), arts...)
+}
+
+func (b *fb) verdictMulti(hypDir, id string, value bool, supersedes []string, arts ...ArtifactRef) {
 	b.put(hypDir+"/"+VerdictsDir+"/"+id+".md", MarshalVerdict(VerdictContent{ID: id, Value: value, Supersedes: supersedes, Artifacts: arts, Report: "レポート\n"}))
 }
 
@@ -73,6 +77,7 @@ const (
 	H4 = "h-6666666666"
 	V1 = "v-7777777777"
 	V2 = "v-8888888888"
+	V3 = "v-bbbbbbbbbb"
 	S3 = "s-9999999999"
 	H5 = "h-aaaaaaaaaa"
 )
@@ -112,4 +117,12 @@ func mustCheck(t *testing.T, base, head *fb, ctx Context) Result {
 		t.Fatal(err)
 	}
 	return res
+}
+
+// list は、空文字なら nil を、そうでなければ 1 つの一覧を返す。
+func list(id string) []string {
+	if id == "" {
+		return nil
+	}
+	return []string{id}
 }

@@ -326,8 +326,8 @@ func (t *Tree) readStory(name string, d *dirEntry, dir string, parent *Hypothesi
 func (h *Hypothesis) ValidVerdicts() []*Verdict {
 	superseded := map[string]bool{}
 	for _, v := range h.Verdicts {
-		if v.Supersedes != "" {
-			superseded[v.Supersedes] = true
+		for _, s := range v.Supersedes {
+			superseded[s] = true
 		}
 	}
 	var out []*Verdict

@@ -24,7 +24,7 @@ func TestStoryRoundTrip(t *testing.T) {
 
 func TestVerdictRoundTrip(t *testing.T) {
 	c := VerdictContent{
-		ID: V1, Value: true, Supersedes: V2,
+		ID: V1, Value: true, Supersedes: []string{V2},
 		Artifacts: []ArtifactRef{{Kind: "link", Name: "paper", URI: "https://example.com/a"}},
 		Citations: []Citation{{TargetKind: "subtree", NodeID: H1, Revision: strings.Repeat("a", 40)}},
 		Report:    "# レポート\n\n本文\n",
@@ -76,5 +76,27 @@ func TestVerdictFieldChecks(t *testing.T) {
 				t.Fatal("受け付けてしまった")
 			}
 		})
+	}
+}
+
+func TestSupersedesForm(t *testing.T) {
+	cases := map[string]string{
+		"文字列":    "supersedes: " + V2 + "\n",
+		"空の一覧":   "supersedes: []\n",
+		"識別子でない": "supersedes: [x]\n",
+		"重なり":    "supersedes: [" + V2 + ", " + V2 + "]\n",
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "---\nid: " + V1 + "\nvalue: true\n" + extra + "---\nレポート\n"
+			if _, err := ParseVerdict([]byte(src)); err == nil {
+				t.Fatal("受け付けてしまった")
+			}
+		})
+	}
+	src := "---\nid: " + V1 + "\nvalue: true\nsupersedes: [" + V2 + ", v-9999999999]\n---\nレポート\n"
+	c, err := ParseVerdict([]byte(src))
+	if err != nil || len(c.Supersedes) != 2 {
+		t.Fatalf("got %+v, %v", c, err)
 	}
 }

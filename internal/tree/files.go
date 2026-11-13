@@ -59,7 +59,7 @@ type StoryContent struct {
 type VerdictContent struct {
 	ID         string        `json:"id"`
 	Value      bool          `json:"value"`
-	Supersedes string        `json:"supersedes,omitempty"`
+	Supersedes []string      `json:"supersedes,omitempty"`
 	Artifacts  []ArtifactRef `json:"artifacts,omitempty"`
 	Citations  []Citation    `json:"citations,omitempty"`
 	Report     string        `json:"report"`
@@ -92,7 +92,7 @@ func MarshalStory(c StoryContent) []byte {
 // MarshalVerdict は検証結果のファイルを書き出す。最初の検証結果では supersedes を書かない。
 func MarshalVerdict(c VerdictContent) []byte {
 	data := map[string]any{"id": c.ID, "value": c.Value}
-	if c.Supersedes != "" {
+	if len(c.Supersedes) > 0 {
 		data["supersedes"] = c.Supersedes
 	}
 	arts := c.Artifacts
@@ -213,11 +213,22 @@ func ParseVerdict(content []byte) (VerdictContent, error) {
 	}
 	c.Value = v
 	if s, ok := data["supersedes"]; ok {
-		ss, ok := s.(string)
-		if !ok {
-			return c, fmt.Errorf("supersedes が文字列でない")
+		list, ok := s.([]any)
+		if !ok || len(list) == 0 {
+			return c, fmt.Errorf("supersedes が、1 つ以上の識別子の一覧でない")
 		}
-		c.Supersedes = ss
+		seen := map[string]bool{}
+		for _, item := range list {
+			id, ok := item.(string)
+			if !ok || ids.KindOf(id) != ids.Verdict {
+				return c, fmt.Errorf("supersedes に、検証結果の識別子でないものがある: %v", item)
+			}
+			if seen[id] {
+				return c, fmt.Errorf("supersedes に、同じ識別子が重なっている: %s", id)
+			}
+			seen[id] = true
+			c.Supersedes = append(c.Supersedes, id)
+		}
 	}
 	if c.Artifacts, err = parseArtifacts(data["artifacts"]); err != nil {
 		return c, err

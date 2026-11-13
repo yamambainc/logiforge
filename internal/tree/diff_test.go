@@ -367,23 +367,52 @@ func TestOperationsAreSorted(t *testing.T) {
 	}
 }
 
-// すでに破れているノードが、さらに悪くなったら拒む。
+// すでに破れているノードは、悪くならなければ警告、悪くなれば拒む。
 func TestAlreadyBrokenGetsWorse(t *testing.T) {
 	b, d := base()
 	b.verdict(d[H1], V1, true, "")
 	b.verdict(d[H1], V2, false, "") // 有効な検証結果が 2 つ
+
+	// 1 つを置き換えて 2 つのままなら、悪くなっていないので警告にする。
 	h := b.clone()
-	h.verdict(d[H1], "v-aaaaaaaaaa", true, "") // 3 つにする
+	h.verdict(d[H1], "v-aaaaaaaaaa", true, V2)
 	res := mustCheck(t, b, h, Context{})
-	wantRejected(t, res, RuleMultipleValidVerdicts)
-	if v := res.Rejected[0]; !reflect.DeepEqual(v.IDs, []string{V1, V2, "v-aaaaaaaaaa"}) {
-		t.Fatalf("ids: %v", v.IDs)
+	wantOK(t, res)
+	if !hasRule(res.Warnings, RuleMultipleValidVerdicts) {
+		t.Fatalf("warnings: %v", res.Warnings)
 	}
 
-	// 1 つを置き換えて 2 つのままでも、新しい識別子が加わるので拒む。
+	// 3 つにすれば、拒む。
 	h2 := b.clone()
-	h2.verdict(d[H1], "v-aaaaaaaaaa", true, V2)
-	wantRejected(t, mustCheck(t, b, h2, Context{}), RuleMultipleValidVerdicts)
+	h2.verdict(d[H1], "v-aaaaaaaaaa", true, "")
+	res2 := mustCheck(t, b, h2, Context{})
+	wantRejected(t, res2, RuleMultipleValidVerdicts)
+	if v := res2.Rejected[0]; !reflect.DeepEqual(v.IDs, []string{V1, V2, "v-aaaaaaaaaa"}) {
+		t.Fatalf("ids: %v", v.IDs)
+	}
+}
+
+// 有効な検証結果が 2 つになった仮説は、まとめて差し替えて直せる。
+func TestSupersedeSeveral(t *testing.T) {
+	b, d := base()
+	b.verdict(d[H1], V1, true, "")
+	b.verdict(d[H1], V2, false, "")
+	h := b.clone()
+	h.verdictMulti(d[H1], "v-aaaaaaaaaa", true, []string{V1, V2})
+	res := mustCheck(t, b, h, Context{})
+	wantOK(t, res)
+	if len(res.Warnings) != 0 {
+		t.Fatalf("直ったのに警告がある: %v", res.Warnings)
+	}
+	if got := Build(h.files).Hypotheses[H1].ValidVerdicts(); len(got) != 1 || got[0].ID != "v-aaaaaaaaaa" {
+		t.Fatalf("valid: %v", got)
+	}
+
+	// 一覧の 1 つでも有効でなければ拒む。
+	h2 := b.clone()
+	h2.verdict(d[H2], V3, true, "")
+	h2.verdictMulti(d[H1], "v-aaaaaaaaaa", true, []string{V1, V3})
+	wantRejected(t, mustCheck(t, b, h2, Context{}), RuleSupersedesNotValid)
 }
 
 func TestChangedPathsUsesBlobSHA(t *testing.T) {

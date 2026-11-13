@@ -136,18 +136,17 @@ func CheckChange(base, head Files, ctx Context) (Result, error) {
 		explained[v.Path] = true
 		vc := v.VerdictContent
 		ops = append(ops, Operation{Kind: OpVerdictSubmit, HypothesisID: v.Hypothesis.ID, Verdict: &vc})
-		if v.Supersedes != "" {
-			bh := bt.Hypotheses[v.Hypothesis.ID]
-			valid := false
-			if bh != nil {
+		if len(v.Supersedes) > 0 {
+			valid := map[string]bool{}
+			if bh := bt.Hypotheses[v.Hypothesis.ID]; bh != nil {
 				for _, bv := range bh.ValidVerdicts() {
-					if bv.ID == v.Supersedes {
-						valid = true
-					}
+					valid[bv.ID] = true
 				}
 			}
-			if !valid {
-				reject(RuleSupersedesNotValid, id, "supersedes が、同じ仮説のその時点で有効な検証結果でない")
+			for _, sid := range v.Supersedes {
+				if !valid[sid] {
+					reject(RuleSupersedesNotValid, id, "supersedes の %s が、同じ仮説のその時点で有効な検証結果でない", sid)
+				}
 			}
 		}
 		if err := checkVerdictInInactive(v, bt, newlyInactivated, ctx, reject); err != nil {

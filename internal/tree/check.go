@@ -61,8 +61,8 @@ type Violation struct {
 	Rule   Rule   `json:"rule"`
 	Node   string `json:"node"`
 	Detail string `json:"detail"`
-	// IDs は、数を数える規則で、問題になっている識別子の集合である（整列済み）。
-	// base でも破れていた違反で、head の IDs に base にない識別子が加われば、新しく破ったものとみなす。
+	// IDs は、数を数える規則で、問題になっている識別子である（整列済み）。
+	// base でも破れていた違反で、head の IDs の数が base より多ければ、新しく破ったものとみなす。
 	IDs []string `json:"ids,omitempty"`
 }
 
@@ -108,12 +108,11 @@ func Check(t *Tree) []Violation {
 			addIDs(RuleVerdictWithActiveStory, id, ids, "検証結果と active な子ストーリーを同時に持つ")
 		}
 		for _, v := range h.Verdicts {
-			if v.Supersedes == "" {
-				continue
-			}
-			target, ok := t.Verdicts[v.Supersedes]
-			if !ok || target.Hypothesis != h {
-				add(RuleSupersedes, v.ID, "supersedes が、同じ仮説の検証結果を指していない")
+			for _, sid := range v.Supersedes {
+				target, ok := t.Verdicts[sid]
+				if !ok || target.Hypothesis != h {
+					add(RuleSupersedes, v.ID, "supersedes の %s が、同じ仮説の検証結果を指していない", sid)
+				}
 			}
 		}
 	}
@@ -141,36 +140,23 @@ func verdictIDs(vs []*Verdict) []string {
 }
 
 // NewlyBroken は、head で破れていて、base では破れていなかったものを返す。比べる単位は「規則 × ノード」である。
-// base でも破れていても、数を数える規則で、問題の識別子が base より増えていれば、新しく破ったものとする。
+// base でも破れていても、数を数える規則で、問題の識別子の数が base より多ければ、悪くなったので新しく破ったものとする。
 // もう 1 つの戻り値は、base でもすでに破れていて、悪くなっていないもので、警告にする。
+// 数で比べるのは、有効な検証結果を差し替えて直す差分（{V1, V2} → {V1, V3}）を拒まないためである。
 func NewlyBroken(base, head []Violation) (newly, existing []Violation) {
-	seen := map[string]map[string]bool{}
+	count := map[string]int{}
 	for _, v := range base {
-		set := seen[v.key()]
-		if set == nil {
-			set = map[string]bool{}
-			seen[v.key()] = set
-		}
-		for _, id := range v.IDs {
-			set[id] = true
+		if n, ok := count[v.key()]; !ok || len(v.IDs) > n {
+			count[v.key()] = len(v.IDs)
 		}
 	}
 	for _, v := range head {
-		set, ok := seen[v.key()]
-		if ok && subset(v.IDs, set) {
+		n, ok := count[v.key()]
+		if ok && len(v.IDs) <= n {
 			existing = append(existing, v)
 		} else {
 			newly = append(newly, v)
 		}
 	}
 	return newly, existing
-}
-
-func subset(ids []string, set map[string]bool) bool {
-	for _, id := range ids {
-		if !set[id] {
-			return false
-		}
-	}
-	return true
 }
