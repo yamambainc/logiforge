@@ -32,7 +32,7 @@ flowchart TB
   RULE --> PT
   PT -.-|実装| AD
   BE -->|内部 API| W
-  FA --> FG
+  FA -->|API と git の読み| FG
   SSA --> OBJ
   W -->|読む| FG
   W -->|書く| OBJ
@@ -44,7 +44,8 @@ flowchart TB
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
 - Logiforge のプロセスは、バックエンドと [worker](backend/worker.md) の 2 つである。どちらも同じバイナリで、別のコンテナで動く（[動かし方](deploy.md)）。
   - バックエンドは、worker の [内部 API](backend/worker-api.md) で、worker を起こし、過去のリビジョンの木を作ってもらう。内部 API は、バックエンドの中の worker のクライアントが直接呼ぶ。worker は、ポートにしない（[ポート](backend/ports/README.md)）。
-  - バックエンドは、apply request の作成のときだけ、作業用の git の複製から GitForge の git を読んで検査する（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。図では、この線を、GitForge アダプタから GitForge への線にまとめた。
+  - バックエンドは、apply request の作成のときだけ、作業用の git の複製から GitForge の git を読んで検査する（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。
+  - 図の GitForge アダプタから GitForge への線（「API と git の読み」）は、GitForge の API の呼び出しと、この git の読みの両方を表す。git の URL と、読むだけの資格情報は、GitForge アダプタが渡す。
   - worker は、GitForge の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
   - 図の描き方の都合で、worker をバックエンドの下に描いた。worker は、バックエンドの下の層ではなく、バックエンドと並ぶプロセスである。
 - 外のサービスは、構成ごとに使うものが決まる（[組み合わせ](adapters/README.md)）。

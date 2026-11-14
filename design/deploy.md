@@ -204,7 +204,11 @@ spec:
 - Pod を直接置くのは、例を短くするためである。動かすときは、レプリカを 1 にした StatefulSet か Deployment（`strategy: Recreate`）で包む。
   - なぜ `Recreate` か：入れ替えのときに、古い worker と新しい worker が同時に動かないようにするため。
 - ルートのファイルシステムは、読むだけにする（`readOnlyRootFilesystem`）。書く場所は、ボリュームと、`/tmp` の `emptyDir` だけである。
-  - バックエンドの `/tmp` には、作業用の git の複製を置く（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。repository ごとに、clone 1 つ分の大きさになる。`emptyDir` の大きさの上限は、それに合わせる。
+  - バックエンドの `/tmp` には、作業用の git の複製を置く（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。
+    - 目安の大きさは、repository の数 × clone 1 つの大きさである。clone は、artifact の中身を含むので、repository ごとに数十 MB から数百 MB である（[費用と規模の見積もり](estimates.md)）。repository 30 個で、数 GB になる。
+    - 複製を消す仕組みは、作らない。`emptyDir` の大きさの上限（`sizeLimit`）は、目安に余裕を足して決める。
+    - 上限を超えると、Pod が作り直される。複製は使い捨てのキャッシュなので、作り直された Pod は、要求ごとに空から clone し直す。そのあいだ、初めての `ar create` が遅くなるだけで、壊れるものはない。
+    - バックエンドは、起動のときに、`LOGIFORGE_GIT_CACHE_DIR` の下の古い複製（`workcopy-*`）を消す。そのため、`LOGIFORGE_GIT_CACHE_DIR` は、プロセスごとの場所にする。1 台のマシンで、コンテナに分けずにバックエンドを何台か動かすときは、それぞれに別の場所を渡す。
 - worker の `livenessProbe` は、`exec` でコンテナの中から `wget` で呼ぶ。
   - なぜ：worker の内部 API は `127.0.0.1` で待ち受けるので、kubelet の `httpGet` は届かないから。
 
