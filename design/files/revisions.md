@@ -30,7 +30,8 @@
 | `Logiforge-Version:` | 反映した先頭のコミットの、先頭のコミットの一覧の中の位置と、その SHA（例：`3 <commit SHA>`） |
 | `Logiforge-Session-Id:` | 先頭のコミットを書いたセッション。自己申告である（下の「セッション」） |
 
-- trailer の名前は、git の履歴に残るので変えない。
+- trailer の名前（`Logiforge-Version:` など）は、git の履歴に残る永続する形なので、前の呼び名（版、リビジョン）のまま残している。値は、どれもコミットの SHA である。
+- `Logiforge-Version:` の数は、反映した先頭のコミットの、先頭のコミットの一覧の中の位置である。API には出さない。
 - 最初のコミットは、`Logiforge-Apply-Request:` を持たない。
 - `main` の first-parent の並びのうち、`Logiforge-Apply-Request:` のないコミットは、反映によらない変更とみなす。最初のコミットは除く。
   - `main` は、GitForge の保護で、バックエンドの merge でしか進まない（[main を守る](../adapters/pull-requests.md)）。この記録は、保護が外れたときに気づくためのものである。

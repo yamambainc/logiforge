@@ -50,6 +50,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 - ブランチの名前に、`main` は使えない。GitForge が push を拒む。
 - apply request を更新するには、同じブランチに `git push` するだけである。コマンドはない。`ar edit` は説明欄だけを書き換える。
 - `ar review` の `--commit` には、レビューした先頭のコミットの SHA を渡す。`ar view` で先頭のコミットの一覧を確かめられる（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
+  - reviewer は、`ar material` が返すコミット（`commit`）を、そのまま `--commit` に渡す。なぜ：材料を読んだあとに新しいコミットが push されると、読んでいないコミットをレビューしたことになるから。そのときは `commit_conflict` で受け付けない。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
 - `ar create` は、`Idempotency-Key` を、呼び出しごとに乱数で作る。その呼び出しの中で送り直すとき（通信の誤り、502、503、504）だけ、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
   - `--json` の出力に、使ったキー（`idempotency_key`）を書く。あとで送り直すときは、`--idempotency-key` にそのキーを渡す。

@@ -34,7 +34,8 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 | `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Principal:`（起票した主体）、`Logiforge-Session-Id:`。依頼の本文は本文 |
 | `answer` | 回答を受け付けたとき | `Logiforge-Human-Request:`、`Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
 
-- trailer の名前は、GitForge に残った記録を読めるように変えない。`Revision` の付く名前も、コミットの SHA を持つ。
+- trailer の名前（`Logiforge-Revision:` など）は、GitForge に残った記録を読めるようにする、永続する形なので、前の呼び名（リビジョン）のまま残している。値は、どれもコミットの SHA である。
+- 反映のコミットの `Logiforge-Version:` も同じく前の呼び名のままで、値はコミットの SHA である。その数は、先頭のコミットの一覧の中の位置で、API には出さない（[main のコミットと記録](../files/revisions.md)）。
 - `Logiforge-Principal:` は、API の要求を送った主体である。
   - なぜ：GitForge の上では、書き込み主体がすべてを書くので、提案を作った主体や reviewer が、GitForge の作者からはわからないから。反映の手順で、reviewer と提案を作った主体が同じかを確かめるのに使う（[反映の手順](../backend/merge.md)）。
 
