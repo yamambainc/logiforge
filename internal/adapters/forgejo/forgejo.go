@@ -52,6 +52,11 @@ func (r repos) GitForgeRef(_ context.Context, name string) (string, error) {
 	return r.cfg.Org + "/" + name, nil
 }
 
+// GitURL は、クライアントが clone と push に使う git の URL を返す。
+func (r repos) GitURL(gitForgeRef string) string {
+	return strings.TrimRight(r.cfg.URL, "/") + "/" + gitForgeRef + ".git"
+}
+
 // SetupRepository は、repository を用意する（design/adapters/forgejo.md の「repository の用意」）。
 //  1. repository がなければ作る（auto_init なし）。
 //  2. main がなければ、files を 1 つのコミットで main に置く。

@@ -1,8 +1,9 @@
 // logiforge は、Logiforge の 1 つのバイナリである。サブコマンドで、役割を選ぶ。
 //
+//	logiforge serve    バックエンドの API（design/api/README.md）。今は読む API だけ
 //	logiforge worker   git を読んでスナップショットを作り続ける worker（design/backend/worker.md）
 //
-// バックエンド（serve）と CLI のコマンドは、あとの PR で足す。
+// 書く API と CLI のコマンドは、あとの PR で足す。
 package main
 
 import (
@@ -13,23 +14,31 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/forgejo"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/pullreq"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/api"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "使い方：logiforge worker")
+		fmt.Fprintln(os.Stderr, "使い方：logiforge serve | logiforge worker")
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var err error
 	switch os.Args[1] {
+	case "serve":
+		err = runServe(ctx)
 	case "worker":
 		err = runWorker(ctx)
 	default:
@@ -106,6 +115,83 @@ func runWorker(ctx context.Context) error {
 	select {
 	case err := <-errc:
 		_ = srv.Close()
+		return err
+	case <-ctx.Done():
+		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(sctx)
+		return ctx.Err()
+	}
+}
+
+// envs は、必須の環境変数をまとめて読む。
+func envs(dsts map[string]*string) error {
+	names := make([]string, 0, len(dsts))
+	for n := range dsts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		v, err := env(n)
+		if err != nil {
+			return err
+		}
+		*dsts[n] = v
+	}
+	return nil
+}
+
+// keyring は、記録の MAC の鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=鍵,…」で、最初のものを書くときに使う。
+func keyring(v string) (pullreq.Keyring, error) {
+	k := pullreq.Keyring{Keys: map[string][]byte{}}
+	for i, part := range strings.Split(v, ",") {
+		id, secret, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || id == "" || secret == "" {
+			return k, fmt.Errorf("LOGIFORGE_RECORD_KEYS の形が正しくない（鍵の ID=鍵,…）")
+		}
+		if i == 0 {
+			k.Current = id
+		}
+		k.Keys[id] = []byte(secret)
+	}
+	return k, nil
+}
+
+// runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/README.md の「設定と秘密情報」）。
+//
+//	LOGIFORGE_ADDR             待ち受けるアドレス（既定は 127.0.0.1:8080）
+//	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ。読むだけ）
+//	LOGIFORGE_WORKER_URL、LOGIFORGE_INTERNAL_KEY   worker の内部 API
+//	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG、LOGIFORGE_USER_TEAM
+//	LOGIFORGE_WRITER、LOGIFORGE_WRITER_TOKEN       書き込み主体
+//	LOGIFORGE_WORKER_LOGIN     worker のユーザー（API の主体として受け付けない）
+//	LOGIFORGE_RECORD_KEYS      記録の MAC の鍵（鍵の ID=鍵,…。最初のものを書くときに使う）
+func runServe(ctx context.Context) error {
+	var storeDir, workerURL, key, url, org, team, writer, writerToken, workerLogin, keys string
+	if err := envs(map[string]*string{
+		"LOGIFORGE_STORE_DIR": &storeDir, "LOGIFORGE_WORKER_URL": &workerURL, "LOGIFORGE_INTERNAL_KEY": &key,
+		"LOGIFORGE_FORGEJO_URL": &url, "LOGIFORGE_FORGEJO_ORG": &org, "LOGIFORGE_USER_TEAM": &team,
+		"LOGIFORGE_WRITER": &writer, "LOGIFORGE_WRITER_TOKEN": &writerToken, "LOGIFORGE_WORKER_LOGIN": &workerLogin,
+		"LOGIFORGE_RECORD_KEYS": &keys,
+	}); err != nil {
+		return err
+	}
+	ring, err := keyring(keys)
+	if err != nil {
+		return err
+	}
+	addr := os.Getenv("LOGIFORGE_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
+	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, Writer: writer, WriterToken: writerToken, WorkerLogin: workerLogin}, ring)
+	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: &store.Dir{Root: storeDir}, WorkerURL: workerURL, Key: key}}
+	srv := &http.Server{Addr: addr, Handler: api.NewHandler(b, slog.Default()), ReadHeaderTimeout: 10 * time.Second}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	slog.Info("バックエンドを始めた", "addr", addr)
+	select {
+	case err := <-errc:
 		return err
 	case <-ctx.Done():
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

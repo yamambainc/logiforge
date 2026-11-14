@@ -297,7 +297,7 @@ func TestForgejo(t *testing.T) {
 	if _, err := gf.Merge(ctx, ref, "apr_b", hB, "b", "Logiforge-Apply-Request: apr_b"); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("衝突：%v", err)
 	}
-	if err := gf.RecordMergeFailure(ctx, ref, "apr_b", "conflict"); err != nil {
+	if err := gf.RecordMergeFailure(ctx, ref, "apr_b", ports.MergeFailure{Revision: hB, Reason: "conflict", Detail: "衝突"}); err != nil {
 		t.Fatal(err)
 	}
 

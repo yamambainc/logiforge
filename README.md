@@ -35,9 +35,16 @@ FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ば�
 | [internal/gitx](internal/gitx/) | git の CLI で、木の git リポジトリを読む。書く操作はない |
 | [internal/store](internal/store/) | スナップショットの置き場（キーの決まり、スナップショットの読み書き、手元のディレクトリ） |
 | [internal/worker](internal/worker/) | worker（巡回、スナップショットと latest とブランチの履歴、反映の重なりの警告、内部 API） |
-| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。今は `logiforge worker` だけ |
+| [internal/adapters/snapstore](internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む、worker の内部 API のクライアント） |
+| [internal/backend](internal/backend/) | バックエンド（認可、読む API、着手できる作業、作業の終わりの判定、書き出し） |
+| [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json |
+| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（今は読む API だけ）と `logiforge worker` |
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |
 
 - `internal/tree` は、worker、CLI の `check`、バックエンドが同じものを使う（[差分の検査](design/backend/checks.md)、[ファイルの配置](design/files/layout.md)）。
+
+## worker のロック
+
+`logiforge worker` は、clone のディレクトリと置き場の根に、`.worker.lock` のロックを取る。unix では、worker が止まればロックは外れる。unix でない環境では、ロックはファイルで、worker が落ちると残る。そのときは、ほかの worker が動いていないことを確かめてから、2 つのディレクトリの `.worker.lock` を手で消す。

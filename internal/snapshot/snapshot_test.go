@@ -100,7 +100,7 @@ func TestBuildMainChangesAndHistory(t *testing.T) {
 	f2 := f1.clone()
 	f2.put(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: true, Report: "r\n"}))
 	m2 := mustMain(t, f2, info(rev(2), "apr_2"), m1)
-	if want := []NodeChange{{H1, FileVerdict}}; !reflect.DeepEqual(m2.Commit.Changes, want) {
+	if want := []NodeChange{{H1, FileVerdict, dH1 + "/verdicts/" + V1 + ".md"}}; !reflect.DeepEqual(m2.Commit.Changes, want) {
 		t.Fatalf("changes: %v", m2.Commit.Changes)
 	}
 	if got := numbers(m2.Tree.Nodes[H1].Changes); !reflect.DeepEqual(got, []int{1, 2}) {
