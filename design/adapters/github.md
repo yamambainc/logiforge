@@ -29,7 +29,7 @@ GitHub に固有のところだけを書く。
 |---|---|
 | repository | GitHub リポジトリ（1 つの repository に 1 つ）。gitforge_ref は `owner/name` |
 | repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
-| 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（版のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
+| 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
 | レビュー | `event=COMMENT` の pull request review |
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
 | 回答の添付 | リンクだけ。ファイルは受け付けない。Forgejo を使う構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |

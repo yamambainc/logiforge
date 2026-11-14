@@ -21,7 +21,7 @@
 - pull request を、head の SHA を指定して squash merge できる。
 - `main` への push を禁じ、merge を書き込み主体だけにできる。
 - git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
-- pull request の最後の版のコミットを、ref に残す。
+- pull request の最後の先頭のコミットを、ref に残す。
 
 GitForge ごとに違う性質は、次のとおりである。
 
@@ -29,7 +29,7 @@ GitForge ごとに違う性質は、次のとおりである。
 |---|---|---|
 | API でコメントにファイルを添付できるか（[人への依頼の回答](../files/artifacts.md)） | できない。添付はリンクだけ | できる |
 | repository をバックエンドが作れるか（[repository の登録](#repository-の登録)） | 作らない。管理者が作り、登録する | 作る |
-| pull request の最後の版の ref | `refs/pull/<number>/head` | `refs/pull/<index>/head` |
+| pull request の最後の先頭のコミットの ref | `refs/pull/<number>/head` | `refs/pull/<index>/head` |
 
 ## 自前で持つ構成に Forgejo を使う理由
 
@@ -78,7 +78,7 @@ flowchart TB
 
 - どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
 - worker の clone と、置き場の多くは、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
-- ただし、置き場の `branches/` と、消えたブランチの版のスナップショットは、git から作り直せない。ここだけはバックアップを取る（[ブランチの履歴](../backend/snapshot.md)）。
+- ただし、置き場の `branches/` と、消えたブランチの先頭のコミットのスナップショットは、git から作り直せない。ここだけはバックアップを取る（[ブランチの履歴](../backend/snapshot.md)）。
 
 ## repository の登録
 

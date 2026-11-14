@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Logiforge のバックエンドの API。
-    全体に共通する決まり（主体と認証、セッション ID、リビジョン、エラー、ページング）は design/api/README.md に書く。
+    全体に共通する決まり（主体と認証、セッション ID、コミット、エラー、ページング）は design/api/README.md に書く。
     要件は docs/ が正本である。
     主文・タイトル・概要の文字数の上限と数え方は、../../docs/tree/README.md に従う。
   license:
@@ -77,7 +77,7 @@ paths:
         '201':
           description: 作った repository
           headers:
-            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
+            Logiforge-Pending-Commit: { $ref: '#/components/headers/PendingCommit' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Repository' }
@@ -106,7 +106,7 @@ paths:
       operationId: getTree
       summary: 木の概要
       parameters:
-        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/Commit'
       responses:
         '200':
           description: 木の概要。根がまだなければ 404
@@ -123,9 +123,9 @@ paths:
       summary: 木または部分木のノード
       description: |
         `root` を指定すると、そのノードを根とする部分木だけを返す。
-        `revision` を指定すると、そのリビジョンの木を返す。
+        `commit` を指定すると、その main のコミットの木を返す。
       parameters:
-        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/Commit'
         - name: root
           in: query
           description: 部分木の根にするノード
@@ -141,9 +141,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [revision, nodes]
+                required: [commit, nodes]
                 properties:
-                  revision: { $ref: '#/components/schemas/Revision' }
+                  commit: { $ref: '#/components/schemas/Commit' }
                   nodes:
                     type: array
                     items: { $ref: '#/components/schemas/Node' }
@@ -173,7 +173,7 @@ paths:
       summary: 木を JSON か Markdown で書き出す
       description: 形は ../../design/api/export.md に従う。
       parameters:
-        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/Commit'
         - name: format
           in: query
           required: true
@@ -197,7 +197,7 @@ paths:
       summary: ノードの詳細
       parameters:
         - $ref: '#/components/parameters/NodeIdPath'
-        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/Commit'
       responses:
         '200':
           description: ノードの詳細
@@ -257,11 +257,11 @@ paths:
       operationId: createApplyRequest
       summary: apply request を作る（client だけ）
       description: |
-        push したブランチから main への pull request を作る。ブランチの先頭が版 1 になる。手順は ../../design/backend/apply-request.md に従う。
+        push したブランチから main への pull request を作る。ブランチの先頭のコミットが、最初の先頭のコミットになる。手順は ../../design/backend/apply-request.md に従う。
         差分が 4 種類の操作として読めなければ、validation_failed で受け付けない。操作は、差分から復元して応答に入れる。
         そのブランチに open の apply request がすでにあれば、validation_failed で受け付けない。
         バックエンドが、作業用の git の複製からブランチを読んで検査する。worker を待たない（../../design/backend/apply-request.md の「作成」）。
-        版のスナップショットは、worker がブランチを取り込んでから読む側に出る。それまで、その版へのレビューは snapshot_pending になる。
+        先頭のコミットのスナップショットは、worker がブランチを取り込んでから読む側に出る。それまで、そのコミットへのレビューは snapshot_pending になる。
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -274,8 +274,8 @@ paths:
               required: [branch]
               properties:
                 branch: { $ref: '#/components/schemas/BranchName' }
-                revision:
-                  $ref: '#/components/schemas/Revision'
+                commit:
+                  $ref: '#/components/schemas/Commit'
                   description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない。指定しなければ、ブランチの今の先頭
                 description:
                   type: string
@@ -284,7 +284,7 @@ paths:
         '201':
           description: 作った apply request
           headers:
-            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
+            Logiforge-Pending-Commit: { $ref: '#/components/headers/PendingCommit' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -311,7 +311,7 @@ paths:
       operationId: updateApplyRequest
       summary: apply request の説明欄を書き換える（client なら、どのセッションからでもよい）
       description: |
-        版の更新は、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request.md）。
+        新しいコミットは、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request.md）。
         この API は、説明欄だけを書き換える。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
@@ -343,8 +343,8 @@ paths:
       description: |
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
         反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
-        今の版のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
-        今の版が GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
+        先頭のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
+        先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
         レビューの鎖が切れていれば、not_open で受け付けない。opener は、close して、同じブランチから作り直す（../../design/backend/merge.md の「レビューの鎖が切れたとき」）。
         reviewer の主体が、apply request を作った主体と同じなら、応答の apply_request.warnings に警告を入れる。
       parameters:
@@ -356,15 +356,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [kind]
+              required: [kind, commit]
               properties:
                 kind: { $ref: '#/components/schemas/ReviewKind' }
-                revision:
-                  $ref: '#/components/schemas/Revision'
-                  description: レビューした版のコミットの SHA。版の正体は SHA である（../../design/backend/apply-request.md）。今の版と違えば version_conflict で受け付けない
-                version:
-                  type: integer
-                  description: レビューした版の番号。revision の代わりに使える。バックエンドが SHA に引き直す。revision と version のどちらか一方を必ず送る
+                commit:
+                  $ref: '#/components/schemas/Commit'
+                  description: レビューした先頭のコミットの SHA（../../design/backend/apply-request.md）。ブランチの今の先頭のコミットと違えば commit_conflict で受け付けない
                 body: { type: string }
                 prompt_revision:
                   type: string
@@ -373,7 +370,7 @@ paths:
         '201':
           description: 付けたレビューと、その後の apply request
           headers:
-            Logiforge-Pending-Revision: { $ref: '#/components/headers/PendingRevision' }
+            Logiforge-Pending-Commit: { $ref: '#/components/headers/PendingCommit' }
           content:
             application/json:
               schema:
@@ -425,7 +422,7 @@ paths:
         - $ref: '#/components/parameters/ApplyRequestId'
       responses:
         '200':
-          description: 今の版の差分に対するレビューの材料。説明欄は含めない
+          description: 先頭のコミットの差分に対するレビューの材料。説明欄は含めない
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewMaterial' }
@@ -464,16 +461,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [revision, counts, items, next_cursor]
+                required: [commit, counts, items, next_cursor]
                 properties:
-                  revision: { $ref: '#/components/schemas/Revision' }
+                  commit: { $ref: '#/components/schemas/Commit' }
                   counts:
                     type: object
                     description: 種類ごとの件数（ページに関わらず全体）
                     additionalProperties: { type: integer }
                   items:
                     type: array
-                    description: 作業の種類の順、次にノードの識別子の順、次に subject_id の順。カーソルは revision に結びつける（../../design/api/README.md のページング）
+                    description: 作業の種類の順、次にノードの識別子の順、次に subject_id の順。カーソルは commit に結びつける（../../design/api/README.md のページング）
                     items: { $ref: '#/components/schemas/WorkItem' }
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
@@ -485,13 +482,13 @@ paths:
       tags: [evidence]
       operationId: getArtifact
       summary: artifact のファイルを読む
-      description: 指定したリビジョン（版や回答のリビジョンも指定できる）の artifacts/ から、file の artifact の中身を読む
+      description: 指定したコミット（main のコミットのほか、apply request の先頭のコミットも指定できる）の artifacts/ から、file の artifact の中身を読む
       parameters:
         - name: sha256
           in: path
           required: true
           schema: { $ref: '#/components/schemas/Sha256' }
-        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/Commit'
       responses:
         '200':
           description: 中身
@@ -647,7 +644,7 @@ paths:
                   items: { $ref: '#/components/schemas/ArtifactInput' }
       responses:
         '201':
-          description: 回答した人への依頼。回答と添付は、回答のリビジョンの artifacts/ に入る
+          description: 回答した人への依頼
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HumanRequest' }
@@ -681,14 +678,14 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: '^hrq_' }
-    Revision:
-      name: revision
+    Commit:
+      name: commit
       in: query
       description: >-
-        読むリビジョン。指定しなければ最新。
-        過去のリビジョンの木は、初めて読むときに worker が作る（../../design/backend/snapshot.md の「木を作るコミット」）。
+        読むコミットの SHA。指定しなければ、今の main のコミット。
+        過去のコミットの木は、初めて読むときに worker が作る（../../design/backend/snapshot.md の「木を作るコミット」）。
         そのため、初めて読むときは、snapshot_pending になることがある。少し待って送り直す。
-      schema: { $ref: '#/components/schemas/Revision' }
+      schema: { $ref: '#/components/schemas/Commit' }
     Cursor:
       name: cursor
       in: query
@@ -713,9 +710,9 @@ components:
       schema: { type: string, minLength: 1, maxLength: 128 }
 
   headers:
-    PendingRevision:
+    PendingCommit:
       description: |
-        書いたものが、待つ時間の上限までに読む側に出なかったときに付ける。値は、読む側に出るのを待っているリビジョン。
+        書いたものが、待つ時間の上限までに読む側に出なかったときに付ける。値は、読む側に出るのを待っているコミット。
         決まりは ../../design/api/writes.md の「書いた直後の読み」に従う
       schema: { type: string }
 
@@ -741,10 +738,10 @@ components:
           description: 木の git リポジトリの URL。CLI は、ここから clone し、ブランチを push する
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
-    Revision:
+    Commit:
       type: string
       minLength: 1
-      description: リビジョン。不透明な文字列として扱う
+      description: コミットの SHA。不透明な文字列として扱う
     NextCursor:
       type: [string, 'null']
     NodeId:
@@ -787,22 +784,22 @@ components:
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
             | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした |
-            | version_conflict | 409 | レビューした版、または更新のもとにした版が、今の版と違う |
+            | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | unavailable | 503 | worker が止まっていて、ブランチを読めない。少し待って送り直す |
-            | snapshot_pending | 503 | 指定したリビジョンのスナップショットが、まだない（worker が取り込んでいないか、木を作っている）。少し待って読み直す |
+            | snapshot_pending | 503 | 指定したコミットのスナップショットが、まだない（worker が取り込んでいないか、木を作っている）。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。repository の登録をサーバの設定で行う構成だけで起きる |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
 
     Tree:
       type: object
-      required: [root_hypothesis_id, root_value, revision, warnings]
+      required: [root_hypothesis_id, root_value, commit, warnings]
       properties:
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
-        revision: { $ref: '#/components/schemas/Revision' }
+        commit: { $ref: '#/components/schemas/Commit' }
         warnings:
           type: array
           description: 反映の手順によらない変更が木にあるときの警告
@@ -872,9 +869,9 @@ components:
           items: { type: string }
     NodeDetail:
       type: object
-      required: [revision, node, children, cited_by]
+      required: [commit, node, children, cited_by]
       properties:
-        revision: { $ref: '#/components/schemas/Revision' }
+        commit: { $ref: '#/components/schemas/Commit' }
         node: { $ref: '#/components/schemas/Node' }
         children:
           type: array
@@ -890,7 +887,7 @@ components:
 
     Verdict:
       type: object
-      required: [id, hypothesis_id, value, report_body, artifacts, citations, submitted_revision]
+      required: [id, hypothesis_id, value, report_body, artifacts, citations, submitted_commit]
       properties:
         id: { type: string, pattern: '^v-' }
         hypothesis_id: { type: string, pattern: '^h-' }
@@ -907,10 +904,10 @@ components:
           description: この検証結果が差し替えた検証結果の識別子
           items: { type: string, pattern: '^v-' }
         apply_request_id: { type: string, pattern: '^apr_' }
-        submitted_revision: { $ref: '#/components/schemas/Revision' }
-        superseded_revision:
+        submitted_commit: { $ref: '#/components/schemas/Commit' }
+        superseded_commit:
           type: [string, 'null']
-          description: 差し替えられたリビジョン。有効な間は null
+          description: 差し替えられた main のコミット。有効な間は null
     Citation:
       oneOf:
         - type: object
@@ -921,11 +918,11 @@ components:
               $ref: '#/components/schemas/Sha256'
               description: artifact の sha256。回答の添付は、ここではなく link の artifact で引用する（../../design/files/artifacts.md）
         - type: object
-          required: [target_kind, node_id, revision]
+          required: [target_kind, node_id, commit]
           properties:
             target_kind: { type: string, const: subtree }
             node_id: { $ref: '#/components/schemas/NodeId' }
-            revision: { $ref: '#/components/schemas/Revision' }
+            commit: { $ref: '#/components/schemas/Commit' }
     Artifact:
       type: object
       required: [kind, name]
@@ -1051,33 +1048,35 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, version, versions, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, state, branch, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
         state: { $ref: '#/components/schemas/ApplyRequestState' }
-        version:
-          type: integer
-          description: 今の差分の版
-        versions:
+        head_commit:
+          $ref: '#/components/schemas/Commit'
+          description: ブランチの今の先頭のコミット。レビューと反映は、このコミットを SHA で指す
+        head_commits:
           type: array
-          description: 版ごとの、差分を書いたセッション
+          description: ブランチに push された先頭のコミットの一覧（古い順）。worker が見つけた時刻と、書いたセッションを持つ（../../design/backend/apply-request.md の「先頭のコミット」）
           items:
             type: object
-            required: [version, revision, base_revision]
+            required: [commit, base_commit, seen_at, author_session_id]
             properties:
-              version: { type: integer }
-              revision:
-                $ref: '#/components/schemas/Revision'
-                description: 版として取り込んだコミット
-              base_revision:
-                $ref: '#/components/schemas/Revision'
-                description: そのコミットと main の分かれた点。版の差分は、ここからの差分である
+              commit:
+                $ref: '#/components/schemas/Commit'
+              base_commit:
+                type: string
+                description: そのコミットと main の分かれた点。差分は、ここからの差分である。worker がまだ取り込んでいなければ空
+              seen_at:
+                type: [string, 'null']
+                format: date-time
+                description: worker が、そのコミットをブランチの先頭として見つけた時刻（push のおおよその時刻）。worker がまだ取り込んでいなければ null
               author_session_id:
                 type: [string, 'null']
-                description: 版を書いたセッション。版のコミットの trailer の自己申告で、なければ null（../../design/files/revisions.md）
+                description: そのコミットを書いたセッション。コミットの trailer の自己申告で、なければ null（../../design/files/revisions.md）
         description: { type: string }
         operations:
           type: array
@@ -1098,31 +1097,36 @@ components:
           type: array
           description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった（../../design/backend/merge.md）
           items: { type: string }
-        merged_revision: { type: [string, 'null'] }
+        merged_commit:
+          type: [string, 'null']
+          description: 反映した main のコミット。反映されていなければ null
     ReviewKind:
       type: string
       enum: [approve, request_changes, comment]
     Review:
       type: object
-      required: [id, kind, version, revision, reviewer_session_id, valid]
+      required: [id, kind, commit, reviewer_session_id, valid]
       properties:
         id: { type: string, pattern: '^rev_' }
         kind: { $ref: '#/components/schemas/ReviewKind' }
-        version: { type: integer }
-        revision:
-          $ref: '#/components/schemas/Revision'
-          description: レビューした版のコミット
+        commit:
+          $ref: '#/components/schemas/Commit'
+          description: レビューした先頭のコミット
         body: { type: string }
         reviewer_session_id: { type: string }
-        prompt_revision: { type: string }
+        prompt_revision:
+          type: string
+          description: 使ったプロンプトのリビジョン。木のコミットではない
         valid:
           type: boolean
-          description: 今の版に対するレビューなら真
+          description: ブランチの今の先頭のコミットに対するレビューなら真
     MergeFailure:
       type: object
-      required: [version, reason, detail]
+      required: [commit, reason, detail]
       properties:
-        version: { type: integer }
+        commit:
+          $ref: '#/components/schemas/Commit'
+          description: 反映しようとした先頭のコミット
         reason:
           type: string
           enum: [stale_target, invariant_violation, conflict, snapshot_pending]
@@ -1131,11 +1135,10 @@ components:
     ReviewMaterial:
       type: object
       description: 材料に含めるものは ../../docs/apply-request/review.md に従う
-      required: [apply_request_id, version, revision, operations, targets, ancestors, siblings, citations]
+      required: [apply_request_id, commit, operations, targets, ancestors, siblings, citations]
       properties:
         apply_request_id: { type: string, pattern: '^apr_' }
-        version: { type: integer }
-        revision: { $ref: '#/components/schemas/Revision' }
+        commit: { $ref: '#/components/schemas/Commit' }
         operations:
           type: array
           description: 差分そのもの
@@ -1154,7 +1157,7 @@ components:
           items: { $ref: '#/components/schemas/Story' }
         citations:
           type: array
-          description: 引用している部分木（固定したリビジョンのもの）と artifact
+          description: 引用している部分木（引用したコミットのもの）と artifact
           items:
             type: object
             required: [citation]
@@ -1188,9 +1191,9 @@ components:
           description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である
     Completion:
       type: object
-      required: [revision, root_value, decided, remaining_work, done]
+      required: [commit, root_value, decided, remaining_work, done]
       properties:
-        revision: { $ref: '#/components/schemas/Revision' }
+        commit: { $ref: '#/components/schemas/Commit' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         decided:
           type: boolean
@@ -1233,20 +1236,20 @@ components:
 
     NodeHistoryEntry:
       type: object
-      required: [revision, committed_at, apply_request_id, session_ids, reflected]
+      required: [commit, committed_at, apply_request_id, session_ids, reflected]
       description: main のコミットの trailer から作る（design/files/revisions.md）
       properties:
-        revision: { $ref: '#/components/schemas/Revision' }
+        commit: { $ref: '#/components/schemas/Commit' }
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。最初のリビジョンと、反映によらないコミットでは null
+          description: 反映した apply request。最初のコミットと、反映によらないコミットでは null
         session_ids:
           type: array
           items: { type: string }
         reflected:
           type: boolean
-          description: 反映の記録（Logiforge-Apply-Request:）があるか。false なら、反映の手順によらない変更である（最初のリビジョンを除く）
+          description: 反映の記録（Logiforge-Apply-Request:）があるか。false なら、反映の手順によらない変更である（最初のコミットを除く）
     NodeHistoryPage:
       type: object
       required: [items, next_cursor]

@@ -34,7 +34,7 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 ## レビュー
 
 - レビューを記録する。
-  - 種類（`approve`、`request_changes`、`comment`）、本文、レビューした版のコミット
+  - 種類（`approve`、`request_changes`、`comment`）、本文、レビューした先頭のコミット
   - reviewer のセッションと、使ったプロンプトのリビジョン
 - 提案ごとのレビューを、記録した順に読む。
 

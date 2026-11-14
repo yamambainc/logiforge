@@ -29,7 +29,7 @@ sequenceDiagram
 ```
 
 - ひな形と `check` は、手元のファイルだけを扱う（[ひな形と check](local.md)）。
-- 版を更新するときは、同じブランチに push するだけである。新しい先頭が、新しい版になる（[版](../backend/apply-request.md)）。
+- apply request を更新するときは、同じブランチに push するだけである。push された先頭のコミットが、新しい先頭のコミットになる（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
 - apply request は、GitForge の pull request である。GitForge の画面でも見られる。
 
 ## 認証
@@ -58,9 +58,9 @@ sequenceDiagram
 ## セッション
 
 - 書き込みのコマンドは、セッション ID を必ず送る（[セッション ID](../api/README.md)）。
-- 版を書いたセッションは、版のコミットのメッセージの trailer `Logiforge-Session-Id:` に書く（[セッション](../files/revisions.md)）。
+- コミットを書いたセッションは、先頭のコミットのメッセージの trailer `Logiforge-Session-Id:` に書く（[セッション](../files/revisions.md#セッション)）。
   - `logiforge commit` は、`git commit` にこの trailer を付けて呼ぶ。`git commit --trailer "Logiforge-Session-Id: <ID>"` と同じである。
-  - `check` は、ブランチの先頭のコミットに trailer がなければ、警告する。trailer のない版は `approve` できない。
+  - `check` は、ブランチの先頭のコミットに trailer がなければ、警告する。trailer のない先頭のコミットは `approve` できない。
 - セッション ID は、次の順に探す。見つからなければ、書き込みのコマンドは失敗する。
   1. フラグ `--session`
   2. 環境変数 `LOGIFORGE_SESSION_ID`

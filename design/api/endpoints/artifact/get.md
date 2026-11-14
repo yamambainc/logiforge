@@ -1,7 +1,7 @@
 # artifact のファイルを読む
 
 利用者は WebUI から、reviewer は CLI から、artifact のファイルの中身を読むときに呼ぶ。
-反映の前のファイルは、版のリビジョンを指定して読む。回答の添付は、`getAnswerAttachment` で読む。
+反映の前のファイルは、apply request の先頭のコミットを指定して読む。回答の添付は、`getAnswerAttachment` で読む。
 
 ## 呼び出し
 
@@ -10,8 +10,8 @@
 
 ## すること
 
-- 指定したリビジョンの `artifacts/sha256/` から、ファイルの中身を返す。
-- リビジョンを指定しなければ、今の `main` から読む。
+- 指定したコミットの `artifacts/sha256/` から、ファイルの中身を返す。
+- コミットを指定しなければ、今の `main` から読む。
 - link の artifact の先は、取りに行かない。
 
 ## 関係する要件

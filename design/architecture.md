@@ -43,7 +43,7 @@ flowchart TB
 - 点線は実装を表す。下のアダプタが、上のポートを実装する。
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
 - Logiforge のプロセスは、バックエンドと [worker](backend/worker.md) の 2 つである。どちらも同じバイナリで、別のコンテナで動く（[動かし方](deploy.md)）。
-  - バックエンドは、worker の [内部 API](backend/worker-api.md) で、worker を起こし、過去のリビジョンの木を作ってもらう。内部 API は、バックエンドの中の worker のクライアントが直接呼ぶ。worker は、ポートにしない（[ポート](backend/ports/README.md)）。
+  - バックエンドは、worker の [内部 API](backend/worker-api.md) で、worker を起こし、過去の `main` のコミットの木を作ってもらう。内部 API は、バックエンドの中の worker のクライアントが直接呼ぶ。worker は、ポートにしない（[ポート](backend/ports/README.md)）。
   - バックエンドは、apply request の作成のときだけ、作業用の git の複製から GitForge の git を読んで検査する（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。
   - 図の GitForge アダプタから GitForge への線（「API と git の読み」）は、GitForge の API の呼び出しと、この git の読みの両方を表す。git の URL と、読むだけの資格情報は、GitForge アダプタが渡す。
   - worker は、GitForge の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
@@ -85,7 +85,7 @@ flowchart TB
   - どの GitForge を使うかは、[アダプタ](adapters/README.md) に書く。
 - apply request は、GitForge の pull request に寄せる（[apply request と pull request](backend/apply-request.md)）。
   - 木を変えるのは、利用者が push したブランチと、バックエンドが API で行う pull request の merge である。サーバの側が git に書くのは、merge と repository の用意だけである。
-  - なぜ：版、反映、衝突の扱いを、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
+  - なぜ：ブランチの先頭のコミット、反映、衝突の扱いを、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
   - なぜ git か：木を git リポジトリで管理するという要件（[木の置き場所](../docs/architecture/README.md)）を満たし、変更の履歴と任意の時点の木を、git の仕組みでそのまま扱うため。
 - 認証も、ポートにする（[認証](backend/ports/authentication.md)）。
   - なぜ：主体の正本が GitForge にあり、GitForge の違いをアダプタの差し替えだけで吸収するため。

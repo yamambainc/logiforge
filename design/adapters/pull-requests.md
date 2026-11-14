@@ -10,10 +10,10 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 | 提案 | 利用者のブランチから `main` への pull request。書き込み主体が作る |
 | 提案の記録（識別子と、作ったときの先頭） | 書き込み主体が、pull request を作った直後に書く最初のコメント |
 | 説明欄 | pull request の本文 |
-| 版 | pull request の head のコミット（[版](../backend/apply-request.md)） |
+| 先頭のコミット | pull request の head のコミット（[先頭のコミット](../backend/apply-request.md#先頭のコミット)） |
 | 反映する | pull request の merge。squash を選び、head の SHA とメッセージを渡す |
 | close | pull request を close し、書き込み主体が close の記録のコメントを書く |
-| レビュー | コメントの種類の review。版のコミットを `commit_id` に入れる |
+| レビュー | コメントの種類の review。レビューした先頭のコミットを `commit_id` に入れる |
 | 人への依頼 | issue。書き込み主体が、起票の直後に記録のコメントを書く |
 | 回答 | 書き込み主体が、利用者の回答として書く記録のコメント |
 | 一覧のカーソル | pull request と issue の番号。時刻は使わない |
@@ -28,12 +28,13 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 | `Logiforge-Record:` | 書くとき | ほかの trailer |
 |---|---|---|
-| `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:`、`Logiforge-Principal:`（提案を作った主体） |
+| `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:`（作ったときの先頭のコミット）、`Logiforge-Principal:`（提案を作った主体） |
 | `close` | 提案を close したとき | `Logiforge-Apply-Request:`、`Logiforge-Session-Id:`。理由は本文 |
-| `merge_failure` | 反映できなかったとき | `Logiforge-Apply-Request:`、`Logiforge-Merge-Failure:`（失敗の理由）、`Logiforge-Revision:`（反映しようとした版のコミット）。詳しい説明は本文 |
+| `merge_failure` | 反映できなかったとき | `Logiforge-Apply-Request:`、`Logiforge-Merge-Failure:`（失敗の理由）、`Logiforge-Revision:`（反映しようとした先頭のコミット）。詳しい説明は本文 |
 | `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Principal:`（起票した主体）、`Logiforge-Session-Id:`。依頼の本文は本文 |
 | `answer` | 回答を受け付けたとき | `Logiforge-Human-Request:`、`Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
 
+- trailer の名前は、GitForge に残った記録を読めるように変えない。`Revision` の付く名前も、コミットの SHA を持つ。
 - `Logiforge-Principal:` は、API の要求を送った主体である。
   - なぜ：GitForge の上では、書き込み主体がすべてを書くので、提案を作った主体や reviewer が、GitForge の作者からはわからないから。反映の手順で、reviewer と提案を作った主体が同じかを確かめるのに使う（[反映の手順](../backend/merge.md)）。
 
@@ -70,7 +71,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - `Logiforge-Apply-Request:`（提案の識別子）
   - `Logiforge-Review-Id:`（レビューの識別子）
   - `Logiforge-Previous-Review:`（書いた時点で、その提案の最後のレビューの識別子。最初のレビューでは `-`）
-  - `Logiforge-Review-Revision:`（レビューした版のコミット。GitForge のレビューの `commit_id` と同じ。違うものは数えない）
+  - `Logiforge-Review-Revision:`（レビューした先頭のコミット。GitForge のレビューの `commit_id` と同じ。違うものは数えない）
   - `Logiforge-Principal:`（reviewer の主体）
   - `Logiforge-Review-Kind: approve|request_changes|comment`
   - `Logiforge-Session-Id:`
@@ -80,7 +81,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - 鎖の役目は、途中のレビューが丸ごと消されたことを見つけることだけである。
   - 各レビューの `Logiforge-Previous-Review:` は、それより前に数えたレビューのどれか（最初は `-`）であればよい。
     - なぜ：同時に来た 2 つのレビューが、同じレビューを指すのは正しいから。直前のものに限ると、攻撃がなくても鎖が切れたままになる。
-  - 書き込み主体のレビューに数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子や版が `commit_id` と違うもの、識別子が重なるものは、どれも書き換えられたものである。
+  - 書き込み主体のレビューに数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子やコミットが `commit_id` と違うもの、識別子が重なるものは、どれも書き換えられたものである。
   - 鎖が切れていれば、バックエンドは反映しない。レビューも足さない（[反映の手順](../backend/merge.md)）。
 
 ## 書き込み主体が書いたものだけを信じる

@@ -31,7 +31,7 @@ git を読んで、スナップショットを作り続ける worker を、動�
 
 - バックエンドは、GitForge に書いたあとに、worker を起こす（[worker の内部 API](worker-api.md)）。
 - 起こされなくても、設定した間隔ごとに巡回する。
-  - 利用者の push を版として見つけるのは、この巡回である。間隔は、版が読む側に出るまでの遅れになる。1 分ほどにする。
+  - 利用者が push した先頭のコミットを見つけるのは、この巡回である。間隔は、push された先頭のコミットが読む側に出るまでの遅れになる。1 分ほどにする。
   - `git ls-remote` は、GitForge の API の上限には数えないことが多い。ただし、git の操作にも、乱用を防ぐ制限がある。
 
 ## すること
@@ -55,10 +55,10 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
    - 反映の記録（`Logiforge-Apply-Request:`）がある（[記録の形式](../files/revisions.md)）。
    - 木の不変条件が成り立つ（[差分の検査](checks.md) の「head の木で確かめること」）。ふだんの取り込みのときだけ、コミットごとに確かめる。初めての取り込みでは、最後のコミットでまとめて確かめる（[取り込みの 2 つの形](snapshot.md#取り込みの-2-つの形)）。
    - 反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていない（[対象ノードの変化](merge.md)）。
-     - base は、反映した版のコミット（反映のコミットの `Logiforge-Version:`）と、反映の直前の `main` の分かれた点である。worker は、自分の clone の `git merge-base` で求める。
+     - base は、反映した先頭のコミット（反映のコミットの `Logiforge-Version:`）と、反映の直前の `main` の分かれた点である。worker は、自分の clone の `git merge-base` で求める。
      - 比べる範囲は、ノードの変更の一覧のうち、base の番号より大きく、その反映のコミットの番号より小さいものである。反映のコミット自身は除く。
      - 対象ノードは、反映のコミットで変わったファイルから求める。検証結果と背景情報はその仮説、新しいストーリーは親の仮説、inactive 化はそのストーリーである。
-     - 版のコミットは、ブランチが消えても、`refs/pull/*/head` を fetch して読む。版のコミットか base が見つからなければ、確かめられなかったことを警告する（`overlap_unchecked`）。
+     - 反映した先頭のコミットは、ブランチが消えても、`refs/pull/*/head` を fetch して読む。そのコミットか base が見つからなければ、確かめられなかったことを警告する（`overlap_unchecked`）。
    - 警告の種類は、`no_apply_request`、新しく破れた不変条件の規則、`overlap`、`overlap_unchecked`、`main_rewritten`（[latest](snapshot.md)）である。
    - なぜ：`main` の保護が外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
 7. `repositories` を書き直す。
@@ -92,7 +92,7 @@ repository ごとに、1 つずつ順に処理する。repository が違えば�
 
 ## worker が止まっているとき
 
-- 読むと、止まる前の木と版が返る。レビューと人への依頼は、GitForge から読むので、新しいものが返る。
+- 読むと、止まる前の木と、apply request の先頭のコミットが返る。レビューと人への依頼は、GitForge から読むので、新しいものが返る。
 - apply request の作成は、ブランチを読めないので、`unavailable` で止まる。
 - 反映は、今の `main` のスナップショットがないと検査できないので、`snapshot_pending` で止まる（[反映の手順](merge.md)）。
 - 木は壊れない。worker が戻れば、止まっていた間のコミットに追いつく。

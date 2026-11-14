@@ -53,7 +53,8 @@ artifacts/
 - `artifacts` は、レポートが参照する artifact の一覧である（[artifact の置き方](artifacts.md)）。
 - `citations` は、引用の一覧である。
   - artifact の引用は、`sha256` で書く。
-  - 部分木の引用は、ノードの識別子と commit SHA の組で書く（[リビジョンとコミット](revisions.md)）。
+  - 部分木の引用は、ノードの識別子と、`main` のコミットの SHA（キー `commit`）の組で書く（[引用で固定するコミット](revisions.md#引用で固定するコミット)）。
+  - `commit` の代わりに `revision` と書いた引用も読む。なぜ：git の履歴にある検証結果のファイルを書き換えずに読めるようにするため。
 
 ## 有効な検証結果
 

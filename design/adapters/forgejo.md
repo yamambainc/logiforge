@@ -30,7 +30,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | repository を列挙する | `GET /orgs/{org}/repos` |
 | repository を用意する | 下の「repository の用意」 |
 | 提案を作る | `POST /repos/{owner}/{repo}/pulls` |
-| 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（版のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
+| 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
 | レビュー | `POST /repos/{owner}/{repo}/pulls/{index}/reviews` に、`event: COMMENT`、`commit_id`、本文（trailer を含む）を渡す |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |
@@ -55,7 +55,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - `enable_merge_whitelist: true`、`merge_whitelist_usernames`：書き込み主体だけが merge できる。
 - `block_on_outdated_branch: false`：`main` に追いついていることを merge の条件にしない。
 
-- 版のコミットは、`refs/pull/<index>/head` で、最後の版が取れる（[ブランチの履歴](../backend/snapshot.md)）。
+- pull request の最後の先頭のコミットは、`refs/pull/<index>/head` で取れる（[ブランチの履歴](../backend/snapshot.md)）。
 
 ## 確かめたこと
 

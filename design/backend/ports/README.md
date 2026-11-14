@@ -13,7 +13,7 @@
 
 - バックエンドは、データを保持しない。そのため、サーバの状態のポートはない（[状態を持たない](../README.md)）。
 - git に書くのは、GitForge のポートの「repository を用意する」と「反映する」だけである。どちらも、GitForge の pull request と repository の操作である。
-  - なぜ：版や `main` の更新を、GitForge の仕組みに任せるため。バックエンドは、git の ref を自前で扱わない。
+  - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の仕組みに任せるため。バックエンドは、git の ref を自前で扱わない。
 - [worker](../worker.md) は、ポートにしない。バックエンドは、worker のクライアントから、[worker の内部 API](../worker-api.md) を直接呼ぶ。
   - なぜ：worker は、どの構成でも同じもので、差し替える先がないから。サーバの状態のポートを置かないのと、同じ理由である。
 - apply request の作成で git を読む作業用の複製も、ポートにしない（[作業用の git の複製](../apply-request.md#作業用の-git-の複製)）。git は、どの GitForge でも、同じ smart HTTP の fetch で読めるからである。違うのは、URL と資格情報だけで、それは GitForge アダプタが渡す。
