@@ -16,6 +16,7 @@ import (
 const (
 	PathReadBranch = "/internal/v1/read-branch"
 	PathWake       = "/internal/v1/wake"
+	PathBuildTree  = "/internal/v1/build-tree"
 	PathHealthz    = "/healthz"
 )
 
@@ -26,6 +27,12 @@ const HeaderSnapshotPending = "Logiforge-Snapshot-Pending"
 type ReadBranchRequest struct {
 	Repository string `json:"repository"`
 	Branch     string `json:"branch"`
+}
+
+// BuildTreeRequest は、「木を作る」の要求である。
+type BuildTreeRequest struct {
+	Repository string `json:"repository"`
+	Revision   string `json:"revision"`
 }
 
 // WakeRequest は、「起こす」の要求である。
@@ -57,6 +64,25 @@ func (w *Worker) Handler(key string) http.Handler {
 		default:
 			rw.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(rw).Encode(res)
+		}
+	})
+	mux.HandleFunc("POST "+PathBuildTree, func(rw http.ResponseWriter, r *http.Request) {
+		var req BuildTreeRequest
+		if !decode(rw, r, &req) {
+			return
+		}
+		err := w.BuildTree(r.Context(), req.Repository, req.Revision)
+		switch {
+		case errors.Is(err, ports.ErrNotFound):
+			http.Error(rw, "not found", http.StatusNotFound)
+		case errors.Is(err, ErrSnapshotPending):
+			rw.Header().Set(HeaderSnapshotPending, "true")
+			http.Error(rw, "snapshot pending", http.StatusServiceUnavailable)
+		case err != nil:
+			w.cfg.Log.Error("木を作れない", "repository", req.Repository, "revision", req.Revision, "err", err)
+			http.Error(rw, "unavailable", http.StatusServiceUnavailable)
+		default:
+			rw.WriteHeader(http.StatusNoContent)
 		}
 	})
 	mux.HandleFunc("POST "+PathWake, func(rw http.ResponseWriter, r *http.Request) {

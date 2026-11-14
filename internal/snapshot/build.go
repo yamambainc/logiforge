@@ -18,113 +18,28 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"
 
-// BuildMain は、main のコミットのスナップショットを作る。parent は、first-parent のスナップショット（最初のリビジョンでは nil）。
+// BuildMain は、main のコミットの記録と木を、一度に作る。parent は、first-parent のスナップショット（最初のリビジョンでは nil）。
 // files は、そのコミットの木のファイルである。artifact は中身か SHA256 を持つ。
-// 親があるときは、gitx の NextFiles で、親のファイルに変わったパスだけを重ねて作る。
+// 親から変わったパスは、親の木のファイルと比べて求める。新しく破れた不変条件も、親の木と比べて警告にする。
+// worker は、Index と BuildTree で、木を作るコミットを選ぶ（design/backend/snapshot.md）。これは、その 1 コミット分をまとめたものである。
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
-	t := tree.Build(files)
-	vals := tree.Compute(t)
-	m := &Main{FormatVersion: FormatVersion, Commit: Commit{
-		Revision:    info.Revision,
-		Number:      1,
-		Kind:        KindMain,
-		CommittedAt: info.CommittedAt.UTC(),
-		Trailers:    info.Trailers,
-	}}
+	x := NewIndex()
 	var parentFiles tree.Files
+	var parentBroken []tree.Violation
 	if parent != nil {
-		p := parent.Commit.Revision
-		m.Commit.Parent = &p
-		m.Commit.Number = parent.Commit.Number + 1
+		x = IndexFromTree(&parent.Tree)
 		var err error
 		if parentFiles, err = parent.Tree.Files(); err != nil {
 			return nil, err
 		}
-	}
-
-	// ノードと、そのファイル。
-	m.Tree.Nodes = map[string]*Node{}
-	owner := map[string]*Node{} // ディレクトリから、ファイルを持つノードを引く
-	for _, id := range sortedKeys(t.Hypotheses) {
-		h := t.Hypotheses[id]
-		n := &Node{ID: id, Kind: NodeHypothesis, Dir: h.Dir, Value: vals.Hypothesis[id].Ptr(),
-			Leaf: vals.Leaf[id], NeedsReconsideration: vals.NeedsReconsideration[id],
-			Inactive: tree.HypothesisInactive(h), Evidence: vals.Evidence[id]}
-		if h.Parent != nil {
-			n.Parent = h.Parent.ID
-		}
-		m.Tree.Nodes[id] = n
-		owner[h.Dir] = n
-		owner[h.Dir+"/"+tree.VerdictsDir] = n
-	}
-	for _, id := range sortedKeys(t.Stories) {
-		s := t.Stories[id]
-		n := &Node{ID: id, Kind: NodeStory, Dir: s.Dir, Parent: s.Parent.ID, Value: vals.Story[id].Ptr(),
-			Inactive: tree.StoryInactive(s), Evidence: vals.Evidence[id]}
-		m.Tree.Nodes[id] = n
-		owner[s.Dir] = n
-	}
-	for _, p := range sortedKeys(files) {
-		f := files[p]
-		switch {
-		case strings.HasPrefix(p, tree.ArtifactsDir+"/"):
-			m.Tree.Artifacts = append(m.Tree.Artifacts, fromTreeFile(f, true))
-		case fileKind(owner[path.Dir(p)], p) != "":
-			n := owner[path.Dir(p)]
-			n.Files = append(n.Files, fromTreeFile(f, false))
-		default:
-			m.Tree.Other = append(m.Tree.Other, fromTreeFile(f, false))
-		}
-	}
-
-	// 親から直接変わったファイルと、ノードの変更の一覧。
-	changed := tree.ChangedPaths(parentFiles, files)
-	affected := map[string]bool{}
-	for _, p := range changed {
-		n := owner[path.Dir(p)]
-		kind := fileKind(n, p)
-		if kind == "" {
-			continue
-		}
-		m.Commit.Changes = append(m.Commit.Changes, NodeChange{Node: n.ID, File: kind, Path: p})
-		for _, id := range affectedNodes(t, n.ID, kind) {
-			affected[id] = true
-		}
-	}
-	rev := Rev{Number: m.Commit.Number, Revision: info.Revision}
-	for id, n := range m.Tree.Nodes {
-		if parent != nil {
-			if pn := parent.Tree.Nodes[id]; pn != nil {
-				n.Changes = append(n.Changes, pn.Changes...)
-			}
-		}
-		if affected[id] {
-			n.Changes = append(n.Changes, rev)
-		}
-		if n.Changes == nil {
-			n.Changes = []Rev{}
-		}
-	}
-
-	// 警告。不変条件は、このコミットで新しく破れたものだけを警告にする。前から破れているものは Tree.Broken に持つ。
-	ar := trailer(info.Trailers, TrailerApplyRequest)
-	noAR := ar == "" && parent != nil && trailer(info.Trailers, TrailerInit) == ""
-	if noAR {
-		m.Commit.Warnings = append(m.Commit.Warnings, tree.Violation{Rule: RuleNoApplyRequest, Node: info.Revision, Detail: "反映の記録のないコミット"})
-	}
-	m.Tree.Broken = tree.Check(t)
-	var parentBroken []tree.Violation
-	if parent != nil {
 		parentBroken = parent.Tree.Broken
 	}
-	newly, _ := tree.NewlyBroken(parentBroken, m.Tree.Broken)
-	m.Commit.Warnings = append(m.Commit.Warnings, newly...)
-
-	if parent != nil {
-		m.Tree.History = append(m.Tree.History, parent.Tree.History...)
-	}
-	m.Tree.History = append(m.Tree.History, HistoryEntry{Number: m.Commit.Number, Revision: info.Revision, ApplyRequest: ar, NoApplyRequest: noAR, NewlyBroken: len(newly) > 0})
-	return m, nil
+	c := x.Record(info, tree.ChangedPaths(parentFiles, files))
+	t := BuildTree(files, x)
+	newly, _ := tree.NewlyBroken(parentBroken, t.Broken)
+	x.AddNewlyBroken(&c, newly...)
+	t.History = append([]HistoryEntry(nil), x.History...)
+	return &Main{FormatVersion: FormatVersion, Commit: c, Tree: *t}, nil
 }
 
 // BuildBranch は、ブランチの先頭のコミットのスナップショットを作る。base は main と分かれた点のコミットの SHA である。
@@ -273,36 +188,6 @@ func fileKind(n *Node, p string) FileKind {
 		return FileInactivated
 	}
 	return ""
-}
-
-// affectedNodes は、ノードのファイルが変わったときに、「変わった」とみなすノードを返す（design/backend/merge.md の「対象ノードの変化」）。
-//   - 仮説のファイル：その仮説
-//   - story.md：そのストーリーと、親の仮説
-//   - inactivated.md：そのストーリーと、親の仮説と、子孫のすべてのノード
-func affectedNodes(t *tree.Tree, id string, kind FileKind) []string {
-	switch kind {
-	case FileHypothesis, FileBackground, FileVerdict:
-		return []string{id}
-	case FileStory:
-		s := t.Stories[id]
-		return []string{id, s.Parent.ID}
-	case FileInactivated:
-		s := t.Stories[id]
-		out := []string{id, s.Parent.ID}
-		var walk func(s *tree.Story)
-		walk = func(s *tree.Story) {
-			for _, h := range s.Hypotheses {
-				out = append(out, h.ID)
-				for _, c := range h.Stories {
-					out = append(out, c.ID)
-					walk(c)
-				}
-			}
-		}
-		walk(s)
-		return out
-	}
-	return nil
 }
 
 func trailer(ts []Trailer, key string) string {

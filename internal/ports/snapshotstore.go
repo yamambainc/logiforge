@@ -35,6 +35,9 @@ type SnapshotStore interface {
 
 	// ReadBranch は、worker にブランチを読んでもらう。worker に頼めなければ ErrUnavailable。
 	ReadBranch(ctx context.Context, repo, branch string) (BranchRead, error)
+	// BuildTree は、worker に、main のコミット sha の木を作ってもらう。上限まで待つ。
+	// 記録がなければ ErrNotFound、上限までに終わらなければ ErrSnapshotPending、worker に頼めなければ ErrUnavailable。
+	BuildTree(ctx context.Context, repo, sha string) error
 	// Wake は、worker に巡回を始めてもらう。失敗は返さない。
 	Wake(ctx context.Context, repo string)
 }

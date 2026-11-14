@@ -139,6 +139,31 @@ func (a *Adapter) ReadBranch(ctx context.Context, repo, branch string) (ports.Br
 	return ports.BranchRead{Head: res.Head, Base: res.Base}, nil
 }
 
+// BuildTree は、worker に「木を作る」を頼む。応答がなければ、1 度だけ送り直す。
+func (a *Adapter) BuildTree(ctx context.Context, repo, sha string) error {
+	var status int
+	var header http.Header
+	var err error
+	for try := 0; try < 2; try++ {
+		status, header, err = a.postHeader(ctx, worker.PathBuildTree, worker.BuildTreeRequest{Repository: repo, Revision: sha}, nil)
+		if err == nil && header.Get(worker.HeaderSnapshotPending) != "" {
+			return ports.ErrSnapshotPending
+		}
+		if err == nil && status != http.StatusServiceUnavailable {
+			break
+		}
+	}
+	switch {
+	case err != nil:
+		return fmt.Errorf("%w: %v", ports.ErrUnavailable, err)
+	case status == http.StatusNotFound:
+		return ports.ErrNotFound
+	case status != http.StatusNoContent && status != http.StatusOK:
+		return fmt.Errorf("%w: worker が %d を返した", ports.ErrUnavailable, status)
+	}
+	return nil
+}
+
 // Wake は、worker を起こす。失敗は無視する。
 func (a *Adapter) Wake(ctx context.Context, repo string) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

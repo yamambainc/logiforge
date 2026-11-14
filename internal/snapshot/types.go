@@ -13,7 +13,7 @@ import (
 
 // FormatVersion は、スナップショットの形の版である。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
-const FormatVersion = 4
+const FormatVersion = 5
 
 // Kind は、コミットの種類である。
 type Kind string
