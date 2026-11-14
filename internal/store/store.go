@@ -142,7 +142,9 @@ func BranchKey(repo, branch string) string {
 
 // BranchSnapshotKey は、ブランチの先頭のスナップショットのキーである。コミットの記録と差分を、1 つにまとめて置く。
 // 消えたブランチの版は git から作り直せないので、版の外に置き、中に自分の形の版を持たせる。
-func BranchSnapshotKey(repo, sha string) string { return KeepPrefix + repo + "/branch-snapshots/" + sha }
+func BranchSnapshotKey(repo, sha string) string {
+	return KeepPrefix + repo + "/branch-snapshots/" + sha
+}
 
 // BranchIndexKey は、履歴のあるブランチの名前の一覧のキーである。消えたブランチを見つけるのに使う。
 func BranchIndexKey(repo string) string { return KeepPrefix + repo + "/branch-index" }
