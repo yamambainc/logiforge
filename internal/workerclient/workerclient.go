@@ -56,7 +56,7 @@ func (c *Client) BuildTree(ctx context.Context, repo, sha string) error {
 	var header http.Header
 	var err error
 	for try := 0; try < 2; try++ {
-		status, header, err = c.post(ctx, worker.PathBuildTree, worker.BuildTreeRequest{Repository: repo, Revision: sha})
+		status, header, err = c.post(ctx, worker.PathBuildTree, worker.BuildTreeRequest{Repository: repo, Commit: sha})
 		if err == nil && header.Get(worker.HeaderSnapshotPending) != "" {
 			return ports.ErrSnapshotPending
 		}

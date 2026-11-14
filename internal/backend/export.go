@@ -9,14 +9,14 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
-// ExportFormat は、書き出しの JSON の形の名前である。形を変えるときは、版を上げる。
-const ExportFormat = "logiforge.export.v1"
+// ExportFormat は、書き出しの JSON の形の名前である。形を変えるときは、名前の末尾の番号（v1）を上げる。
+const ExportFormat = "logiforge.export.v2"
 
 // Export は、JSON で書き出した木である（design/api/export.md）。
 type Export struct {
 	Format           string          `json:"format"`
 	Repository       string          `json:"repository"`
-	Revision         string          `json:"revision"`
+	Commit           string          `json:"commit"`
 	RootHypothesisID string          `json:"root_hypothesis_id"`
 	Nodes            []Node          `json:"nodes"`
 	Verdicts         []ExportVerdict `json:"verdicts"`
@@ -47,7 +47,7 @@ func (b *Backend) ExportTree(ctx context.Context, c Caller, repo, revision strin
 	if root == nil {
 		return Export{}, fail(CodeNotFound, "根の仮説がない")
 	}
-	e := Export{Format: ExportFormat, Repository: repo, Revision: v.revision(), RootHypothesisID: root.ID,
+	e := Export{Format: ExportFormat, Repository: repo, Commit: v.revision(), RootHypothesisID: root.ID,
 		Nodes: v.subtree(root.ID, -1, claims{}), Verdicts: []ExportVerdict{}}
 	for _, n := range e.Nodes {
 		h, ok := n.(*Hypothesis)
@@ -74,7 +74,7 @@ func (b *Backend) ExportTree(ctx context.Context, c Caller, repo, revision strin
 // Markdown は、書き出した木を Markdown にする（design/api/export.md の「Markdown」）。
 func (e Export) Markdown() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n- リビジョン：%s\n- 根の仮説：%s\n", e.Repository, e.Revision, e.RootHypothesisID)
+	fmt.Fprintf(&b, "# %s\n\n- コミット：%s\n- 根の仮説：%s\n", e.Repository, e.Commit, e.RootHypothesisID)
 	verdicts := map[string][]ExportVerdict{}
 	for _, v := range e.Verdicts {
 		verdicts[v.HypothesisID] = append(verdicts[v.HypothesisID], v)
@@ -117,7 +117,7 @@ func (e Export) Markdown() string {
 				}
 				for _, c := range v.Citations {
 					if c.TargetKind == "subtree" {
-						fmt.Fprintf(&b, "- 引用：部分木 %s（%s）\n", c.NodeID, c.Revision)
+						fmt.Fprintf(&b, "- 引用：部分木 %s（%s）\n", c.NodeID, c.Commit)
 					} else {
 						fmt.Fprintf(&b, "- 引用：artifact %s\n", c.SHA256)
 					}

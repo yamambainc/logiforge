@@ -338,7 +338,7 @@ func TestReads(t *testing.T) {
 		t.Fatalf("ないリビジョン：%v", err)
 	}
 	tr, err := b.GetTree(ctx, c, "q", f.c1)
-	if err != nil || tr.Revision != f.c1 || len(tr.Warnings) != 0 {
+	if err != nil || tr.Commit != f.c1 || len(tr.Warnings) != 0 {
 		t.Fatalf("tree: %+v %v", tr, err)
 	}
 
@@ -355,7 +355,7 @@ func TestReads(t *testing.T) {
 	}
 
 	node, err := b.GetNode(ctx, c, "q", H1, "")
-	if err != nil || node.Verdict == nil || node.Verdict.SubmittedRevision != f.c2 || node.Verdict.ApplyRequestID != "apr_1" || node.Verdict.SupersededRevision != nil {
+	if err != nil || node.Verdict == nil || node.Verdict.SubmittedCommit != f.c2 || node.Verdict.ApplyRequestID != "apr_1" || node.Verdict.SupersededCommit != nil {
 		t.Fatalf("node: %+v %v", node.Verdict, err)
 	}
 	if v := node.Node.(*Hypothesis); v.Value == nil || !*v.Value || v.ValidVerdictID == nil {
@@ -363,11 +363,11 @@ func TestReads(t *testing.T) {
 	}
 
 	hist, err := b.GetNodeHistory(ctx, c, "q", H1, "", 1)
-	if err != nil || len(hist.Items) != 1 || hist.Items[0].Revision != f.c2 || !hist.Items[0].Reflected || hist.NextCursor == nil {
+	if err != nil || len(hist.Items) != 1 || hist.Items[0].Commit != f.c2 || !hist.Items[0].Reflected || hist.NextCursor == nil {
 		t.Fatalf("history: %+v %v", hist, err)
 	}
 	hist2, _ := b.GetNodeHistory(ctx, c, "q", H1, *hist.NextCursor, 1)
-	if len(hist2.Items) != 1 || hist2.Items[0].Revision != f.c1 || hist2.Items[0].Reflected || hist2.NextCursor != nil {
+	if len(hist2.Items) != 1 || hist2.Items[0].Commit != f.c1 || hist2.Items[0].Reflected || hist2.NextCursor != nil {
 		t.Fatalf("history 2: %+v", hist2)
 	}
 
@@ -379,7 +379,7 @@ func TestReads(t *testing.T) {
 	if len(ars2.Items) != 1 || ars2.Items[0].ID != "apr_2" || ars2.NextCursor != nil {
 		t.Fatalf("ars 2: %+v", ars2)
 	}
-	if merged := ars.Items[0]; merged.MergedRevision == nil || *merged.MergedRevision != f.c2 {
+	if merged := ars.Items[0]; merged.MergedCommit == nil || *merged.MergedCommit != f.c2 {
 		t.Fatalf("merged: %+v", merged)
 	}
 	if open, _ := b.ListApplyRequests(ctx, c, "q", "open", "", 0); len(open.Items) != 1 {
@@ -387,11 +387,11 @@ func TestReads(t *testing.T) {
 	}
 
 	ar, err := b.GetApplyRequest(ctx, c, "q", "apr_2")
-	if err != nil || ar.Version != 1 || len(ar.Versions) != 1 || ar.Versions[0].BaseRevision != f.c2 || ar.Awaiting == nil || *ar.Awaiting != "review" {
+	if err != nil || ar.HeadCommit != f.head || len(ar.HeadCommits) != 1 || ar.HeadCommits[0].BaseCommit != f.c2 || ar.HeadCommits[0].SeenAt == nil || ar.Awaiting == nil || *ar.Awaiting != "review" {
 		t.Fatalf("ar: %+v %v", ar, err)
 	}
-	if ar.Versions[0].AuthorSessionID == nil || *ar.Versions[0].AuthorSessionID != "s2" {
-		t.Fatalf("session: %+v", ar.Versions[0])
+	if ar.HeadCommits[0].AuthorSessionID == nil || *ar.HeadCommits[0].AuthorSessionID != "s2" {
+		t.Fatalf("session: %+v", ar.HeadCommits[0])
 	}
 	if len(ar.Operations) != 1 || ar.Operations[0].Kind != "story.create" || ar.Operations[0].ParentHypothesisID != H2 || ar.Operations[0].Hypotheses[0].ID != H3 {
 		t.Fatalf("ops: %+v", ar.Operations)
@@ -453,17 +453,17 @@ func TestWorkAndCompletion(t *testing.T) {
 		t.Fatalf("include_claimed: %+v", all.Items)
 	}
 
-	// ページ：カーソルは、計算したリビジョンに結びつける。
+	// ページ：カーソルは、計算したコミットに結びつける。
 	p1, _ := b.ListWork(ctx, c, "q", WorkQuery{Limit: 1})
 	if len(p1.Items) != 1 || p1.NextCursor == nil {
 		t.Fatalf("page 1: %+v", p1)
 	}
 	p2, _ := b.ListWork(ctx, c, "q", WorkQuery{Limit: 1, Cursor: *p1.NextCursor})
-	if len(p2.Items) != 1 || p2.Items[0] == p1.Items[0] || p2.Revision != p1.Revision {
+	if len(p2.Items) != 1 || p2.Items[0] == p1.Items[0] || p2.Commit != p1.Commit {
 		t.Fatalf("page 2: %+v", p2)
 	}
 
-	// 修正待ち：今の版への最後の決めるレビューが request_changes。
+	// 修正待ち：先頭のコミットへの最後の決めるレビューが request_changes。
 	f.forge.reviews["apr_2"] = ports.Reviews{Items: []ports.Review{{ID: "rev_1", Kind: ports.ReviewRequestChanges, Revision: f.head}}}
 	w2, _ := b.ListWork(ctx, c, "q", WorkQuery{Kinds: []string{"fix_waiting", "review_waiting"}})
 	if len(w2.Items) != 1 || w2.Items[0].Kind != "fix_waiting" {

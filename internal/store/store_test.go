@@ -58,7 +58,7 @@ func TestBranchKeyEscapes(t *testing.T) {
 	}
 }
 
-// 形の版を上げても、消えたブランチの版を読めるように、古い版の下のブランチのスナップショットを、版の外に移す。
+// フォーマットバージョンを上げても、消えたブランチの版を読めるように、古い版の下のブランチのスナップショットを、版の外に移す。
 func TestMoveLegacyBranchSnapshots(t *testing.T) {
 	ctx := context.Background()
 	d := &Dir{Root: t.TempDir()}
@@ -95,12 +95,12 @@ func TestMoveLegacyBranchSnapshots(t *testing.T) {
 	if n, err := MoveLegacyBranchSnapshots(ctx, d, "q"); err != nil || n != 0 {
 		t.Fatalf("2 回目：%d %v", n, err)
 	}
-	// 古い形の版のまま置いたものも読める。
+	// 古いフォーマットバージョンのまま置いたものも読める。
 	old, _ := snapshot.Encode(&snapshot.Branch{FormatVersion: 4, Commit: snapshot.Commit{Revision: base, Kind: snapshot.KindBranch}, Diff: snapshot.Diff{Base: head}})
 	if err := d.Put(ctx, BranchSnapshotKey("q", base), old); err != nil {
 		t.Fatal(err)
 	}
 	if br, err := GetBranch(ctx, d, "q", base); err != nil || br.FormatVersion != 4 {
-		t.Fatalf("古い形の版：%+v %v", br, err)
+		t.Fatalf("古いフォーマットバージョン：%+v %v", br, err)
 	}
 }

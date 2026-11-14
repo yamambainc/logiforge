@@ -64,7 +64,7 @@ type ApplyRequest struct {
 
 // MergeFailure は、反映の失敗の記録である。
 type MergeFailure struct {
-	// Revision は、反映しようとした版のコミット。
+	// Revision は、反映しようとした先頭のコミット。
 	Revision string
 	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending のどれか。
 	Reason string

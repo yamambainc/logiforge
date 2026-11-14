@@ -192,7 +192,7 @@ func TestEncodeIsStableAndVersioned(t *testing.T) {
 	old, _ := Encode(m)
 	var got Main
 	if err := Decode(old, &got); err == nil {
-		t.Fatal("古い形の版を読んでしまった")
+		t.Fatal("古いフォーマットバージョンを読んでしまった")
 	}
 }
 

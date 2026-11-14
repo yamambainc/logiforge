@@ -136,20 +136,20 @@ func commands() []command {
 		{"verdict new", "--hypothesis <仮説> --value true|false --report <ファイル> [--artifact <ファイル>]... [--link <名前>=<URL>]... [--cite subtree:<ノード>@<SHA>|artifact:<sha256>|answer:<人への依頼>]... [--supersedes <検証結果>]...", "検証結果のひな形を作る", (*App).verdictNew},
 		{"verdict view", "<検証結果>", "検証結果とレポート", (*App).verdictView},
 		{"node edit", "<仮説> --append-background <ファイル>", "背景情報の末尾に加える", (*App).nodeEdit},
-		{"node view", "<ノード> [--revision <SHA>]", "ノードの詳細", (*App).nodeView},
+		{"node view", "<ノード> [--commit <SHA>]", "ノードの詳細", (*App).nodeView},
 		{"node history", "<ノード>", "ノードの履歴", (*App).nodeHistory},
 		{"check", "", "手元の作業ツリーを、origin/main と比べて検査する", (*App).check},
-		{"tree view", "[--revision <SHA>]", "木の概要", (*App).treeView},
-		{"tree nodes", "[--root <ノード>] [--depth <n>] [--revision <SHA>]", "木のノード", (*App).treeNodes},
+		{"tree view", "[--commit <SHA>]", "木の概要", (*App).treeView},
+		{"tree nodes", "[--root <ノード>] [--depth <n>] [--commit <SHA>]", "木のノード", (*App).treeNodes},
 		{"tree completion", "", "作業の終わりの判定", (*App).treeCompletion},
-		{"tree export", "--format json|markdown [--revision <SHA>]", "木を書き出す", (*App).treeExport},
-		{"artifact get", "<sha256> [--revision <SHA>] [-o <ファイル>]", "artifact の中身を読む", (*App).artifactGet},
+		{"tree export", "--format json|markdown [--commit <SHA>]", "木を書き出す", (*App).treeExport},
+		{"artifact get", "<sha256> [--commit <SHA>] [-o <ファイル>]", "artifact の中身を読む", (*App).artifactGet},
 		{"ar create", "--branch <ブランチ> [--description <説明>] [--idempotency-key <キー>]", "push したブランチから apply request を作る", (*App).arCreate},
 		{"ar edit", "<apply request> --description <説明>", "説明欄を書き換える", (*App).arEdit},
 		{"ar view", "<apply request>", "apply request の詳細", (*App).arView},
 		{"ar list", "[--state open|merged|closed]", "apply request の一覧", (*App).arList},
 		{"ar material", "<apply request>", "レビューの材料", (*App).arMaterial},
-		{"ar review", "<apply request> --approve|--request-changes|--comment --version <n>|--revision <SHA> [--body <本文>] [--prompt-revision <リビジョン>]", "レビューを付ける（approve なら反映する）", (*App).arReview},
+		{"ar review", "<apply request> --approve|--request-changes|--comment --commit <SHA> [--body <本文>] [--prompt-revision <リビジョン>]", "レビューを付ける（approve なら反映する）", (*App).arReview},
 		{"ar close", "<apply request> --reason <理由>", "apply request を close する", (*App).arClose},
 		{"ar cleanup", "", "反映か close された apply request の、手元のブランチを消す", (*App).arCleanup},
 		{"work list", "[--subtree <ノード>] [--kind <種類>,...] [--include-claimed]", "着手できる作業", (*App).workList},
@@ -393,7 +393,7 @@ func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 		}
 		return response{}, p
 	}
-	return response{body: data, pending: res.Header.Get("Logiforge-Pending-Revision"), status: res.StatusCode}, nil
+	return response{body: data, pending: res.Header.Get("Logiforge-Pending-Commit"), status: res.StatusCode}, nil
 }
 
 // getJSON は、API を呼び、応答を v に読む。
@@ -408,7 +408,7 @@ func (a *App) getJSON(ctx context.Context, path string, query url.Values, v any)
 // show は、API の応答を書く。--json なら、そのまま書く。そうでなければ、text で書く。
 func (a *App) show(res response, text func(v map[string]any)) error {
 	if res.pending != "" {
-		fmt.Fprintf(a.Stderr, "書いたものは、まだ読む側に出ていない（リビジョン %s）。少し待って読み直す\n", res.pending)
+		fmt.Fprintf(a.Stderr, "書いたものは、まだ読む側に出ていない（コミット %s）。少し待って読み直す\n", res.pending)
 	}
 	if a.json {
 		_, err := a.Stdout.Write(res.body)

@@ -10,7 +10,7 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 )
 
-// GetCommit は、コミットの記録を読む。main のコミットは版の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
+// GetCommit は、コミットの記録を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
 // なければ ErrNotFound。
 func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit, error) {
 	b, err := r.Get(ctx, CommitKey(repo, sha))
@@ -51,7 +51,7 @@ func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, e
 	return &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: c, Tree: d.Tree}, nil
 }
 
-// GetBranch は、ブランチの先頭のスナップショットを読む。古い形の版のものも読む（snapshot.MinBranchFormatVersion から）。
+// GetBranch は、ブランチの先頭のスナップショットを読む。古いフォーマットバージョンのものも読む（snapshot.MinBranchFormatVersion から）。
 func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branch, error) {
 	b, err := r.Get(ctx, BranchSnapshotKey(repo, sha))
 	if err != nil {
@@ -84,7 +84,7 @@ func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) er
 	return w.Put(ctx, CommitKey(repo, c.Revision), b)
 }
 
-// PutTree は、main のコミットの木を置く。木を作るのは、latest、ブランチの base、API で指定されたリビジョンだけである。
+// PutTree は、main のコミットの木を置く。木を作るのは、latest、ブランチの base、API で指定されたコミットだけである。
 func PutTree(ctx context.Context, w Writer, repo, sha string, t *snapshot.Tree) error {
 	b, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: *t})
 	if err != nil {
@@ -102,7 +102,7 @@ func HasTree(ctx context.Context, r Reader, repo, sha string) (bool, error) {
 	return err == nil, err
 }
 
-// PutBranch は、ブランチの先頭のスナップショット（コミットの記録と差分）を、版の外に 1 つにまとめて置く。
+// PutBranch は、ブランチの先頭のスナップショット（コミットの記録と差分）を、フォーマットバージョンの接頭辞の外に 1 つにまとめて置く。
 func PutBranch(ctx context.Context, w Writer, repo string, b *snapshot.Branch) error {
 	b.FormatVersion = snapshot.FormatVersion
 	data, err := snapshot.Encode(b)
@@ -112,12 +112,12 @@ func PutBranch(ctx context.Context, w Writer, repo string, b *snapshot.Branch) e
 	return w.Put(ctx, BranchSnapshotKey(repo, b.Commit.Revision), data)
 }
 
-// legacyBranchPrefixes は、ブランチのスナップショットを版の下に置いていた、古い形の版の接頭辞である。
+// legacyBranchPrefixes は、ブランチのスナップショットを版の下に置いていた、古いフォーマットバージョンの接頭辞である。
 var legacyBranchPrefixes = []string{"v4/"}
 
-// MoveLegacyBranchSnapshots は、古い形の版の下に置いていたブランチのスナップショットを、版の外（BranchSnapshotKey）に移す。
+// MoveLegacyBranchSnapshots は、古いフォーマットバージョンの下に置いていたブランチのスナップショットを、版の外（BranchSnapshotKey）に移す。
 // ブランチの履歴に出てくる先頭のコミットについて、移していないものだけを移す。何度動かしても、結果は同じになる。
-// 古い版の下のものは消さない。移した数を返す。
+// 古いフォーマットバージョンの接頭辞の下のものは消さない。移した数を返す。
 func MoveLegacyBranchSnapshots(ctx context.Context, w Writer, repo string) (int, error) {
 	names, _, err := GetBranchIndex(ctx, w, repo)
 	if err != nil {
@@ -157,7 +157,7 @@ func MoveLegacyBranchSnapshots(ctx context.Context, w Writer, repo string) (int,
 	return moved, nil
 }
 
-// readLegacyBranch は、古い形の版の下の、コミットの記録と差分を読み、1 つのブランチのスナップショットにする。
+// readLegacyBranch は、古いフォーマットバージョンの下の、コミットの記録と差分を読み、1 つのブランチのスナップショットにする。
 func readLegacyBranch(ctx context.Context, r Reader, prefix, repo, sha string) (*snapshot.Branch, error) {
 	cb, err := r.Get(ctx, prefix+repo+"/commits/"+sha)
 	if err != nil {

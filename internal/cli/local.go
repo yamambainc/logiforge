@@ -432,7 +432,7 @@ func (a *App) verdictNew(ctx context.Context, args []string) error {
 			if !ok {
 				return usagef("--cite subtree:<ノード>@<SHA>")
 			}
-			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "subtree", NodeID: node, Revision: rev})
+			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "subtree", NodeID: node, Commit: rev})
 		case "artifact":
 			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "artifact", SHA256: target})
 		case "answer":
@@ -504,7 +504,7 @@ type checkResult struct {
 //   - 新しい識別子が、origin/main の木とぶつからないかも確かめる。
 //   - 差分を origin/main に重ねられないとき（origin/main でも同じファイルが変わった）は、警告する。
 //
-// 手元でできないもの（引用したリビジョンの確認、inactive になる前の状態）は省く。API は呼ばない。
+// 手元でできないもの（引用したコミットの確認、inactive になる前の状態）は省く。API は呼ばない。
 func (a *App) check(_ context.Context, args []string) error {
 	f := newFlags("check")
 	if err := f.parse(args); err != nil {

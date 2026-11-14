@@ -62,7 +62,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 			if c.TargetKind != "subtree" {
 				continue
 			}
-			num := v.main.Tree.HistoryNumber(c.Revision)
+			num := v.main.Tree.HistoryNumber(c.Commit)
 			if num == 0 || v.main.Tree.SubtreeChangedAfter(c.NodeID, num) {
 				items = append(items, WorkItem{Kind: "citation_changed", SubjectID: vid, NodeID: h.ID})
 				break
@@ -163,7 +163,7 @@ func (r answerRefs) cites(hr ports.HumanRequest) bool {
 
 // usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
 //   - 今の main の木の検証結果（反映された）
-//   - open の提案の、今の版の差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
+//   - open の提案の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
 func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
 	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
 	for _, tv := range v.tree.Verdicts {
@@ -205,7 +205,7 @@ func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs ans
 	return trailerValue(c.Trailers, "Logiforge-Apply-Request") != "" && c.CommittedAt.After(hr.Answer.CreatedAt), nil
 }
 
-// ListWork は、着手できる作業を返す。カーソルは、計算したリビジョンに結びつける（design/api/README.md の「ページング」）。
+// ListWork は、着手できる作業を返す。カーソルは、計算したコミットに結びつける（design/api/README.md の「ページング」）。
 func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQuery) (WorkPage, error) {
 	limit, err := CheckLimit(q.Limit)
 	if err != nil {
@@ -236,7 +236,7 @@ func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQue
 	if err != nil {
 		return WorkPage{}, err
 	}
-	out := WorkPage{Revision: v.revision(), Counts: map[string]int{}, Items: []WorkItem{}}
+	out := WorkPage{Commit: v.revision(), Counts: map[string]int{}, Items: []WorkItem{}}
 	var filtered []WorkItem
 	for _, it := range all {
 		if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, it.Kind) {
@@ -308,7 +308,7 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 		return Completion{}, err
 	}
 	evidence := func(id string) bool { n := v.main.Tree.Nodes[id]; return n != nil && n.Evidence }
-	out := Completion{Revision: v.revision(), RootValue: v.main.Tree.Nodes[root.ID].Value}
+	out := Completion{Commit: v.revision(), RootValue: v.main.Tree.Nodes[root.ID].Value}
 	out.Decided = out.RootValue != nil
 	for _, it := range all {
 		if ts, ok := arTargets[it.SubjectID]; ok {

@@ -77,10 +77,10 @@ func TestE2EEdges(t *testing.T) {
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("v2.md", "版 2\n"))
 		agent.commitPush("v", "版 2")
 		_, code, out := reviewer.review(ar.ID, "approve", 1)
-		if code != 1 || !strings.Contains(out, "version_conflict") {
+		if code != 1 || !strings.Contains(out, "commit_conflict") {
 			t.Fatalf("古い版の approve：%d %s", code, out)
 		}
-		w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool { return agent.versionReady(ar.ID, 2) })
+		w.eventually("2 つ目の先頭のコミットが読む側に出る", 30*time.Second, func() bool { return agent.headReady(ar.ID, 2) })
 		if got, code, out := reviewer.review(ar.ID, "approve", 2); code != 0 || got.State != "merged" {
 			t.Fatalf("新しい版の approve：%d %s", code, out)
 		}
@@ -104,7 +104,7 @@ func TestE2EEdges(t *testing.T) {
 	// ---- worker が止まっているとき：読むのは止まる前の木、作成は unavailable。動かし直せば追いつく ----
 	t.Run("worker の停止", func(t *testing.T) {
 		var before struct {
-			Revision string `json:"revision"`
+			Commit string `json:"commit"`
 		}
 		agent.must(&before, "tree", "view")
 		w.stopWorker()
@@ -113,11 +113,11 @@ func TestE2EEdges(t *testing.T) {
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("s.md", "止まっている間\n"))
 		agent.commitPush("s", "s")
 		var after struct {
-			Revision string `json:"revision"`
+			Commit string `json:"commit"`
 		}
 		agent.must(&after, "tree", "view")
-		if after.Revision != before.Revision {
-			t.Fatalf("止まる前の木が読めない：%s %s", before.Revision, after.Revision)
+		if after.Commit != before.Commit {
+			t.Fatalf("止まる前の木が読めない：%s %s", before.Commit, after.Commit)
 		}
 		// apply request の作成は、worker を待たない。バックエンドが git を読んで検査するので、worker が止まっていても作れる。
 		code, out := agent.cli("", "ar", "create", "--branch", "s", "--json")
@@ -131,13 +131,13 @@ func TestE2EEdges(t *testing.T) {
 		}
 		// 版のスナップショットは worker が作るので、それまで、レビューは snapshot_pending になる。
 		reviewer.session = "s-r4"
-		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--version", "1", "--repo", "q", "--json")
+		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 		if code != 1 || !strings.Contains(out, "snapshot_pending") {
 			t.Fatalf("worker が止まっているときのレビュー：%d %s", code, out)
 		}
 		w.restartWorker()
 		w.eventually("worker が戻り、レビューできる", 30*time.Second, func() bool {
-			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--version", "1", "--repo", "q", "--json")
+			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 			return code == 0
 		})
 		agent.must(nil, "ar", "close", ar.ID, "--reason", "確かめ終えた")
@@ -194,12 +194,12 @@ func TestE2EEdges(t *testing.T) {
 			}
 			return got
 		}
-		mainRevision := func() string {
+		mainCommit := func() string {
 			var tr struct {
-				Revision string `json:"revision"`
+				Commit string `json:"commit"`
 			}
 			agent.must(&tr, "tree", "view")
-			return tr.Revision
+			return tr.Commit
 		}
 		agent.branch("c1")
 		var sc scaffold
@@ -214,7 +214,7 @@ func TestE2EEdges(t *testing.T) {
 		agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("ra.md", "A\n"))
 		agent.commitPush("c2", "A")
 		merge("c2")
-		rA := mainRevision()
+		rA := mainCommit()
 
 		agent.branch("c3")
 		var vb scaffold
@@ -249,7 +249,7 @@ func TestE2EEdges(t *testing.T) {
 		// 見直して、引用を今のリビジョンにした検証結果で差し替えると、作業から外れる。
 		agent.branch("c5")
 		agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb2.md", "見直した\n"),
-			"--cite", "subtree:"+hA+"@"+mainRevision(), "--supersedes", oldVerdict)
+			"--cite", "subtree:"+hA+"@"+mainCommit(), "--supersedes", oldVerdict)
 		agent.commitPush("c5", "B を見直す")
 		merge("c5")
 		if citationChanged() {

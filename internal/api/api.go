@@ -23,7 +23,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeNotFound:                http.StatusNotFound,
 	backend.CodeSameSession:             http.StatusForbidden,
 	backend.CodeNotOpen:                 http.StatusConflict,
-	backend.CodeVersionConflict:         http.StatusConflict,
+	backend.CodeCommitConflict:          http.StatusConflict,
 	backend.CodeTooLarge:                http.StatusRequestEntityTooLarge,
 	backend.CodeRepositoryExists:        http.StatusConflict,
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
@@ -95,7 +95,7 @@ type raw struct {
 	body        []byte
 }
 
-// created は、書き込みの応答である。status と、書いたものが読む側に出ていないときのリビジョンを持つ。
+// created は、書き込みの応答である。status と、書いたものが読む側に出ていないときのコミットを持つ。
 type created struct {
 	status  int
 	pending string
@@ -120,7 +120,7 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 				}
 				if cr, ok := out.(created); ok {
 					if cr.pending != "" {
-						w.Header().Set("Logiforge-Pending-Revision", cr.pending)
+						w.Header().Set("Logiforge-Pending-Commit", cr.pending)
 					}
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(cr.status)
@@ -176,7 +176,7 @@ func (s *server) getRepository(ctx context.Context, c backend.Caller, r *http.Re
 }
 
 func (s *server) getTree(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetTree(ctx, c, r.PathValue("repository"), r.URL.Query().Get("revision"))
+	return s.b.GetTree(ctx, c, r.PathValue("repository"), r.URL.Query().Get("commit"))
 }
 
 func (s *server) listNodes(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -188,7 +188,7 @@ func (s *server) listNodes(ctx context.Context, c backend.Caller, r *http.Reques
 		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "depth は 0 以上"}
 	}
 	q := r.URL.Query()
-	return s.b.ListNodes(ctx, c, r.PathValue("repository"), q.Get("revision"), q.Get("root"), depth)
+	return s.b.ListNodes(ctx, c, r.PathValue("repository"), q.Get("commit"), q.Get("root"), depth)
 }
 
 func (s *server) getCompletion(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -200,7 +200,7 @@ func (s *server) exportTree(ctx context.Context, c backend.Caller, r *http.Reque
 	if format != "json" && format != "markdown" {
 		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "format は json か markdown"}
 	}
-	e, err := s.b.ExportTree(ctx, c, r.PathValue("repository"), r.URL.Query().Get("revision"))
+	e, err := s.b.ExportTree(ctx, c, r.PathValue("repository"), r.URL.Query().Get("commit"))
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func (s *server) exportTree(ctx context.Context, c backend.Caller, r *http.Reque
 }
 
 func (s *server) getNode(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetNode(ctx, c, r.PathValue("repository"), r.PathValue("nodeId"), r.URL.Query().Get("revision"))
+	return s.b.GetNode(ctx, c, r.PathValue("repository"), r.PathValue("nodeId"), r.URL.Query().Get("commit"))
 }
 
 func (s *server) getNodeHistory(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -260,7 +260,7 @@ func (s *server) listWork(ctx context.Context, c backend.Caller, r *http.Request
 }
 
 func (s *server) getArtifact(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	data, err := s.b.GetArtifact(ctx, c, r.PathValue("repository"), r.PathValue("sha256"), r.URL.Query().Get("revision"))
+	data, err := s.b.GetArtifact(ctx, c, r.PathValue("repository"), r.PathValue("sha256"), r.URL.Query().Get("commit"))
 	if err != nil {
 		return nil, err
 	}
@@ -327,13 +327,13 @@ func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http
 func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
 		Branch      string `json:"branch"`
-		Revision    string `json:"revision"`
+		Commit      string `json:"commit"`
 		Description string `json:"description"`
 	}
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Branch: in.Branch, Revision: in.Revision,
+	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Branch: in.Branch, Commit: in.Commit,
 		Description: in.Description, Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
 	if err != nil {
 		return nil, err
@@ -357,8 +357,7 @@ func (s *server) updateApplyRequest(ctx context.Context, c backend.Caller, r *ht
 func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
 		Kind           string `json:"kind"`
-		Revision       string `json:"revision"`
-		Version        int    `json:"version"`
+		Commit         string `json:"commit"`
 		Body           string `json:"body"`
 		PromptRevision string `json:"prompt_revision"`
 	}
@@ -366,7 +365,7 @@ func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	out, err := s.b.ReviewApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), backend.NewReview{Kind: in.Kind,
-		Revision: in.Revision, Version: in.Version, Body: in.Body, PromptRevision: in.PromptRevision, Session: session(r)})
+		Commit: in.Commit, Body: in.Body, PromptRevision: in.PromptRevision, Session: session(r)})
 	if err != nil {
 		return nil, err
 	}

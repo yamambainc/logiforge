@@ -15,7 +15,7 @@ import (
 type applyRequest struct {
 	ID         string `json:"id"`
 	State      string `json:"state"`
-	Version    int    `json:"version"`
+	HeadCommit string `json:"head_commit"`
 	Awaiting   string `json:"awaiting"`
 	Operations []struct {
 		Kind string `json:"kind"`
@@ -80,21 +80,35 @@ func (u *user) create(branch string) applyRequest {
 	return ar
 }
 
-// versionReady は、apply request の今の版が version で、worker がそのスナップショットを作り終えた（base がある）かを返す。
-func (u *user) versionReady(id string, version int) bool {
+// headCommits は、apply request に push された先頭のコミットの一覧（古い順）を読む。
+func (u *user) headCommits(id string) []struct {
+	Commit string `json:"commit"`
+	Base   string `json:"base_commit"`
+} {
 	var ar struct {
-		Version  int `json:"version"`
-		Versions []struct {
-			Base string `json:"base_revision"`
-		} `json:"versions"`
+		HeadCommits []struct {
+			Commit string `json:"commit"`
+			Base   string `json:"base_commit"`
+		} `json:"head_commits"`
 	}
-	u.must(&ar, "ar", "view", id)
-	return ar.Version == version && len(ar.Versions) == version && ar.Versions[version-1].Base != ""
+	u.must(&ar, "ar", "view", id, "--repo", "q")
+	return ar.HeadCommits
 }
 
-func (u *user) review(id, kind string, version int) (applyRequest, int, string) {
+// headReady は、apply request に push された先頭のコミットが n 個になり、worker が最後のもののスナップショットを作り終えた（base がある）かを返す。
+func (u *user) headReady(id string, n int) bool {
+	hs := u.headCommits(id)
+	return len(hs) == n && hs[n-1].Base != ""
+}
+
+// review は、apply request に push された n 番目（1 から）の先頭のコミットを、--commit の SHA で指してレビューする。
+func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 	u.w.t.Helper()
-	args := []string{"ar", "review", id, "--" + kind, "--version", fmt.Sprint(version), "--repo", "q", "--json"}
+	hs := u.headCommits(id)
+	if len(hs) < n {
+		u.w.t.Fatalf("%s に、%d 番目の先頭のコミットがない：%+v", id, n, hs)
+	}
+	args := []string{"ar", "review", id, "--" + kind, "--commit", hs[n-1].Commit, "--repo", "q", "--json"}
 	if kind == "approve" {
 		args = append(args, "--prompt-revision", "prompt-1")
 	}
@@ -173,7 +187,7 @@ func TestE2E(t *testing.T) {
 	old, _ := os.ReadFile(reports[0])
 	_ = os.WriteFile(reports[0], []byte(strings.Replace(string(old), "初版", "直した版", 1)), 0o644)
 	agent.commitPush("b2", "A の検証を直した")
-	w.eventually("版 2 が読む側に出る", 30*time.Second, func() bool { return agent.versionReady(ar2.ID, 2) })
+	w.eventually("2 つ目の先頭のコミットが読む側に出る", 30*time.Second, func() bool { return agent.headReady(ar2.ID, 2) })
 	if got, code, out := reviewer.review(ar2.ID, "approve", 2); code != 0 || got.State != "merged" {
 		t.Fatalf("版 2 の approve：%d %s", code, out)
 	}

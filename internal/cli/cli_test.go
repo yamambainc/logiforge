@@ -163,11 +163,11 @@ func TestApplyRequestCommands(t *testing.T) {
 			}
 			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"unavailable"}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
-			return 200, "application/json", `{"id":"apr_1","state":"open","versions":[{"version":1,"revision":"` + head + `"}]}`
+			return 200, "application/json", `{"id":"apr_1","state":"open","head_commit":"` + head + `","head_commits":[{"commit":"` + head + `"}]}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
 			return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found","detail":"ない"}`
 		}
-		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","version":1}`
+		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + head + `"}`
 	})
 	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_SESSION_ID": "s1"}
 	posts := func() []*http.Request {
@@ -189,7 +189,7 @@ func TestApplyRequestCommands(t *testing.T) {
 	req := posts()[0]
 	var created map[string]any
 	if code != 0 || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "apr_1" || created["idempotency_key"] != req.Header.Get("Idempotency-Key") ||
-		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"revision":"`+head+`"`) {
+		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"commit":"`+head+`"`) {
 		t.Fatalf("ar create: %d %s %v", code, out, req.Header)
 	}
 	// 呼び出しごとに、キーは変わる（close して作り直すときに、閉じた apply request が返らないように）。
@@ -223,14 +223,14 @@ func TestApplyRequestCommands(t *testing.T) {
 		t.Fatal("--idempotency-key を使っていない")
 	}
 
-	// --version は、SHA に引き直して送る。
-	if code, _, errs := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--version", "1", "--prompt-revision", "p"); code != 0 {
+	// レビューしたコミットは、--commit の SHA で送る。
+	if code, _, errs := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--commit", head, "--prompt-revision", "p"); code != 0 {
 		t.Fatalf("ar review: %s", errs)
 	}
-	if n := len(st.body); !strings.Contains(st.body[n-1], `"revision":"`+head+`"`) || !strings.Contains(st.body[n-1], `"kind":"approve"`) {
+	if n := len(st.body); !strings.Contains(st.body[n-1], `"commit":"`+head+`"`) || !strings.Contains(st.body[n-1], `"kind":"approve"`) {
 		t.Fatalf("review の本文：%s", st.body[n-1])
 	}
-	if code, _, _ := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--request-changes", "--version", "1"); code != ExitUsage {
+	if code, _, _ := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--request-changes", "--commit", head); code != ExitUsage {
 		t.Fatalf("種類が 2 つ：%d", code)
 	}
 

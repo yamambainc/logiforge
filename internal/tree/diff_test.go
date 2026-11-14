@@ -263,7 +263,7 @@ func TestSubtreeCitation(t *testing.T) {
 	b, d := base()
 	rev := strings.Repeat("a", 40)
 	h := b.clone()
-	v := VerdictContent{ID: V1, Value: true, Report: "r", Citations: []Citation{{TargetKind: "subtree", NodeID: H2, Revision: rev}}}
+	v := VerdictContent{ID: V1, Value: true, Report: "r", Citations: []Citation{{TargetKind: "subtree", NodeID: H2, Commit: rev}}}
 	h.put(d[H1]+"/"+VerdictsDir+"/"+V1+".md", MarshalVerdict(v))
 
 	exists := func(want bool) Context {

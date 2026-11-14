@@ -103,8 +103,8 @@ func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, 
 	return heads, nil
 }
 
-// Fetch は、リモートのブランチを手元の refs/remotes/origin/ に、pull request の最後の版を refs/remotes/pull/ に取ってくる。
-// 消えたブランチは消す。pull request の版は、ブランチが消えたあとも、反映の重なりを確かめるのに使う（design/backend/worker.md）。
+// Fetch は、リモートのブランチを手元の refs/remotes/origin/ に、pull request の最後の先頭のコミットを refs/remotes/pull/ に取ってくる。
+// 消えたブランチは消す。pull request の先頭のコミットは、ブランチが消えたあとも、反映の重なりを確かめるのに使う（design/backend/worker.md）。
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", "--end-of-options", remote,
 		"+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/pull/*")
@@ -357,7 +357,7 @@ type Change struct {
 }
 
 // Diff は、a から b への、変わったファイルを返す。名前の変更は、消えたと加わったの組にする。
-// a が空なら、空の木から b への差分（b のすべてのファイルが加わった）を返す。最初のリビジョンに使う。
+// a が空なら、空の木から b への差分（b のすべてのファイルが加わった）を返す。最初のコミットに使う。
 func (r *Repo) Diff(ctx context.Context, a, b string) ([]Change, error) {
 	args := []string{"diff-tree", "-r", "-z", "--no-renames", "--no-commit-id"}
 	if a == "" {
