@@ -683,7 +683,10 @@ components:
     Revision:
       name: revision
       in: query
-      description: 読むリビジョン。指定しなければ最新
+      description: >-
+        読むリビジョン。指定しなければ最新。
+        過去のリビジョンの木は、初めて読むときに worker が作る（../../design/backend/snapshot.md の「木を作るコミット」）。
+        そのため、初めて読むときは、snapshot_pending になることがある。少し待って送り直す。
       schema: { $ref: '#/components/schemas/Revision' }
     Cursor:
       name: cursor
@@ -787,7 +790,7 @@ components:
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | unavailable | 503 | worker が止まっていて、ブランチを読めない。少し待って送り直す |
-            | snapshot_pending | 503 | 指定したリビジョンのスナップショットが、まだない。少し待って読み直す |
+            | snapshot_pending | 503 | 指定したリビジョンのスナップショットが、まだない（worker が取り込んでいないか、木を作っている）。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。repository の登録をサーバの設定で行う構成だけで起きる |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
           enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, version_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
