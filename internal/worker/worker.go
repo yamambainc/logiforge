@@ -21,6 +21,7 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
 )
 
 // Source は、worker が読む repository の一覧と、その git の URL である。GitForge ごとに違う。
@@ -42,10 +43,10 @@ type Config struct {
 	Interval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
-	// ReadBranchWait は、「ブランチを読む」の中で、main の取り込みを待つ時間の上限。0 なら 60 秒。
-	ReadBranchWait time.Duration
-	Now            func() time.Time
-	Log            *slog.Logger
+	// BuildTreeWait は、「木を作る」で、作り終えるのを待つ時間の上限。0 なら 60 秒。過ぎたら、裏で続けたまま返す。
+	BuildTreeWait time.Duration
+	Now           func() time.Time
+	Log           *slog.Logger
 }
 
 // Worker は、worker である。repository ごとに、1 つずつ順に処理する。
@@ -83,8 +84,8 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Interval == 0 {
 		cfg.Interval = time.Minute
 	}
-	if cfg.ReadBranchWait == 0 {
-		cfg.ReadBranchWait = 60 * time.Second
+	if cfg.BuildTreeWait == 0 {
+		cfg.BuildTreeWait = 60 * time.Second
 	}
 	if cfg.MaxFileSize == 0 {
 		cfg.MaxFileSize = tree.MaxArtifactSize
@@ -278,7 +279,7 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if _, err := w.syncBranch(ctx, g, r.Name, name, heads[name], heads["main"]); err != nil {
+		if err := w.syncBranch(ctx, g, r.Name, name, heads[name], heads["main"]); err != nil {
 			w.cfg.Log.Error("ブランチを読めない", "repository", r.Name, "branch", name, "err", err)
 		}
 	}
@@ -404,7 +405,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		for j, ch := range changes {
 			paths[j] = ch.Path
 		}
-		rec := x.Record(commitInfo(c), paths)
+		rec := x.Record(workcopy.CommitInfo(c), paths)
 		if incremental {
 			if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
 				return fmt.Errorf("%s: %w", sha, err)
@@ -616,89 +617,53 @@ func isArtifact(p string) bool {
 	return len(p) > len(tree.ArtifactsDir)+1 && p[:len(tree.ArtifactsDir)+1] == tree.ArtifactsDir+"/"
 }
 
-func commitInfo(c gitx.Commit) snapshot.CommitInfo {
-	info := snapshot.CommitInfo{Revision: c.SHA, CommittedAt: c.CommittedAt}
-	for _, t := range c.Trailers {
-		info.Trailers = append(info.Trailers, snapshot.Trailer{Key: t.Key, Value: t.Value})
-	}
-	return info
-}
-
-// BranchResult は、「ブランチを読む」の結果である。
-type BranchResult struct {
-	Head string `json:"head"`
-	Base string `json:"base"`
-	// Key は、先頭のコミットのブランチのスナップショットのキー。
-	Key string `json:"key"`
-}
-
 // syncBranch は、ブランチの先頭のスナップショットを作り、ブランチの履歴に足す。先頭が変わっていなければ、何もしない。
-func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head, mainSHA string) (BranchResult, error) {
+func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head, mainSHA string) error {
 	h, raw, err := store.GetBranchHistory(ctx, w.store, repo, name)
 	if err != nil {
-		return BranchResult{}, err
+		return err
 	}
 	if n := len(h.Entries); n > 0 && !h.Entries[n-1].Deleted && h.Entries[n-1].Head == head {
-		last := h.Entries[n-1]
-		return BranchResult{Head: head, Base: last.Base, Key: store.BranchSnapshotKey(repo, head)}, nil
+		return nil
 	}
 	if mainSHA == "" {
-		return BranchResult{}, fmt.Errorf("main がないので、base を求められない")
+		return fmt.Errorf("main がないので、base を求められない")
 	}
 	base, err := g.MergeBase(ctx, mainSHA, head)
 	if err != nil {
-		return BranchResult{}, err
+		return err
 	}
 	if _, err := store.GetCommit(ctx, w.store, repo, head); errors.Is(err, store.ErrNotFound) {
 		if err := w.buildBranch(ctx, g, repo, base, head); err != nil {
-			return BranchResult{}, err
+			return err
 		}
 	} else if err != nil {
-		return BranchResult{}, err
+		return err
 	}
 	// base の木を作る。バックエンドは、base の木にブランチの差分を重ねて検査する（design/backend/snapshot.md の「木を作るコミット」）。
 	if err := w.buildTree(ctx, g, repo, base); errors.Is(err, store.ErrNotFound) {
 		w.cfg.Log.Warn("base の記録がないので、base の木を作れない", "repository", repo, "branch", name, "base", base)
 	} else if err != nil {
-		return BranchResult{}, fmt.Errorf("base の木：%w", err)
+		return fmt.Errorf("base の木：%w", err)
 	}
 	// ブランチの名前の一覧に、先に足す。履歴を書いたあとに止まっても、消えたことを見つけられるようにするため。
 	if err := w.addToIndex(ctx, repo, name); err != nil {
-		return BranchResult{}, err
+		return err
 	}
 	// 一覧に足すのは、スナップショットを作り終えたコミットだけである。
 	h.Entries = append(h.Entries, store.BranchEntry{Head: head, Base: base, SeenAt: w.cfg.Now().UTC()})
 	if err := store.PutBranchHistory(ctx, w.store, repo, h, raw); err != nil {
-		return BranchResult{}, err
+		return err
 	}
-	return BranchResult{Head: head, Base: base, Key: store.BranchSnapshotKey(repo, head)}, nil
+	return nil
 }
 
 func (w *Worker) buildBranch(ctx context.Context, g *gitx.Repo, repo, base, head string) error {
-	c, err := g.ReadCommit(ctx, head)
-	if err != nil {
-		return err
-	}
-	changes, files, err := g.ChangedFiles(ctx, base, head, w.cfg.MaxFileSize)
+	b, files, err := workcopy.BranchSnapshot(ctx, g, base, head, w.cfg.MaxFileSize)
 	if err != nil {
 		return err
 	}
 	if err := w.putArtifacts(ctx, repo, files); err != nil {
-		return err
-	}
-	var deltas []snapshot.Delta
-	for _, ch := range changes {
-		d := snapshot.Delta{Path: ch.Path, Status: snapshot.Modified, BaseSHA: ch.OldSHA}
-		switch ch.Status {
-		case "A":
-			d.Status, d.BaseSHA = snapshot.Added, ""
-		case "D":
-			d.Status = snapshot.Deleted
-		}
-		deltas = append(deltas, d)
-	}
-	b, err := snapshot.BuildBranch(base, deltas, files, commitInfo(c))
-	if err != nil {
 		return err
 	}
 	return store.PutBranch(ctx, w.store, repo, b)
@@ -742,61 +707,9 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 	return nil
 }
 
-// ErrSnapshotPending は、「ブランチを読む」の中で、main の取り込みが時間の上限までに終わらなかったことを表す。
-// 取り込みは、裏で続ける。少し待って、もう一度頼めばよい。
-var ErrSnapshotPending = errors.New("worker: main の取り込みが、まだ終わらない")
-
-// ReadBranch は、ブランチを fetch し、先頭のコミットと base を求め、差分のスナップショットを作る（worker の内部 API の「ブランチを読む」）。
-// base のスナップショットのために、先に main を進める。その取り込みが上限（Config.ReadBranchWait）までに終わらなければ、
-// 取り込みを裏で続けたまま、ErrSnapshotPending を返す。
-func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (BranchResult, error) {
-	ref, err := w.src.GitForgeRef(ctx, repoName)
-	if err != nil {
-		return BranchResult{}, err
-	}
-	r := &ports.Repository{Name: repoName, GitForgeRef: ref}
-	// ロックを取るのを待つ時間も、main の取り込みを待つ時間も、1 つの上限の中に収める。
-	deadline := time.Now().Add(w.cfg.ReadBranchWait)
-	unlock := w.tryLock(r.Name, deadline)
-	if unlock == nil {
-		// ほかの取り込み（前の「ブランチを読む」の裏の取り込みなど）が、まだ動いている。
-		return BranchResult{}, ErrSnapshotPending
-	}
-	locked := true
-	defer func() {
-		if locked {
-			unlock()
-		}
-	}()
-	g, err := w.repo(ctx, r.Name)
-	if err != nil {
-		return BranchResult{}, err
-	}
-	remote := w.src.GitURL(r.GitForgeRef)
-	heads, err := g.LsRemote(ctx, remote)
-	if err != nil {
-		return BranchResult{}, err
-	}
-	head, ok := heads[branch]
-	if !ok || branch == "main" {
-		return BranchResult{}, ports.ErrNotFound
-	}
-	if err := g.Fetch(ctx, remote); err != nil {
-		return BranchResult{}, err
-	}
-	// ブランチの base（main と分かれた点）のスナップショットがないと、バックエンドは差分を検査できない。先に main を進める。
-	if mainSHA, ok := heads["main"]; ok {
-		handedOff, err := w.waitOrHandOff(deadline, unlock, func(ctx context.Context) error { return w.syncMain(ctx, g, r.Name, mainSHA) })
-		if handedOff {
-			locked = false
-			return BranchResult{}, ErrSnapshotPending
-		}
-		if err != nil {
-			return BranchResult{}, fmt.Errorf("main: %w", err)
-		}
-	}
-	return w.syncBranch(ctx, g, r.Name, branch, head, heads["main"])
-}
+// ErrSnapshotPending は、「木を作る」が、時間の上限までに終わらなかったことを表す。
+// 作るのは、裏で続ける。少し待って、もう一度頼めばよい。
+var ErrSnapshotPending = errors.New("worker: 木を作るのが、まだ終わらない")
 
 var shaPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
@@ -821,7 +734,7 @@ func (w *Worker) waitOrHandOff(deadline time.Time, unlock func(), fn func(contex
 }
 
 // BuildTree は、main のコミット sha の木を作る（worker の内部 API の「木を作る」）。あれば何もしない。
-// sha の記録がなければ ports.ErrNotFound。上限（Config.ReadBranchWait）までに終わらなければ、裏で続けたまま ErrSnapshotPending を返す。
+// sha の記録がなければ ports.ErrNotFound。上限（Config.BuildTreeWait）までに終わらなければ、裏で続けたまま ErrSnapshotPending を返す。
 func (w *Worker) BuildTree(ctx context.Context, repoName, sha string) error {
 	if !shaPattern.MatchString(sha) {
 		return ports.ErrNotFound
@@ -834,7 +747,7 @@ func (w *Worker) BuildTree(ctx context.Context, repoName, sha string) error {
 	} else if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(w.cfg.ReadBranchWait)
+	deadline := time.Now().Add(w.cfg.BuildTreeWait)
 	unlock := w.tryLock(repoName, deadline)
 	if unlock == nil {
 		return ErrSnapshotPending

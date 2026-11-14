@@ -119,20 +119,28 @@ func TestE2EEdges(t *testing.T) {
 		if after.Revision != before.Revision {
 			t.Fatalf("止まる前の木が読めない：%s %s", before.Revision, after.Revision)
 		}
+		// apply request の作成は、worker を待たない。バックエンドが git を読んで検査するので、worker が止まっていても作れる。
 		code, out := agent.cli("", "ar", "create", "--branch", "s", "--json")
-		if code != 1 || !strings.Contains(out, "unavailable") || !strings.Contains(out, "idempotency_key") {
+		if code != 0 {
 			t.Fatalf("worker が止まっているときの作成：%d %s", code, out)
 		}
-		var prob struct {
-			Key string `json:"idempotency_key"`
+		var ar applyRequest
+		_ = json.Unmarshal([]byte(out), &ar)
+		if len(ar.Operations) != 1 || ar.Operations[0].Kind != "node.edit" {
+			t.Fatalf("worker が止まっているときの作成の操作：%+v", ar)
 		}
-		_ = json.Unmarshal([]byte(out), &prob)
+		// 版のスナップショットは worker が作るので、それまで、レビューは snapshot_pending になる。
+		reviewer.session = "s-r4"
+		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--version", "1", "--repo", "q", "--json")
+		if code != 1 || !strings.Contains(out, "snapshot_pending") {
+			t.Fatalf("worker が止まっているときのレビュー：%d %s", code, out)
+		}
 		w.restartWorker()
-		// 失敗したときに残ったキーで送り直す。
-		w.eventually("worker が戻る", 30*time.Second, func() bool {
-			code, _ := agent.cli("", "ar", "create", "--branch", "s", "--idempotency-key", prob.Key, "--json")
+		w.eventually("worker が戻り、レビューできる", 30*time.Second, func() bool {
+			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--version", "1", "--repo", "q", "--json")
 			return code == 0
 		})
+		agent.must(nil, "ar", "close", ar.ID, "--reason", "確かめ終えた")
 	})
 
 	// ---- main への直接の push：利用者とエージェントは、保護で拒まれる。保護が外れたときの push は、警告になる ----

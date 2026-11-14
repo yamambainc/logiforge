@@ -66,7 +66,9 @@ func (u *user) create(branch string) applyRequest {
 	var c checkOut
 	u.must(&c, "check")
 	var ar applyRequest
+	start := time.Now()
 	u.must(&ar, "ar", "create", "--branch", branch)
+	u.w.t.Logf("ar create %s：%v", branch, time.Since(start).Round(time.Millisecond))
 	if !c.OK || len(c.Operations) != len(ar.Operations) {
 		u.w.t.Fatalf("check と ar create の操作が違う：%+v %+v", c, ar)
 	}

@@ -63,7 +63,7 @@ func (b *Backend) requestID(prefix, repo string, c Caller, key string) (string, 
 
 // waitLatest は、worker を起こし、done が真になるまで、上限つきで待つ。上限を過ぎたら false を返す。
 func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest string) bool) bool {
-	b.Snap.Wake(ctx, repo)
+	b.Worker.Wake(ctx, repo)
 	timeout := b.WaitTimeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
@@ -259,21 +259,19 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	} else if !errors.Is(err, ports.ErrNotFound) {
 		return out, err
 	}
-	read, err := b.Snap.ReadBranch(ctx, repo, n.Branch)
+	// ブランチは、worker を待たずに、作業用の複製から git を読んで検査する（design/backend/apply-request.md の「作成」）。
+	br, err := b.Git.ReadBranch(ctx, repo, ref, n.Branch)
 	if errors.Is(err, ports.ErrNotFound) {
 		return out, fail(CodeValidationFailed, "ブランチ %s がない（push したか確かめる）", n.Branch)
 	}
 	if err != nil {
 		return out, err
 	}
-	if n.Revision != "" && n.Revision != read.Head {
-		return out, fail(CodeValidationFailed, "revision %s が、ブランチの今の先頭 %s と違う", n.Revision, read.Head)
+	head := br.Commit.Revision
+	if n.Revision != "" && n.Revision != head {
+		return out, fail(CodeValidationFailed, "revision %s が、ブランチの今の先頭 %s と違う", n.Revision, head)
 	}
-	br, err := b.Snap.Branch(ctx, repo, read.Head)
-	if err != nil {
-		return out, err
-	}
-	base, err := b.mainAt(ctx, repo, read.Base)
+	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
 	if err != nil {
 		return out, err
 	}
@@ -281,7 +279,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return out, err
 	}
-	res, conflicts, err := b.checkVersion(ctx, base, latest, br)
+	res, conflicts, err := b.checkVersion(ctx, &view{files: baseFiles}, latest, br)
 	if err != nil {
 		return out, err
 	}
@@ -294,16 +292,37 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if len(res.Operations) == 0 {
 		return out, fail(CodeValidationFailed, "差分がない")
 	}
-	_, err = b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: id, Branch: n.Branch, Description: n.Description, FirstRevision: read.Head, Opener: c.Principal.Login})
+	_, err = b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: id, Branch: n.Branch, Description: n.Description, FirstRevision: head, Opener: c.Principal.Login})
 	if errors.Is(err, ports.ErrBranchHasOpen) {
 		return out, fail(CodeValidationFailed, "ブランチ %s に、open の apply request がすでにある", n.Branch)
 	}
 	if err != nil {
 		return out, err
 	}
+	// 版の一覧とレビューの材料は、worker のスナップショットから読む。worker に、ブランチを取り込ませる。
+	b.Worker.Wake(ctx, repo)
 	v, err := b.GetApplyRequest(ctx, c, repo, id)
+	if err == nil && len(v.Operations) == 0 {
+		// worker が、まだブランチのスナップショットを作っていない。操作の一覧は、いま検査した結果から返す。
+		for i, op := range res.Operations {
+			v.Operations = append(v.Operations, toOperation(i+1, op))
+		}
+	}
 	out.Value = v
 	return out, err
+}
+
+// baseFiles は、ブランチの base の木のファイルを返す。置き場に木があればそれを使い、なければ作業用の複製から読む。
+// worker の取り込みを待たないためである。
+func (b *Backend) baseFiles(ctx context.Context, repo, ref, base string) (tree.Files, error) {
+	m, err := b.Snap.Main(ctx, repo, base)
+	if err == nil {
+		return m.Tree.Files()
+	}
+	if !errors.Is(err, ports.ErrNotFound) {
+		return nil, err
+	}
+	return b.Git.ReadFiles(ctx, repo, ref, base)
 }
 
 // UpdateApplyRequest は、説明欄を書き換える。client なら、どのセッションからでもよい。

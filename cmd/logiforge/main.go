@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -25,7 +26,9 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/cli"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/workerclient"
 )
 
 func main() {
@@ -80,7 +83,7 @@ func env(name string) (string, error) {
 //	LOGIFORGE_WORKER_ADDR      内部 API を待ち受けるアドレス（既定は 127.0.0.1:8081）
 //	LOGIFORGE_WORKER_INTERVAL  巡回の間隔（既定は 1m）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
-//	LOGIFORGE_READ_BRANCH_TIMEOUT 「ブランチを読む」で main の取り込みを待つ上限（既定は 60s）
+//	LOGIFORGE_BUILD_TREE_TIMEOUT 「木を作る」で、作り終えるのを待つ上限（既定は 60s）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
 func runWorker(ctx context.Context) error {
@@ -121,28 +124,18 @@ func runWorker(ctx context.Context) error {
 	defer release()
 	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
 	gitEnv := src.GitEnv()
-	// git で使える転送の方式。既定は https と file だけ。テストの GitForge が http で動くときなどに、足す。
-	if v := os.Getenv("LOGIFORGE_GIT_ALLOW_PROTOCOL"); v != "" {
-		for _, p := range strings.Split(v, ":") {
-			switch p {
-			case "https", "file":
-			case "http":
-				slog.Warn("git で http を許している。読むだけのトークンが平文で流れる。テストのときだけ使う")
-			default:
-				return fmt.Errorf("LOGIFORGE_GIT_ALLOW_PROTOCOL には、https、http、file だけを、: でつないで書く：%q", p)
-			}
-		}
-		gitEnv = append(gitEnv, "GIT_ALLOW_PROTOCOL="+v)
+	if gitEnv, err = allowProtocol(gitEnv); err != nil {
+		return err
 	}
 	readWait := time.Duration(0)
-	if v := os.Getenv("LOGIFORGE_READ_BRANCH_TIMEOUT"); v != "" {
+	if v := os.Getenv("LOGIFORGE_BUILD_TREE_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			return fmt.Errorf("LOGIFORGE_READ_BRANCH_TIMEOUT: %w", err)
+			return fmt.Errorf("LOGIFORGE_BUILD_TREE_TIMEOUT: %w", err)
 		}
 		readWait = d
 	}
-	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, ReadBranchWait: readWait}, src, &store.Dir{Root: cfg.storeDir})
+	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, BuildTreeWait: readWait}, src, &store.Dir{Root: cfg.storeDir})
 
 	srv := &http.Server{Addr: addr, Handler: w.Handler(cfg.key), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 2)
@@ -159,6 +152,25 @@ func runWorker(ctx context.Context) error {
 		_ = srv.Shutdown(sctx)
 		return ctx.Err()
 	}
+}
+
+// allowProtocol は、LOGIFORGE_GIT_ALLOW_PROTOCOL（git で使える転送の方式）を読み、git の環境変数に足す。
+// 既定は https と file だけ。テストの GitForge が http で動くときなどに、足す。
+func allowProtocol(gitEnv []string) ([]string, error) {
+	v := os.Getenv("LOGIFORGE_GIT_ALLOW_PROTOCOL")
+	if v == "" {
+		return gitEnv, nil
+	}
+	for _, p := range strings.Split(v, ":") {
+		switch p {
+		case "https", "file":
+		case "http":
+			slog.Warn("git で http を許している。読むだけのトークンが平文で流れる。テストのときだけ使う")
+		default:
+			return nil, fmt.Errorf("LOGIFORGE_GIT_ALLOW_PROTOCOL には、https、http、file だけを、: でつないで書く：%q", p)
+		}
+	}
+	return append(gitEnv, "GIT_ALLOW_PROTOCOL="+v), nil
 }
 
 // envs は、必須の環境変数をまとめて読む。
@@ -201,16 +213,19 @@ func keyring(v string) (pullreq.Keyring, error) {
 //	LOGIFORGE_WORKER_URL、LOGIFORGE_INTERNAL_KEY   worker の内部 API
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG、LOGIFORGE_USER_TEAM
 //	LOGIFORGE_WRITER、LOGIFORGE_WRITER_TOKEN       書き込み主体
-//	LOGIFORGE_WORKER_LOGIN     worker のユーザー（API の主体として受け付けない）
+//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   worker のユーザー（API の主体として受け付けない）。
+//	                           apply request の作成で、git を読むのにも使う（読むだけのトークン）
+//	LOGIFORGE_GIT_CACHE_DIR    作業用の git の複製を置く、一時的なディレクトリ（既定は OS の一時ディレクトリ）
+//	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（worker と同じ）
 //	LOGIFORGE_RECORD_KEYS      記録の MAC の鍵（鍵の ID=鍵,…。最初のものを書くときに使う）
 //	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
 func runServe(ctx context.Context) error {
-	var storeDir, workerURL, key, url, org, team, writer, writerToken, workerLogin, keys string
+	var storeDir, workerURL, key, url, org, team, writer, writerToken, workerLogin, workerToken, keys string
 	if err := envs(map[string]*string{
 		"LOGIFORGE_STORE_DIR": &storeDir, "LOGIFORGE_WORKER_URL": &workerURL, "LOGIFORGE_INTERNAL_KEY": &key,
 		"LOGIFORGE_FORGEJO_URL": &url, "LOGIFORGE_FORGEJO_ORG": &org, "LOGIFORGE_USER_TEAM": &team,
 		"LOGIFORGE_WRITER": &writer, "LOGIFORGE_WRITER_TOKEN": &writerToken, "LOGIFORGE_WORKER_LOGIN": &workerLogin,
-		"LOGIFORGE_RECORD_KEYS": &keys,
+		"LOGIFORGE_WORKER_TOKEN": &workerToken, "LOGIFORGE_RECORD_KEYS": &keys,
 	}); err != nil {
 		return err
 	}
@@ -223,7 +238,24 @@ func runServe(ctx context.Context) error {
 		addr = "127.0.0.1:8080"
 	}
 	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, Writer: writer, WriterToken: writerToken, WorkerLogin: workerLogin}, ring)
-	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: &store.Dir{Root: storeDir}, WorkerURL: workerURL, Key: key}}
+	// apply request の作成で git を読む、作業用の複製。worker と同じ、読むだけのユーザーで読む。
+	reader := forgejo.NewWorkerSource(forgejo.Config{URL: url, Org: org}, workerLogin, workerToken)
+	gitEnv, err := allowProtocol(reader.GitEnv())
+	if err != nil {
+		return err
+	}
+	cacheDir := os.Getenv("LOGIFORGE_GIT_CACHE_DIR")
+	if cacheDir == "" {
+		cacheDir = filepath.Join(os.TempDir(), "logiforge-git")
+	}
+	git, err := workcopy.NewCache(cacheDir, gitEnv, reader.GitURL)
+	if err != nil {
+		return fmt.Errorf("作業用の git の複製の置き場を作れない：%w", err)
+	}
+	// 作業用の複製は、使い捨てのキャッシュである。止まるときに消す。
+	defer os.RemoveAll(git.Dir)
+	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: &store.Dir{Root: storeDir}},
+		Worker: &workerclient.Client{URL: workerURL, Key: key}, Git: git}
 	if v := os.Getenv("LOGIFORGE_WAIT_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {

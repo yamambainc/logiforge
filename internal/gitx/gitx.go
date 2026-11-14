@@ -111,6 +111,23 @@ func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	return err
 }
 
+// ErrNoRef は、fetch したいブランチが、リモートにないことを表す。
+var ErrNoRef = errors.New("gitx: リモートにそのブランチがない")
+
+// FetchBranches は、リモートの、名前を指定したブランチだけを fetch する。どれかがリモートになければ ErrNoRef。
+// 名前は、refspec で意味を持つ文字（: * など）を含まないものを渡す。
+func (r *Repo) FetchBranches(ctx context.Context, remote string, names ...string) error {
+	args := []string{"fetch", "--quiet", "--no-tags", "--end-of-options", remote}
+	for _, n := range names {
+		args = append(args, "+refs/heads/"+n+":refs/remotes/origin/"+n)
+	}
+	_, err := r.run(ctx, nil, args...)
+	if err != nil && strings.Contains(err.Error(), "couldn't find remote ref") {
+		return fmt.Errorf("%w: %v", ErrNoRef, err)
+	}
+	return err
+}
+
 // LocalHeads は、前に取ってきたブランチの先頭を、ブランチの名前から引く。
 func (r *Repo) LocalHeads(ctx context.Context) (map[string]string, error) {
 	out, err := r.run(ctx, nil, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/origin/")

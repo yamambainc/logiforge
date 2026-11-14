@@ -12,7 +12,11 @@ x-logiforge-common: &common
   LOGIFORGE_INTERNAL_KEY_FILE: /run/secrets/internal_key
   LOGIFORGE_FORGEJO_URL: http://localhost:3000
   LOGIFORGE_FORGEJO_ORG: logiforge
+  # 読むだけのユーザー。worker は巡回で、バックエンドは apply request の作成で、git を読む。
   LOGIFORGE_WORKER_LOGIN: logiforge-reader
+  LOGIFORGE_WORKER_TOKEN_FILE: /run/secrets/worker_token
+  # ローカルの Forgejo は http で動く。本番では https だけにする（既定）。
+  LOGIFORGE_GIT_ALLOW_PROTOCOL: http:https:file
 
 services:
   forgejo:
@@ -46,9 +50,6 @@ services:
     environment:
       <<: *common
       LOGIFORGE_WORKER_DIR: /var/lib/logiforge/worker
-      LOGIFORGE_WORKER_TOKEN_FILE: /run/secrets/worker_token
-      # ローカルの Forgejo は http で動く。本番では https だけにする（既定）。
-      LOGIFORGE_GIT_ALLOW_PROTOCOL: http:https:file
     secrets: [internal_key, worker_token]
     volumes:
       - worker:/var/lib/logiforge/worker
@@ -75,7 +76,7 @@ services:
       LOGIFORGE_WRITER: logiforge-writer
       LOGIFORGE_WRITER_TOKEN_FILE: /run/secrets/writer_token
       LOGIFORGE_RECORD_KEYS_FILE: /run/secrets/record_keys
-    secrets: [internal_key, writer_token, record_keys]
+    secrets: [internal_key, writer_token, record_keys, worker_token]
     volumes:
       # バックエンドは、置き場を読むだけである。
       - store:/var/lib/logiforge/store:ro

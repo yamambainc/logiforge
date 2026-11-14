@@ -8,20 +8,14 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 )
 
-// ErrUnavailable は、worker に頼めないこと（止まっている、応答がない）を表す。
+// ErrUnavailable は、外のもの（worker、git）に頼めないこと（止まっている、応答がない）を表す。
 var ErrUnavailable = errors.New("worker に頼めない")
 
 // ErrSnapshotPending は、worker がスナップショットを作り終えていないことを表す（取り込みは続いている）。
 var ErrSnapshotPending = errors.New("スナップショットが、まだない")
 
-// BranchRead は、worker に「ブランチを読む」を頼んだ結果である。
-type BranchRead struct {
-	Head string
-	Base string
-}
-
 // SnapshotStore は、スナップショットの置き場のポートである（design/backend/ports/snapshot-store.md）。
-// 置き場を読むことと、worker に頼むことだけを持つ。書く操作は持たない。
+// 置き場を読むことだけを持つ。書く操作も、worker に頼む操作も持たない（worker は、バックエンドの workerclient で直接呼ぶ）。
 // ないものは、ErrNotFound を返す。
 type SnapshotStore interface {
 	Repositories(ctx context.Context) ([]string, error)
@@ -32,12 +26,4 @@ type SnapshotStore interface {
 	Branch(ctx context.Context, repo, sha string) (*snapshot.Branch, error)
 	BranchHistory(ctx context.Context, repo, branch string) (store.BranchHistory, error)
 	Artifact(ctx context.Context, repo, sha256 string) ([]byte, error)
-
-	// ReadBranch は、worker にブランチを読んでもらう。worker に頼めなければ ErrUnavailable。
-	ReadBranch(ctx context.Context, repo, branch string) (BranchRead, error)
-	// BuildTree は、worker に、main のコミット sha の木を作ってもらう。上限まで待つ。
-	// 記録がなければ ErrNotFound、上限までに終わらなければ ErrSnapshotPending、worker に頼めなければ ErrUnavailable。
-	BuildTree(ctx context.Context, repo, sha string) error
-	// Wake は、worker に巡回を始めてもらう。失敗は返さない。
-	Wake(ctx context.Context, repo string)
 }
