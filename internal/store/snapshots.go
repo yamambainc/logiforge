@@ -10,9 +10,17 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 )
 
-// GetCommit は、コミットの記録を読む。なければ ErrNotFound。
+// GetCommit は、コミットの記録を読む。main のコミットは版の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
+// なければ ErrNotFound。
 func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit, error) {
 	b, err := r.Get(ctx, CommitKey(repo, sha))
+	if errors.Is(err, ErrNotFound) {
+		br, berr := GetBranch(ctx, r, repo, sha)
+		if berr != nil {
+			return snapshot.Commit{}, berr
+		}
+		return br.Commit, nil
+	}
 	if err != nil {
 		return snapshot.Commit{}, err
 	}
@@ -43,24 +51,20 @@ func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, e
 	return &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: c, Tree: d.Tree}, nil
 }
 
-// GetBranch は、ブランチの先頭のスナップショットを読む。
+// GetBranch は、ブランチの先頭のスナップショットを読む。古い形の版のものも読む（snapshot.MinBranchFormatVersion から）。
 func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branch, error) {
-	c, err := GetCommit(ctx, r, repo, sha)
+	b, err := r.Get(ctx, BranchSnapshotKey(repo, sha))
 	if err != nil {
 		return nil, err
 	}
-	if c.Kind != snapshot.KindBranch {
+	var br snapshot.Branch
+	if err := snapshot.DecodeOld(b, &br, snapshot.MinBranchFormatVersion); err != nil {
+		return nil, err
+	}
+	if br.Commit.Kind != snapshot.KindBranch {
 		return nil, ErrNotFound
 	}
-	b, err := r.Get(ctx, SnapshotKey(repo, sha))
-	if err != nil {
-		return nil, err
-	}
-	var d snapshot.DiffDoc
-	if err := snapshot.Decode(b, &d); err != nil {
-		return nil, err
-	}
-	return &snapshot.Branch{FormatVersion: snapshot.FormatVersion, Commit: c, Diff: d.Diff}, nil
+	return &br, nil
 }
 
 // PutMain は、main のコミットの記録と木を置く。木を先に置き、コミットの記録をあとに置く。
@@ -98,20 +102,83 @@ func HasTree(ctx context.Context, r Reader, repo, sha string) (bool, error) {
 	return err == nil, err
 }
 
-// PutBranch は、ブランチの先頭のスナップショットを置く。
+// PutBranch は、ブランチの先頭のスナップショット（コミットの記録と差分）を、版の外に 1 つにまとめて置く。
 func PutBranch(ctx context.Context, w Writer, repo string, b *snapshot.Branch) error {
-	diff, err := snapshot.Encode(&snapshot.DiffDoc{FormatVersion: snapshot.FormatVersion, Diff: b.Diff})
+	b.FormatVersion = snapshot.FormatVersion
+	data, err := snapshot.Encode(b)
 	if err != nil {
 		return err
 	}
-	if err := w.Put(ctx, SnapshotKey(repo, b.Commit.Revision), diff); err != nil {
-		return err
-	}
-	c, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: b.Commit})
+	return w.Put(ctx, BranchSnapshotKey(repo, b.Commit.Revision), data)
+}
+
+// legacyBranchPrefixes は、ブランチのスナップショットを版の下に置いていた、古い形の版の接頭辞である。
+var legacyBranchPrefixes = []string{"v4/"}
+
+// MoveLegacyBranchSnapshots は、古い形の版の下に置いていたブランチのスナップショットを、版の外（BranchSnapshotKey）に移す。
+// ブランチの履歴に出てくる先頭のコミットについて、移していないものだけを移す。何度動かしても、結果は同じになる。
+// 古い版の下のものは消さない。移した数を返す。
+func MoveLegacyBranchSnapshots(ctx context.Context, w Writer, repo string) (int, error) {
+	names, _, err := GetBranchIndex(ctx, w, repo)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return w.Put(ctx, CommitKey(repo, b.Commit.Revision), c)
+	moved := 0
+	for _, name := range names {
+		h, _, err := GetBranchHistory(ctx, w, repo, name)
+		if err != nil {
+			return moved, err
+		}
+		for _, e := range h.Entries {
+			if e.Head == "" {
+				continue
+			}
+			if _, err := w.Get(ctx, BranchSnapshotKey(repo, e.Head)); err == nil {
+				continue
+			} else if !errors.Is(err, ErrNotFound) {
+				return moved, err
+			}
+			for _, prefix := range legacyBranchPrefixes {
+				br, err := readLegacyBranch(ctx, w, prefix, repo, e.Head)
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					return moved, err
+				}
+				if err := PutBranch(ctx, w, repo, br); err != nil {
+					return moved, err
+				}
+				moved++
+				break
+			}
+		}
+	}
+	return moved, nil
+}
+
+// readLegacyBranch は、古い形の版の下の、コミットの記録と差分を読み、1 つのブランチのスナップショットにする。
+func readLegacyBranch(ctx context.Context, r Reader, prefix, repo, sha string) (*snapshot.Branch, error) {
+	cb, err := r.Get(ctx, prefix+repo+"/commits/"+sha)
+	if err != nil {
+		return nil, err
+	}
+	var c snapshot.CommitDoc
+	if err := snapshot.DecodeOld(cb, &c, snapshot.MinBranchFormatVersion); err != nil {
+		return nil, err
+	}
+	if c.Commit.Kind != snapshot.KindBranch {
+		return nil, ErrNotFound
+	}
+	db, err := r.Get(ctx, prefix+repo+"/snapshots/"+sha)
+	if err != nil {
+		return nil, err
+	}
+	var d snapshot.DiffDoc
+	if err := snapshot.DecodeOld(db, &d, snapshot.MinBranchFormatVersion); err != nil {
+		return nil, err
+	}
+	return &snapshot.Branch{FormatVersion: snapshot.FormatVersion, Commit: c.Commit, Diff: d.Diff}, nil
 }
 
 // GetLatest は、今の main の SHA を読む。なければ空。

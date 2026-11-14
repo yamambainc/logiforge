@@ -468,7 +468,8 @@ func TestBackgroundIngestStopsWithRun(t *testing.T) {
 }
 
 // 初めての取り込み（記録を順に作り、最後に木を 1 回作る）と、ふだんの取り込み（1 コミットずつ前の木に重ねる）で、
-// コミットの記録と今の main の木が同じになる。違うのは、途中のコミットの「新しく破れた不変条件」だけである。
+// コミットの記録と今の main の木が同じになる。違うのは、「新しく破れた不変条件」の付け方だけである。
+// 初めての取り込みでは、今の木で破れているもの全体を、最後のコミットの警告にする。
 func TestInitialImportMatchesIncremental(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
@@ -507,8 +508,10 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 		if err1 != nil || err2 != nil {
 			t.Fatal(err1, err2)
 		}
-		// 初めての取り込みでは、途中のコミットの「新しく破れた不変条件」を確かめない。
-		b.Warnings = slices.DeleteFunc(b.Warnings, func(v tree.Violation) bool { return v.Rule == tree.RuleOutsideTree })
+		// 「新しく破れた不変条件」は、下で別に確かめる。
+		notBroken := func(v tree.Violation) bool { return v.Rule == tree.RuleOutsideTree }
+		a.Warnings = slices.DeleteFunc(a.Warnings, notBroken)
+		b.Warnings = slices.DeleteFunc(b.Warnings, notBroken)
 		if !reflect.DeepEqual(a, b) {
 			t.Fatalf("%s の記録が違う：\n初めて：%+v\nふだん：%+v", sha, a, b)
 		}
@@ -519,10 +522,12 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 	if a == nil || b == nil {
 		t.Fatal("今の main の木がない")
 	}
-	if !b.Tree.History[len(b.Tree.History)-1].NewlyBroken || a.Tree.History[len(a.Tree.History)-1].NewlyBroken {
+	if !b.Tree.History[len(b.Tree.History)-1].NewlyBroken || !a.Tree.History[len(a.Tree.History)-1].NewlyBroken {
 		t.Fatalf("新しく破れた不変条件の印：ふだん %+v、初めて %+v", b.Tree.History, a.Tree.History)
 	}
-	b.Tree.History[len(b.Tree.History)-1].NewlyBroken = false
+	if c, _ := store.GetCommit(ctx, allSt, "q", latest); !contains(rules(c.Warnings), tree.RuleOutsideTree) || !strings.Contains(c.Warnings[len(c.Warnings)-1].Detail, "まとめて取り込んだ") {
+		t.Fatalf("最後のコミットの、まとめて取り込んだときの警告：%+v", c.Warnings)
+	}
 	if !reflect.DeepEqual(a.Tree, b.Tree) {
 		t.Fatalf("今の main の木が違う：\n初めて：%+v\nふだん：%+v", a.Tree, b.Tree)
 	}
@@ -535,5 +540,47 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 	}
 	if rs := a.Tree.Nodes["h-6666666666"].Changes; len(rs) != 2 || rs[1].Revision != shas[3] {
 		t.Fatalf("inactive 化した子孫の変更の一覧：%v", rs)
+	}
+}
+
+// 前の latest の木があり、新しいコミットが多いとき（まとめての取り込み）は、始めの木と比べて新しく破れたものだけを、
+// 最後のコミットの警告にする。始めの木から破れていたものは、警告にしない。
+func TestBulkImportNewlyBroken(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	r.write("README.md", []byte("前から破れている"))
+	r.commit("手で直した")
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	var first, last string
+	for i := 0; i <= incrementalLimit; i++ {
+		r.write(fmt.Sprintf("%s/background.md", h2), []byte(fmt.Sprintf("背景 %d\n", i)))
+		last = r.commit("反映\n\nLogiforge-Apply-Request: apr_" + fmt.Sprint(i))
+		if first == "" {
+			first = last
+		}
+	}
+	r.write("NOTES.md", []byte("新しく破れた"))
+	last = r.commit("反映\n\nLogiforge-Apply-Request: apr_last")
+	syncRepo(t, w)
+	c, err := store.GetCommit(ctx, st, "q", last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range c.Warnings {
+		if v.Rule == tree.RuleOutsideTree {
+			got = append(got, v.Node)
+			if !strings.Contains(v.Detail, "まとめて取り込んだ "+first+".."+last) {
+				t.Fatalf("detail: %q", v.Detail)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, []string{"NOTES.md"}) {
+		t.Fatalf("新しく破れた不変条件：%v", c.Warnings)
+	}
+	m, _ := store.GetMain(ctx, st, "q", last)
+	if !m.Tree.History[len(m.Tree.History)-1].NewlyBroken {
+		t.Fatal("history の印がない")
 	}
 }

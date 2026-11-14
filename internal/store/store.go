@@ -115,7 +115,8 @@ func (d *Dir) PutIf(ctx context.Context, key string, data, old []byte) error {
 //
 // git から作り直せるもの（コミットの記録、木、latest、repositories）は、形の版の接頭辞（例：`v4/`）の下に置く。
 // 形の版が変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は消さない。
-// 作り直せないもの（ブランチの履歴とその一覧）と、形を持たないもの（artifact の中身）は、版の外の `keep/` の下に置く。
+// 作り直せないもの（ブランチの履歴とその一覧、ブランチのスナップショット）と、形を持たないもの（artifact の中身）は、
+// 版の外の `keep/` の下に置く。
 // 置き場の直下には、版の接頭辞と `keep/` だけを置く。repository の名前（`v4` など）と、ぶつからないようにするため。
 
 // Prefix は、今の形の版の接頭辞である。
@@ -138,6 +139,10 @@ const KeepPrefix = "keep/"
 func BranchKey(repo, branch string) string {
 	return KeepPrefix + repo + "/branches/" + url.PathEscape(branch)
 }
+
+// BranchSnapshotKey は、ブランチの先頭のスナップショットのキーである。コミットの記録と差分を、1 つにまとめて置く。
+// 消えたブランチの版は git から作り直せないので、版の外に置き、中に自分の形の版を持たせる。
+func BranchSnapshotKey(repo, sha string) string { return KeepPrefix + repo + "/branch-snapshots/" + sha }
 
 // BranchIndexKey は、履歴のあるブランチの名前の一覧のキーである。消えたブランチを見つけるのに使う。
 func BranchIndexKey(repo string) string { return KeepPrefix + repo + "/branch-index" }

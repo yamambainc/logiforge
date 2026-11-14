@@ -23,8 +23,22 @@ func Encode(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Decode は、Encode したものを読む。
+// MinBranchFormatVersion は、読めるブランチのスナップショットの、いちばん古い形の版である。
+// ブランチのスナップショットは、git から作り直せないので、形の版が上がっても、古い形のまま読む（design/backend/ports/snapshot-store.md）。
+// 形を変えるときは、古い形も読めるようにするか、移す処理を足す。
+const MinBranchFormatVersion = 4
+
+// Decode は、Encode したものを読む。形の版が、今の版でなければ誤りにする。
 func Decode(data []byte, v any) error {
+	return decode(data, v, FormatVersion)
+}
+
+// DecodeOld は、Encode したものを、形の版が min から今の版までなら読む。ブランチのスナップショットと、古い版から移すときに使う。
+func DecodeOld(data []byte, v any, min int) error {
+	return decode(data, v, min)
+}
+
+func decode(data []byte, v any, min int) error {
 	zr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("snapshot: %w", err)
@@ -43,8 +57,8 @@ func Decode(data []byte, v any) error {
 	if !ok {
 		return nil
 	}
-	if got := vd.formatVersion(); got != FormatVersion {
-		return fmt.Errorf("snapshot: 形の版が %d で、%d でない", got, FormatVersion)
+	if got := vd.formatVersion(); got < min || got > FormatVersion {
+		return fmt.Errorf("snapshot: 形の版が %d で、%d から %d の間でない", got, min, FormatVersion)
 	}
 	return nil
 }

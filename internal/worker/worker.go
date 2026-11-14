@@ -59,6 +59,8 @@ type Worker struct {
 	wake  chan string
 	// runCtx は、Run の ctx である。裏の取り込みは、これで止まる。Run の前は context.Background()。
 	runCtx context.Context
+	// moved は、古い形の版の下のブランチのスナップショットを、版の外に移し終えた repository である。プロセスごとに 1 度だけ移す。
+	moved map[string]bool
 	// progress は、最後に巡回を始めたか、main のコミットを 1 つ取り込んだ時刻（UnixNano）である。ヘルスチェックに使う。
 	progress atomic.Int64
 }
@@ -93,7 +95,7 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	w := &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, wake: make(chan string, 64), runCtx: context.Background()}
+	w := &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, moved: map[string]bool{}, wake: make(chan string, 64), runCtx: context.Background()}
 	w.touch()
 	return w
 }
@@ -235,6 +237,9 @@ func (w *Worker) syncIfFree(ctx context.Context, r ports.Repository) error {
 }
 
 func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
+	if err := w.moveLegacy(ctx, r.Name); err != nil {
+		return err
+	}
 	g, err := w.repo(ctx, r.Name)
 	if err != nil {
 		return err
@@ -292,6 +297,29 @@ func maps(a, b map[string]string) bool {
 	return true
 }
 
+// moveLegacy は、古い形の版の下に置いていたブランチのスナップショットを、版の外に移す（store.MoveLegacyBranchSnapshots）。
+// 形の版を上げても、消えたブランチの版を読めるようにするため。repository ごとに、プロセスで 1 度だけ動かす。
+// repository のロックを持って呼ぶ。
+func (w *Worker) moveLegacy(ctx context.Context, repo string) error {
+	w.mu.Lock()
+	done := w.moved[repo]
+	w.mu.Unlock()
+	if done {
+		return nil
+	}
+	n, err := store.MoveLegacyBranchSnapshots(ctx, w.store, repo)
+	if err != nil {
+		return fmt.Errorf("古い形のブランチのスナップショットを移せない：%w", err)
+	}
+	if n > 0 {
+		w.cfg.Log.Info("古い形のブランチのスナップショットを移した", "repository", repo, "count", n)
+	}
+	w.mu.Lock()
+	w.moved[repo] = true
+	w.mu.Unlock()
+	return nil
+}
+
 // syncMain は、main の first-parent の並びのうち、記録のないコミットについて、コミットの記録を作る。
 // 最後に、今の main（mainSHA）の木を作り、latest を書く（design/backend/worker.md の「すること」）。
 //
@@ -330,11 +358,14 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 	var files tree.Files // ふだんの取り込みで、直前のコミットの木のファイル
 	var broken []tree.Violation
 	incremental := false
+	// startBroken は、まとめて取り込むときの、始めの木で破れていた不変条件である。始めの木がなければ nil。
+	var startBroken []tree.Violation
 	if start > 0 {
 		m, err := store.GetMain(ctx, w.store, repo, chain[start-1])
 		switch {
 		case err == nil && len(chain)-start > incrementalLimit:
 			x = snapshot.IndexFromTree(&m.Tree)
+			startBroken = m.Tree.Broken
 		case err == nil:
 			x = snapshot.IndexFromTree(&m.Tree)
 			if files, err = m.Tree.Files(); err != nil {
@@ -349,6 +380,9 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 			return err
 		}
 	}
+	// まとめて取り込むときは、最後のコミットの記録を、今の main の木を作るまで置かない。
+	// 始めの木と比べて新しく破れた不変条件を、その警告にするため。
+	var last *snapshot.Commit
 	for i := start; i < len(chain); i++ {
 		sha, prev := chain[i], ""
 		if i > 0 {
@@ -385,6 +419,10 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		if rewritten && i == len(chain)-1 {
 			x.AddWorkerWarnings(&rec, tree.Violation{Rule: RuleMainRewritten, Node: sha, Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
 		}
+		if !incremental && i == len(chain)-1 {
+			last = &rec
+			break
+		}
 		if err := store.PutCommit(ctx, w.store, repo, rec); err != nil {
 			return err
 		}
@@ -404,10 +442,30 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 				return err
 			}
 		}
-		if err := store.PutTree(ctx, w.store, repo, mainSHA, snapshot.BuildTree(files, x)); err != nil {
+		t := snapshot.BuildTree(files, x)
+		if last != nil {
+			// まとめて取り込んだときは、始めの木と今の木を比べ、新しく破れた不変条件を、最後のコミットの警告にする。
+			// 始めの木がなければ（初めての取り込み）、今の木で破れているもの全体を、新しく破れたものとする。
+			newly, _ := tree.NewlyBroken(startBroken, t.Broken)
+			from := chain[start]
+			for i := range newly {
+				newly[i].Detail = "まとめて取り込んだ " + from + ".." + mainSHA + " のどこかで破れた：" + newly[i].Detail
+			}
+			x.AddNewlyBroken(last, newly...)
+			t.History[len(t.History)-1].NewlyBroken = x.History[len(x.History)-1].NewlyBroken
+			// 記録を木より先に置く。木を置く前に止まっても、次の巡回で、記録から木を作り直せるようにするため。
+			if err := store.PutCommit(ctx, w.store, repo, *last); err != nil {
+				return err
+			}
+		}
+		if err := store.PutTree(ctx, w.store, repo, mainSHA, t); err != nil {
 			return err
 		}
 		w.touch()
+	} else if last != nil {
+		if err := store.PutCommit(ctx, w.store, repo, *last); err != nil {
+			return err
+		}
 	}
 	// latest の規則（design/backend/snapshot.md の「latest」）：今の latest が、新しい main の並びにあるときだけ書く。
 	// ないときは、main が書き換えられているので、上書きする（警告は、上でコミットに付けた）。
@@ -443,14 +501,26 @@ func (w *Worker) replay(ctx context.Context, repo string, chain []string) (*snap
 }
 
 // buildTree は、main のコミット sha の木を作る。なければ作り、あれば何もしない。sha の記録がなければ store.ErrNotFound。
-// history とノードの変更の一覧は、最初のリビジョンから sha までの記録を、Parent をたどって読んで求める。
+// history とノードの変更の一覧は、sha から Parent をたどって記録を読み、順に重ねて求める。
+// たどる途中で木のあるコミットに当たったら、その木から始め、その先の記録だけを重ねる。
 // ブランチの base と、API で指定された過去のリビジョンに使う。
 func (w *Worker) buildTree(ctx context.Context, g *gitx.Repo, repo, sha string) error {
 	if ok, err := store.HasTree(ctx, w.store, repo, sha); err != nil || ok {
 		return err
 	}
-	var chain []string
+	var commits []snapshot.Commit
+	x := snapshot.NewIndex()
 	for cur := sha; ; {
+		if cur != sha {
+			m, err := store.GetMain(ctx, w.store, repo, cur)
+			if err == nil {
+				x = snapshot.IndexFromTree(&m.Tree)
+				break
+			}
+			if !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+		}
 		c, err := store.GetCommit(ctx, w.store, repo, cur)
 		if err != nil {
 			return err
@@ -458,16 +528,15 @@ func (w *Worker) buildTree(ctx context.Context, g *gitx.Repo, repo, sha string) 
 		if c.Kind != snapshot.KindMain {
 			return store.ErrNotFound
 		}
-		chain = append(chain, cur)
+		commits = append(commits, c)
 		if c.Parent == nil {
 			break
 		}
 		cur = *c.Parent
 	}
-	slices.Reverse(chain)
-	x, err := w.replay(ctx, repo, chain)
-	if err != nil {
-		return err
+	slices.Reverse(commits)
+	for _, c := range commits {
+		x.Replay(c)
 	}
 	files, err := g.ReadFiles(ctx, sha, w.cfg.MaxFileSize)
 	if err != nil {
@@ -542,7 +611,7 @@ func commitInfo(c gitx.Commit) snapshot.CommitInfo {
 type BranchResult struct {
 	Head string `json:"head"`
 	Base string `json:"base"`
-	// Key は、先頭のコミットのスナップショットのコミットの記録のキー。
+	// Key は、先頭のコミットのブランチのスナップショットのキー。
 	Key string `json:"key"`
 }
 
@@ -554,7 +623,7 @@ func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head,
 	}
 	if n := len(h.Entries); n > 0 && !h.Entries[n-1].Deleted && h.Entries[n-1].Head == head {
 		last := h.Entries[n-1]
-		return BranchResult{Head: head, Base: last.Base, Key: store.CommitKey(repo, head)}, nil
+		return BranchResult{Head: head, Base: last.Base, Key: store.BranchSnapshotKey(repo, head)}, nil
 	}
 	if mainSHA == "" {
 		return BranchResult{}, fmt.Errorf("main がないので、base を求められない")
@@ -585,7 +654,7 @@ func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head,
 	if err := store.PutBranchHistory(ctx, w.store, repo, h, raw); err != nil {
 		return BranchResult{}, err
 	}
-	return BranchResult{Head: head, Base: base, Key: store.CommitKey(repo, head)}, nil
+	return BranchResult{Head: head, Base: base, Key: store.BranchSnapshotKey(repo, head)}, nil
 }
 
 func (w *Worker) buildBranch(ctx context.Context, g *gitx.Repo, repo, base, head string) error {
