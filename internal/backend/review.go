@@ -79,6 +79,10 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if rev != d.current.Revision {
 		return out, fail(CodeVersionConflict, "レビューした版が、今の版（%d：%s）と違う", d.current.Version, d.current.Revision)
 	}
+	// 今の版が GitForge にはあるが、worker がまだスナップショットにしていない。版を書いたセッションも差分もわからないので、待ってもらう。
+	if d.branch == nil {
+		return out, fail(CodeSnapshotPending, "今の版（%d：%s）のスナップショットが、まだない。少し待って送り直す", d.current.Version, d.current.Revision)
+	}
 	// 差分を書いたどのセッションとも、別のセッションでレビューする。
 	for _, v := range d.model.Versions {
 		if v.AuthorSessionID != nil && *v.AuthorSessionID == n.Session {

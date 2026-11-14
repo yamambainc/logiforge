@@ -85,36 +85,45 @@ func (a *Adapter) client() *http.Client {
 }
 
 func (a *Adapter) post(ctx context.Context, path string, in, out any) (int, error) {
+	status, _, err := a.postHeader(ctx, path, in, out)
+	return status, err
+}
+
+func (a *Adapter) postHeader(ctx context.Context, path string, in, out any) (int, http.Header, error) {
 	b, err := json.Marshal(in)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.WorkerURL, "/")+path, bytes.NewReader(b))
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.Key)
 	res, err := a.client().Do(req)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer res.Body.Close()
 	if out != nil && res.StatusCode == http.StatusOK {
 		if err := json.NewDecoder(res.Body).Decode(out); err != nil {
-			return res.StatusCode, err
+			return res.StatusCode, res.Header, err
 		}
 	}
-	return res.StatusCode, nil
+	return res.StatusCode, res.Header, nil
 }
 
 // ReadBranch は、worker に「ブランチを読む」を頼む。応答がなければ、1 度だけ送り直す（design/backend/worker-api.md）。
 func (a *Adapter) ReadBranch(ctx context.Context, repo, branch string) (ports.BranchRead, error) {
 	var res worker.BranchResult
 	var status int
+	var header http.Header
 	var err error
 	for try := 0; try < 2; try++ {
-		status, err = a.post(ctx, worker.PathReadBranch, worker.ReadBranchRequest{Repository: repo, Branch: branch}, &res)
+		status, header, err = a.postHeader(ctx, worker.PathReadBranch, worker.ReadBranchRequest{Repository: repo, Branch: branch}, &res)
+		if err == nil && header.Get(worker.HeaderSnapshotPending) != "" {
+			return ports.BranchRead{}, ports.ErrSnapshotPending
+		}
 		if err == nil && status != http.StatusServiceUnavailable {
 			break
 		}

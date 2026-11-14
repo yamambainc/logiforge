@@ -19,12 +19,17 @@ import (
 func live(t *testing.T) *fixture {
 	f := setup(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
 	w := worker.New(worker.Config{Dir: t.TempDir(), Interval: time.Hour}, source{f.r.dir}, st)
 	srv := httptest.NewServer(w.Handler("k"))
-	t.Cleanup(srv.Close)
-	go func() { _ = w.Run(ctx) }()
+	done := make(chan struct{})
+	go func() { _ = w.Run(ctx); close(done) }()
+	// 一時ディレクトリを消す前に、worker を止めて、終わるのを待つ（Cleanup は、登録と逆の順に動く）。
+	t.Cleanup(func() {
+		srv.Close()
+		cancel()
+		<-done
+	})
 	f.b.Snap = &snapstore.Adapter{Store: st, WorkerURL: srv.URL, Key: "k"}
 	f.b.WaitTimeout = 10 * time.Second
 	f.forge.remote = f.r
@@ -381,5 +386,17 @@ func TestHumanRequestTarget(t *testing.T) {
 		if code(err) != CodeValidationFailed {
 			t.Fatalf("%s：%v", node, err)
 		}
+	}
+}
+
+// 今の版を、worker がまだスナップショットにしていなければ、レビューは snapshot_pending にする。
+func TestReviewBeforeSnapshot(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	f.forge.ar(id).HeadRevision = strings.Repeat("a", 40) // GitForge にはあるが、worker はまだ見ていない版
+	_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Revision: strings.Repeat("a", 40), Session: "s9", PromptRevision: "p"})
+	if code(err) != CodeSnapshotPending {
+		t.Fatalf("got %v", err)
 	}
 }

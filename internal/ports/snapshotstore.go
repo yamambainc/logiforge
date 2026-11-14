@@ -11,6 +11,9 @@ import (
 // ErrUnavailable は、worker に頼めないこと（止まっている、応答がない）を表す。
 var ErrUnavailable = errors.New("worker に頼めない")
 
+// ErrSnapshotPending は、worker がスナップショットを作り終えていないことを表す（取り込みは続いている）。
+var ErrSnapshotPending = errors.New("スナップショットが、まだない")
+
 // BranchRead は、worker に「ブランチを読む」を頼んだ結果である。
 type BranchRead struct {
 	Head string
