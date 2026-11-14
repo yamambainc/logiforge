@@ -49,11 +49,25 @@ func main() {
 	}
 }
 
-// env は、必須の環境変数を読む。
+// env は、必須の環境変数を読む。name の代わりに name_FILE があれば、そのパスのファイルの中身を値にする
+// （末尾の改行は除く）。秘密を、マウントしたファイルで渡すためである（design/deploy.md）。
 func env(name string) (string, error) {
-	v := os.Getenv(name)
-	if v == "" {
-		return "", fmt.Errorf("環境変数 %s がない", name)
+	v, file := os.Getenv(name), os.Getenv(name+"_FILE")
+	switch {
+	case v != "" && file != "":
+		return "", fmt.Errorf("環境変数 %s と %s_FILE の両方がある。どちらか一方にする", name, name)
+	case file != "":
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("%s_FILE: %w", name, err)
+		}
+		v = strings.TrimRight(string(b), "\r\n")
+		if v == "" {
+			return "", fmt.Errorf("%s_FILE のファイル %s が空である", name, file)
+		}
+		return v, nil
+	case v == "":
+		return "", fmt.Errorf("環境変数 %s がない（%s_FILE でファイルから渡してもよい）", name, name)
 	}
 	return v, nil
 }

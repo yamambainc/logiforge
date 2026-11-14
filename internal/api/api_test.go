@@ -115,3 +115,17 @@ func TestInternalErrorIsProblem(t *testing.T) {
 		t.Fatalf("%d %+v", res.StatusCode, p)
 	}
 }
+
+func TestHealthz(t *testing.T) {
+	// 置き場も GitForge もつながない。ヘルスチェックは、それらに触れない。
+	srv := httptest.NewServer(NewHandler(&backend.Backend{}, nil))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("healthz: %d", res.StatusCode)
+	}
+}

@@ -81,6 +81,8 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
 	route("POST "+repo+"/human-requests", s.createHumanRequest)
 	route("POST "+repo+"/human-requests/{humanRequestId}/answer", s.answerHumanRequest)
+	// ヘルスチェック。/v1 の外に置き、認証を求めない。GitForge や置き場には触れない（design/deploy.md）。
+	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeNotFound, Detail: "そのパスの API はない"})
 	})
@@ -422,4 +424,10 @@ func (s *server) answerHumanRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	return created{status: http.StatusCreated, body: hr}, nil
+}
+
+// healthz は、プロセスが要求を受けられることだけを返す。
+func healthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte("ok\n"))
 }
