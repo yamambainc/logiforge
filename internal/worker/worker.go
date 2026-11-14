@@ -359,7 +359,9 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 	var broken []tree.Violation
 	incremental := false
 	// startBroken は、まとめて取り込むときの、始めの木で破れていた不変条件である。始めの木がなければ nil。
+	// from は、始めの木のあとの、最初のコミットの位置である（警告の詳細に書く範囲の始め）。
 	var startBroken []tree.Violation
+	from := start
 	if start > 0 {
 		m, err := store.GetMain(ctx, w.store, repo, chain[start-1])
 		switch {
@@ -373,7 +375,9 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 			}
 			broken, incremental = m.Tree.Broken, true
 		case errors.Is(err, store.ErrNotFound):
-			if x, err = w.replay(ctx, repo, chain[:start]); err != nil {
+			// 前の取り込みが、最後の記録を置く前に止まったときなど。記録のある祖先のうち、木のあるいちばん新しいものから始め、
+			// その Broken を始めの木の Broken にする。木がなければ、最初から重ねる。
+			if x, startBroken, from, err = w.indexFromNearestTree(ctx, repo, chain[:start]); err != nil {
 				return err
 			}
 		default:
@@ -447,9 +451,8 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 			// まとめて取り込んだときは、始めの木と今の木を比べ、新しく破れた不変条件を、最後のコミットの警告にする。
 			// 始めの木がなければ（初めての取り込み）、今の木で破れているもの全体を、新しく破れたものとする。
 			newly, _ := tree.NewlyBroken(startBroken, t.Broken)
-			from := chain[start]
 			for i := range newly {
-				newly[i].Detail = "まとめて取り込んだ " + from + ".." + mainSHA + " のどこかで破れた：" + newly[i].Detail
+				newly[i].Detail = "まとめて取り込んだ " + chain[from] + ".." + mainSHA + " のどこかで破れた：" + newly[i].Detail
 			}
 			x.AddNewlyBroken(last, newly...)
 			t.History[len(t.History)-1].NewlyBroken = x.History[len(x.History)-1].NewlyBroken
@@ -487,17 +490,31 @@ const incrementalLimit = 20
 // RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。
 const RuleMainRewritten = snapshot.RuleMainRewritten
 
-// replay は、main の並びの、記録のあるコミット（chain）の記録を順に読み、Index を作る。木は読まない。
-func (w *Worker) replay(ctx context.Context, repo string, chain []string) (*snapshot.Index, error) {
-	x := snapshot.NewIndex()
-	for _, sha := range chain {
+// indexFromNearestTree は、記録のあるコミットの並び（chain）のうち、木のあるいちばん新しいコミットを探し、
+// その木から Index を作って、その先の記録だけを重ねる。木の Broken と、その木のあとの最初のコミットの位置も返す。
+// 木がなければ、最初から記録を重ね、Broken は nil、位置は 0 を返す。
+func (w *Worker) indexFromNearestTree(ctx context.Context, repo string, chain []string) (*snapshot.Index, []tree.Violation, int, error) {
+	x, from := snapshot.NewIndex(), 0
+	var broken []tree.Violation
+	for i := len(chain) - 1; i >= 0; i-- {
+		m, err := store.GetMain(ctx, w.store, repo, chain[i])
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		x, broken, from = snapshot.IndexFromTree(&m.Tree), m.Tree.Broken, i+1
+		break
+	}
+	for _, sha := range chain[from:] {
 		c, err := store.GetCommit(ctx, w.store, repo, sha)
 		if err != nil {
-			return nil, fmt.Errorf("%s の記録: %w", sha, err)
+			return nil, nil, 0, fmt.Errorf("%s の記録: %w", sha, err)
 		}
 		x.Replay(c)
 	}
-	return x, nil
+	return x, broken, from, nil
 }
 
 // buildTree は、main のコミット sha の木を作る。なければ作り、あれば何もしない。sha の記録がなければ store.ErrNotFound。

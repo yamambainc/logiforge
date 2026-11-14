@@ -584,3 +584,54 @@ func TestBulkImportNewlyBroken(t *testing.T) {
 		t.Fatal("history の印がない")
 	}
 }
+
+// まとめての取り込みが、最後のコミットの記録を置く前に止まっても、次の巡回で、前から破れていたものを新しく破れたとしない。
+// 記録のある祖先のうち、木のあるいちばん新しいもの（前の latest）の broken と比べるため。
+func TestBulkImportResumesWithStartTree(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	r.write("README.md", []byte("前から破れている"))
+	before := r.commit("手で直した")
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	var first, last string
+	for i := 0; i <= incrementalLimit; i++ {
+		r.write(h2+"/background.md", []byte(fmt.Sprintf("背景 %d\n", i)))
+		last = r.commit("反映\n\nLogiforge-Apply-Request: apr_" + fmt.Sprint(i))
+		if first == "" {
+			first = last
+		}
+	}
+	r.write("NOTES.md", []byte("新しく破れた"))
+	last = r.commit("反映\n\nLogiforge-Apply-Request: apr_last")
+	syncRepo(t, w)
+	// 最後の記録を置く前に止まった状態にする：最後の記録と木を消し、latest を前に戻す。
+	for _, k := range []string{store.CommitKey("q", last), store.SnapshotKey("q", last), store.LatestKey("q")} {
+		if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(k))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SetLatest(ctx, st, "q", before, ""); err != nil {
+		t.Fatal(err)
+	}
+	syncRepo(t, w)
+	c, err := store.GetCommit(ctx, st, "q", last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range c.Warnings {
+		if v.Rule == tree.RuleOutsideTree {
+			got = append(got, v.Node)
+			if !strings.Contains(v.Detail, "まとめて取り込んだ "+first+".."+last) {
+				t.Fatalf("detail: %q", v.Detail)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, []string{"NOTES.md"}) {
+		t.Fatalf("新しく破れた不変条件（README.md は前から破れている）：%v", c.Warnings)
+	}
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != last {
+		t.Fatalf("latest: %s", latest)
+	}
+}
