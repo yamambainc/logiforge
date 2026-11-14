@@ -7,6 +7,7 @@
 
 - イメージは 1 つである。中身は、`logiforge` のバイナリと git だけである（alpine の上に置く）。
   - なぜ alpine か：worker の git の credential helper が、sh で動くから。distroless には sh がない。
+  - base のイメージは、digest で固定する。なぜ：同じタグのまま中身が変わっても、ビルドの結果が変わらないようにするため。
 - コンテナごとに、コマンドを変える。
   - バックエンド：`logiforge serve`
   - worker：`logiforge worker`
@@ -55,10 +56,16 @@ flowchart TB
 
 - バックエンドのタスク：レプリカは何台でもよい。バックエンドはデータを保持しない（[状態を持たない](backend/README.md)）。
 - worker のタスク：レプリカは 1 にする。永続のボリュームを持つ。
+- 置き場は、どのタスクからも読める場所にする。
+  - 今の実装でできるのは、共有のボリューム（NFS、EFS など、複数のノードから mount できるもの。Kubernetes では `ReadWriteMany`）である。worker は読み書きで、バックエンドは読むだけで mount する。
+  - 静的ファイルストレージ（[組み合わせ](adapters/README.md#組み合わせ)）は、そのアダプタを作ってからの選択肢である。
+- 共有のボリュームでは、ファイルのロック（flock）が効かないことがある。worker が 2 つ動いても、起動のときのロックで止められるとは限らない。
+  - そのため、worker が 1 つという決まりは、worker のタスクのレプリカを 1 にし、入れ替えを `Recreate`（か StatefulSet）にすることで守る。
+  - 誤って 2 つ動いても、木もブランチの履歴も壊れない（[worker を 1 つだけ動かす](backend/worker.md#worker-を-1-つだけ動かす)）。
 - 内部 API は、タスクの間のネットワークでつなぐ。
   - worker は、`LOGIFORGE_WORKER_ADDR` で、タスクの外から届くアドレスで待ち受ける。
+  - 内部 API は平文の HTTP で、要求に Bearer の鍵が乗る。そのため、内部 API は、バックエンドと同じプライベートなネットワークの中にだけ出す。ネットワークを信頼できないときは、TLS を通す（サービスメッシュやサイドカーなど）。
   - 内部 API に届くのは、バックエンドのタスクだけにする（ネットワークの規則で絞る）。内部 API の鍵でも確かめる。
-- 置き場は、どのタスクからも読める場所にする（静的ファイルストレージ、[組み合わせ](adapters/README.md#組み合わせ)）。
 
 ## ヘルスチェック
 
@@ -67,7 +74,10 @@ flowchart TB
 | バックエンド | `GET /healthz`（API と同じポート） | 要らない |
 | worker | `GET /healthz`（内部 API と同じポート） | 要らない |
 
-- どちらも、プロセスが要求を受けられれば `200` を返す。
+- バックエンドは、プロセスが要求を受けられれば `200` を返す。
+- worker は、巡回が止まっていなければ `200`、止まっていれば `503` を返す。
+  - 止まっているとは、最後に巡回を始めたか、`main` のコミットを 1 つ取り込んでから、巡回の間隔の 5 倍より長くたったことである。
+  - 取り込みが進んだ時刻も見るのは、初めての取り込みが長く、次の巡回を始められないあいだを、止まっているとみなさないためである。
 - GitForge や置き場に届くかは、確かめない。
   - なぜ：外のサービスが止まったときに、コンテナを再起動し続けないようにするため。外のサービスに届かないときは、API が `unavailable` を返す（[API](api/README.md)）。
 - worker のヘルスチェックは、内部 API と同じく、タスクの中から呼ぶ（例：コンテナの中で `wget`）。
@@ -123,10 +133,15 @@ spec:
     runAsNonRoot: true
     runAsUser: 10001
     fsGroup: 10001
+    seccompProfile: { type: RuntimeDefault }
   containers:
     - name: backend
       image: logiforge:latest
       args: ["serve"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
       ports:
         - containerPort: 8080
       env:
@@ -143,12 +158,19 @@ spec:
         - { name: LOGIFORGE_RECORD_KEYS_FILE, value: /run/secrets/logiforge/record_keys }
       livenessProbe:
         httpGet: { path: /healthz, port: 8080 }
+      readinessProbe:
+        httpGet: { path: /healthz, port: 8080 }
       volumeMounts:
         - { name: store, mountPath: /var/lib/logiforge/store, readOnly: true }
+        - { name: tmp, mountPath: /tmp }
         - { name: secrets, mountPath: /run/secrets/logiforge, readOnly: true }
     - name: worker
       image: logiforge:latest
       args: ["worker"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
       env:
         - { name: LOGIFORGE_WORKER_DIR, value: /var/lib/logiforge/worker }
         - { name: LOGIFORGE_STORE_DIR, value: /var/lib/logiforge/store }
@@ -162,6 +184,7 @@ spec:
       volumeMounts:
         - { name: worker, mountPath: /var/lib/logiforge/worker }
         - { name: store, mountPath: /var/lib/logiforge/store }
+        - { name: tmp, mountPath: /tmp }
         - { name: secrets, mountPath: /run/secrets/logiforge, readOnly: true }
   volumes:
     - name: worker
@@ -170,10 +193,13 @@ spec:
       persistentVolumeClaim: { claimName: logiforge-store }
     - name: secrets
       secret: { secretName: logiforge }
+    - name: tmp
+      emptyDir: {}
 ```
 
 - Pod を直接置くのは、例を短くするためである。動かすときは、レプリカを 1 にした StatefulSet か Deployment（`strategy: Recreate`）で包む。
   - なぜ `Recreate` か：入れ替えのときに、古い worker と新しい worker が同時に動かないようにするため。
+- ルートのファイルシステムは、読むだけにする（`readOnlyRootFilesystem`）。書く場所は、ボリュームと、`/tmp` の `emptyDir` だけである。
 - worker の `livenessProbe` は、`exec` でコンテナの中から `wget` で呼ぶ。
   - なぜ：worker の内部 API は `127.0.0.1` で待ち受けるので、kubelet の `httpGet` は届かないから。
 
@@ -185,6 +211,7 @@ spec:
   - なぜ：Forgejo の URL を、手元のマシンからもコンテナからも、同じ `http://localhost:3000` にするため。バックエンドがクライアントに返す git の URL が、手元のマシンでもそのまま使える。
   - worker の内部 API は `127.0.0.1:8081` で待ち受け、公開しない。届くのは、同じネットワークの中だけである。
 - worker は、clone と置き場に、永続のボリュームを持つ。バックエンドは、置き場を読むだけでマウントする。
-- 秘密は、compose の `secrets` で、ファイルとして渡す。秘密と、Forgejo の organization、team、ユーザー、トークンは、`scripts/compose-setup.sh` が作る。
+- 秘密は、compose の `secrets` で、ファイルとして渡す。秘密と、Forgejo の organization、team、ユーザー、トークンは、`scripts/compose-setup.sh` が作る。setup に使った admin のトークンは、最後に消す。
+- バックエンドと worker は Forgejo のネットワークを共有するので、Forgejo だけが再起動したときは、2 つを作り直す（手順は README）。
 - CI は、イメージをビルドし、compose で動かして、repository の作成と読みを確かめる。
 - 動かす手順は、[README](../README.md) に書く。
