@@ -302,7 +302,7 @@ func (a *App) verdictView(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.show(res, func(v map[string]any) {
-		fmt.Fprintf(a.Stdout, "%s（仮説 %s）：%s\n反映：%s\n\n%s\n", str(v, "id"), str(v, "hypothesis_id"), value(v["value"]), str(v, "submitted_revision"), str(v, "report_body"))
+		fmt.Fprintf(a.Stdout, "%s（仮説 %s）：%s\n反映：%s\n\n%s\n", str(v, "id"), str(v, "hypothesis_id"), value(v["value"]), str(v, "submitted_commit"), str(v, "report_body"))
 	})
 }
 

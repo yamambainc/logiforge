@@ -354,3 +354,29 @@ func TestJSONAfterDoubleDash(t *testing.T) {
 		t.Fatalf("code %d json %v", code, a.json)
 	}
 }
+
+// 表示：検証結果の「反映：」に、反映した main のコミット（submitted_commit）を出す。
+// apply request の表示に、push された先頭のコミットの一覧を、worker が見つけた時刻と一緒に出す。
+func TestViewShowsCommits(t *testing.T) {
+	dir := t.TempDir()
+	sha, base := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	var st stub
+	host := st.server(t, func(r *http.Request) (int, string, string) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/verdicts/v-0000000001"):
+			return 200, "application/json", `{"id":"v-0000000001","hypothesis_id":"h-0000000001","value":true,"report_body":"本文","artifacts":[],"citations":[],"submitted_commit":"` + sha + `","superseded_commit":null}`
+		case strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
+			return 200, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + sha + `","head_commits":[{"commit":"` + base + `","base_commit":"","seen_at":"2026-11-14T01:02:03Z","author_session_id":null},{"commit":"` + sha + `","base_commit":"","seen_at":null,"author_session_id":null}],"operations":[],"reviews":[],"merge_failures":[],"awaiting":"review","warnings":[]}`
+		}
+		return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`
+	})
+	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_REPO": "q"}
+	code, out, errs := run(t, dir, e, "", "verdict", "view", "v-0000000001")
+	if code != 0 || !strings.Contains(out, "反映："+sha) {
+		t.Fatalf("verdict view：%d %q %s", code, out, errs)
+	}
+	code, out, errs = run(t, dir, e, "", "ar", "view", "apr_1")
+	if code != 0 || !strings.Contains(out, "先頭のコミット "+sha) || !strings.Contains(out, base+" 2026-11-14T01:02:03Z") || !strings.Contains(out, sha+" （worker がまだ取り込んでいない）") {
+		t.Fatalf("ar view：%d %q %s", code, out, errs)
+	}
+}
