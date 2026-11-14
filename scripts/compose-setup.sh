@@ -10,7 +10,8 @@ if [ -e "$dir/writer_token" ] && [ -s "$dir/writer_token" ]; then
   echo "$dir はもうある。作り直すときは、docker compose down -v と rm -rf .compose をしてから動かす" >&2
   exit 1
 fi
-rand() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40; }
+# 乱数の 20 バイトを 16 進で。od は読み終えて止まるので、pipefail で途中の pipe が切れて落ちることがない。
+rand() { od -An -tx1 -N20 /dev/urandom | tr -d ' \n'; }
 
 # 秘密のファイルは、compose がサービスを作る前にそろっている必要がある。先に作り、トークンはあとで書く。
 # コンテナのユーザー（uid 10001）が読めるよう、ファイルは 644、ディレクトリは 700 にする。
