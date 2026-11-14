@@ -359,7 +359,7 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 // reviews は、書き込み主体のレビューを、記録した順に読む。
 //   - その提案の、MAC の合うレビューの記録だけを数える。
 //   - 書き込み主体のレビューに、数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、
-//     記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子や版が違うもの、識別子が重なるものは、
+//     記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子やコミットが違うもの、識別子が重なるものは、
 //     どれも書き換えられたものである。
 //   - 各レビューの Logiforge-Previous-Review: が、それより前に数えたレビューのどれか（最初は `-`）でなければ、鎖が切れたとする。
 //     同時に 2 つのレビューが同じ直前のレビューを指すのは、正しい。鎖が見つけるのは、途中のレビューが丸ごと消されたことである。
@@ -391,7 +391,7 @@ func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview)
 		}
 		rev, rid := r.Get(KeyReviewRevision), r.Get(KeyReviewID)
 		if pr.CommitSHA != "" && pr.CommitSHA != rev {
-			broken("commit_id と記録の版が違う")
+			broken("commit_id と記録のコミットが違う")
 			continue
 		}
 		if rid == noPrevious || seen[rid] {

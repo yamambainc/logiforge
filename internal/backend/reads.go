@@ -119,7 +119,7 @@ func (b *Backend) GetTree(ctx context.Context, c Caller, repo, revision string) 
 	if root == nil {
 		return Tree{}, fail(CodeNotFound, "根の仮説がない")
 	}
-	return Tree{RootHypothesisID: root.ID, RootValue: v.main.Tree.Nodes[root.ID].Value, Revision: v.revision(), Warnings: v.warnings()}, nil
+	return Tree{RootHypothesisID: root.ID, RootValue: v.main.Tree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings()}, nil
 }
 
 // ListNodes は、木か部分木のノードを返す。depth が負なら、すべての段。
@@ -147,7 +147,7 @@ func (b *Backend) ListNodes(ctx context.Context, c Caller, repo, revision, root 
 	if len(nodes) == 0 {
 		return NodeList{}, fail(CodeNotFound, "ノード %s がない", root)
 	}
-	return NodeList{Revision: v.revision(), Nodes: nodes}, nil
+	return NodeList{Commit: v.revision(), Nodes: nodes}, nil
 }
 
 // GetNode は、ノードの詳細を返す。
@@ -168,7 +168,7 @@ func (b *Backend) GetNode(ctx context.Context, c Caller, repo, id, revision stri
 	if n == nil {
 		return NodeDetail{}, fail(CodeNotFound, "ノード %s がない", id)
 	}
-	d := NodeDetail{Revision: v.revision(), Node: n, Children: []Node{}, CitedBy: []string{}}
+	d := NodeDetail{Commit: v.revision(), Node: n, Children: []Node{}, CitedBy: []string{}}
 	if h, ok := v.tree.Hypotheses[id]; ok {
 		for _, s := range h.Stories {
 			d.Children = append(d.Children, v.story(s, open.claims))
@@ -210,14 +210,14 @@ func (b *Backend) verdict(ctx context.Context, v *view, tv *tree.Verdict) (Verdi
 	if err != nil {
 		return Verdict{}, err
 	}
-	out.SubmittedRevision, out.ApplyRequestID = rev, ar
+	out.SubmittedCommit, out.ApplyRequestID = rev, ar
 	for _, other := range tv.Hypothesis.Verdicts {
 		if slices.Contains(other.Supersedes, tv.ID) {
 			r, _, err := b.addedIn(ctx, v, other.Hypothesis.ID, other.Path)
 			if err != nil {
 				return Verdict{}, err
 			}
-			out.SupersededRevision = &r
+			out.SupersededCommit = &r
 			break
 		}
 	}
@@ -299,7 +299,7 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 		if err != nil {
 			return Page[NodeHistoryEntry]{}, err
 		}
-		e := NodeHistoryEntry{Revision: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
+		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
 		if ar := trailerValue(cm.Trailers, "Logiforge-Apply-Request"); ar != "" {
 			e.ApplyRequestID, e.Reflected = &ar, true
 		}
@@ -383,7 +383,7 @@ func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string
 	return d.model, nil
 }
 
-// GetArtifact は、artifact の中身を返す。revision を指定すれば、そのリビジョン（main か版）にあるものだけを返す。
+// GetArtifact は、artifact の中身を返す。revision を指定すれば、そのコミット（main のコミットか、apply request の先頭のコミット）にあるものだけを返す。
 func (b *Backend) GetArtifact(ctx context.Context, c Caller, repo, sha, revision string) ([]byte, error) {
 	if !ids.Sha256Pattern.MatchString(sha) {
 		return nil, fail(CodeValidationFailed, "sha256 の形が正しくない")
@@ -392,7 +392,7 @@ func (b *Backend) GetArtifact(ctx context.Context, c Caller, repo, sha, revision
 		return nil, err
 	}
 	if !b.hasArtifact(ctx, repo, sha, revision) {
-		return nil, fail(CodeNotFound, "artifact %s が、そのリビジョンにない", sha)
+		return nil, fail(CodeNotFound, "artifact %s が、そのコミットにない", sha)
 	}
 	return b.Snap.Artifact(ctx, repo, sha)
 }

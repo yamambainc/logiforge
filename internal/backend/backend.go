@@ -108,7 +108,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 	}
 	m, err := b.Snap.Main(ctx, repo, revision)
 	if errors.Is(err, ports.ErrNotFound) {
-		// 木を作るのは、latest とブランチの base だけである。ほかのリビジョンの木は、ここで worker に作らせる
+		// 木を作るのは、latest とブランチの base だけである。ほかのコミットの木は、ここで worker に作らせる
 		// （design/backend/snapshot.md の「木を作るコミット」）。worker は、上限まで待って返す。
 		switch berr := b.Worker.BuildTree(ctx, repo, revision); {
 		case berr == nil:
@@ -119,7 +119,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 		}
 	}
 	if errors.Is(err, ports.ErrNotFound) {
-		return nil, fail(CodeSnapshotPending, "リビジョン %s の main のスナップショットが、まだない", revision)
+		return nil, fail(CodeSnapshotPending, "main のコミット %s のスナップショットが、まだない", revision)
 	}
 	if err != nil {
 		return nil, err

@@ -20,7 +20,7 @@ type Repository struct {
 type Tree struct {
 	RootHypothesisID string   `json:"root_hypothesis_id"`
 	RootValue        *bool    `json:"root_value"`
-	Revision         string   `json:"revision"`
+	Commit           string   `json:"commit"`
 	Warnings         []string `json:"warnings"`
 }
 
@@ -60,13 +60,13 @@ type Node any
 
 // NodeList は、ノードの一覧である。
 type NodeList struct {
-	Revision string `json:"revision"`
-	Nodes    []Node `json:"nodes"`
+	Commit string `json:"commit"`
+	Nodes  []Node `json:"nodes"`
 }
 
 // NodeDetail は、ノードの詳細である。
 type NodeDetail struct {
-	Revision string   `json:"revision"`
+	Commit   string   `json:"commit"`
 	Node     Node     `json:"node"`
 	Children []Node   `json:"children"`
 	Verdict  *Verdict `json:"verdict"`
@@ -75,21 +75,21 @@ type NodeDetail struct {
 
 // Verdict は、検証結果である。
 type Verdict struct {
-	ID                 string             `json:"id"`
-	HypothesisID       string             `json:"hypothesis_id"`
-	Value              bool               `json:"value"`
-	ReportBody         string             `json:"report_body"`
-	Artifacts          []tree.ArtifactRef `json:"artifacts"`
-	Citations          []tree.Citation    `json:"citations"`
-	Supersedes         []string           `json:"supersedes,omitempty"`
-	ApplyRequestID     string             `json:"apply_request_id,omitempty"`
-	SubmittedRevision  string             `json:"submitted_revision"`
-	SupersededRevision *string            `json:"superseded_revision"`
+	ID               string             `json:"id"`
+	HypothesisID     string             `json:"hypothesis_id"`
+	Value            bool               `json:"value"`
+	ReportBody       string             `json:"report_body"`
+	Artifacts        []tree.ArtifactRef `json:"artifacts"`
+	Citations        []tree.Citation    `json:"citations"`
+	Supersedes       []string           `json:"supersedes,omitempty"`
+	ApplyRequestID   string             `json:"apply_request_id,omitempty"`
+	SubmittedCommit  string             `json:"submitted_commit"`
+	SupersededCommit *string            `json:"superseded_commit"`
 }
 
 // NodeHistoryEntry は、ノードを変えた main のコミットである。
 type NodeHistoryEntry struct {
-	Revision       string    `json:"revision"`
+	Commit         string    `json:"commit"`
 	CommittedAt    time.Time `json:"committed_at"`
 	ApplyRequestID *string   `json:"apply_request_id"`
 	SessionIDs     []string  `json:"session_ids"`
@@ -132,20 +132,21 @@ type NewHypothesis struct {
 	Background string `json:"background,omitempty"`
 }
 
-// Version は、apply request の版である。
-type Version struct {
-	Version         int     `json:"version"`
-	Revision        string  `json:"revision"`
-	BaseRevision    string  `json:"base_revision"`
-	AuthorSessionID *string `json:"author_session_id"`
+// HeadCommit は、apply request のブランチに push された先頭のコミットである。
+type HeadCommit struct {
+	Commit string `json:"commit"`
+	// BaseCommit は、そのコミットと main の分かれた点。worker がまだ取り込んでいなければ空。
+	BaseCommit string `json:"base_commit"`
+	// SeenAt は、worker がそのコミットを先頭として見つけた時刻（push のおおよその時刻）。worker がまだ取り込んでいなければ nil。
+	SeenAt          *time.Time `json:"seen_at"`
+	AuthorSessionID *string    `json:"author_session_id"`
 }
 
 // Review は、レビューである。
 type Review struct {
 	ID                string `json:"id"`
 	Kind              string `json:"kind"`
-	Version           int    `json:"version"`
-	Revision          string `json:"revision"`
+	Commit            string `json:"commit"`
 	Body              string `json:"body,omitempty"`
 	ReviewerSessionID string `json:"reviewer_session_id"`
 	PromptRevision    string `json:"prompt_revision,omitempty"`
@@ -154,9 +155,9 @@ type Review struct {
 
 // MergeFailure は、反映の失敗である。
 type MergeFailure struct {
-	Version int    `json:"version"`
-	Reason  string `json:"reason"`
-	Detail  string `json:"detail"`
+	Commit string `json:"commit"`
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
 }
 
 // ApplyRequest は、apply request である。
@@ -164,8 +165,8 @@ type ApplyRequest struct {
 	ID                string         `json:"id"`
 	Branch            string         `json:"branch"`
 	State             string         `json:"state"`
-	Version           int            `json:"version"`
-	Versions          []Version      `json:"versions"`
+	HeadCommit        string         `json:"head_commit"`
+	HeadCommits       []HeadCommit   `json:"head_commits"`
 	Description       string         `json:"description,omitempty"`
 	Operations        []Operation    `json:"operations"`
 	Reviews           []Review       `json:"reviews"`
@@ -174,14 +175,13 @@ type ApplyRequest struct {
 	ClosedReason      *string        `json:"closed_reason"`
 	ClosedBySessionID *string        `json:"closed_by_session_id"`
 	Warnings          []string       `json:"warnings"`
-	MergedRevision    *string        `json:"merged_revision"`
+	MergedCommit      *string        `json:"merged_commit"`
 }
 
 // ReviewMaterial は、レビューの材料である。
 type ReviewMaterial struct {
 	ApplyRequestID string             `json:"apply_request_id"`
-	Version        int                `json:"version"`
-	Revision       string             `json:"revision"`
+	Commit         string             `json:"commit"`
 	Operations     []Operation        `json:"operations"`
 	Targets        []Node             `json:"targets"`
 	Ancestors      []*Hypothesis      `json:"ancestors"`
@@ -205,7 +205,7 @@ type WorkItem struct {
 
 // WorkPage は、着手できる作業の一覧である。
 type WorkPage struct {
-	Revision   string         `json:"revision"`
+	Commit     string         `json:"commit"`
 	Counts     map[string]int `json:"counts"`
 	Items      []WorkItem     `json:"items"`
 	NextCursor *string        `json:"next_cursor"`
@@ -213,7 +213,7 @@ type WorkPage struct {
 
 // Completion は、作業の終わりの判定である。
 type Completion struct {
-	Revision      string `json:"revision"`
+	Commit        string `json:"commit"`
 	RootValue     *bool  `json:"root_value"`
 	Decided       bool   `json:"decided"`
 	RemainingWork int    `json:"remaining_work"`

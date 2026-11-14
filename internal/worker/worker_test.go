@@ -345,7 +345,7 @@ func TestDeletedBranchSurvivesStop(t *testing.T) {
 	}
 }
 
-// 前の形の版の置き場があっても、worker は今の版の接頭辞に作り直して進む。
+// 前のフォーマットバージョンの置き場があっても、worker は今のフォーマットバージョンの接頭辞に作り直して進む。
 func TestOldFormatStoreIsIgnored(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)

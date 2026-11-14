@@ -113,13 +113,13 @@ func (d *Dir) PutIf(ctx context.Context, key string, data, old []byte) error {
 
 // キーの決まり（design/backend/ports/snapshot-store.md の「置いてあるもの」）。
 //
-// git から作り直せるもの（コミットの記録、木、latest、repositories）は、形の版の接頭辞（例：`v4/`）の下に置く。
-// 形の版が変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は消さない。
+// git から作り直せるもの（コミットの記録、木、latest、repositories）は、フォーマットバージョンの接頭辞（例：`v4/`）の下に置く。
+// フォーマットバージョンが変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は消さない。
 // 作り直せないもの（ブランチの履歴とその一覧、ブランチのスナップショット）と、形を持たないもの（artifact の中身）は、
-// 版の外の `keep/` の下に置く。
-// 置き場の直下には、版の接頭辞と `keep/` だけを置く。repository の名前（`v4` など）と、ぶつからないようにするため。
+// フォーマットバージョンの接頭辞の外の `keep/` の下に置く。
+// 置き場の直下には、フォーマットバージョンの接頭辞と `keep/` だけを置く。repository の名前（`v4` など）と、ぶつからないようにするため。
 
-// Prefix は、今の形の版の接頭辞である。
+// Prefix は、今のフォーマットバージョンの接頭辞である。
 var Prefix = fmt.Sprintf("v%d/", snapshot.FormatVersion)
 
 func CommitKey(repo, sha string) string   { return Prefix + repo + "/commits/" + sha }
@@ -129,10 +129,10 @@ func LatestKey(repo string) string        { return Prefix + repo + "/latest" }
 // RepositoriesKey は、latest がある repository の名前の一覧のキーである。
 var RepositoriesKey = Prefix + "repositories"
 
-// ArtifactKey は、artifact の中身のキーである。中身は形を持たないので、版の外に置く。
+// ArtifactKey は、artifact の中身のキーである。中身は形を持たないので、フォーマットバージョンの接頭辞の外に置く。
 func ArtifactKey(repo, sha256 string) string { return KeepPrefix + repo + "/artifacts/" + sha256 }
 
-// KeepPrefix は、版の外に置くものの接頭辞である。
+// KeepPrefix は、フォーマットバージョンの接頭辞の外に置くものの接頭辞である。
 const KeepPrefix = "keep/"
 
 // BranchKey は、ブランチの履歴のキーである。ブランチの名前は、`/` を含みうるので、パスとしてエスケープする。
@@ -141,7 +141,7 @@ func BranchKey(repo, branch string) string {
 }
 
 // BranchSnapshotKey は、ブランチの先頭のスナップショットのキーである。コミットの記録と差分を、1 つにまとめて置く。
-// 消えたブランチの版は git から作り直せないので、版の外に置き、中に自分の形の版を持たせる。
+// 消えたブランチの版は git から作り直せないので、版の外に置き、中に自分のフォーマットバージョンを持たせる。
 func BranchSnapshotKey(repo, sha string) string {
 	return KeepPrefix + repo + "/branch-snapshots/" + sha
 }

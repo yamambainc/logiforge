@@ -29,12 +29,12 @@ func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 // clockSlack は、worker と GitForge の時計のずれとして見込む時間である。
 const clockSlack = 5 * time.Minute
 
-// versions は、ブランチの履歴から、提案の版の一覧を作る（design/backend/apply-request.md の「版」）。
-//   - 提案を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に番号を付ける。
-//   - 先頭が前に見た SHA に戻ったら（A → B → A）、新しい版にしない。
+// headCommits は、ブランチの履歴から、提案のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request.md の「先頭のコミット」）。
+//   - 提案を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
+//   - 先頭が前に見た SHA に戻ったら（A → B → A）、一覧に足さない。
 //
-// GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、その版を、base のない最後の版として足す。
-func versions(ar ports.ApplyRequest, h store.BranchHistory) []Version {
+// GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、それを、base と時刻のない最後の項目として足す。
+func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
 	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、worker が先頭を見つけた時刻と提案を作った時刻の間を見込み、
 	// 作った時刻に余裕を足して比べる。
 	created := ar.CreatedAt.Add(clockSlack)
@@ -47,7 +47,7 @@ func versions(ar ports.ApplyRequest, h store.BranchHistory) []Version {
 			start = i
 		}
 	}
-	var out []Version
+	var out []HeadCommit
 	seen := map[string]bool{}
 	if start >= 0 {
 		for _, e := range h.Entries[start:] {
@@ -58,31 +58,23 @@ func versions(ar ports.ApplyRequest, h store.BranchHistory) []Version {
 				continue
 			}
 			seen[e.Head] = true
-			out = append(out, Version{Version: len(out) + 1, Revision: e.Head, BaseRevision: e.Base})
+			seenAt := e.SeenAt
+			out = append(out, HeadCommit{Commit: e.Head, BaseCommit: e.Base, SeenAt: &seenAt})
 		}
 	}
 	if ar.HeadRevision != "" && !seen[ar.HeadRevision] {
-		out = append(out, Version{Version: len(out) + 1, Revision: ar.HeadRevision})
+		out = append(out, HeadCommit{Commit: ar.HeadRevision})
 	}
 	return out
-}
-
-func versionOf(vs []Version, revision string) int {
-	for _, v := range vs {
-		if v.Revision == revision {
-			return v.Version
-		}
-	}
-	return 0
 }
 
 // arDetail は、提案と、その計算に使ったものである。
 type arDetail struct {
 	port     ports.ApplyRequest
 	reviews  ports.Reviews
-	branch   *snapshot.Branch // 今の版のスナップショット。まだなければ nil
+	branch   *snapshot.Branch // 先頭のコミットのスナップショット。まだなければ nil
 	model    ApplyRequest
-	current  Version
+	current  HeadCommit
 	baseView *view
 }
 
@@ -99,19 +91,19 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		return nil, err
 	}
 	d := &arDetail{port: ar, reviews: reviews}
-	vs := versions(ar, h)
+	vs := headCommits(ar, h)
 	m := &d.model
-	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, State: string(arState(ar, h)), Versions: vs, Description: ar.Description,
+	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
 		Operations: []Operation{}, Reviews: []Review{}, MergeFailures: []MergeFailure{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
-		m.Version = d.current.Version
+		m.HeadCommit = d.current.Commit
 	}
-	for i := range m.Versions {
-		c, err := b.Snap.Commit(ctx, repo, m.Versions[i].Revision)
+	for i := range m.HeadCommits {
+		c, err := b.Snap.Commit(ctx, repo, m.HeadCommits[i].Commit)
 		if err == nil {
 			if s := trailerValue(c.Trailers, trailerSession); s != "" {
-				m.Versions[i].AuthorSessionID = &s
+				m.HeadCommits[i].AuthorSessionID = &s
 			}
 		} else if !errors.Is(err, ports.ErrNotFound) {
 			return nil, err
@@ -122,35 +114,35 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		m.ClosedReason, m.ClosedBySessionID = &r, &s
 	}
 	for _, f := range ar.MergeFailures {
-		m.MergeFailures = append(m.MergeFailures, MergeFailure{Version: versionOf(vs, f.Revision), Reason: f.Reason, Detail: f.Detail})
+		m.MergeFailures = append(m.MergeFailures, MergeFailure{Commit: f.Revision, Reason: f.Reason, Detail: f.Detail})
 	}
 	for _, r := range reviews.Items {
-		m.Reviews = append(m.Reviews, Review{ID: r.ID, Kind: string(r.Kind), Version: versionOf(vs, r.Revision), Revision: r.Revision,
-			Body: r.Body, ReviewerSessionID: r.Session, PromptRevision: r.PromptRevision, Valid: r.Revision == d.current.Revision})
+		m.Reviews = append(m.Reviews, Review{ID: r.ID, Kind: string(r.Kind), Commit: r.Revision,
+			Body: r.Body, ReviewerSessionID: r.Session, PromptRevision: r.PromptRevision, Valid: r.Revision == d.current.Commit})
 	}
 	if reviews.ChainBroken {
 		m.Warnings = append(m.Warnings, "レビューの鎖が切れている。反映できない。close して、同じブランチから作り直す")
 	}
 	m.Warnings = append(m.Warnings, reviews.Warnings...)
 	if m.State == string(ports.StateOpen) {
-		a := awaiting(d.current.Revision, reviews.Items, ar.MergeFailures)
+		a := awaiting(d.current.Commit, reviews.Items, ar.MergeFailures)
 		m.Awaiting = a
 	}
 	if m.State == string(ports.StateMerged) && latest != nil {
 		for _, e := range latest.main.Tree.History {
 			if e.ApplyRequest == ar.ID {
 				r := e.Revision
-				m.MergedRevision = &r
+				m.MergedCommit = &r
 			}
 		}
 	}
-	if d.current.Revision != "" {
-		br, err := b.Snap.Branch(ctx, repo, d.current.Revision)
+	if d.current.Commit != "" {
+		br, err := b.Snap.Branch(ctx, repo, d.current.Commit)
 		switch {
 		case err == nil:
 			d.branch = br
 		case errors.Is(err, ports.ErrNotFound):
-			m.Warnings = append(m.Warnings, "今の版のスナップショットが、まだない（worker を待っている）")
+			m.Warnings = append(m.Warnings, "先頭のコミットのスナップショットが、まだない（worker を待っている）")
 		default:
 			return nil, err
 		}
@@ -166,11 +158,11 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 }
 
 // awaiting は、open の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（docs/work/README.md）。
-//   - 修正待ち：今の版への最後の決めるレビュー（approve か request_changes）が request_changes か、
-//     今の版の反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
-//   - レビュー待ち：今の版への決めるレビューがないか、approve のあと、そのほかの理由（snapshot_pending など）で反映に失敗した
+//   - 修正待ち：先頭のコミットへの最後の決めるレビュー（approve か request_changes）が request_changes か、
+//     先頭のコミットの反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
+//   - レビュー待ち：先頭のコミットへの決めるレビューがないか、approve のあと、そのほかの理由（snapshot_pending など）で反映に失敗した
 //     （approve し直しを待つ）。
-//   - 今の版への最後の決めるレビューが approve で、反映の失敗もなければ、どちらでもない（反映を待っている）。
+//   - 先頭のコミットへの最後の決めるレビューが approve で、反映の失敗もなければ、どちらでもない（反映を待っている）。
 func awaiting(current string, reviews []ports.Review, failures []ports.MergeFailure) *string {
 	var last ports.ReviewKind
 	for _, r := range reviews {
@@ -195,7 +187,7 @@ func awaiting(current string, reviews []ports.Review, failures []ports.MergeFail
 // openerFixes は、opener が直すべき反映の失敗の理由である。修正待ちにする。
 var openerFixes = map[string]bool{"stale_target": true, "invariant_violation": true, "conflict": true}
 
-// operations は、版の差分を、その base の main に重ねて検査し、操作を復元する。
+// operations は、先頭のコミットの差分を、その base の main に重ねて検査し、操作を復元する。
 func (b *Backend) operations(ctx context.Context, repo string, br *snapshot.Branch) ([]Operation, *view, error) {
 	base, err := b.mainAt(ctx, repo, br.Diff.Base)
 	if err != nil {
@@ -266,7 +258,7 @@ type openState struct {
 	all    []ports.ApplyRequest
 	hrs    []ports.HumanRequest
 	claims claims
-	// arTargets は、open の提案の対象ノードである。今の版のスナップショットがなければ、空。
+	// arTargets は、open の提案の対象ノードである。先頭のコミットのスナップショットがなければ、空。
 	arTargets map[string][]string
 }
 

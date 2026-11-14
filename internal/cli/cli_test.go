@@ -163,11 +163,11 @@ func TestApplyRequestCommands(t *testing.T) {
 			}
 			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"unavailable"}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
-			return 200, "application/json", `{"id":"apr_1","state":"open","versions":[{"version":1,"revision":"` + head + `"}]}`
+			return 200, "application/json", `{"id":"apr_1","state":"open","head_commit":"` + head + `","head_commits":[{"commit":"` + head + `"}]}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
 			return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found","detail":"ない"}`
 		}
-		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","version":1}`
+		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + head + `"}`
 	})
 	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_SESSION_ID": "s1"}
 	posts := func() []*http.Request {
@@ -189,7 +189,7 @@ func TestApplyRequestCommands(t *testing.T) {
 	req := posts()[0]
 	var created map[string]any
 	if code != 0 || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "apr_1" || created["idempotency_key"] != req.Header.Get("Idempotency-Key") ||
-		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"revision":"`+head+`"`) {
+		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"commit":"`+head+`"`) {
 		t.Fatalf("ar create: %d %s %v", code, out, req.Header)
 	}
 	// 呼び出しごとに、キーは変わる（close して作り直すときに、閉じた apply request が返らないように）。
@@ -223,14 +223,14 @@ func TestApplyRequestCommands(t *testing.T) {
 		t.Fatal("--idempotency-key を使っていない")
 	}
 
-	// --version は、SHA に引き直して送る。
-	if code, _, errs := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--version", "1", "--prompt-revision", "p"); code != 0 {
+	// レビューしたコミットは、--commit の SHA で送る。
+	if code, _, errs := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--commit", head, "--prompt-revision", "p"); code != 0 {
 		t.Fatalf("ar review: %s", errs)
 	}
-	if n := len(st.body); !strings.Contains(st.body[n-1], `"revision":"`+head+`"`) || !strings.Contains(st.body[n-1], `"kind":"approve"`) {
+	if n := len(st.body); !strings.Contains(st.body[n-1], `"commit":"`+head+`"`) || !strings.Contains(st.body[n-1], `"kind":"approve"`) {
 		t.Fatalf("review の本文：%s", st.body[n-1])
 	}
-	if code, _, _ := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--request-changes", "--version", "1"); code != ExitUsage {
+	if code, _, _ := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--request-changes", "--commit", head); code != ExitUsage {
 		t.Fatalf("種類が 2 つ：%d", code)
 	}
 
@@ -352,5 +352,31 @@ func TestJSONAfterDoubleDash(t *testing.T) {
 	code := a.Run(context.Background(), []string{"nope", "--", "--json"})
 	if code != ExitUsage || a.json {
 		t.Fatalf("code %d json %v", code, a.json)
+	}
+}
+
+// 表示：検証結果の「反映：」に、反映した main のコミット（submitted_commit）を出す。
+// apply request の表示に、push された先頭のコミットの一覧を、worker が見つけた時刻と一緒に出す。
+func TestViewShowsCommits(t *testing.T) {
+	dir := t.TempDir()
+	sha, base := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	var st stub
+	host := st.server(t, func(r *http.Request) (int, string, string) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/verdicts/v-0000000001"):
+			return 200, "application/json", `{"id":"v-0000000001","hypothesis_id":"h-0000000001","value":true,"report_body":"本文","artifacts":[],"citations":[],"submitted_commit":"` + sha + `","superseded_commit":null}`
+		case strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
+			return 200, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + sha + `","head_commits":[{"commit":"` + base + `","base_commit":"","seen_at":"2026-11-14T01:02:03Z","author_session_id":null},{"commit":"` + sha + `","base_commit":"","seen_at":null,"author_session_id":null}],"operations":[],"reviews":[],"merge_failures":[],"awaiting":"review","warnings":[]}`
+		}
+		return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`
+	})
+	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_REPO": "q"}
+	code, out, errs := run(t, dir, e, "", "verdict", "view", "v-0000000001")
+	if code != 0 || !strings.Contains(out, "反映："+sha) {
+		t.Fatalf("verdict view：%d %q %s", code, out, errs)
+	}
+	code, out, errs = run(t, dir, e, "", "ar", "view", "apr_1")
+	if code != 0 || !strings.Contains(out, "先頭のコミット "+sha) || !strings.Contains(out, base+" 2026-11-14T01:02:03Z") || !strings.Contains(out, sha+" （worker がまだ取り込んでいない）") {
+		t.Fatalf("ar view：%d %q %s", code, out, errs)
 	}
 }

@@ -15,7 +15,7 @@ import (
 )
 
 // Written は、書き込みの結果である。Pending が空でなければ、書いたものが、待つ時間の上限までに読む側に出なかった
-// （Logiforge-Pending-Revision に入れるリビジョン）。
+// （Logiforge-Pending-Commit に入れるコミット）。
 type Written[T any] struct {
 	Value   T
 	Pending string
@@ -145,7 +145,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 // NewApplyRequest は、apply request の作成の要求である。
 type NewApplyRequest struct {
 	Branch         string
-	Revision       string
+	Commit         string
 	Description    string
 	Session        string
 	IdempotencyKey string
@@ -182,7 +182,7 @@ func (b *Backend) checkContext(ctx context.Context, latest *view) tree.Context {
 			n := before.main.Tree.Nodes[hid]
 			return n != nil && n.Leaf, nil
 		},
-		// 引用したリビジョンが main の並びにあり、そのスナップショットの木に、そのノードがあるか。
+		// 引用したコミットが main の並びにあり、そのスナップショットの木に、そのノードがあるか。
 		SubtreeExists: func(nodeID, revision string) (bool, error) {
 			if latest.main.Tree.HistoryNumber(revision) == 0 {
 				return false, nil
@@ -216,7 +216,7 @@ func (b *Backend) inactivatedIn(ctx context.Context, v *view, s *tree.Story) (in
 	return 0, nil
 }
 
-// checkVersion は、版の差分を、onto の木に重ねて検査する。重ねられなければ conflicts を返す。
+// checkVersion は、先頭のコミットの差分を、onto の木に重ねて検査する。重ねられなければ conflicts を返す。
 func (b *Backend) checkVersion(ctx context.Context, onto, latest *view, br *snapshot.Branch) (tree.Result, []string, error) {
 	head, conflicts, err := snapshot.Overlay(onto.files, br.Diff)
 	if err != nil || len(conflicts) > 0 {
@@ -268,8 +268,8 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 		return out, err
 	}
 	head := br.Commit.Revision
-	if n.Revision != "" && n.Revision != head {
-		return out, fail(CodeValidationFailed, "revision %s が、ブランチの今の先頭 %s と違う", n.Revision, head)
+	if n.Commit != "" && n.Commit != head {
+		return out, fail(CodeValidationFailed, "commit %s が、ブランチの今の先頭のコミット %s と違う", n.Commit, head)
 	}
 	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
 	if err != nil {
@@ -299,7 +299,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return out, err
 	}
-	// 版の一覧とレビューの材料は、worker のスナップショットから読む。worker に、ブランチを取り込ませる。
+	// 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker に、ブランチを取り込ませる。
 	b.Worker.Wake(ctx, repo)
 	v, err := b.GetApplyRequest(ctx, c, repo, id)
 	if err == nil && len(v.Operations) == 0 {

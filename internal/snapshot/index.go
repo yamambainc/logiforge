@@ -9,11 +9,11 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
-// Index は、main のコミットの記録を、最初のリビジョンから順に重ねて求める、history とノードの変更の一覧である
+// Index は、main のコミットの記録を、最初のコミットから順に重ねて求める、history とノードの変更の一覧である
 // （design/backend/snapshot.md の「コミットの記録と木」）。木は組み立てない。
 // コミットの記録は、親から変わったパスだけで作る。木（Tree）は、Index とそのコミットのファイルから作る。
 type Index struct {
-	// History は、最初のリビジョンから、最後に足したコミットまでの、main のコミットの一覧である（番号の順）。
+	// History は、最初のコミットから、最後に足したコミットまでの、main のコミットの一覧である（番号の順）。
 	History []HistoryEntry
 	changes map[string][]Rev
 	// nodeDirs は、これまでに見たノードのディレクトリから、ノードの識別子を引く。
@@ -22,7 +22,7 @@ type Index struct {
 	numbers  map[string]int
 }
 
-// NewIndex は、空の Index を返す。最初のリビジョンから重ねるときに使う。
+// NewIndex は、空の Index を返す。最初のコミットから重ねるときに使う。
 func NewIndex() *Index {
 	return &Index{changes: map[string][]Rev{}, nodeDirs: map[string]string{}, numbers: map[string]int{}}
 }
@@ -74,7 +74,7 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 }
 
 // Replay は、置き場から読んだコミットの記録を、Index に足す。記録を作り直さずに、history とノードの変更の一覧を求めるときに使う。
-// 記録は、最初のリビジョンから順に渡す。
+// 記録は、最初のコミットから順に渡す。
 func (x *Index) Replay(c Commit) {
 	e := HistoryEntry{Number: c.Number, Revision: c.Revision, ApplyRequest: trailer(c.Trailers, TrailerApplyRequest)}
 	for _, v := range c.Warnings {

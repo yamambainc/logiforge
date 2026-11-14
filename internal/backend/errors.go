@@ -18,7 +18,7 @@ const (
 	CodeNotFound                Code = "not_found"
 	CodeSameSession             Code = "same_session"
 	CodeNotOpen                 Code = "not_open"
-	CodeVersionConflict         Code = "version_conflict"
+	CodeCommitConflict          Code = "commit_conflict"
 	CodeTooLarge                Code = "too_large"
 	CodeRepositoryExists        Code = "repository_exists"
 	CodeUnavailable             Code = "unavailable"

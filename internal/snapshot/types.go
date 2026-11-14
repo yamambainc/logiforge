@@ -11,7 +11,7 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
-// FormatVersion は、スナップショットの形の版である。項目を足すときも上げる。
+// FormatVersion は、スナップショットのフォーマットバージョンである。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
 const FormatVersion = 5
 
@@ -39,9 +39,9 @@ type CommitInfo struct {
 // Commit は、コミットの記録である（数 KB）。
 type Commit struct {
 	Revision string `json:"revision"`
-	// Parent は、main では first-parent のコミット（最初のリビジョンでは nil）、branch では base。
+	// Parent は、main では first-parent のコミット（最初のコミットでは nil）、branch では base。
 	Parent *string `json:"parent"`
-	// Number は、main のコミットだけ。最初のリビジョンを 1 とする。
+	// Number は、main のコミットだけ。最初のコミットを 1 とする。
 	Number      int       `json:"number,omitempty"`
 	Kind        Kind      `json:"kind"`
 	CommittedAt time.Time `json:"committed_at"`
@@ -118,7 +118,7 @@ type Tree struct {
 	Artifacts []File `json:"artifacts"`
 	// Other は、どのノードにも、artifact にも当たらないファイルである（木の外のファイルなど）。
 	Other []File `json:"other,omitempty"`
-	// History は、最初のリビジョンからこのコミットまでの、main のコミットの一覧である（番号の順）。
+	// History は、最初のコミットからこのコミットまでの、main のコミットの一覧である（番号の順）。
 	History []HistoryEntry `json:"history"`
 	// Broken は、この木で破れている不変条件のすべてである（前のコミットから破れているものを含む）。
 	Broken []tree.Violation `json:"broken,omitempty"`

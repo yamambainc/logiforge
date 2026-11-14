@@ -18,7 +18,7 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"
 
-// BuildMain は、main のコミットの記録と木を、一度に作る。parent は、first-parent のスナップショット（最初のリビジョンでは nil）。
+// BuildMain は、main のコミットの記録と木を、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットの木のファイルである。artifact は中身か SHA256 を持つ。
 // 親から変わったパスは、親の木のファイルと比べて求める。新しく破れた不変条件も、親の木と比べて警告にする。
 // worker は、Index と BuildTree で、木を作るコミットを選ぶ（design/backend/snapshot.md）。これは、その 1 コミット分をまとめたものである。

@@ -39,7 +39,8 @@ type Citation struct {
 	TargetKind string `yaml:"target_kind" json:"target_kind"`
 	SHA256     string `yaml:"sha256,omitempty" json:"sha256,omitempty"`
 	NodeID     string `yaml:"node_id,omitempty" json:"node_id,omitempty"`
-	Revision   string `yaml:"revision,omitempty" json:"revision,omitempty"`
+	// Commit は、部分木を引用した main のコミットの SHA。前は `revision` という名前で書いていた。読むときは、どちらの名前も受け付ける。
+	Commit string `yaml:"commit,omitempty" json:"commit,omitempty"`
 }
 
 // HypothesisContent は hypothesis.md の中身である。
@@ -330,18 +331,25 @@ func parseCitations(v any) ([]Citation, error) {
 			}
 			out = append(out, Citation{TargetKind: kind, SHA256: sha})
 		case "subtree":
-			if err := onlyKeys(m, "target_kind", "node_id", "revision"); err != nil {
+			if err := onlyKeys(m, "target_kind", "node_id", "commit", "revision"); err != nil {
 				return nil, fmt.Errorf("引用: %w", err)
 			}
 			node, _ := m["node_id"].(string)
-			rev, _ := m["revision"].(string)
+			// 前の名前（revision）で書いたファイルも読む。両方は書かない。
+			rev, _ := m["commit"].(string)
+			if old, ok := m["revision"].(string); ok {
+				if _, both := m["commit"]; both {
+					return nil, fmt.Errorf("部分木の引用に、commit と revision の両方がある")
+				}
+				rev = old
+			}
 			if k := ids.KindOf(node); k != ids.Hypothesis && k != ids.Story {
 				return nil, fmt.Errorf("部分木の引用の node_id が、仮説かストーリーの識別子でない: %q", node)
 			}
 			if !commitPattern.MatchString(rev) {
-				return nil, fmt.Errorf("部分木の引用の revision が、コミットの SHA でない: %q", rev)
+				return nil, fmt.Errorf("部分木の引用の commit が、コミットの SHA でない: %q", rev)
 			}
-			out = append(out, Citation{TargetKind: kind, NodeID: node, Revision: rev})
+			out = append(out, Citation{TargetKind: kind, NodeID: node, Commit: rev})
 		default:
 			return nil, fmt.Errorf("引用の target_kind が正しくない: %q", kind)
 		}

@@ -19,8 +19,7 @@ const chainBrokenDetail = "レビューの鎖が切れている（数えない�
 // NewReview は、レビューの要求である。
 type NewReview struct {
 	Kind           string
-	Revision       string
-	Version        int
+	Commit         string
 	Body           string
 	PromptRevision string
 	Session        string
@@ -46,8 +45,8 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if kind == ports.ReviewApprove && n.PromptRevision == "" {
 		return out, fail(CodeValidationFailed, "approve では prompt_revision が必須")
 	}
-	if (n.Revision == "") == (n.Version == 0) {
-		return out, fail(CodeValidationFailed, "revision と version のどちらか一方を送る")
+	if n.Commit == "" {
+		return out, fail(CodeValidationFailed, "commit（レビューしたコミットの SHA）がない")
 	}
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
@@ -67,30 +66,22 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if d.reviews.ChainBroken {
 		return out, fail(CodeNotOpen, chainBrokenDetail)
 	}
-	// 版の正体は SHA である。番号は、SHA に引き直す。
-	rev := n.Revision
-	if n.Version != 0 {
-		for _, v := range d.model.Versions {
-			if v.Version == n.Version {
-				rev = v.Revision
-			}
-		}
+	rev := n.Commit
+	if rev != d.current.Commit {
+		return out, fail(CodeCommitConflict, "レビューしたコミットが、ブランチの先頭のコミット %s と違う", d.current.Commit)
 	}
-	if rev != d.current.Revision {
-		return out, fail(CodeVersionConflict, "レビューした版が、今の版（%d：%s）と違う", d.current.Version, d.current.Revision)
-	}
-	// 今の版が GitForge にはあるが、worker がまだスナップショットにしていない。版を書いたセッションも差分もわからないので、待ってもらう。
+	// 先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていない。書いたセッションも差分もわからないので、待ってもらう。
 	if d.branch == nil {
-		return out, fail(CodeSnapshotPending, "今の版（%d：%s）のスナップショットが、まだない。少し待って送り直す", d.current.Version, d.current.Revision)
+		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", d.current.Commit)
 	}
 	// 差分を書いたどのセッションとも、別のセッションでレビューする。
-	for _, v := range d.model.Versions {
+	for _, v := range d.model.HeadCommits {
 		if v.AuthorSessionID != nil && *v.AuthorSessionID == n.Session {
-			return out, fail(CodeSameSession, "版 %d を書いたセッションと同じセッションで、レビューした", v.Version)
+			return out, fail(CodeSameSession, "コミット %s を書いたセッションと同じセッションで、レビューした", v.Commit)
 		}
 	}
-	if kind == ports.ReviewApprove && d.model.Versions[len(d.model.Versions)-1].AuthorSessionID == nil {
-		return out, fail(CodeValidationFailed, "今の版のコミットに Logiforge-Session-Id: がないので、approve できない（design/files/revisions.md の「セッション」）")
+	if kind == ports.ReviewApprove && d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
+		return out, fail(CodeValidationFailed, "先頭のコミットに Logiforge-Session-Id: がないので、approve できない（design/files/revisions.md の「セッション」）")
 	}
 	r := ports.Review{ID: ids.NewULID(ids.PrefixReview, b.now()), Kind: kind, Body: n.Body, Revision: rev,
 		Reviewer: c.Principal.Login, Session: n.Session, PromptRevision: n.PromptRevision}
@@ -113,7 +104,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 		return out, err
 	}
 	ar.Warnings = append(ar.Warnings, warnings...)
-	out.Value = ReviewResult{ApplyRequest: ar, Review: Review{ID: r.ID, Kind: string(kind), Version: versionOf(ar.Versions, rev), Revision: rev,
+	out.Value = ReviewResult{ApplyRequest: ar, Review: Review{ID: r.ID, Kind: string(kind), Commit: rev,
 		Body: r.Body, ReviewerSessionID: r.Session, PromptRevision: r.PromptRevision, Valid: true}}
 	return out, nil
 }
@@ -136,11 +127,11 @@ func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, se
 	if err != nil {
 		return ReviewResult{}, false, err
 	}
-	return ReviewResult{ApplyRequest: model, Review: Review{ID: last.ID, Kind: string(last.Kind), Version: versionOf(model.Versions, last.Revision),
-		Revision: last.Revision, Body: last.Body, ReviewerSessionID: last.Session, PromptRevision: last.PromptRevision}}, true, nil
+	return ReviewResult{ApplyRequest: model, Review: Review{ID: last.ID, Kind: string(last.Kind),
+		Commit: last.Revision, Body: last.Body, ReviewerSessionID: last.Session, PromptRevision: last.PromptRevision}}, true, nil
 }
 
-// lastDecisive は、決めるレビュー（approve か request_changes）の最後のものを返す。revision が空でなければ、その版へのものだけを見る。
+// lastDecisive は、決めるレビュー（approve か request_changes）の最後のものを返す。revision が空でなければ、そのコミットへのものだけを見る。
 func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
 	var last *ports.Review
 	for i, r := range reviews {
@@ -152,31 +143,31 @@ func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
 }
 
 // merge は、反映の手順を行う（design/backend/merge.md の「手順」）。反映できなければ、失敗の理由を GitForge に記録し、エラーにしない。
-// 反映のコミットが読む側に出るのを待ち、上限を過ぎたら、そのリビジョンを返す。
+// 反映のコミットが読む側に出るのを待ち、上限を過ぎたら、そのコミットを返す。
 func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, error) {
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
 	if err != nil {
 		return "", err
 	}
 	failure := func(reason, detail string) (string, error) {
-		return "", b.Forge.RecordMergeFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Revision, Reason: reason, Detail: detail})
+		return "", b.Forge.RecordMergeFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail})
 	}
 	// 1. 反映の条件。
 	if d.branch == nil {
-		return failure("snapshot_pending", "今の版のスナップショットが、まだない")
+		return failure("snapshot_pending", "先頭のコミットのスナップショットが、まだない")
 	}
 	if d.reviews.ChainBroken {
 		return "", fail(CodeNotOpen, chainBrokenDetail)
 	}
-	last := lastDecisive(d.reviews.Items, d.current.Revision)
+	last := lastDecisive(d.reviews.Items, d.current.Commit)
 	if last == nil || last.Kind != ports.ReviewApprove {
 		return "", nil
 	}
-	author := d.model.Versions[len(d.model.Versions)-1].AuthorSessionID
+	author := d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID
 	if author == nil {
 		return "", nil
 	}
-	for _, v := range d.model.Versions {
+	for _, v := range d.model.HeadCommits {
 		if v.AuthorSessionID != nil && *v.AuthorSessionID == last.Session {
 			return "", nil
 		}
@@ -228,19 +219,20 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	}
 	// 4. head の SHA を指定して squash merge する。
 	title := fmt.Sprintf("apply request %s を反映した", id)
-	// 反映したすべての版のセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
-	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s", id, d.current.Version, d.current.Revision)
+	// 反映したすべての先頭のコミットのセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
+	// Logiforge-Version: の番号は、先頭のコミットの一覧の中の位置である。trailer の形は変えない（design/files/revisions.md）。
+	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s", id, len(d.model.HeadCommits), d.current.Commit)
 	var sessions []string
-	for _, v := range d.model.Versions {
+	for _, v := range d.model.HeadCommits {
 		if v.AuthorSessionID != nil && !slices.Contains(sessions, *v.AuthorSessionID) {
 			sessions = append(sessions, *v.AuthorSessionID)
 			message += "\nLogiforge-Session-Id: " + *v.AuthorSessionID
 		}
 	}
-	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Revision, title, message)
+	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Commit, title, message)
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):
-		return "", fail(CodeVersionConflict, "反映の前に、新しい版が push された。新しい版を、レビューからやり直す")
+		return "", fail(CodeCommitConflict, "反映の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
 	case errors.Is(err, ports.ErrConflict):
 		return failure("conflict", err.Error())
 	case err != nil:

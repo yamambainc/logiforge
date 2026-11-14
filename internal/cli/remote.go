@@ -88,7 +88,7 @@ func (a *App) repoClone(ctx context.Context, args []string) error {
 
 func (a *App) treeView(ctx context.Context, args []string) error {
 	f := newFlags("tree view")
-	repo, rev := repoFlag(f), f.String("revision", "", "")
+	repo, rev := repoFlag(f), f.String("commit", "", "")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -96,12 +96,12 @@ func (a *App) treeView(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/tree", query: query("revision", *rev)})
+	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/tree", query: query("commit", *rev)})
 	if err != nil {
 		return err
 	}
 	return a.show(res, func(v map[string]any) {
-		fmt.Fprintf(a.Stdout, "リビジョン：%s\n根の仮説：%s（%s）\n", str(v, "revision"), str(v, "root_hypothesis_id"), value(v["root_value"]))
+		fmt.Fprintf(a.Stdout, "コミット：%s\n根の仮説：%s（%s）\n", str(v, "commit"), str(v, "root_hypothesis_id"), value(v["root_value"]))
 		if ws, _ := v["warnings"].([]any); len(ws) > 0 {
 			fmt.Fprintln(a.Stdout, "警告：")
 			for _, w := range ws {
@@ -142,7 +142,7 @@ func printNode(a *App, n map[string]any, indent string) {
 
 func (a *App) treeNodes(ctx context.Context, args []string) error {
 	f := newFlags("tree nodes")
-	repo, rev, root := repoFlag(f), f.String("revision", "", ""), f.String("root", "", "")
+	repo, rev, root := repoFlag(f), f.String("commit", "", ""), f.String("root", "", "")
 	depth := f.Int("depth", -1, "")
 	if err := f.parse(args); err != nil {
 		return err
@@ -151,7 +151,7 @@ func (a *App) treeNodes(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	q := query("revision", *rev, "root", *root)
+	q := query("commit", *rev, "root", *root)
 	if *depth >= 0 {
 		q.Set("depth", strconv.Itoa(*depth))
 	}
@@ -205,7 +205,7 @@ func (a *App) treeCompletion(ctx context.Context, args []string) error {
 
 func (a *App) treeExport(ctx context.Context, args []string) error {
 	f := newFlags("tree export")
-	repo, rev, format := repoFlag(f), f.String("revision", "", ""), f.String("format", "", "json か markdown")
+	repo, rev, format := repoFlag(f), f.String("commit", "", ""), f.String("format", "", "json か markdown")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (a *App) treeExport(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/tree/export", query: query("revision", *rev, "format", *format)})
+	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/tree/export", query: query("commit", *rev, "format", *format)})
 	if err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func (a *App) treeExport(ctx context.Context, args []string) error {
 
 func (a *App) nodeView(ctx context.Context, args []string) error {
 	f := newFlags("node view")
-	repo, rev := repoFlag(f), f.String("revision", "", "")
+	repo, rev := repoFlag(f), f.String("commit", "", "")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -237,7 +237,7 @@ func (a *App) nodeView(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/nodes/" + url.PathEscape(f.positional[0]), query: query("revision", *rev)})
+	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/nodes/" + url.PathEscape(f.positional[0]), query: query("commit", *rev)})
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func (a *App) nodeHistory(ctx context.Context, args []string) error {
 	}
 	return a.show(res, func(v map[string]any) {
 		for _, e := range items(v) {
-			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\n", str(e, "revision"), str(e, "committed_at"), str(e, "apply_request_id"))
+			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\n", str(e, "commit"), str(e, "committed_at"), str(e, "apply_request_id"))
 		}
 	})
 }
@@ -302,13 +302,13 @@ func (a *App) verdictView(ctx context.Context, args []string) error {
 		return err
 	}
 	return a.show(res, func(v map[string]any) {
-		fmt.Fprintf(a.Stdout, "%s（仮説 %s）：%s\n反映：%s\n\n%s\n", str(v, "id"), str(v, "hypothesis_id"), value(v["value"]), str(v, "submitted_revision"), str(v, "report_body"))
+		fmt.Fprintf(a.Stdout, "%s（仮説 %s）：%s\n反映：%s\n\n%s\n", str(v, "id"), str(v, "hypothesis_id"), value(v["value"]), str(v, "submitted_commit"), str(v, "report_body"))
 	})
 }
 
 func (a *App) artifactGet(ctx context.Context, args []string) error {
 	f := newFlags("artifact get")
-	repo, rev, out := repoFlag(f), f.String("revision", "", ""), f.String("o", "", "書き出すファイル")
+	repo, rev, out := repoFlag(f), f.String("commit", "", ""), f.String("o", "", "書き出すファイル")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -319,7 +319,7 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/artifacts/" + url.PathEscape(f.positional[0]), query: query("revision", *rev)})
+	res, err := a.call(ctx, request{method: http.MethodGet, path: repoPath(name) + "/artifacts/" + url.PathEscape(f.positional[0]), query: query("commit", *rev)})
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
 	a.errorExtra = map[string]any{"idempotency_key": k}
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session, idempotency: k, retry: true,
-		body: map[string]string{"branch": *branch, "revision": local, "description": *desc}})
+		body: map[string]string{"branch": *branch, "commit": local, "description": *desc}})
 	if err != nil {
 		return err
 	}
@@ -399,7 +399,18 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 }
 
 func (a *App) printAR(v map[string]any) {
-	fmt.Fprintf(a.Stdout, "%s（%s）ブランチ %s、版 %s\n", str(v, "id"), str(v, "state"), str(v, "branch"), str(v, "version"))
+	fmt.Fprintf(a.Stdout, "%s（%s）ブランチ %s、先頭のコミット %s\n", str(v, "id"), str(v, "state"), str(v, "branch"), str(v, "head_commit"))
+	if hs, _ := v["head_commits"].([]any); len(hs) > 0 {
+		fmt.Fprintln(a.Stdout, "push された先頭のコミット（古い順）：")
+		for _, h := range hs {
+			hc := h.(map[string]any)
+			seen := str(hc, "seen_at")
+			if seen == "" {
+				seen = "（worker がまだ取り込んでいない）"
+			}
+			fmt.Fprintf(a.Stdout, "  %s %s\n", str(hc, "commit"), seen)
+		}
+	}
 	if aw := str(v, "awaiting"); aw != "" {
 		fmt.Fprintf(a.Stdout, "待っているもの：%s\n", aw)
 	}
@@ -414,14 +425,14 @@ func (a *App) printAR(v map[string]any) {
 		fmt.Fprintln(a.Stdout, "レビュー：")
 		for _, r := range rs {
 			rv := r.(map[string]any)
-			fmt.Fprintf(a.Stdout, "  %s 版 %s（有効：%s）\n", str(rv, "kind"), str(rv, "version"), str(rv, "valid"))
+			fmt.Fprintf(a.Stdout, "  %s コミット %s（有効：%s）\n", str(rv, "kind"), str(rv, "commit"), str(rv, "valid"))
 		}
 	}
 	if fs, _ := v["merge_failures"].([]any); len(fs) > 0 {
 		fmt.Fprintln(a.Stdout, "反映の失敗：")
 		for _, x := range fs {
 			mf := x.(map[string]any)
-			fmt.Fprintf(a.Stdout, "  版 %s：%s %s\n", str(mf, "version"), str(mf, "reason"), str(mf, "detail"))
+			fmt.Fprintf(a.Stdout, "  コミット %s：%s %s\n", str(mf, "commit"), str(mf, "reason"), str(mf, "detail"))
 		}
 	}
 	if ws, _ := v["warnings"].([]any); len(ws) > 0 {
@@ -493,7 +504,7 @@ func (a *App) arList(ctx context.Context, args []string) error {
 	}
 	return a.show(res, func(v map[string]any) {
 		for _, ar := range items(v) {
-			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t版 %s\t%s\n", str(ar, "id"), str(ar, "state"), str(ar, "branch"), str(ar, "version"), str(ar, "awaiting"))
+			fmt.Fprintf(a.Stdout, "%s\t%s\t%s\t%s\t%s\n", str(ar, "id"), str(ar, "state"), str(ar, "branch"), str(ar, "head_commit"), str(ar, "awaiting"))
 		}
 	})
 }
@@ -518,12 +529,12 @@ func (a *App) arMaterial(ctx context.Context, args []string) error {
 	return a.show(res, nil)
 }
 
-// arReview は、レビューを付ける。--version の番号は、ar view で SHA に引き直してから、revision として送る。
+// arReview は、レビューを付ける。レビューしたコミットは、--commit の SHA で指す。
 func (a *App) arReview(ctx context.Context, args []string) error {
 	f := newFlags("ar review")
 	repo, sess := repoFlag(f), f.String("session", "", "")
 	approve, changes, comment := f.Bool("approve", false, ""), f.Bool("request-changes", false, ""), f.Bool("comment", false, "")
-	version, revision := f.Int("version", 0, ""), f.String("revision", "", "")
+	commit := f.String("commit", "", "")
 	body, prompt := f.String("body", "", ""), f.String("prompt-revision", "", "")
 	if err := f.parse(args); err != nil {
 		return err
@@ -545,8 +556,8 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 	if n != 1 {
 		return usagef("ar review には --approve、--request-changes、--comment のどれか 1 つが要る")
 	}
-	if (*version == 0) == (*revision == "") {
-		return usagef("ar review には --version か --revision のどちらか 1 つが要る")
+	if *commit == "" {
+		return usagef("ar review には --commit（レビューした先頭のコミットの SHA）が要る")
 	}
 	name, err := a.repo(*repo)
 	if err != nil {
@@ -557,28 +568,8 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 		return err
 	}
 	id := f.positional[0]
-	rev := *revision
-	if *version != 0 {
-		var ar struct {
-			Versions []struct {
-				Version  int    `json:"version"`
-				Revision string `json:"revision"`
-			} `json:"versions"`
-		}
-		if err := a.getJSON(ctx, repoPath(name)+"/apply-requests/"+url.PathEscape(id), nil, &ar); err != nil {
-			return err
-		}
-		for _, v := range ar.Versions {
-			if v.Version == *version {
-				rev = v.Revision
-			}
-		}
-		if rev == "" {
-			return fmt.Errorf("版 %d がない", *version)
-		}
-	}
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(id) + "/reviews", session: session,
-		body: map[string]string{"kind": kinds[true], "revision": rev, "body": *body, "prompt_revision": *prompt}})
+		body: map[string]string{"kind": kinds[true], "commit": *commit, "body": *body, "prompt_revision": *prompt}})
 	if err != nil {
 		return err
 	}

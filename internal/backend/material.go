@@ -6,12 +6,12 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
-// GetReviewMaterial は、今の版の差分に対するレビューの材料を返す（docs/apply-request/review.md の「レビューの材料」）。説明欄は含めない。
+// GetReviewMaterial は、先頭のコミットの差分に対するレビューの材料を返す（docs/apply-request/review.md の「レビューの材料」）。説明欄は含めない。
 //   - 対象ノード：操作の対象ノードの、今の main での状態と値
 //   - 親仮説から根まで：対象ノードの親の仮説から、根までの仮説
 //   - 兄弟ストーリー：story.create では親仮説の子ストーリー、story.inactivate では同じ親仮説のほかのストーリー、
 //     verdict.submit と node.edit では、対象の仮説が属するストーリーと同じ親仮説を持つ、ほかのストーリー
-//   - 引用：引用している部分木（引用したリビジョンのもの）と、artifact
+//   - 引用：引用している部分木（引用したコミットのもの）と、artifact
 func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id string) (ReviewMaterial, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
@@ -30,13 +30,13 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 		return ReviewMaterial{}, err
 	}
 	if d.branch == nil {
-		return ReviewMaterial{}, fail(CodeSnapshotPending, "今の版 %s のスナップショットが、まだない", d.current.Revision)
+		return ReviewMaterial{}, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない", d.current.Commit)
 	}
 	open, err := b.readOpen(ctx, repo, ref, v)
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
-	m := ReviewMaterial{ApplyRequestID: id, Version: d.current.Version, Revision: d.current.Revision, Operations: d.model.Operations,
+	m := ReviewMaterial{ApplyRequestID: id, Commit: d.current.Commit, Operations: d.model.Operations,
 		Targets: []Node{}, Ancestors: []*Hypothesis{}, Siblings: []*Story{}, Citations: []MaterialCitation{}}
 	seenT, seenA, seenS := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	addAncestors := func(h *tree.Hypothesis) {
@@ -88,7 +88,7 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 			mc := MaterialCitation{Citation: ci}
 			switch ci.TargetKind {
 			case "subtree":
-				if cv, err := b.mainAt(ctx, repo, ci.Revision); err == nil {
+				if cv, err := b.mainAt(ctx, repo, ci.Commit); err == nil {
 					mc.Nodes = cv.subtree(ci.NodeID, -1, claims{})
 				}
 			case "artifact":

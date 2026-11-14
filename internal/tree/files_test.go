@@ -26,7 +26,7 @@ func TestVerdictRoundTrip(t *testing.T) {
 	c := VerdictContent{
 		ID: V1, Value: true, Supersedes: []string{V2},
 		Artifacts: []ArtifactRef{{Kind: "link", Name: "paper", URI: "https://example.com/a"}},
-		Citations: []Citation{{TargetKind: "subtree", NodeID: H1, Revision: strings.Repeat("a", 40)}},
+		Citations: []Citation{{TargetKind: "subtree", NodeID: H1, Commit: strings.Repeat("a", 40)}},
 		Report:    "# レポート\n\n本文\n",
 	}
 	got, err := ParseVerdict(MarshalVerdict(c))

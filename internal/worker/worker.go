@@ -60,7 +60,7 @@ type Worker struct {
 	wake  chan string
 	// runCtx は、Run の ctx である。裏の取り込みは、これで止まる。Run の前は context.Background()。
 	runCtx context.Context
-	// moved は、古い形の版の下のブランチのスナップショットを、版の外に移し終えた repository である。プロセスごとに 1 度だけ移す。
+	// moved は、古いフォーマットバージョンの下のブランチのスナップショットを、版の外に移し終えた repository である。プロセスごとに 1 度だけ移す。
 	moved map[string]bool
 	// progress は、最後に巡回を始めたか、main のコミットを 1 つ取り込んだ時刻（UnixNano）である。ヘルスチェックに使う。
 	progress atomic.Int64
@@ -298,8 +298,8 @@ func maps(a, b map[string]string) bool {
 	return true
 }
 
-// moveLegacy は、古い形の版の下に置いていたブランチのスナップショットを、版の外に移す（store.MoveLegacyBranchSnapshots）。
-// 形の版を上げても、消えたブランチの版を読めるようにするため。repository ごとに、プロセスで 1 度だけ動かす。
+// moveLegacy は、古いフォーマットバージョンの下に置いていたブランチのスナップショットを、版の外に移す（store.MoveLegacyBranchSnapshots）。
+// フォーマットバージョンを上げても、消えたブランチの版を読めるようにするため。repository ごとに、プロセスで 1 度だけ動かす。
 // repository のロックを持って呼ぶ。
 func (w *Worker) moveLegacy(ctx context.Context, repo string) error {
 	w.mu.Lock()
@@ -521,7 +521,7 @@ func (w *Worker) indexFromNearestTree(ctx context.Context, repo string, chain []
 // buildTree は、main のコミット sha の木を作る。なければ作り、あれば何もしない。sha の記録がなければ store.ErrNotFound。
 // history とノードの変更の一覧は、sha から Parent をたどって記録を読み、順に重ねて求める。
 // たどる途中で木のあるコミットに当たったら、その木から始め、その先の記録だけを重ねる。
-// ブランチの base と、API で指定された過去のリビジョンに使う。
+// ブランチの base と、API で指定された過去のコミットに使う。
 func (w *Worker) buildTree(ctx context.Context, g *gitx.Repo, repo, sha string) error {
 	if ok, err := store.HasTree(ctx, w.store, repo, sha); err != nil || ok {
 		return err
@@ -567,7 +567,7 @@ func (w *Worker) buildTree(ctx context.Context, g *gitx.Repo, repo, sha string) 
 }
 
 // overlap は、反映のコミットについて、対象ノードが、その base のあとに別の反映で変わっていないかを確かめる。
-// base は、反映した版のコミット（Logiforge-Version:）と、反映の直前の main の分かれた点である。
+// base は、反映した先頭のコミット（Logiforge-Version:）と、反映の直前の main の分かれた点である。
 // x は、c まで足した Index である。
 func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, x *snapshot.Index, c snapshot.Commit) []tree.Violation {
 	if snapshot.HasTrailer(c, snapshot.TrailerApplyRequest) == "" {
@@ -581,7 +581,7 @@ func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, x *snapshot.Index, c
 		return unchecked("Logiforge-Version: がない")
 	}
 	if ok, err := g.HasCommit(ctx, version); err != nil || !ok {
-		return unchecked("版のコミット " + version + " が手元にない")
+		return unchecked("反映した先頭のコミット " + version + " が手元にない")
 	}
 	base, err := g.MergeBase(ctx, version, *c.Parent)
 	if err != nil {

@@ -23,7 +23,7 @@ const HeaderSnapshotPending = "Logiforge-Snapshot-Pending"
 // BuildTreeRequest は、「木を作る」の要求である。
 type BuildTreeRequest struct {
 	Repository string `json:"repository"`
-	Revision   string `json:"revision"`
+	Commit     string `json:"commit"`
 }
 
 // WakeRequest は、「起こす」の要求である。
@@ -39,7 +39,7 @@ func (w *Worker) Handler(key string) http.Handler {
 		if !decode(rw, r, &req) {
 			return
 		}
-		err := w.BuildTree(r.Context(), req.Repository, req.Revision)
+		err := w.BuildTree(r.Context(), req.Repository, req.Commit)
 		switch {
 		case errors.Is(err, ports.ErrNotFound):
 			http.Error(rw, "not found", http.StatusNotFound)
@@ -47,7 +47,7 @@ func (w *Worker) Handler(key string) http.Handler {
 			rw.Header().Set(HeaderSnapshotPending, "true")
 			http.Error(rw, "snapshot pending", http.StatusServiceUnavailable)
 		case err != nil:
-			w.cfg.Log.Error("木を作れない", "repository", req.Repository, "revision", req.Revision, "err", err)
+			w.cfg.Log.Error("木を作れない", "repository", req.Repository, "commit", req.Commit, "err", err)
 			http.Error(rw, "unavailable", http.StatusServiceUnavailable)
 		default:
 			rw.WriteHeader(http.StatusNoContent)
