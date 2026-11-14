@@ -4,8 +4,12 @@
 
 ## 操作
 
-apply request は、次の 4 種類の操作をいくつか並べた差分である。
+apply request は、木への変更の差分である。
+差分は、次の 4 種類の操作の組として読めるものに限る。
 apply request 自体は種類を持たない。
+
+- 差分は、木の git リポジトリのブランチとして出す（[CLI](../cli/README.md)）。
+  - 4 種類の操作として読めない変化を含む差分は、受け付けない。
 
 | 操作 | 内容 |
 |---|---|
@@ -60,6 +64,7 @@ stateDiagram-v2
   - 一部だけが反映されることはない。
 - 不変条件は、apply request が反映されるたびに、常に成り立つ。
   - 反映すると不変条件を満たさなくなる apply request は、反映しない。
+  - ただし、反映の直前の確認と反映の間に、別の apply request が反映されることがある。そのときに不変条件が破れたら、Logiforge は反映のあとに警告する。直すのは、新しい apply request である。
   - 不変条件は、[仮説とストーリーの木](../tree/README.md) と [inactive 化](../tree/inactive.md) に書く。
 - apply request を作ったあとに、その操作の対象ノードが別の apply request によって変わっていたら、反映しない。
   - その apply request は、理由を残して `open` に戻す。

@@ -30,7 +30,8 @@ artifacts/
 
 - 識別子は、種類の接頭辞と、10 文字の小文字の英数字（Crockford の base32）をつなぐ。
   - 例：`h-7k3m9q2x4p`
-- 識別子は、ノードを作るときに乱数で決める。
+- 識別子は、ノードを作るときに、クライアント（CLI のひな形）が乱数で決める（[CLI](../cli/README.md)）。
+  - ほかのノードとぶつかったら、[差分の検査](../backend/checks.md) で拒む。
 - 識別子は、ディレクトリ名とファイル名にそのまま使う。
   - なぜ：パスを短く保つため。10 文字なら 50 ビットあり、1 つの木の中で重なることはまずない。
 
@@ -46,11 +47,14 @@ artifacts/
 | `inactivated.md` | なし | inactive にした理由 |
 | `verdicts/v-*.md` | `id`、`value`、`supersedes`、`artifacts`、`citations` | レポート |
 
-- `supersedes` は、差し替える前の検証結果の識別子である。最初の検証結果では書かない。
+- `supersedes` は、差し替える前の検証結果の識別子の一覧である。最初の検証結果では書かない。
+  - 1 つだけ差し替えるときも、一覧で書く（例：`supersedes: [v-7k3m9q2x4p]`）。
+  - 有効な検証結果が 2 つ以上ある仮説では、それらをまとめて差し替えられる（[差分の検査](../backend/checks.md)）。
 - `artifacts` は、レポートが参照する artifact の一覧である（[artifact の置き方](artifacts.md)）。
 - `citations` は、引用の一覧である。
   - artifact の引用は、`sha256` で書く。
-  - 部分木の引用は、ノードの識別子と commit SHA の組で書く（[リビジョンとコミット](revisions.md)）。
+  - 部分木の引用は、ノードの識別子と、`main` のコミットの SHA（キー `commit`）の組で書く（[引用で固定するコミット](revisions.md#引用で固定するコミット)）。
+  - `commit` の代わりに `revision` と書いた引用も読む。なぜ：git の履歴にある検証結果のファイルを書き換えずに読めるようにするため。
 
 ## 有効な検証結果
 

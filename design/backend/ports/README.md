@@ -7,31 +7,38 @@
 
 | ポート | 扱うもの | ページ |
 |---|---|---|
-| 木の読み書き | 木のファイルと、そのリビジョン | [木の読み書き](tree-read-write.md) |
-| やりとり | 提案と版、レビュー、人への依頼 | [やりとり](interaction.md) |
-| サーバの状態 | サーバが持つ状態（repository の登録、突き合わせの状態、Idempotency-Key） | [サーバの状態](server-state.md) |
+| GitForge | repository の用意、提案（pull request）の作成・反映・close、レビュー、人への依頼 | [GitForge](gitforge.md) |
+| スナップショットの置き場 | スナップショットとブランチの履歴を読む（書くのは worker） | [スナップショットの置き場](snapshot-store.md) |
 | 認証 | API の要求を送った主体 | [認証](authentication.md) |
+
+- バックエンドは、データを保持しない。そのため、サーバの状態のポートはない（[状態を持たない](../README.md)）。
+- git に書くのは、GitForge のポートの「repository を用意する」と「反映する」だけである。どちらも、GitForge の pull request と repository の操作である。
+  - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の仕組みに任せるため。バックエンドは、git の ref を自前で扱わない。
+- [worker](../worker.md) は、ポートにしない。バックエンドは、worker のクライアントから、[worker の内部 API](../worker-api.md) を直接呼ぶ。
+  - なぜ：worker は、どの構成でも同じもので、差し替える先がないから。サーバの状態のポートを置かないのと、同じ理由である。
+- apply request の作成で git を読む作業用の複製も、ポートにしない（[作業用の git の複製](../apply-request.md#作業用の-git-の複製)）。git は、どの GitForge でも、同じ smart HTTP の fetch で読めるからである。違うのは、URL と資格情報だけで、それは GitForge アダプタが渡す。
 
 ## ポートとアダプタ
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph PT["ポート"]
-    P1["木の読み書き"]
-    P2["やりとり"]
-    P3["サーバの状態"]
-    P4["認証"]
+    P2["GitForge"]
+    P4["スナップショットの置き場"]
+    P3["認証"]
   end
-  GITR["git アダプタ（GitHub）"] -.-> P1
-  GITL["git アダプタ（bare）"] -.-> P1
-  GH["GitHub アダプタ"] -.-> P2
-  NA["独自プロバイダ"] -.-> P2
-  MEM["メモリのキャッシュ"] -.->|GitHub を使う構成| P3
-  SQ["SQLite アダプタ"] -.->|使わない構成| P3
-  GH -.->|GitHub を使う構成| P4
-  SQ -.->|使わない構成| P4
+  subgraph AD["アダプタ"]
+    FA["GitForge アダプタ"]
+    DIR["手元のディレクトリ"]
+    OBJ["静的ファイルストレージ"]
+  end
+  P2 -.- FA
+  P3 -.- FA
+  P4 -.- DIR
+  P4 -.- OBJ
 ```
 
-- 点線の矢印は、アダプタがポートを実装することを表す。
-- 矢印のラベルは、その構成でだけ使うことを表す。
+- 点線は実装を表す。下のアダプタが、上のポートを実装する。
+- GitForge と認証のポートは、構成に合った 1 つの GitForge アダプタが実装する。GitForge アダプタの種類は、[アダプタ](../../adapters/README.md) に書く。
+- スナップショットの置き場は、構成に合わせて、静的ファイルストレージか手元のディレクトリの一方を使う。どちらも、読むだけである。
 - 各アダプタの詳細は、[アダプタ](../../adapters/README.md) に書く。

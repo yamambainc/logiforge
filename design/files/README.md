@@ -1,8 +1,8 @@
 # 木のファイル配置
 
 木（仮説、ストーリー、検証結果、背景情報、inactive 化）を、git リポジトリのどのファイルに置くかを確かめるときに読む。
-このファイル配置は、[木の読み書き](../backend/ports/tree-read-write.md) のポートの契約である。
-木の読み書きを git の形式で実装する、という決まりは、[レイヤー構成](../architecture.md) が正本である。
+このファイル配置は、利用者がブランチに書き、[worker](../backend/worker.md) が解析する、木の git リポジトリの契約である。
+木を git リポジトリに置く、という決まりは、[レイヤー構成](../architecture.md) が正本である。
 
 - 1 つの repository（[木の形](../../docs/tree/README.md)）が、1 つの git リポジトリにあたる。
 
@@ -19,5 +19,5 @@
 
 1. [ファイルの配置](layout.md)：ディレクトリ、ファイル名、識別子、ファイルの中身
 2. [親子関係の持ち方](parent-child.md)：パスで表す理由と、深さの上限
-3. [リビジョンとコミット](revisions.md)
+3. [main のコミットと記録](revisions.md)
 4. [artifact の置き方](artifacts.md)

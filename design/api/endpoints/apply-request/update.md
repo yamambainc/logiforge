@@ -1,7 +1,7 @@
 # apply request を更新する
 
-opener が、request_changes を受けたあとや、反映に失敗したあとに差分を直すときに、CLI から呼ぶ。
-どの client のセッションからでも更新できる。
+opener が、apply request の説明欄を書き換えるときに、CLI から呼ぶ。
+apply request の先頭のコミットを変えるには、ブランチに push するだけで、この API は使わない（[先頭のコミット](../../../backend/apply-request.md#先頭のコミット)）。
 
 ## 呼び出し
 
@@ -10,9 +10,7 @@ opener が、request_changes を受けたあとや、反映に失敗したあと
 
 ## すること
 
-- 操作をすべて置き換えた、新しい版を作る。
-- 新しい版を書いたセッションを記録する。
-- それまでの approve は、新しい版には効かない。
+- 説明欄を書き換える。
 
 ## 関係する要件
 

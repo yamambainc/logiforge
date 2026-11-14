@@ -10,7 +10,7 @@ opener や reviewer が、作業する repository を探すときにも、CLI �
 
 ## すること
 
-- forge が扱う repository を、名前と根の値と一緒に返す。
+- Logiforge が扱う repository を、名前と根の値と一緒に返す。
 - 一覧はページに分けて返す。
 
 ## 関係する要件

@@ -7,74 +7,130 @@
 
 | ポート | アダプタ | ページ |
 |---|---|---|
-| 木の読み書き | git（GitHub のリモート）、git（ローカルの bare リポジトリ） | [git アダプタ](git.md) |
-| やりとり | GitHub アダプタ、独自プロバイダ | [GitHub アダプタ](github.md)、[独自プロバイダ](native.md) |
-| サーバの状態 | メモリのキャッシュ（GitHub を使う構成）、SQLite（使わない構成） | [メモリのキャッシュ](memory.md)、[SQLite アダプタ](sqlite.md) |
-| 認証 | GitHub アダプタ（GitHub を使う構成）、SQLite アダプタ（使わない構成） | [GitHub アダプタ](github.md)、[SQLite アダプタ](sqlite.md) |
+| GitForge | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
+| スナップショットの置き場 | 静的ファイルストレージ、手元のディレクトリ | [スナップショットの置き場のアダプタ](snapshot-store.md) |
+| 認証 | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
+
+- [worker](../backend/worker.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
+- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+
+## GitForge アダプタに求めること
+
+バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
+
+- pull request を、head の SHA を指定して squash merge できる。
+- `main` への push を禁じ、merge を書き込み主体だけにできる。
+- git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
+- pull request の最後の先頭のコミットを、ref に残す。
+
+GitForge ごとに違う性質は、次のとおりである。
+
+| 性質 | GitHub | Forgejo |
+|---|---|---|
+| API でコメントにファイルを添付できるか（[人への依頼の回答](../files/artifacts.md)） | できない。添付はリンクだけ | できる |
+| repository をバックエンドが作れるか（[repository の登録](#repository-の登録)） | 作らない。管理者が作り、登録する | 作る |
+| pull request の最後の先頭のコミットの ref | `refs/pull/<number>/head` | `refs/pull/<index>/head` |
+
+## 自前で持つ構成に Forgejo を使う理由
+
+- pull request、レビュー、issue、添付、ブランチの保護、トークンを、Forgejo がすでに持つ。自前で作らずに、GitHub と同じ pull request の形で扱える。
+- Forgejo は、別のプロセスのサービスである。ライセンスは GPL で、Logiforge は Forgejo のコードをリンクしない（[Forgejo アダプタ](forgejo.md)）。
 
 ## 組み合わせ
 
 ```mermaid
 flowchart TB
-  subgraph G["GitHub を使う場合"]
-    G1["git アダプタ（GitHub）"] ==> G1D[("git リポジトリ（GitHub）")]
-    G2["GitHub アダプタ"] ==> G2D[("GitHub の PR と issue")]
-    G3["メモリのキャッシュ"] ==> G3D[("サーバのメモリ")]
+  subgraph G["GitHub を使う構成"]
+    G2["GitHub アダプタ"] ==> GH[("GitHub")]
+    G3["静的ファイルストレージのアダプタ"] ==> OBJ[("静的ファイルストレージ")]
+    GW["worker"] ==> GH
+    GW ==> OBJ
   end
-  subgraph N["GitHub を使わない場合"]
-    N1["git アダプタ（bare）"] ==> N1D[("git リポジトリ（bare）")]
-    N2["独自プロバイダ"] ==> N3D[("SQLite ファイル")]
-    N3["SQLite アダプタ"] ==> N3D
+  subgraph N["Forgejo を使う構成"]
+    N2["Forgejo アダプタ"] ==> NF[("Forgejo")]
+    N3["手元のディレクトリのアダプタ"] ==> DIR[("手元のディレクトリ")]
+    NW["worker"] ==> NF
+    NW ==> DIR
   end
 ```
 
-- 太い矢印は、アダプタがデータストアを読み書きすることを表す。
-- GitHub を使う場合は、SQLite を使わない。サーバの状態は、メモリのキャッシュに置く。
-- GitHub を使わない場合は、独自プロバイダ、サーバの状態、認証が、同じ SQLite ファイルにテーブルを分けて置く。
+- 太い矢印は、アダプタと worker が外のサービスを読み書きすることを表す。
+- worker は、外のサービスではなく、バックエンドと並ぶ Logiforge のプロセスである（[レイヤー構成](../architecture.md)）。図では、外のサービスとのつながりを見せるために、アダプタと並べた。
+- 構成は、サーバの設定で 1 つに決める。
+  - なぜ：repository ごとに構成を選べると、組み合わせが増えて単純さを失うから。
+- worker は、どちらの構成でも同じ実装である。リモートの URL と認証情報だけが違う。worker は git を読み、置き場に書く。
+- 置き場を読むのは、スナップショットの置き場のアダプタ（バックエンド）である。
+- git に書くのは、GitHub アダプタか Forgejo アダプタが、GitForge の API で行う repository の用意と pull request の merge だけである。
+- GitForge と認証のポートは、同じアダプタが実装する。
+  - なぜ：どちらの正本も、同じ GitForge にあるから。
+- GitHub の PR（pull request）や issue として、apply request や人への依頼を見たいなら、GitHub を使う構成にする。
+- GitHub を使わずに動かしたいなら、Forgejo を使う構成にする（[Forgejo アダプタ](forgejo.md)）。
+- GitHub を使う構成は、複数人で使い、バックエンドを何台か並べることを想定する。そのため、置き場を、どのプロセスからも読める静的ファイルストレージにする（[バックエンドだけを増やすとき](../deploy.md#バックエンドだけを増やすとき)）。
+- Forgejo を使う構成は、1 台のマシンで使うことを想定する。Forgejo と、バックエンドと worker を並べた 1 つのタスクを動かし、置き場を、タスクの中で共有する手元のディレクトリにする（[動かし方](../deploy.md)）。
+- どちらの構成でも、[worker](../backend/worker.md) が置き場に書き、バックエンドが読む。
 
-- やりとりのアダプタ（プロバイダ）は、サーバの設定で 1 つに決める。
-  - なぜ：repository ごとにプロバイダを選べると、組み合わせが増えて単純さを失うから。
-- GitHub アダプタを使うときは、木の読み書きに git（GitHub のリモート）を使う。
-- 独自プロバイダを使うときは、木の読み書きに git（ローカルの bare リポジトリ）を使う。
-- 認証は、GitHub アダプタを使うときは GitHub アダプタが、独自プロバイダを使うときは SQLite アダプタが実装する。
-- GitHub で PR（pull request）や issue としてやりとりを見たいなら、GitHub アダプタを使う。
-- GitHub を使わずに動かしたいなら、独自プロバイダを使う。
+構成ごとの正本とバックアップは、次のとおりである。
 
-構成ごとの、サーバの上の正本とバックアップは、次のとおりである。
-
-| 構成 | サーバの上の正本 | バックアップ |
+| 構成 | 正本の置き場所 | バックアップ |
 |---|---|---|
-| GitHub を使う構成 | なし（すべてキャッシュ） | 要らない |
-| GitHub を使わない構成 | 認証の主体とトークン、独自プロバイダのテーブル | SQLite ファイルを取る |
+| GitHub を使う構成 | GitHub と、置き場の `branches/` | GitHub は GitHub に任せる。置き場の `branches/` は、置き場の仕組みで取る |
+| Forgejo を使う構成 | Forgejo と、置き場の `branches/` | Forgejo は、Forgejo のバックアップの仕組み（`forgejo dump` など）で取る。置き場の `branches/` は、手元のディレクトリを写して取る |
 
-サーバの状態を失ったとき（GitHub を使う構成では、再起動したとき）の影響は、次のとおりである。
-
-| 失ったもの | 影響 |
-|---|---|
-| repository の登録 | 起動時に作り直す |
-| Idempotency-Key | 前に送った要求を送り直すと、二重に処理されることがある |
-| 突き合わせの状態 | 次の突き合わせで作り直す |
-| 主体とトークン | GitHub を使う構成では影響なし（GitHub が正本）。使わない構成では、誰も API を使えなくなるので、バックアップから戻す |
+- どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
+- worker の clone と、置き場の多くは、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
+- ただし、置き場の `branches/` と、消えたブランチの先頭のコミットのスナップショットは、git から作り直せない。ここだけはバックアップを取る（[ブランチの履歴](../backend/snapshot.md)）。
 
 ## repository の登録
 
-repository の名前の正本は、アダプタごとに次のとおりである。
+repository の名前の正本は、構成ごとに次のとおりである。
 
-- GitHub アダプタ：サーバの設定（repository の名前と `owner/name` の組）
+- GitHub を使う構成：サーバの設定（repository の名前と `owner/name` の組）
   - 管理者が GitHub リポジトリを作り、書き込み主体を入れて、この組を登録する（[GitHub アダプタ](github.md)）。
-- 独自プロバイダ：bare リポジトリのディレクトリ名
-  - 管理者は、bare リポジトリを置くディレクトリだけを設定する。利用者が作るときに、bare リポジトリを作る（[git アダプタ](git.md)）。
+  - gitforge_ref は `owner/name` である。
+  - 設定に登録されていない名前では、repository を作れない（`repository_not_registered`）。
+- Forgejo を使う構成：設定した organization の、Forgejo の repository の一覧
+  - 利用者が作るときに、バックエンドが Forgejo に repository を作る（[Forgejo アダプタ](forgejo.md)）。
+  - gitforge_ref は、`<organization>/<名前>` である。
+  - 管理者の登録は要らない。そのため、`repository_not_registered` は起きない。
 
-サーバの状態の登録は、これらから作り直すキャッシュである（[サーバの状態](../backend/ports/server-state.md)）。
 - 利用者は、名前と根の主文だけで repository を作る。
 
 ## 設定と秘密情報
 
-次のものは、サーバの設定ファイルか環境変数に置く。git リポジトリには置かない。
-
-- GitHub の書き込み主体の認証情報（GitHub App の秘密鍵など）
-- SQLite ファイルのパス（GitHub を使わない構成だけ）
-- `user` とみなす GitHub のアカウント名か、organization の team（GitHub を使う構成だけ。[GitHub アダプタ](github.md)）
-- 版の署名の鍵（[記録の形式](../files/revisions.md)）
+次のものは、設定ファイルか環境変数に置く。git リポジトリには置かない。
 
 - なぜ：git リポジトリは、人やエージェントが読めるから。
+
+バックエンド：
+
+- 構成（GitHub を使う / Forgejo を使う）
+- 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
+  - 鍵は、バックアップを取る。鍵を失うと、それまでのすべての記録の MAC が確かめられず、すべて数えない記録になる。
+  - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
+- worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
+- 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
+- git を読む、読むだけの資格情報（worker と同じもの）と、作業用の git の複製を置く一時的なディレクトリ（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）
+- GitHub を使う構成だけ
+  - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵）
+  - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）
+  - repository の名前と `owner/name` の組
+- Forgejo を使う構成だけ
+  - Forgejo の URL
+  - 書き込み主体（Forgejo のユーザー）のトークン（[Forgejo アダプタ](forgejo.md)）
+  - repository を置く organization と、`user` とみなす team
+
+[worker](../backend/worker.md)：
+
+- 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
+- git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
+  - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
+  - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
+- 内部 API の鍵（バックエンドと同じもの）
+- 置き場の接続先と、書く鍵
+- 巡回の間隔と、内部 API を受ける HTTP のエンドポイント
+- clone を置く、永続するストレージのパス
+
+鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
+
+- ほかの主体には、鍵を置く場所を読ませない。
+- worker は、git と GitForge に書く鍵を持たない。

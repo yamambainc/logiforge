@@ -1,43 +1,42 @@
 # git アダプタ
 
-[木の読み書き](../backend/ports/tree-read-write.md) のポートを、git でどう実装するかを確かめるときに読む。
+[worker](../backend/worker.md) とバックエンドが、木の git リポジトリをどう読むかを確かめるときに読む。
 ファイルの形式は、[木のファイル配置](../files/README.md) に従う。
 
-## 2 つの実装
+## 読むもの（worker とバックエンド）
 
-- GitHub のリモート：GitHub リポジトリを、手元のクローンと GitHub の API で操作する。
-- ローカルの bare リポジトリ：サーバの上の bare の git リポジトリを、直接操作する。
-  - bare リポジトリを置くディレクトリは、サーバの設定に書く。
-  - git リポジトリのパスは、`<そのディレクトリ>/<repository の名前>.git` とする。
+- worker は、巡回で git を読み、スナップショットを作って置き場に書く。
+- バックエンドは、apply request の作成のときだけ、作業用の git の複製から git を読んで検査する（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）。置き場には書かない。
+- サーバの側が git に書くのは、GitForge の API による repository の用意と、pull request の squash merge だけである（[GitForge のポート](../backend/ports/gitforge.md)）。
+  - そのため、このアダプタには、書く操作がない。
 
-## 操作と git の対応
+## リモートと clone
 
-| 操作 | git での実装 |
+- 正本は、リモートの git リポジトリである。リモートは、GitHub か [Forgejo アダプタ](forgejo.md) である。
+- どちらのリモートでも、同じ実装にする。違うのは、リモートの URL と認証情報だけである。
+  - なぜ：git の smart HTTP の fetch だけを使えば、どちらのリモートにも同じ手順で読めるから。
+- worker は、repository ごとの clone を、永続するストレージに持ち続ける。
+- バックエンドは、repository ごとの作業用の複製を、一時的なディスクに持つ。初めて要るときに 1 度だけ clone し、あとは fetch するだけにする。
+
+## 読むもの
+
+| もの | git での読み方 |
 |---|---|
-| 用意する | ローカル：`git init --bare`。GitHub：空であることを API で確かめる |
-| 列挙する | ローカル：ディレクトリの中を列挙し、ディレクトリ名を repository の名前とする。GitHub：サーバの設定に登録した組を列挙する |
-| 最初のリビジョンで main を作る | `git commit-tree`（親なし）のあと、ローカルは `git update-ref refs/heads/main <新しいコミット> ""`、GitHub は `POST /repos/{owner}/{repo}/git/refs` |
-| 木を読む | `git ls-tree` と `git cat-file`（リビジョンを指定する） |
-| 変更を列挙する | `git log <a>..<b> --first-parent -- <パス>` |
-| 共通の祖先を求める | `git merge-base <a> <b>` |
-| リビジョンの並びを読む | `git rev-list --first-parent --reverse main` |
-| リビジョンを作る | `git commit-tree` で作り、`refs/logiforge/` の下の ref（git のブランチなどの参照）に、名前で置く |
-| 名前でリビジョンを読む | `git rev-parse refs/logiforge/<名前>` |
-| main を進める | 下の「main を進める」 |
+| `main` とブランチの先頭 | `git ls-remote <リモート> refs/heads/*` |
+| コミットと木 | `git fetch` のあと、`git ls-tree` と `git cat-file` |
+| ブランチと `main` の分かれた点 | `git merge-base` |
+| 変わったファイル | `git diff-tree -r` |
 
-## main を進める
+- 解析の前に、blob の大きさとモードを `git ls-tree -l` で確かめる。大きすぎる blob と、普通のファイル（100644）でないものは、中身を読まない（[差分の検査](../backend/checks.md)）。
 
-- ローカルの bare リポジトリ：`git update-ref refs/heads/main <新しいコミット> <期待する親>`
-  - 今の `main` が期待する親と違えば、`git update-ref` が失敗する。
-- GitHub のリモート：`PATCH /repos/{owner}/{repo}/git/refs/heads/main` を、`force: false` で呼ぶ。
-  - 新しいコミットの親は、期待する親である。
-  - そのため、`main` が動いていれば fast-forward にならず、GitHub が拒む。
+## 資格情報
 
-## 名前を付けたリビジョン
-
-- 版のコミットは、`refs/logiforge/apply-requests/<識別子>` に置く。
-- 人への依頼の回答のコミットは、`refs/logiforge/human-requests/<識別子>` に置く（[artifact の置き方](../files/artifacts.md)）。
-- GitHub のリモートでは、pull request の head ブランチにも、同じコミットを置く（[GitHub アダプタ](github.md)）。
+- 資格情報は、git の credential helper で渡す。
+  - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
+- worker とバックエンドが git を読む資格情報は、同じ、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
+  - credential helper は、GitForge の URL にだけ設定する。ほかの URL に、トークンを渡さないため。
+  - GitHub：contents の read だけを持つ、worker のための GitHub App
+  - Forgejo：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 
 ## 制約
 

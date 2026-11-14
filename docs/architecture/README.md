@@ -1,6 +1,6 @@
 # 全体構成
 
-forge を作る前に、外から見た構成と、全体が満たすべき性質を確かめるときに読む。
+Logiforge を作る前に、外から見た構成と、全体が満たすべき性質を確かめるときに読む。
 
 ## 構成
 
@@ -9,7 +9,7 @@ flowchart TB
   O["opener"] -- CLI --> S
   R["reviewer"] -- CLI --> S
   U["利用者"] -- WebUI --> S
-  subgraph S["forge"]
+  subgraph S["Logiforge"]
     T1["木"]
     T2["apply request"]
     T3["人への依頼"]
@@ -21,24 +21,24 @@ flowchart TB
 
 - [CLI](../cli/README.md) と [WebUI](../webui/README.md) は、同じデータを扱う。
   - なぜ：エージェントと人間が、同じ規則で同じデータを扱うため。
-- forge は、GitHub に近い情報管理基盤である。
+- Logiforge は、[GitForge](../concepts/glossary.md) に近い情報管理基盤である。
   - 構造化された木を、規則付きで管理する。
   - ファイルと artifact を保存する（[artifact](../tree/verdict.md)）。
   - 履歴を残す。
-- 作業のループは、forge の外の仕組みで回す（[着手できる作業](../work/README.md)）。
+- 作業のループは、Logiforge の外の仕組みで回す（[着手できる作業](../work/README.md)）。
 
 ## 木の置き場所
 
 - 木（仮説・ストーリー・検証結果・レポート）は、git リポジトリで管理する。
   - なぜ：既存の git の道具（clone、diff、履歴）で、状態を扱えるようにするため。
-- GitHub を使うかどうかは、選べる。
+- git リポジトリは、[GitForge](../concepts/glossary.md) に置く。どの GitForge を使うかは、選べる。
 
 ## 監査
 
 - すべての変更を履歴に残す。
 - 誰が、いつ、何をしたかは、監査のための記録を新しく作らず、すでにある記録から辿る。
   - 木の変更：`main` のコミット。誰が、いつ、どの apply request で変えたかを、コミットに記録する。
-  - apply request、レビュー、人への依頼：GitHub を使う構成では、pull request と issue の履歴。使わない構成では、forge が持つやりとりの記録。
+  - apply request、レビュー、人への依頼：GitForge の pull request と issue の履歴。
   - なぜ：同じことを 2 か所に記録すると、食い違ったときにどちらが正しいか決まらないから。
 - 履歴は append-only にする。
   - 書き換えも削除もしない。
@@ -61,4 +61,4 @@ flowchart TB
 ## エクスポート
 
 - データを JSON と Markdown でエクスポートできる。
-  - なぜ：forge の外でも、木と根拠を読めるようにするため。
+  - なぜ：Logiforge の外でも、木と根拠を読めるようにするため。
