@@ -1,11 +1,12 @@
 # git アダプタ
 
-[worker](../backend/worker.md) が、木の git リポジトリをどう読むかを確かめるときに読む。
+[worker](../backend/worker.md) とバックエンドが、木の git リポジトリをどう読むかを確かめるときに読む。
 ファイルの形式は、[木のファイル配置](../files/README.md) に従う。
 
-## 読むのは worker だけ
+## 読むもの（worker とバックエンド）
 
-- サーバの側で git を読むのは、worker だけである。バックエンドは git を読まず、clone も作らない。
+- worker は、巡回で git を読み、スナップショットを作って置き場に書く。
+- バックエンドは、apply request の作成のときだけ、作業用の git の複製から git を読んで検査する（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）。置き場には書かない。
 - サーバの側が git に書くのは、GitForge の API による repository の用意と、pull request の squash merge だけである（[GitForge のポート](../backend/ports/gitforge.md)）。
   - そのため、このアダプタには、書く操作がない。
 
@@ -15,6 +16,7 @@
 - どちらのリモートでも、同じ実装にする。違うのは、リモートの URL と認証情報だけである。
   - なぜ：git の smart HTTP の fetch だけを使えば、どちらのリモートにも同じ手順で読めるから。
 - worker は、repository ごとの clone を、永続するストレージに持ち続ける。
+- バックエンドは、repository ごとの作業用の複製を、一時的なディスクに持つ。初めて要るときに 1 度だけ clone し、あとは fetch するだけにする。
 
 ## 読むもの
 
@@ -31,7 +33,8 @@
 
 - 資格情報は、git の credential helper で渡す。
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
-- worker の資格情報は、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
+- worker とバックエンドが git を読む資格情報は、同じ、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
+  - credential helper は、GitForge の URL にだけ設定する。ほかの URL に、トークンを渡さないため。
   - GitHub：contents の read だけを持つ、worker のための GitHub App
   - Forgejo：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 

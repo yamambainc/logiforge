@@ -43,9 +43,21 @@ E2E（`internal/e2e` の TestE2ELargeTree）で、手元の Forgejo に、反映
 
 - コミットの記録だけを順に作り、最後に今の `main` の木を 1 回だけ作る（[初めての取り込みの時間](backend/worker.md#初めての取り込みの時間)）。
 - コミットを 3.3 倍にすると、時間は 2.8 倍だった。コミットの数にほぼ比例する。
-- push の直後の `ar create`（「ブランチを読む」）は、1,001 コミットで 17.5 秒で、上限（60 秒）の内に終わった。
+- `ar create` は、worker の取り込みを待たない（下の「apply request の作成の時間」）。
 - 想定（repository 30 個、1 つの木はノード 1,000 個ほど）なら、1 つの repository の初めての取り込みは、数秒である。
 - 大きな repository を移すときは、`ar create` の前に、巡回で取り込みを終えておく。
+
+## apply request の作成の時間（測った値）
+
+E2E（`internal/e2e`）で、手元の Forgejo に対して測った。バックエンドが、作業用の git の複製から読んで検査する（[作成](backend/apply-request.md#作成)）。
+
+| 木 | 初めての `ar create`（バックエンドの clone を含む） | 2 回目からの `ar create`（fetch だけ） |
+|---|---|---|
+| 小さい木（E2E の TestE2E） | 0.8 秒 | 1.0〜1.2 秒 |
+| `main` のコミット 1,001、ノード 4,001（TestE2ELargeTree） | 1.3 秒 | 1.2 秒 |
+
+- 大きい木の初めての `ar create` は、worker の初めての取り込み（13 秒）と重なっていた。置き場に base の木がまだないので、base の木を作業用の複製から読んだ。それでも、worker を待たずに終わった。
+- 作業用の複製は、repository ごとに、clone 1 つ分のディスクを使う（下の「worker」の clone と同じ大きさ）。バックエンドの一時的なディスクは、それに合わせる。
 
 ## スナップショットの大きさ
 

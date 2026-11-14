@@ -87,8 +87,10 @@
 
 - バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい（[バックエンドだけを増やすとき](../deploy.md#バックエンドだけを増やすとき)）。
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
+  - 注記：apply request の作成のために、作業用の git の複製を一時的なディスクに持つ。これは使い捨てのキャッシュで、正本ではない。消えても、次の要求で作り直す。プロセスの間で共有しないので、何台並べても互いに影響しない（[作業用の git の複製](apply-request.md#作業用の-git-の複製)）。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request の作成と更新](apply-request.md)）。
-- git に触れず、clone も作らない。git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
+- git を読むのは、apply request の作成の検査のときだけで、作業用の複製から読む。要求ごとに clone せず、fetch だけにする。
+- git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
 - 置き場と GitForge から読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
 - repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot.md)）。

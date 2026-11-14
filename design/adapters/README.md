@@ -109,6 +109,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
   - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
 - worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
+- git を読む、読むだけの資格情報（worker と同じもの）と、作業用の git の複製を置く一時的なディレクトリ（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）
 - GitHub を使う構成だけ
   - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵）
   - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）

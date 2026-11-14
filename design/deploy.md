@@ -99,7 +99,10 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_USER_TEAM` | | `user` とみなす team |
 | `LOGIFORGE_WRITER` | | 書き込み主体（Forgejo のユーザー） |
 | `LOGIFORGE_WRITER_TOKEN` | ✓ | 書き込み主体のトークン |
-| `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー。API の主体としては受け付けない |
+| `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー。API の主体としては受け付けない。apply request の作成で git を読むのにも使う |
+| `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（読むだけ）。apply request の作成で、作業用の git の複製に fetch するのに使う |
+| `LOGIFORGE_GIT_CACHE_DIR` | | 作業用の git の複製を置く、一時的なディレクトリ。既定は OS の一時ディレクトリ（`/tmp`） |
+| `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。worker と同じ |
 | `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の MAC の鍵（`鍵の ID=鍵,…`。最初のものを書くときに使う） |
 | `LOGIFORGE_WAIT_TIMEOUT` | | 書いたものが読む側に出るまで待つ上限。既定は `10s` |
 
@@ -116,7 +119,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 巡回の間隔。既定は `1m` |
-| `LOGIFORGE_READ_BRANCH_TIMEOUT` | | 「ブランチを読む」で `main` の取り込みを待つ上限。既定は `60s` |
+| `LOGIFORGE_BUILD_TREE_TIMEOUT` | | 「木を作る」で、作り終えるのを待つ上限。既定は `60s` |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
 
 ## 例：Kubernetes の Pod
@@ -155,6 +158,7 @@ spec:
         - { name: LOGIFORGE_WRITER, value: logiforge-writer }
         - { name: LOGIFORGE_WRITER_TOKEN_FILE, value: /run/secrets/logiforge/writer_token }
         - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
+        - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
         - { name: LOGIFORGE_RECORD_KEYS_FILE, value: /run/secrets/logiforge/record_keys }
       livenessProbe:
         httpGet: { path: /healthz, port: 8080 }
@@ -200,6 +204,7 @@ spec:
 - Pod を直接置くのは、例を短くするためである。動かすときは、レプリカを 1 にした StatefulSet か Deployment（`strategy: Recreate`）で包む。
   - なぜ `Recreate` か：入れ替えのときに、古い worker と新しい worker が同時に動かないようにするため。
 - ルートのファイルシステムは、読むだけにする（`readOnlyRootFilesystem`）。書く場所は、ボリュームと、`/tmp` の `emptyDir` だけである。
+  - バックエンドの `/tmp` には、作業用の git の複製を置く（[作業用の git の複製](backend/apply-request.md#作業用の-git-の複製)）。repository ごとに、clone 1 つ分の大きさになる。`emptyDir` の大きさの上限は、それに合わせる。
 - worker の `livenessProbe` は、`exec` でコンテナの中から `wget` で呼ぶ。
   - なぜ：worker の内部 API は `127.0.0.1` で待ち受けるので、kubelet の `httpGet` は届かないから。
 

@@ -260,7 +260,8 @@ paths:
         push したブランチから main への pull request を作る。ブランチの先頭が版 1 になる。手順は ../../design/backend/apply-request.md に従う。
         差分が 4 種類の操作として読めなければ、validation_failed で受け付けない。操作は、差分から復元して応答に入れる。
         そのブランチに open の apply request がすでにあれば、validation_failed で受け付けない。
-        worker が、ブランチの base のための main の取り込みを、上限までに終えられなければ、snapshot_pending を返す（../../design/backend/worker.md の「初めての取り込みの時間」）。少し待って送り直す。
+        バックエンドが、作業用の git の複製からブランチを読んで検査する。worker を待たない（../../design/backend/apply-request.md の「作成」）。
+        版のスナップショットは、worker がブランチを取り込んでから読む側に出る。それまで、その版へのレビューは snapshot_pending になる。
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/IdempotencyKey'
