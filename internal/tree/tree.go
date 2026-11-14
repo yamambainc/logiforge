@@ -17,8 +17,10 @@ type File struct {
 	// Mode は git のモード（例："100644"）。
 	Mode string
 	// SHA は git の blob の SHA。worker は git から読んだ値を入れる。空なら、中身で比べる。
-	SHA  string
-	Size int64
+	SHA string
+	// SHA256 は中身の sha256。artifact の中身を読まずに渡すとき、worker が確かめた値を入れる（スナップショットから作る木）。
+	SHA256 string
+	Size   int64
 	// Content は中身。大きすぎて読まなかったときは nil。
 	Content []byte
 }
@@ -193,7 +195,7 @@ func (t *Tree) readArtifacts(dir *dirEntry) {
 					t.problem(RuleTooLarge, p, "artifact が大きすぎる")
 					continue
 				}
-				if f.Content == nil || SHA256Hex(f.Content) != sha {
+				if contentSHA256(f) != sha {
 					t.problem(RuleArtifactName, p, "ファイル名が中身のハッシュと合わない")
 					continue
 				}
@@ -363,4 +365,12 @@ func HypothesisInactive(h *Hypothesis) bool {
 // StoryInactive は、ストーリーが inactive か（自分か祖先のストーリーに inactivated.md があるか）を返す。
 func StoryInactive(s *Story) bool {
 	return s.Inactivated || HypothesisInactive(s.Parent)
+}
+
+// contentSHA256 は、ファイルの中身の sha256 を返す。中身がなければ、SHA256 に入れた値を返す。
+func contentSHA256(f File) string {
+	if f.Content != nil {
+		return SHA256Hex(f.Content)
+	}
+	return f.SHA256
 }

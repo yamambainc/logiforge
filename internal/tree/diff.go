@@ -220,7 +220,7 @@ func CheckChange(base, head Files, ctx Context) (Result, error) {
 		}
 	}
 	// どの操作にもあたらないファイルの変化。
-	for _, p := range changedPaths(base, head) {
+	for _, p := range ChangedPaths(base, head) {
 		if !explained[p] {
 			reject(RuleChangeNotAllowed, p, "4 種類の操作として読めない変化")
 		}
@@ -277,8 +277,8 @@ func checkVerdictInInactive(v *Verdict, bt *Tree, newlyInactivated map[string]bo
 	return nil
 }
 
-// changedPaths は、base と head で、加わったか、変わったか、消えたパスを返す。
-func changedPaths(base, head Files) []string {
+// ChangedPaths は、base と head で、加わったか、変わったか、消えたパスを返す。
+func ChangedPaths(base, head Files) []string {
 	var out []string
 	for _, p := range sortedKeys(head) {
 		hf := head[p]
