@@ -1,0 +1,329 @@
+package backend
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"path"
+	"regexp"
+	"slices"
+	"sort"
+	"strconv"
+
+	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+)
+
+// 作業の種類（docs/work/README.md）。並びは、この順である。
+var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
+
+// WorkQuery は、着手できる作業の問い合わせである。
+type WorkQuery struct {
+	Subtree        string
+	Kinds          []string
+	IncludeClaimed bool
+	Cursor         string
+	Limit          int
+}
+
+// work は、木と、GitForge から読んだ提案と人への依頼から、着手できる作業を計算する。
+// 返すのは、active なノードに関わる作業だけである。並びは、種類、ノードの識別子、subject_id の順。
+func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *openState, includeClaimed bool) ([]WorkItem, map[string][]string, error) {
+	var items []WorkItem
+	arTargets := map[string][]string{}
+	active := func(id string) bool {
+		n := v.main.Tree.Nodes[id]
+		return n != nil && !n.Inactive
+	}
+	claimed := func(id string) bool { return !includeClaimed && len(open.claims.ars[id]) > 0 }
+	waitingHuman := func(id string) bool { return len(open.claims.hrs[id]) > 0 }
+
+	for _, id := range sortedKeys(v.tree.Hypotheses) {
+		n := v.main.Tree.Nodes[id]
+		if n == nil || n.Inactive || claimed(id) || waitingHuman(id) {
+			continue
+		}
+		if n.Leaf && n.Value == nil && len(v.tree.Hypotheses[id].ValidVerdicts()) == 0 {
+			items = append(items, WorkItem{Kind: "undecided_leaf", SubjectID: id, NodeID: id})
+		}
+		if n.NeedsReconsideration {
+			items = append(items, WorkItem{Kind: "needs_reconsideration", SubjectID: id, NodeID: id})
+		}
+	}
+
+	// 引用元が変化した検証結果。
+	for _, vid := range sortedKeys(v.tree.Verdicts) {
+		tv := v.tree.Verdicts[vid]
+		h := tv.Hypothesis
+		if !active(h.ID) || claimed(h.ID) || !slices.ContainsFunc(h.ValidVerdicts(), func(x *treeVerdict) bool { return x.ID == vid }) {
+			continue
+		}
+		for _, c := range tv.Citations {
+			if c.TargetKind != "subtree" {
+				continue
+			}
+			num := v.main.Tree.HistoryNumber(c.Revision)
+			if num == 0 || v.main.Tree.SubtreeChangedAfter(c.NodeID, num) {
+				items = append(items, WorkItem{Kind: "citation_changed", SubjectID: vid, NodeID: h.ID})
+				break
+			}
+		}
+	}
+
+	// レビュー待ちと修正待ちの提案。
+	for _, ar := range open.ars {
+		d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		if d.model.Awaiting == nil {
+			continue
+		}
+		targets := open.arTargets[ar.ID]
+		arTargets[ar.ID] = targets
+		if len(targets) > 0 && !slices.ContainsFunc(targets, active) {
+			continue
+		}
+		it := WorkItem{Kind: *d.model.Awaiting + "_waiting", SubjectID: ar.ID}
+		if len(targets) > 0 {
+			it.NodeID = targets[0]
+		}
+		items = append(items, it)
+	}
+
+	// 回答済みの人への依頼。
+	refs := b.usedAnswers(ctx, repo, v, open)
+	for _, hr := range open.hrs {
+		if hr.Answer == nil || !active(hr.TargetNode) {
+			continue
+		}
+		done, err := b.answerUsed(ctx, repo, v, refs, hr)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !done {
+			items = append(items, WorkItem{Kind: "human_request_answered", SubjectID: hr.ID, NodeID: hr.TargetNode})
+		}
+	}
+
+	order := map[string]int{}
+	for i, k := range workKinds {
+		order[k] = i
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, c := items[i], items[j]
+		if order[a.Kind] != order[c.Kind] {
+			return order[a.Kind] < order[c.Kind]
+		}
+		if a.NodeID != c.NodeID {
+			return a.NodeID < c.NodeID
+		}
+		return a.SubjectID < c.SubjectID
+	})
+	return items, arTargets, nil
+}
+
+// answerRefPattern は、回答の添付を読む API の URL である（design/files/artifacts.md：回答の引用は、この URL の link にする）。
+var answerRefPattern = regexp.MustCompile(`/human-requests/(hrq_[0-9A-Z]+)/attachments/([0-9a-f]{64})`)
+
+// answerRefs は、検証結果が引用している回答である。依頼の識別子と、添付の sha256 を持つ。
+type answerRefs struct {
+	ids  map[string]bool
+	shas map[string]bool
+}
+
+func (r answerRefs) add(v tree.VerdictContent) {
+	for _, a := range v.Artifacts {
+		if m := answerRefPattern.FindStringSubmatch(a.URI); m != nil {
+			r.ids[m[1]] = true
+			r.shas[m[2]] = true
+		}
+		if a.SHA256 != "" {
+			r.shas[a.SHA256] = true
+		}
+	}
+	for _, c := range v.Citations {
+		if c.TargetKind == "artifact" {
+			r.shas[c.SHA256] = true
+		}
+	}
+}
+
+func (r answerRefs) cites(hr ports.HumanRequest) bool {
+	if r.ids[hr.ID] {
+		return true
+	}
+	for _, a := range hr.Answer.Attachments {
+		if r.shas[a.SHA256] {
+			return true
+		}
+	}
+	return false
+}
+
+// usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
+//   - 今の main の木の検証結果（反映された）
+//   - open の提案の、今の版の差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
+func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
+	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
+	for _, tv := range v.tree.Verdicts {
+		refs.add(tv.VerdictContent)
+	}
+	for _, ar := range open.ars {
+		br, err := b.Snap.Branch(ctx, repo, ar.HeadRevision)
+		if err != nil {
+			continue
+		}
+		for _, e := range br.Diff.Entries {
+			if e.File == nil || e.File.Content == nil || path.Base(path.Dir(e.Path)) != tree.VerdictsDir {
+				continue
+			}
+			if vc, err := tree.ParseVerdict([]byte(*e.File.Content)); err == nil {
+				refs.add(vc)
+			}
+		}
+	}
+	return refs
+}
+
+// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md）。
+//   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
+//   - 回答のあとに、対象ノードを変えた反映がある。
+func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
+	if refs.cites(hr) {
+		return true, nil
+	}
+	n := v.main.Tree.Nodes[hr.TargetNode]
+	if n == nil || len(n.Changes) == 0 {
+		return false, nil
+	}
+	last := n.Changes[len(n.Changes)-1]
+	c, err := b.Snap.Commit(ctx, repo, last.Revision)
+	if err != nil {
+		return false, nil
+	}
+	return trailerValue(c.Trailers, "Logiforge-Apply-Request") != "" && c.CommittedAt.After(hr.Answer.CreatedAt), nil
+}
+
+// ListWork は、着手できる作業を返す。カーソルは、計算したリビジョンに結びつける（design/api/README.md の「ページング」）。
+func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQuery) (WorkPage, error) {
+	limit, err := CheckLimit(q.Limit)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	for _, k := range q.Kinds {
+		if !slices.Contains(workKinds, k) {
+			return WorkPage{}, fail(CodeValidationFailed, "kind %q を知らない", k)
+		}
+	}
+	rev, offset, err := decodeWorkCursor(q.Cursor)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	ref, err := b.access(ctx, c, repo)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	v, err := b.mainAt(ctx, repo, rev)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	open, err := b.readOpen(ctx, repo, ref, v)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	all, arTargets, err := b.work(ctx, repo, ref, v, open, q.IncludeClaimed)
+	if err != nil {
+		return WorkPage{}, err
+	}
+	out := WorkPage{Revision: v.revision(), Counts: map[string]int{}, Items: []WorkItem{}}
+	var filtered []WorkItem
+	for _, it := range all {
+		if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, it.Kind) {
+			continue
+		}
+		if q.Subtree != "" && !b.inSubtreeItem(v, it, arTargets, q.Subtree) {
+			continue
+		}
+		filtered = append(filtered, it)
+		out.Counts[it.Kind]++
+	}
+	for i := offset; i < len(filtered) && len(out.Items) < limit; i++ {
+		out.Items = append(out.Items, filtered[i])
+	}
+	if next := offset + len(out.Items); next < len(filtered) {
+		c := encodeWorkCursor(v.revision(), next)
+		out.NextCursor = &c
+	}
+	return out, nil
+}
+
+func (b *Backend) inSubtreeItem(v *view, it WorkItem, arTargets map[string][]string, root string) bool {
+	if ts, ok := arTargets[it.SubjectID]; ok {
+		return slices.ContainsFunc(ts, func(t string) bool { return v.inSubtree(root, t) })
+	}
+	return it.NodeID != "" && v.inSubtree(root, it.NodeID)
+}
+
+func encodeWorkCursor(rev string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(rev + "\x00" + strconv.Itoa(offset)))
+}
+
+func decodeWorkCursor(cursor string) (string, int, error) {
+	if cursor == "" {
+		return "", 0, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", 0, fail(CodeValidationFailed, "cursor が正しくない")
+	}
+	rev, off, ok := bytes.Cut(raw, []byte{0})
+	n, err := strconv.Atoi(string(off))
+	if !ok || err != nil || n < 0 {
+		return "", 0, fail(CodeValidationFailed, "cursor が正しくない")
+	}
+	return string(rev), n, nil
+}
+
+// GetCompletion は、作業の終わりを判定する（docs/work/README.md の「作業の終わりの判定」）。
+func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Completion, error) {
+	ref, err := b.access(ctx, c, repo)
+	if err != nil {
+		return Completion{}, err
+	}
+	v, err := b.mainAt(ctx, repo, "")
+	if err != nil {
+		return Completion{}, err
+	}
+	root := v.tree.Root()
+	if root == nil {
+		return Completion{}, fail(CodeNotFound, "根の仮説がない")
+	}
+	open, err := b.readOpen(ctx, repo, ref, v)
+	if err != nil {
+		return Completion{}, err
+	}
+	all, arTargets, err := b.work(ctx, repo, ref, v, open, false)
+	if err != nil {
+		return Completion{}, err
+	}
+	evidence := func(id string) bool { n := v.main.Tree.Nodes[id]; return n != nil && n.Evidence }
+	out := Completion{Revision: v.revision(), RootValue: v.main.Tree.Nodes[root.ID].Value}
+	out.Decided = out.RootValue != nil
+	for _, it := range all {
+		if ts, ok := arTargets[it.SubjectID]; ok {
+			if slices.ContainsFunc(ts, evidence) {
+				out.RemainingWork++
+			}
+		} else if evidence(it.NodeID) {
+			out.RemainingWork++
+		}
+	}
+	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの提案があれば、根拠部分木にあるかもしれないので、終わりとしない。
+	unknown := slices.ContainsFunc(all, func(it WorkItem) bool {
+		ts, ok := arTargets[it.SubjectID]
+		return ok && len(ts) == 0
+	})
+	out.Done = out.Decided && out.RemainingWork == 0 && !unknown
+	return out, nil
+}

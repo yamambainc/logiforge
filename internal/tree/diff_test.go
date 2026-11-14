@@ -421,12 +421,12 @@ func TestChangedPathsUsesBlobSHA(t *testing.T) {
 	f := h.files["tree/a.md"]
 	f.Content = nil // 中身を読まなくても、SHA が同じなら変わっていない
 	h.files["tree/a.md"] = f
-	if got := changedPaths(b.files, h.files); len(got) != 0 {
+	if got := ChangedPaths(b.files, h.files); len(got) != 0 {
 		t.Fatalf("got %v", got)
 	}
 	f.SHA = blobSHA([]byte("y"))
 	h.files["tree/a.md"] = f
-	if got := changedPaths(b.files, h.files); !reflect.DeepEqual(got, []string{"tree/a.md"}) {
+	if got := ChangedPaths(b.files, h.files); !reflect.DeepEqual(got, []string{"tree/a.md"}) {
 		t.Fatalf("got %v", got)
 	}
 }
