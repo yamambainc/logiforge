@@ -71,9 +71,20 @@ type Cache struct {
 }
 
 // NewCache は、base の下に、このプロセスだけのディレクトリを作り、Cache を返す。
+// 先に、base の下の古い複製（前のプロセスが、消さずに止まったもの）を消す。複製は使い捨てのキャッシュだからである。
+// base は、プロセスごとの一時的なディスクに置く。ほかのプロセスと共有しない。
 func NewCache(base string, env []string, url func(string) string) (*Cache, error) {
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return nil, err
+	}
+	old, err := filepath.Glob(filepath.Join(base, "workcopy-*"))
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range old {
+		if err := os.RemoveAll(d); err != nil {
+			return nil, fmt.Errorf("古い作業用の複製を消せない：%w", err)
+		}
 	}
 	dir, err := os.MkdirTemp(base, "workcopy-")
 	if err != nil {
