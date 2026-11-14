@@ -4,7 +4,7 @@
 
 ## 開発
 
-Go で書く。版は [go.mod](go.mod) に書く。
+Go で書く。Go のバージョンは [go.mod](go.mod) に書く。
 
 ```sh
 go vet ./...
