@@ -35,7 +35,7 @@ const clockSlack = 5 * time.Minute
 //
 // GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、その版を、base のない最後の版として足す。
 func versions(ar ports.ApplyRequest, h store.BranchHistory) []Version {
-	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、「ブランチを読む」から提案を作るまでの間を見込み、
+	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、worker が先頭を見つけた時刻と提案を作った時刻の間を見込み、
 	// 作った時刻に余裕を足して比べる。
 	created := ar.CreatedAt.Add(clockSlack)
 	start := -1

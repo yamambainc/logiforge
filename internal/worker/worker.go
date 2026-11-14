@@ -226,7 +226,7 @@ func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	return w.syncLocked(ctx, r)
 }
 
-// syncIfFree は、repository のロックがすぐに取れるときだけ巡回する。取れなければ（ブランチを読むときの裏の取り込みなどが
+// syncIfFree は、repository のロックがすぐに取れるときだけ巡回する。取れなければ（「木を作る」の裏の作業などが
 // 動いている）、その回は飛ばす。次の巡回で追いつく。1 つの repository の長い取り込みが、ほかの repository の巡回を遅らせないため。
 func (w *Worker) syncIfFree(ctx context.Context, r ports.Repository) error {
 	unlock := w.tryLock(r.Name, time.Now())
