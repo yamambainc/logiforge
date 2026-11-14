@@ -8,6 +8,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
@@ -20,6 +21,10 @@ type Backend struct {
 	Forge ports.GitForge
 	Auth  ports.Authenticator
 	Snap  ports.SnapshotStore
+	// WaitTimeout は、書いたものが読む側に出るまで待つ時間の上限（design/api/writes.md の「書いた直後の読み」）。0 なら 10 秒。
+	WaitTimeout time.Duration
+	// Now は、時刻を返す。nil なら time.Now。
+	Now func() time.Time
 }
 
 // Caller は、API の要求を送った主体と、そのトークンである。
@@ -245,3 +250,5 @@ func trailerValue(ts []snapshot.Trailer, key string) string {
 }
 
 type treeVerdict = tree.Verdict
+
+type snapshotTrailer = snapshot.Trailer

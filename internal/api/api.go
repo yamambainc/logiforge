@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -73,6 +74,13 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("GET "+repo+"/human-requests", s.listHumanRequests)
 	route("GET "+repo+"/human-requests/{humanRequestId}", s.getHumanRequest)
 	route("GET "+repo+"/human-requests/{humanRequestId}/attachments/{sha256}", s.getAnswerAttachment)
+	route("POST /v1/repositories", s.createRepository)
+	route("POST "+repo+"/apply-requests", s.createApplyRequest)
+	route("PATCH "+repo+"/apply-requests/{applyRequestId}", s.updateApplyRequest)
+	route("POST "+repo+"/apply-requests/{applyRequestId}/reviews", s.reviewApplyRequest)
+	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
+	route("POST "+repo+"/human-requests", s.createHumanRequest)
+	route("POST "+repo+"/human-requests/{humanRequestId}/answer", s.answerHumanRequest)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeNotFound, Detail: "そのパスの API はない"})
 	})
@@ -85,6 +93,16 @@ type raw struct {
 	body        []byte
 }
 
+// created は、書き込みの応答である。status と、書いたものが読む側に出ていないときのリビジョンを持つ。
+type created struct {
+	status  int
+	pending string
+	body    any
+}
+
+// MaxBodySize は、1 回の要求の本文の上限である（design/api/README.md の「アップロードの大きさ」）。
+const MaxBodySize = 32 << 20
+
 func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -96,6 +114,15 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 				if rw, ok := out.(raw); ok {
 					w.Header().Set("Content-Type", rw.contentType)
 					_, _ = w.Write(rw.body)
+					return
+				}
+				if cr, ok := out.(created); ok {
+					if cr.pending != "" {
+						w.Header().Set("Logiforge-Pending-Revision", cr.pending)
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(cr.status)
+					_ = json.NewEncoder(w).Encode(cr.body)
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -261,4 +288,138 @@ func (s *server) getAnswerAttachment(ctx context.Context, c backend.Caller, r *h
 		return nil, err
 	}
 	return raw{contentType: "application/octet-stream", body: data}, nil
+}
+
+// decodeBody は、JSON の本文を読む。32 MiB を超えれば too_large、形が正しくなければ validation_failed にする。
+func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, MaxBodySize))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return &backend.Error{Code: backend.CodeTooLarge, Detail: "要求の本文が 32 MiB を超える"}
+		}
+		return &backend.Error{Code: backend.CodeValidationFailed, Detail: "本文の JSON が正しくない：" + err.Error()}
+	}
+	return nil
+}
+
+func session(r *http.Request) string { return r.Header.Get("Logiforge-Session-Id") }
+
+func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Name       string `json:"name"`
+		Statement  string `json:"statement"`
+		Background string `json:"background"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	out, err := s.b.CreateRepository(ctx, c, in.Name, in.Statement, in.Background)
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusCreated, pending: out.Pending, body: out.Value}, nil
+}
+
+func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Branch      string `json:"branch"`
+		Revision    string `json:"revision"`
+		Description string `json:"description"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Branch: in.Branch, Revision: in.Revision,
+		Description: in.Description, Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusCreated, pending: out.Pending, body: out.Value}, nil
+}
+
+func (s *server) updateApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Description *string `json:"description"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	if in.Description == nil {
+		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "description がない"}
+	}
+	return s.b.UpdateApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), *in.Description)
+}
+
+func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Kind           string `json:"kind"`
+		Revision       string `json:"revision"`
+		Version        int    `json:"version"`
+		Body           string `json:"body"`
+		PromptRevision string `json:"prompt_revision"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	out, err := s.b.ReviewApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), backend.NewReview{Kind: in.Kind,
+		Revision: in.Revision, Version: in.Version, Body: in.Body, PromptRevision: in.PromptRevision, Session: session(r)})
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusCreated, pending: out.Pending, body: out.Value}, nil
+}
+
+func (s *server) closeApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), in.Reason)
+}
+
+func (s *server) createHumanRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		NodeID string `json:"node_id"`
+		Kind   string `json:"kind"`
+		Body   string `json:"body"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	hr, err := s.b.CreateHumanRequest(ctx, c, r.PathValue("repository"), backend.NewHumanRequest{NodeID: in.NodeID, Kind: in.Kind, Body: in.Body,
+		Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusCreated, body: hr}, nil
+}
+
+func (s *server) answerHumanRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	var in struct {
+		Body        string `json:"body"`
+		Attachments []struct {
+			Kind          string `json:"kind"`
+			Name          string `json:"name"`
+			MediaType     string `json:"media_type"`
+			ContentBase64 string `json:"content_base64"`
+			URI           string `json:"uri"`
+			SHA256        string `json:"sha256"`
+		} `json:"attachments"`
+	}
+	if err := decodeBody(nil, r, &in); err != nil {
+		return nil, err
+	}
+	var files []backend.AnswerFile
+	for _, a := range in.Attachments {
+		files = append(files, backend.AnswerFile{Kind: a.Kind, Name: a.Name, ContentBase64: a.ContentBase64, URI: a.URI})
+	}
+	hr, err := s.b.AnswerHumanRequest(ctx, c, r.PathValue("repository"), r.PathValue("humanRequestId"), in.Body, files)
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusCreated, body: hr}, nil
 }

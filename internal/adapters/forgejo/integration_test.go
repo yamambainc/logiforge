@@ -268,6 +268,9 @@ func TestForgejo(t *testing.T) {
 	if err != nil || len(sha) != 40 {
 		t.Fatalf("merge: %q %v", sha, err)
 	}
+	if mh, err := gf.MainHead(ctx, ref); err != nil || mh != sha {
+		t.Fatalf("main head: %q %v", mh, err)
+	}
 	mustGit(t, alice, "fetch", "-q", "origin")
 	if msg := mustGit(t, alice, "log", "-1", "--format=%B", "origin/main"); !strings.Contains(msg, "Logiforge-Apply-Request: apr_1") || mustGit(t, alice, "rev-parse", "origin/main") != sha {
 		t.Fatalf("反映のコミット：%s", msg)

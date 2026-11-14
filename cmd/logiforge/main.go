@@ -1,9 +1,9 @@
 // logiforge は、Logiforge の 1 つのバイナリである。サブコマンドで、役割を選ぶ。
 //
-//	logiforge serve    バックエンドの API（design/api/README.md）。今は読む API だけ
+//	logiforge serve    バックエンドの API（design/api/README.md）
 //	logiforge worker   git を読んでスナップショットを作り続ける worker（design/backend/worker.md）
 //
-// 書く API と CLI のコマンドは、あとの PR で足す。
+// CLI のコマンドは、あとの PR で足す。
 package main
 
 import (
@@ -166,6 +166,7 @@ func keyring(v string) (pullreq.Keyring, error) {
 //	LOGIFORGE_WRITER、LOGIFORGE_WRITER_TOKEN       書き込み主体
 //	LOGIFORGE_WORKER_LOGIN     worker のユーザー（API の主体として受け付けない）
 //	LOGIFORGE_RECORD_KEYS      記録の MAC の鍵（鍵の ID=鍵,…。最初のものを書くときに使う）
+//	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
 func runServe(ctx context.Context) error {
 	var storeDir, workerURL, key, url, org, team, writer, writerToken, workerLogin, keys string
 	if err := envs(map[string]*string{
@@ -186,6 +187,13 @@ func runServe(ctx context.Context) error {
 	}
 	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, Writer: writer, WriterToken: writerToken, WorkerLogin: workerLogin}, ring)
 	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: &store.Dir{Root: storeDir}, WorkerURL: workerURL, Key: key}}
+	if v := os.Getenv("LOGIFORGE_WAIT_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("LOGIFORGE_WAIT_TIMEOUT: %w", err)
+		}
+		b.WaitTimeout = d
+	}
 	srv := &http.Server{Addr: addr, Handler: api.NewHandler(b, slog.Default()), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

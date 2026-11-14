@@ -18,6 +18,7 @@ type Repos interface {
 	ListRepositories(ctx context.Context) ([]ports.Repository, error)
 	GitForgeRef(ctx context.Context, name string) (string, error)
 	GitURL(gitForgeRef string) string
+	MainHead(ctx context.Context, gitForgeRef string) (string, error)
 	SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error
 }
 

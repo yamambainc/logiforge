@@ -264,6 +264,10 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 	if _, err := store.GetBranch(ctx, st, "q", v1); err != nil {
 		t.Fatal(err)
 	}
+	// 「ブランチを読む」は、base の main のスナップショットも作る。
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != r.git("rev-parse", "main") {
+		t.Fatalf("read-branch のあとの latest：%q", latest)
+	}
 	if res := post("secret", PathReadBranch, ReadBranchRequest{"q", "nothing"}); res.StatusCode != 404 {
 		t.Fatalf("ないブランチ：%d", res.StatusCode)
 	}
