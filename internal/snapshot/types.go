@@ -13,7 +13,7 @@ import (
 
 // FormatVersion は、スナップショットの形の版である。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
-const FormatVersion = 2
+const FormatVersion = 3
 
 // Kind は、コミットの種類である。
 type Kind string
@@ -164,6 +164,8 @@ type HistoryEntry struct {
 	NoApplyRequest bool `json:"no_apply_request,omitempty"`
 	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
 	NewlyBroken bool `json:"newly_broken,omitempty"`
+	// WorkerWarned は、対象ノードの重なりや main の書き換えなど、コミットを読んだ worker が見つけた警告があることである。
+	WorkerWarned bool `json:"worker_warned,omitempty"`
 }
 
 // Branch は、利用者が push したブランチの先頭のコミットのスナップショットである。base からの差分だけを持つ。
