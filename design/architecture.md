@@ -31,7 +31,7 @@ flowchart TB
   API --> RULE
   RULE --> PT
   PT -.-|実装| AD
-  BE -->|内部 API| W
+  SSA -->|内部 API| W
   FA --> FG
   SSA --> OBJ
   W -->|読む| FG
@@ -63,7 +63,7 @@ flowchart TB
   - worker：git を読んでスナップショットを作る（[worker](backend/worker.md)）。
 - **外のサービス**：git リポジトリ、pull request とやりとり、主体とトークンを持つ [GitForge](README.md#用語)。読むための木を置く静的ファイルストレージ。
 
-バックエンドはデータを保持しない。保持するのは、外のサービス（正本と、スナップショット）と、worker（clone）である。
+バックエンドはデータを保持しない。保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 
 ## このレイヤー構造にした理由
 

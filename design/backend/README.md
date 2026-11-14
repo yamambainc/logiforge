@@ -86,7 +86,7 @@
 ## 状態を持たない
 
 - バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい。
-  - 保持するのは、外のサービス（正本）、worker（clone）、置き場（スナップショット）である。
+  - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request の作成と更新](apply-request.md)）。
 - git に触れず、clone も作らない。git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
 - 置き場と GitForge から読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
