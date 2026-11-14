@@ -258,6 +258,12 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 	if res, err := http.Get(srv.URL + PathHealthz); err != nil || res.StatusCode != 200 {
 		t.Fatalf("healthz: %v %v", res, err)
 	}
+	// 巡回も取り込みも、間隔の数倍のあいだ進まなければ、503 を返す。
+	w.progress.Store(time.Now().Add(-stallFactor*w.cfg.Interval - time.Second).UnixNano())
+	if res, err := http.Get(srv.URL + PathHealthz); err != nil || res.StatusCode != 503 {
+		t.Fatalf("止まっているのに healthz が 503 でない：%v %v", res, err)
+	}
+	w.touch()
 	if res := post("", PathWake, WakeRequest{"q"}); res.StatusCode != 401 {
 		t.Fatalf("鍵がないのに受け付けた：%d", res.StatusCode)
 	}

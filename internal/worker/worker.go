@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/gitx"
@@ -57,6 +58,21 @@ type Worker struct {
 	wake  chan string
 	// runCtx は、Run の ctx である。裏の取り込みは、これで止まる。Run の前は context.Background()。
 	runCtx context.Context
+	// progress は、最後に巡回を始めたか、main のコミットを 1 つ取り込んだ時刻（UnixNano）である。ヘルスチェックに使う。
+	progress atomic.Int64
+}
+
+// stallFactor は、巡回の間隔の何倍のあいだ進まなければ、止まっているとみなすかである。
+const stallFactor = 5
+
+// touch は、進んだことを記録する。
+func (w *Worker) touch() { w.progress.Store(time.Now().UnixNano()) }
+
+// Healthy は、worker が止まっていないかを返す。最後に巡回を始めたか、取り込みが進んでから、
+// 間隔の stallFactor 倍より長くたっていれば、止まっているとみなす。
+// 取り込みが進んだ時刻も見るのは、初めての取り込みが長く、次の巡回を始められないあいだも、止まっているとみなさないためである。
+func (w *Worker) Healthy() bool {
+	return time.Since(time.Unix(0, w.progress.Load())) <= stallFactor*w.cfg.Interval
 }
 
 // New は、worker を作る。
@@ -76,7 +92,9 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, wake: make(chan string, 64), runCtx: context.Background()}
+	w := &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, wake: make(chan string, 64), runCtx: context.Background()}
+	w.touch()
+	return w
 }
 
 func (w *Worker) repoLock(repo string) chan struct{} {
@@ -158,6 +176,7 @@ func (w *Worker) Run(ctx context.Context) error {
 
 // SyncAll は、すべての repository を巡回し、repositories を書き直す。repository が違えば、並行して処理する。
 func (w *Worker) SyncAll(ctx context.Context) {
+	w.touch()
 	repos, err := w.src.ListRepositories(ctx)
 	if err != nil {
 		w.cfg.Log.Error("repository の一覧を読めない", "err", err)
@@ -308,6 +327,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		if err := store.PutMain(ctx, w.store, repo, m); err != nil {
 			return err
 		}
+		w.touch()
 		parent = m
 	}
 	// latest の規則（design/backend/snapshot.md の「latest」）：今の latest が、新しい main の並びにあるときだけ書く。

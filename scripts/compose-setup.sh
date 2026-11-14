@@ -27,7 +27,9 @@ docker compose up -d --wait forgejo
 fj() { docker compose exec -T -u git forgejo forgejo --config /data/gitea/conf/app.ini "$@"; }
 api=http://localhost:3000/api/v1
 
-fj admin user create --admin --username logiforge-admin --random-password --email admin@example.com --must-change-password=false >/dev/null
+# admin のパスワードは、最後に setup のトークンを消すとき（Forgejo は、トークンの操作に basic 認証を求める）にだけ使う。
+adminpw=$(rand)
+fj admin user create --admin --username logiforge-admin --password "$adminpw" --email admin@example.com --must-change-password=false >/dev/null
 admin=$(fj admin user generate-access-token --username logiforge-admin --token-name setup --scopes all --raw)
 call() { # call <method> <path> [<json>]
   curl -fsS -X "$1" -H "Authorization: token $admin" -H 'Content-Type: application/json' ${3:+-d "$3"} "$api$2"
@@ -53,5 +55,7 @@ user logiforge-reader "$readers" read:repository,read:organization >"$dir/worker
 user alice "$users" all >.compose/alice_token
 chmod 600 .compose/alice_token
 
+# setup に使った admin のトークン（scope は all）は、もう要らないので消す。
+curl -fsS -X DELETE -u "logiforge-admin:$adminpw" "$api/users/logiforge-admin/tokens/setup" >/dev/null
 echo "用意した。次に docker compose up -d --wait で、worker とバックエンドを動かす。"
 echo "利用者 alice のトークンは .compose/alice_token にある。"

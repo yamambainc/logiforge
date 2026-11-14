@@ -46,6 +46,7 @@ docker compose up -d --wait
 - バックエンドの API は `http://localhost:8080`、Forgejo は `http://localhost:3000` で待ち受ける。
 - 秘密は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。利用者 alice のトークンは `.compose/alice_token` にある。
 - CLI で試すときは、`logiforge auth login --with-token --host http://localhost:8080 < .compose/alice_token` のあと、`logiforge auth setup-git --url http://localhost:3000 --insecure` を行う。
+- Forgejo だけが再起動したときは、`docker compose up -d --force-recreate worker backend` で、worker とバックエンドを作り直す。2 つは Forgejo のネットワークを共有しているので、Forgejo のコンテナが変わると、つながらなくなるからである。
 - すべて消すときは、`docker compose down -v` のあと、`.compose` を消す。
 
 CI は、イメージをビルドし、compose で動かして、repository の作成と読みを確かめる。
