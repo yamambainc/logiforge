@@ -11,17 +11,19 @@ flowchart TB
     CLI["CLI"]
     WEB["WebUI"]
   end
-  subgraph BE["バックエンド"]
-    API["Logiforge API"]
-    RULE["ルール判定"]
-    PT["ポート"]
-  end
-  subgraph AD["アダプタ"]
-    FA["GitForge アダプタ"]
-    SSA["スナップショットの置き場のアダプタ"]
+  subgraph LP["Logiforge のプロセス"]
+    subgraph BE["バックエンド"]
+      API["Logiforge API"]
+      RULE["ルール判定"]
+      PT["ポート"]
+      subgraph AD["アダプタ"]
+        FA["GitForge アダプタ"]
+        SSA["スナップショットの置き場のアダプタ"]
+      end
+    end
+    W["worker"]
   end
   subgraph EX["外のサービス"]
-    W["worker"]
     FG["GitForge"]
     OBJ["静的ファイルストレージ"]
   end
@@ -29,35 +31,39 @@ flowchart TB
   API --> RULE
   RULE --> PT
   PT -.-|実装| AD
-  AD --> EX
-  W --> FG
-  W --> OBJ
+  BE -->|内部 API| W
+  FA --> FG
+  SSA --> OBJ
+  W -->|読む| FG
+  W -->|書く| OBJ
 ```
 
-- 上から、呼ぶ側から外のサービスの順に並べた。
+- 上から、Client、Logiforge のプロセス、外のサービスの順に並べた。
 - 実線の矢印は呼び出しを表す。
 - 点線は実装を表す。下のアダプタが、上のポートを実装する。
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
+- Logiforge のプロセスは、バックエンドと [worker](backend/worker.md) の 2 つである。どちらも同じバイナリで、別のコンテナで動く（[動かし方](deploy.md)）。
+  - バックエンドは、worker の [内部 API](backend/worker-api.md) で、ブランチの取り込みを頼み、worker を起こす。内部 API を呼ぶのは、スナップショットの置き場のアダプタである。
+  - worker は、GitForge の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
+  - 図の描き方の都合で、worker をバックエンドの下に描いた。worker は、バックエンドの下の層ではなく、バックエンドと並ぶプロセスである。
 - 外のサービスは、構成ごとに使うものが決まる（[組み合わせ](adapters/README.md)）。
 - 1 台で動かす構成では、静的ファイルストレージの代わりに、手元のディレクトリを使う。
-- [worker](backend/worker.md) は、バックエンドと同じコードの、別のプロセスである。サーバの側で git を読むのは、worker だけである。
-  - バックエンドのスナップショットの置き場のアダプタが、worker にブランチの取り込みを頼む。そのため、worker は、バックエンドから見て、外のサービスの段に置いた。
-  - worker は、GitForge の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
-- 外のサービスの段の中の矢印は、worker が読む先と書く先を表す。
 - ポートの一覧とアダプタの対応は、[ポート](backend/ports/README.md) に書く。
 
 ## レイヤー
 
 - **Client**：CLI と WebUI。バックエンドの API を使う（[クライアントの要件との対応](api/clients.md)）。
   - CLI は、git とセットで使う。木を変えるときは、git でブランチを、GitForge に push する（[CLI](cli/README.md)）。図では、この線を省いた。
-- **バックエンド（core）**：外向きのインターフェースが API、内向きのインターフェースがポートである。その間でルールを判定する。
-  - API：[API](api/README.md)
-  - ルール：[バックエンド](backend/README.md)、反映の流れは [反映の手順](backend/merge.md)
-  - ポート：[ポート](backend/ports/README.md)
-- **アダプタ**：ポートを実装する（[アダプタ](adapters/README.md)）。
-- **外のサービス**：git リポジトリ、pull request とやりとり、主体とトークンを持つ [GitForge](README.md#用語)。読むための木を置く静的ファイルストレージ。git を読んでスナップショットを作る [worker](backend/worker.md)。
+- **Logiforge のプロセス**：バックエンドと worker。
+  - バックエンド（core）：外向きのインターフェースが API、内向きのインターフェースがポートである。その間でルールを判定する。ポートを実装するアダプタも、バックエンドのプロセスの中にある。
+    - API：[API](api/README.md)
+    - ルール：[バックエンド](backend/README.md)、反映の流れは [反映の手順](backend/merge.md)
+    - ポート：[ポート](backend/ports/README.md)
+    - アダプタ：[アダプタ](adapters/README.md)
+  - worker：git を読んでスナップショットを作る（[worker](backend/worker.md)）。
+- **外のサービス**：git リポジトリ、pull request とやりとり、主体とトークンを持つ [GitForge](README.md#用語)。読むための木を置く静的ファイルストレージ。
 
-バックエンドはデータを保持しない。保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
+バックエンドはデータを保持しない。保持するのは、外のサービス（正本と、スナップショット）と、worker（clone）である。
 
 ## このレイヤー構造にした理由
 
@@ -85,8 +91,11 @@ flowchart TB
   - なぜ：木の読みでは、GitForge の API のレート制限に当たらないから。
   - やりとりは、GitForge から要求ごとに読む。そのレート制限は、今は考えない（[費用と規模の見積もり](estimates.md)）。
   - スナップショットの置き場をポートにする。複数人の構成では静的ファイルストレージ、1 台の構成では手元のディレクトリに差し替えるため。
-- サーバの側で git を読んで解析するのは、worker だけにする。worker は git に書かない。
-  - なぜ：clone を持つものを 1 つにし、解析のコードを 1 か所に置くため。書く鍵を持つものも、バックエンドだけにできる。
+- サーバの側で git を読んで解析するのは、worker だけにする。worker は、バックエンドの外の、別のプロセスにする。worker は git に書かない。
+  - なぜ：git に触れるところを 1 か所にまとめるため。git のコマンドを動かし、ファイルを解析するコードは、worker だけが持つ。
+  - なぜ：clone を持つのは worker だけにするため。clone は、永続するストレージに置く。バックエンドは、ストレージを持たずに済む。
+  - なぜ：worker は、1 つだけ動かすため（[worker](backend/worker.md)）。バックエンドの中に置くと、バックエンドの台数だけ worker が動いてしまう。
+  - 書く鍵を持つものも、バックエンドだけにできる。
   - そのかわり、書いたものが読む側に出るのは、worker が追いついてからになる（[書いた直後の読み](api/writes.md)）。
 - バックエンドは、データを保持しない（[状態を持たない](backend/README.md)）。
   - なぜ：プロセスを何台並べても、そのまま動くようにするため。
@@ -106,6 +115,13 @@ flowchart TB
 
 - 依存性の逆転：設計上の依存の向き。アダプタがバックエンドのポートに依存し、バックエンドはアダプタに依存しない。
 - 依存性の注入：実行時の組み立て。起動処理が、作ったアダプタをバックエンドに渡す。
+
+## 動かし方（コンテナ）
+
+- イメージは 1 つで、バックエンドと worker は、コンテナのコマンドだけを変える（`logiforge serve`、`logiforge worker`）。
+- 1 つのタスクに、バックエンドのコンテナと worker のコンテナを並べる。タスクのレプリカは 1 にする。
+- バックエンドだけを増やしたくなったら、バックエンドと worker を別のタスクに分ける。コードは、そのままで分けられる。
+- 詳しくは、[動かし方（コンテナ）](deploy.md) に書く。
 
 ## 決まり
 

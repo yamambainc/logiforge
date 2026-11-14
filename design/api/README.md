@@ -20,6 +20,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
+- ヘルスチェックの `GET /healthz` だけは、`/v1` の外に置き、認証を求めない（[ヘルスチェック](../deploy.md#ヘルスチェック)）。
 
 ## repository
 
