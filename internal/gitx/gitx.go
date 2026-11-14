@@ -195,26 +195,14 @@ func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
 // ReadFiles は、コミットの木のファイルをすべて読む。
 // 普通のファイルでないものと、maxSize を超えるものは、中身を読まない（design/backend/worker.md）。
 func (r *Repo) ReadFiles(ctx context.Context, rev string, maxSize int64) (tree.Files, error) {
-	return r.readFiles(ctx, rev, nil, maxSize)
+	return r.readFiles(ctx, rev, maxSize)
 }
 
-// ReadPaths は、コミットの木の、指定したパスのファイルだけを読む。ないパスは返さない。
-func (r *Repo) ReadPaths(ctx context.Context, rev string, paths []string, maxSize int64) (tree.Files, error) {
-	if len(paths) == 0 {
-		return tree.Files{}, nil
-	}
-	return r.readFiles(ctx, rev, paths, maxSize)
-}
-
-func (r *Repo) readFiles(ctx context.Context, rev string, paths []string, maxSize int64) (tree.Files, error) {
+func (r *Repo) readFiles(ctx context.Context, rev string, maxSize int64) (tree.Files, error) {
 	if err := checkRevs(rev); err != nil {
 		return nil, err
 	}
-	args := []string{"ls-tree", "-r", "-l", "-z", "--full-tree", "--end-of-options", rev}
-	if paths != nil {
-		args = append(append(args, "--"), paths...)
-	}
-	out, err := r.run(ctx, nil, args...)
+	out, err := r.run(ctx, nil, "ls-tree", "-r", "-l", "-z", "--full-tree", "--end-of-options", rev)
 	if err != nil {
 		return nil, err
 	}
@@ -357,14 +345,10 @@ func (r *Repo) NextFiles(ctx context.Context, parent tree.Files, from, to string
 	for p, f := range parent {
 		next[p] = f
 	}
-	var read []string
 	for _, c := range changes {
 		delete(next, c.Path)
-		if c.Status != "D" {
-			read = append(read, c.Path)
-		}
 	}
-	got, err := r.ReadPaths(ctx, to, read, maxSize)
+	got, err := r.changedFiles(ctx, changes, maxSize)
 	if err != nil {
 		return nil, err
 	}
@@ -381,15 +365,61 @@ func (r *Repo) ChangedFiles(ctx context.Context, base, head string, maxSize int6
 	if err != nil {
 		return nil, nil, err
 	}
-	var read []string
-	for _, c := range changes {
-		if c.Status != "D" {
-			read = append(read, c.Path)
-		}
-	}
-	files, err := r.ReadPaths(ctx, head, read, maxSize)
+	files, err := r.changedFiles(ctx, changes, maxSize)
 	if err != nil {
 		return nil, nil, err
 	}
 	return changes, files, nil
+}
+
+// changedFiles は、差分の、加わったか変わったファイルを読む。モードと blob の SHA は差分から取り、
+// 大きさは cat-file --batch-check で求める。パスをコマンドの引数に並べないので、数が多くても引数の長さの上限に当たらない。
+func (r *Repo) changedFiles(ctx context.Context, changes []Change, maxSize int64) (tree.Files, error) {
+	files := tree.Files{}
+	var blobs []string
+	for _, c := range changes {
+		if c.Status == "D" {
+			continue
+		}
+		files[c.Path] = tree.File{Path: c.Path, Mode: c.NewMode, SHA: c.NewSHA}
+		if c.NewMode == tree.RegularMode {
+			blobs = append(blobs, c.Path)
+		}
+	}
+	if len(blobs) == 0 {
+		return files, nil
+	}
+	var in bytes.Buffer
+	for _, p := range blobs {
+		in.WriteString(files[p].SHA + "\n")
+	}
+	out, err := r.run(ctx, &in, "cat-file", "--batch-check")
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != len(blobs) {
+		return nil, fmt.Errorf("git cat-file --batch-check: %d 行で、%d 行でない", len(lines), len(blobs))
+	}
+	var read []string
+	for i, p := range blobs {
+		h := strings.Fields(lines[i])
+		if len(h) != 3 || h[1] != "blob" {
+			return nil, fmt.Errorf("git cat-file --batch-check: 形が正しくない: %q", lines[i])
+		}
+		size, err := strconv.ParseInt(h[2], 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		f := files[p]
+		f.Size = size
+		files[p] = f
+		if size <= maxSize {
+			read = append(read, p)
+		}
+	}
+	if err := r.catBlobs(ctx, files, read); err != nil {
+		return nil, err
+	}
+	return files, nil
 }

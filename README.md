@@ -14,6 +14,17 @@ go test -race ./...
 
 CI は、pull request ごとに同じことを行う（[.github/workflows/go.yml](.github/workflows/go.yml)）。
 
+Forgejo アダプタの結合テストは、動く Forgejo を使う。手元では、Forgejo のバイナリを取ってきて、次のように動かす。
+
+```sh
+scripts/forgejo-test.sh <forgejo のバイナリ> 3999 > /tmp/forgejo.env
+set -a; . /tmp/forgejo.env; set +a
+go test -count=1 -run TestForgejo ./internal/adapters/forgejo/
+kill "$FORGEJO_PID"
+```
+
+FORGEJO_URL と FORGEJO_ADMIN_TOKEN がなければ、結合テストは飛ばす。
+
 ## パッケージ
 
 | パッケージ | 中身 |
@@ -22,5 +33,8 @@ CI は、pull request ごとに同じことを行う（[.github/workflows/go.yml
 | [internal/tree](internal/tree/) | 木のファイルの読み書き、値の計算、不変条件と差分の検査。git には触れない |
 | [internal/snapshot](internal/snapshot/) | スナップショットの形（Go の型が正本）、作り方、tree.Files への戻し方、ブランチの差分の重ね方（Overlay）。git には触れない |
 | [internal/gitx](internal/gitx/) | git の CLI で、木の git リポジトリを読む。書く操作はない |
+| [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
+| [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
+| [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |
 
 - `internal/tree` は、worker、CLI の `check`、バックエンドが同じものを使う（[差分の検査](design/backend/checks.md)、[ファイルの配置](design/files/layout.md)）。
