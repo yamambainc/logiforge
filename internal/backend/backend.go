@@ -21,10 +21,32 @@ type Backend struct {
 	Forge ports.GitForge
 	Auth  ports.Authenticator
 	Snap  ports.SnapshotStore
+	// Worker は、worker の内部 API を呼ぶ（internal/workerclient）。worker はどの構成でも同じなので、ポートにしない。
+	Worker WorkerClient
+	// Git は、apply request の作成で、ブランチを git から読む（internal/workcopy の作業用の複製）。
+	Git GitReader
 	// WaitTimeout は、書いたものが読む側に出るまで待つ時間の上限（design/api/writes.md の「書いた直後の読み」）。0 なら 10 秒。
 	WaitTimeout time.Duration
 	// Now は、時刻を返す。nil なら time.Now。
 	Now func() time.Time
+}
+
+// WorkerClient は、バックエンドが worker に頼むことである。実装は internal/workerclient で、テストのために interface にする。
+type WorkerClient interface {
+	// BuildTree は、main のコミット sha の木を作ってもらう。上限まで待つ。
+	// 記録がなければ ports.ErrNotFound、上限までに終わらなければ ports.ErrSnapshotPending、頼めなければ ports.ErrUnavailable。
+	BuildTree(ctx context.Context, repo, sha string) error
+	// Wake は、巡回を始めてもらう。失敗は返さない。
+	Wake(ctx context.Context, repo string)
+}
+
+// GitReader は、apply request の作成で、git からブランチを読むことである。実装は internal/workcopy の作業用の複製で、
+// テストのために interface にする（design/backend/apply-request.md の「作成」）。
+type GitReader interface {
+	// ReadBranch は、main とブランチを fetch し、main と分かれた点からの差分のスナップショットを返す。ブランチがなければ ports.ErrNotFound。
+	ReadBranch(ctx context.Context, repo, gitForgeRef, branch string) (*snapshot.Branch, error)
+	// ReadFiles は、ReadBranch で fetch したコミットの木のファイルを読む。
+	ReadFiles(ctx context.Context, repo, gitForgeRef, sha string) (tree.Files, error)
 }
 
 // Caller は、API の要求を送った主体と、そのトークンである。
@@ -88,7 +110,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 	if errors.Is(err, ports.ErrNotFound) {
 		// 木を作るのは、latest とブランチの base だけである。ほかのリビジョンの木は、ここで worker に作らせる
 		// （design/backend/snapshot.md の「木を作るコミット」）。worker は、上限まで待って返す。
-		switch berr := b.Snap.BuildTree(ctx, repo, revision); {
+		switch berr := b.Worker.BuildTree(ctx, repo, revision); {
 		case berr == nil:
 			m, err = b.Snap.Main(ctx, repo, revision)
 		case errors.Is(berr, ports.ErrNotFound), errors.Is(berr, ports.ErrSnapshotPending):

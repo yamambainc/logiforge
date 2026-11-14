@@ -284,23 +284,20 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 	if res := post("", PathWake, WakeRequest{"q"}); res.StatusCode != 401 {
 		t.Fatalf("鍵がないのに受け付けた：%d", res.StatusCode)
 	}
-	if res := post("wrong", PathReadBranch, ReadBranchRequest{"q", "feature/a"}); res.StatusCode != 401 {
+	mainSHA := r.git("rev-parse", "main")
+	if res := post("wrong", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 401 {
 		t.Fatalf("鍵が違うのに受け付けた：%d", res.StatusCode)
 	}
-	res := post("secret", PathReadBranch, ReadBranchRequest{"q", "feature/a"})
-	var got BranchResult
-	if err := json.NewDecoder(res.Body).Decode(&got); err != nil || res.StatusCode != 200 || got.Head != v1 {
-		t.Fatalf("read-branch: %d %+v %v", res.StatusCode, got, err)
+	// 巡回の前は、記録がないので、見つからない。
+	if res := post("secret", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 404 {
+		t.Fatalf("記録のないコミット：%d", res.StatusCode)
 	}
+	syncRepo(t, w)
 	if _, err := store.GetBranch(ctx, st, "q", v1); err != nil {
 		t.Fatal(err)
 	}
-	// 「ブランチを読む」は、base の main のスナップショットも作る。
-	if latest, _ := store.GetLatest(ctx, st, "q"); latest != r.git("rev-parse", "main") {
-		t.Fatalf("read-branch のあとの latest：%q", latest)
-	}
-	if res := post("secret", PathReadBranch, ReadBranchRequest{"q", "nothing"}); res.StatusCode != 404 {
-		t.Fatalf("ないブランチ：%d", res.StatusCode)
+	if res := post("secret", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 204 {
+		t.Fatalf("build-tree: %d", res.StatusCode)
 	}
 	if res := post("secret", PathWake, WakeRequest{"q"}); res.StatusCode != 202 {
 		t.Fatalf("wake: %d", res.StatusCode)
@@ -392,42 +389,39 @@ func TestSecondWorkerDoesNotStart(t *testing.T) {
 	again()
 }
 
-// 「ブランチを読む」の中の main の取り込みが、上限までに終わらなければ、ErrSnapshotPending を返し、取り込みは裏で続ける。
-func TestReadBranchPendingKeepsIngesting(t *testing.T) {
+// 「木を作る」が上限までに終わらなければ、ErrSnapshotPending を返し、作るのは裏で続ける。
+func TestBuildTreePendingKeepsBuilding(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
-	for i := 0; i < 30; i++ {
+	var old string
+	for i := 0; i <= incrementalLimit; i++ {
 		r.write(h2+"/background.md", []byte(fmt.Sprintf("%d\n", i)))
-		r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
+		sha := r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
+		if i == 3 {
+			old = sha
+		}
 	}
-	mainSHA := r.git("rev-parse", "main")
-	r.git("checkout", "--quiet", "-b", "b")
-	r.write(h1+"/background.md", []byte("b\n"))
-	r.commit("b")
 	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir(), ReadBranchWait: time.Nanosecond}, source{r.dir}, st)
-	if _, err := w.ReadBranch(ctx, "q", "b"); !errors.Is(err, ErrSnapshotPending) {
-		t.Fatalf("got %v", err)
+	w := New(Config{Dir: t.TempDir(), BuildTreeWait: time.Nanosecond}, source{r.dir}, st)
+	syncRepo(t, w)
+	if ok, _ := store.HasTree(ctx, st, "q", old); ok {
+		t.Fatal("まとめて取り込んだ途中のコミットに、木がある")
 	}
-	// 裏の取り込みの最中の、2 つ目の「ブランチを読む」も、ロックを待ちきれずに、上限で ErrSnapshotPending を返す。
-	w.cfg.ReadBranchWait = 20 * time.Millisecond
-	start := time.Now()
-	if _, err := w.ReadBranch(ctx, "q", "b"); !errors.Is(err, ErrSnapshotPending) || time.Since(start) > 2*time.Second {
-		t.Fatalf("2 つ目：%v %v", err, time.Since(start))
+	if err := w.BuildTree(ctx, "q", old); !errors.Is(err, ErrSnapshotPending) {
+		t.Fatalf("got %v", err)
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		if latest, _ := store.GetLatest(ctx, st, "q"); latest == mainSHA {
+		if ok, _ := store.HasTree(ctx, st, "q", old); ok {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("裏の取り込みが終わらない")
+			t.Fatal("裏で木を作るのが終わらない")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	w.cfg.ReadBranchWait = time.Minute
-	if res, err := w.ReadBranch(ctx, "q", "b"); err != nil || res.Base != mainSHA {
-		t.Fatalf("取り込みのあと：%+v %v", res, err)
+	if err := w.BuildTree(ctx, "q", old); err != nil {
+		t.Fatalf("作ったあと：%v", err)
 	}
 }
 
@@ -442,13 +436,13 @@ func TestBackgroundIngestStopsWithRun(t *testing.T) {
 	r.write(h1+"/background.md", []byte("b\n"))
 	r.commit("b")
 	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir(), Interval: time.Hour, ReadBranchWait: time.Nanosecond}, source{r.dir}, st)
+	w := New(Config{Dir: t.TempDir(), Interval: time.Hour, BuildTreeWait: time.Nanosecond}, source{r.dir}, st)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = w.Run(ctx); close(done) }()
 	time.Sleep(50 * time.Millisecond) // Run が ctx を持つまで
 	// Run の最初の巡回が、ロックを持っているかもしれない。その間は、すぐに ErrSnapshotPending になる。
-	if _, err := w.ReadBranch(context.Background(), "q", "b"); err != nil && !errors.Is(err, ErrSnapshotPending) {
+	if err := w.BuildTree(context.Background(), "q", r.git("rev-parse", "main")); err != nil && !errors.Is(err, ErrSnapshotPending) && !errors.Is(err, ports.ErrNotFound) {
 		t.Fatal(err)
 	}
 	cancel()

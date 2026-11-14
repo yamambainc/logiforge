@@ -13,6 +13,7 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/workerclient"
 )
 
 // live は、setup の木に、動いている worker（内部 API つき）をつなぐ。書いた直後の読みを確かめるため。
@@ -30,7 +31,7 @@ func live(t *testing.T) *fixture {
 		cancel()
 		<-done
 	})
-	f.b.Snap = &snapstore.Adapter{Store: st, WorkerURL: srv.URL, Key: "k"}
+	f.b.Worker = &workerclient.Client{URL: srv.URL, Key: "k"}
 	f.b.WaitTimeout = 10 * time.Second
 	f.forge.remote = f.r
 	return f
@@ -100,6 +101,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.waitVersion(t, created)
 	id := created.Value.ID
 
 	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Version: 1, Session: "s9"}); code(err) != CodeValidationFailed {
@@ -135,6 +137,7 @@ func TestReviewAndMerge(t *testing.T) {
 	// reviewer の主体が、apply request を作った主体と同じなら、警告する。
 	f.branch("d", "s4", map[string][]byte{dH1 + "/background.md": []byte("背景\n")})
 	d, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "d", Session: "s4"})
+	f.waitVersion(t, d)
 	self, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Version: 1, Session: "s5"})
 	if err != nil || !strings.Contains(strings.Join(self.Value.ApplyRequest.Warnings, "\n"), "同じ") {
 		t.Fatalf("同じ主体：%+v %v", self.Value.ApplyRequest.Warnings, err)
@@ -152,6 +155,8 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	f.branch("y", "s4", map[string][]byte{dH1 + "/background.md": []byte("二\n")})
 	x, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "x", Session: "s3"})
 	y, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "y", Session: "s4"})
+	f.waitVersion(t, x)
+	f.waitVersion(t, y)
 	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", x.Value.ID, NewReview{Kind: "approve", Version: 1, Session: "s9", PromptRevision: "p"}); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +254,28 @@ func create(t *testing.T, f *fixture, branch, session string, files map[string][
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.waitVersion(t, out)
 	return out.Value.ID
+}
+
+// waitVersion は、作った apply request の今の版のスナップショットを、worker が作るまで待つ。
+// apply request の作成は worker を待たない。レビューは、worker のスナップショットで行うからである。
+func (f *fixture) waitVersion(t *testing.T, out Written[ApplyRequest]) {
+	t.Helper()
+	vs := out.Value.Versions
+	if len(vs) == 0 {
+		t.Fatalf("版がない：%+v", out.Value)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := f.b.Snap.Branch(context.Background(), "q", vs[len(vs)-1].Revision); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("worker が、版のスナップショットを作らない")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func lastFailure(t *testing.T, res Written[ReviewResult], err error) string {

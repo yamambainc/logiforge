@@ -16,8 +16,8 @@ import (
 )
 
 // TestE2ELargeTree は、main のコミットが多い repository で、worker の初めての取り込みと、
-// push の直後の ar create（worker の「ブランチを読む」を含む）が、どれだけかかるかを測る。
-// worker の内部 API の上限は 5 分である（internal/adapters/snapstore）。
+// push の直後の ar create（バックエンドの作業用の git の複製の、初めての clone を含む）と、2 回目の ar create（fetch だけ）が、
+// どれだけかかるかを測る。
 // 時間がかかるので、E2E_LARGE_COMMITS（main のコミットの数）があるときだけ動かす。
 func TestE2ELargeTree(t *testing.T) {
 	n, _ := strconv.Atoi(os.Getenv("E2E_LARGE_COMMITS"))
@@ -58,7 +58,7 @@ func TestE2ELargeTree(t *testing.T) {
 		admin.git("commit", "--quiet", "-m", fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_gen%d\nLogiforge-Session-Id: s-gen", i, i))
 	}
 	head := admin.git("rev-parse", "HEAD")
-	// ブランチも、同時に push する（初めての取り込みと、ブランチを読むのが重なる場合）。
+	// ブランチも、同時に push する（worker の初めての取り込みと、ar create が重なる場合）。
 	admin.git("checkout", "--quiet", "-b", "big-edit")
 	admin.write(leaves[0]+"/background.md", strings.Repeat("背景の文章。", 50)+"\n足した文章\n")
 	admin.git("commit", "--quiet", "-am", "背景を足す\n\nLogiforge-Session-Id: s-gen")
@@ -73,25 +73,27 @@ func TestE2ELargeTree(t *testing.T) {
 	}
 	agent.dir = admin.dir // ar create は、手元と remote の先頭を比べるので、push した clone で呼ぶ
 	agent.git("config", "logiforge.repository", "big")
-	start := time.Now()
-	var ar applyRequest
-	// main の取り込みが、ブランチを読むときの上限（60 秒）を超えると snapshot_pending になる。取り込みは裏で続くので、送り直す。
-	pendings := 0
-	for {
-		code, out := agent.cli("", "ar", "create", "--branch", "big-edit", "--json")
-		if code == 0 {
-			_ = json.Unmarshal([]byte(out), &ar)
-			break
+	// ar create は、worker を待たない。バックエンドが、作業用の git の複製から読んで検査する。
+	// 初めての要求では、バックエンドが repository を clone する。2 回目からは fetch だけである。
+	create := func(branch string) (applyRequest, time.Duration) {
+		start := time.Now()
+		code, out := agent.cli("", "ar", "create", "--branch", branch, "--json")
+		if code != 0 {
+			t.Fatalf("ar create %s：%d %s", branch, code, out)
 		}
-		if !strings.Contains(out, "snapshot_pending") {
-			t.Fatalf("ar create：%d %s", code, out)
+		var ar applyRequest
+		_ = json.Unmarshal([]byte(out), &ar)
+		if len(ar.Operations) != 1 || ar.Operations[0].Kind != "node.edit" {
+			t.Fatalf("ar create %s：%+v", branch, ar)
 		}
-		pendings++
+		return ar, time.Since(start)
 	}
-	took := time.Since(start)
-	if len(ar.Operations) != 1 || ar.Operations[0].Kind != "node.edit" {
-		t.Fatalf("ar create：%+v", ar)
-	}
+	_, first := create("big-edit")
+	admin.git("checkout", "--quiet", "-b", "big-edit2", head)
+	admin.write(leaves[1]+"/background.md", strings.Repeat("背景の文章。", 50)+"\n別に足した文章\n")
+	admin.git("commit", "--quiet", "-am", "背景を足す 2\n\nLogiforge-Session-Id: s-gen")
+	admin.git("push", "--quiet", "origin", "big-edit2")
+	_, second := create("big-edit2")
 	latest := filepath.Join(w.storeDir, filepath.FromSlash(store.LatestKey("big")))
 	w.eventually("worker が main に追いつく", 10*time.Minute, func() bool {
 		b, _ := os.ReadFile(latest)
@@ -99,7 +101,8 @@ func TestE2ELargeTree(t *testing.T) {
 	})
 	ingest := time.Since(pushed)
 	t.Logf("大きめの木：main のコミット %d、ノード %d", n+1, nodes)
-	t.Logf("push の直後の ar create（ブランチを読む。初めての取り込みと重なる）：%v（snapshot_pending のあとの送り直し %d 回を含む）", took.Round(time.Millisecond), pendings)
+	t.Logf("push の直後の ar create（バックエンドの初めての clone を含む。worker の取り込みと重なる）：%v", first.Round(time.Millisecond))
+	t.Logf("2 回目の ar create（fetch だけ）：%v", second.Round(time.Millisecond))
 	t.Logf("push から、worker が main に追いつくまで：%v", ingest.Round(time.Millisecond))
 
 }
