@@ -81,3 +81,30 @@ jobs:
       - name: Forgejo を起動する
         run: scripts/forgejo-test.sh ~/.cache/forgejo/forgejo 3999 >> "$GITHUB_ENV"
       - run: go test -count=1 -timeout 20m -v ./internal/e2e/
+
+  container:
+    # イメージをビルドし、compose で Forgejo、worker、バックエンドを動かして、つながることを確かめる（design/deploy.md）。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: イメージをビルドする
+        run: docker compose build
+      - name: compose で動かす
+        run: |
+          scripts/compose-setup.sh
+          docker compose up -d --wait
+      - name: root で動いていない
+        run: |
+          test "$(docker compose exec -T backend id -u)" = 10001
+          test "$(docker compose exec -T worker id -u)" = 10001
+      - name: バックエンドのヘルスチェックと、repository の作成と読み
+        run: |
+          curl -fsS http://localhost:8080/healthz
+          token=$(cat .compose/alice_token)
+          # 作成は、worker が読む側に出すまで待ってから 201 を返す。置き場の共有と、内部 API のつながりを確かめる。
+          curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+            -d '{"name":"demo","statement":"問い"}' http://localhost:8080/v1/repositories
+          curl -fsS -H "Authorization: Bearer $token" http://localhost:8080/v1/repositories/demo/tree
+      - name: 失敗したときのログ
+        if: failure()
+        run: docker compose logs

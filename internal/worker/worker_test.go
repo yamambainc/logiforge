@@ -254,6 +254,13 @@ func TestBranchHistoryAndInternalAPI(t *testing.T) {
 		}
 		return res
 	}
+	// ヘルスチェックは、鍵なしで 200 を返す。
+	if res, err := http.Get(srv.URL + PathHealthz); err != nil || res.StatusCode != 200 {
+		t.Fatalf("healthz: %v %v", res, err)
+	}
+	if res := post("", PathWake, WakeRequest{"q"}); res.StatusCode != 401 {
+		t.Fatalf("鍵がないのに受け付けた：%d", res.StatusCode)
+	}
 	if res := post("wrong", PathReadBranch, ReadBranchRequest{"q", "feature/a"}); res.StatusCode != 401 {
 		t.Fatalf("鍵が違うのに受け付けた：%d", res.StatusCode)
 	}

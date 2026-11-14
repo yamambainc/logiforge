@@ -33,6 +33,23 @@ go test -count=1 -timeout 20m -v ./internal/e2e/
 
 大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS`（main のコミットの数。例：300）を付けたときだけ測る。
 
+## compose で動かす
+
+[compose.yaml](compose.yaml) は、Forgejo、worker、バックエンドの 3 つを、1 つのタスクに見立てて動かす。イメージは [Dockerfile](Dockerfile) の 1 つで、コンテナごとにコマンド（`serve`、`worker`）を変える。形の理由は、[動かし方（コンテナ）](design/deploy.md) に書く。
+
+```sh
+docker compose build
+scripts/compose-setup.sh        # 初めの 1 回だけ。Forgejo を起動し、organization、team、ユーザー、トークンを作る
+docker compose up -d --wait
+```
+
+- バックエンドの API は `http://localhost:8080`、Forgejo は `http://localhost:3000` で待ち受ける。
+- 秘密は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。利用者 alice のトークンは `.compose/alice_token` にある。
+- CLI で試すときは、`logiforge auth login --with-token --host http://localhost:8080 < .compose/alice_token` のあと、`logiforge auth setup-git --url http://localhost:3000 --insecure` を行う。
+- すべて消すときは、`docker compose down -v` のあと、`.compose` を消す。
+
+CI は、イメージをビルドし、compose で動かして、repository の作成と読みを確かめる。
+
 ## パッケージ
 
 | パッケージ | 中身 |

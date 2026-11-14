@@ -1,0 +1,103 @@
+# ローカルと E2E のための compose。Forgejo、バックエンド（serve）、worker の 3 つを、1 つのタスクに見立てて動かす。
+# 手順は README の「compose で動かす」、形の理由は design/deploy.md に書く。
+#
+# バックエンドと worker は、Forgejo のネットワークを共有する（network_mode: service:forgejo）。
+# Forgejo の URL が、手元のマシンからもコンテナからも http://localhost:3000 になり、
+# バックエンドがクライアントに返す git の URL を、手元のマシンでそのまま使えるようにするためである。
+# worker の内部 API は 127.0.0.1:8081 で待ち受け、公開しない。
+name: logiforge
+
+x-logiforge-common: &common
+  LOGIFORGE_STORE_DIR: /var/lib/logiforge/store
+  LOGIFORGE_INTERNAL_KEY_FILE: /run/secrets/internal_key
+  LOGIFORGE_FORGEJO_URL: http://localhost:3000
+  LOGIFORGE_FORGEJO_ORG: logiforge
+  LOGIFORGE_WORKER_LOGIN: logiforge-reader
+
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:17.0.1
+    environment:
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__server__ROOT_URL: http://localhost:3000/
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__DISABLE_SSH: "true"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+    ports:
+      # バックエンドの API も、このサービスのネットワークで待ち受ける。
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - forgejo:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/healthz"]
+      interval: 5s
+      retries: 30
+
+  worker:
+    build: .
+    image: logiforge:local
+    command: ["worker"]
+    network_mode: service:forgejo
+    depends_on:
+      forgejo:
+        condition: service_healthy
+    environment:
+      <<: *common
+      LOGIFORGE_WORKER_DIR: /var/lib/logiforge/worker
+      LOGIFORGE_WORKER_TOKEN_FILE: /run/secrets/worker_token
+      # ローカルの Forgejo は http で動く。本番では https だけにする（既定）。
+      LOGIFORGE_GIT_ALLOW_PROTOCOL: http:https:file
+    secrets: [internal_key, worker_token]
+    volumes:
+      - worker:/var/lib/logiforge/worker
+      - store:/var/lib/logiforge/store
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
+      interval: 5s
+      retries: 30
+
+  backend:
+    # worker と同じイメージである。コマンドだけを変える。
+    build: .
+    image: logiforge:local
+    command: ["serve"]
+    network_mode: service:forgejo
+    depends_on:
+      worker:
+        condition: service_healthy
+    environment:
+      <<: *common
+      LOGIFORGE_ADDR: 0.0.0.0:8080
+      LOGIFORGE_WORKER_URL: http://127.0.0.1:8081
+      LOGIFORGE_USER_TEAM: logiforge-users
+      LOGIFORGE_WRITER: logiforge-writer
+      LOGIFORGE_WRITER_TOKEN_FILE: /run/secrets/writer_token
+      LOGIFORGE_RECORD_KEYS_FILE: /run/secrets/record_keys
+    secrets: [internal_key, writer_token, record_keys]
+    volumes:
+      # バックエンドは、置き場を読むだけである。
+      - store:/var/lib/logiforge/store:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      retries: 30
+
+volumes:
+  forgejo:
+  # clone を置く。正本ではないが、失うと作り直しに時間がかかる。
+  worker:
+  # 置き場（手元のディレクトリ）。branches/ は git から作り直せないので、バックアップを取る。
+  store:
+
+# scripts/compose-setup.sh が作る。
+secrets:
+  internal_key:
+    file: .compose/secrets/internal_key
+  worker_token:
+    file: .compose/secrets/worker_token
+  writer_token:
+    file: .compose/secrets/writer_token
+  record_keys:
+    file: .compose/secrets/record_keys

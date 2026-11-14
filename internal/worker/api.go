@@ -16,6 +16,7 @@ import (
 const (
 	PathReadBranch = "/internal/v1/read-branch"
 	PathWake       = "/internal/v1/wake"
+	PathHealthz    = "/healthz"
 )
 
 // HeaderSnapshotPending は、「ブランチを読む」が、main の取り込みを待ちきれなかったことを表す応答のヘッダーである。
@@ -66,7 +67,14 @@ func (w *Worker) Handler(key string) http.Handler {
 		w.Wake(req.Repository)
 		rw.WriteHeader(http.StatusAccepted)
 	})
-	return authorize(key, mux)
+	// ヘルスチェックだけは、鍵を求めない。中身を返さず、200 だけを返す（design/deploy.md）。
+	outer := http.NewServeMux()
+	outer.HandleFunc("GET "+PathHealthz, func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = rw.Write([]byte("ok\n"))
+	})
+	outer.Handle("/", authorize(key, mux))
+	return outer
 }
 
 func authorize(key string, next http.Handler) http.Handler {
