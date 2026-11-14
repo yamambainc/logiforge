@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,7 +302,10 @@ func setup(t *testing.T) *fixture {
 		},
 		files: map[string][]byte{tree.SHA256Hex([]byte("jpg")): []byte("jpg")},
 	}
-	b := &Backend{Forge: forge, Auth: fakeAuth{}, Snap: &snapstore.Adapter{Store: st}}
+	// 過去のリビジョンの木は、読むときに worker が作る。その内部 API をつなぐ。
+	srv := httptest.NewServer(w.Handler("k"))
+	t.Cleanup(srv.Close)
+	b := &Backend{Forge: forge, Auth: fakeAuth{}, Snap: &snapstore.Adapter{Store: st, WorkerURL: srv.URL, Key: "k"}}
 	return &fixture{b: b, forge: forge, r: r, c1: c1, c2: c2, head: head, art: art, caller: Caller{Token: "agent"}, answerT: now}
 }
 

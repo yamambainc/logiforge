@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"sync"
@@ -291,24 +292,30 @@ func maps(a, b map[string]string) bool {
 	return true
 }
 
-// syncMain は、main の first-parent の並びのうち、スナップショットのないコミットについて、スナップショットを作り、latest を書く。
+// syncMain は、main の first-parent の並びのうち、記録のないコミットについて、コミットの記録を作る。
+// 最後に、今の main（mainSHA）の木を作り、latest を書く（design/backend/worker.md の「すること」）。
+//
+// 木は、コミットごとには作らない。コミットの記録は、git の diff-tree で変わったパスだけから作る。
+//   - ふだん（前の latest の木があり、新しいコミットが incrementalLimit 以下）：前の latest の木のファイルに、
+//     コミットごとの差分を重ねて、新しく破れた不変条件を確かめる。
+//   - 初めての取り込み（記録がない、記録はあるが木がない、または新しいコミットが多い）：コミットごとの不変条件は確かめず、
+//     最後に今の main の木を 1 回だけ作る。
 func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA string) error {
 	chain, err := g.FirstParents(ctx, mainSHA)
 	if err != nil {
 		return err
 	}
-	// スナップショットのある、いちばん新しいコミットを探す。
+	// 記録のある、いちばん新しいコミットを探す。
 	start := 0
-	var parent *snapshot.Main
 	for i := len(chain) - 1; i >= 0; i-- {
-		m, err := store.GetMain(ctx, w.store, repo, chain[i])
+		_, err := store.GetCommit(ctx, w.store, repo, chain[i])
 		if errors.Is(err, store.ErrNotFound) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
-		start, parent = i+1, m
+		start = i + 1
 		break
 	}
 	latest, err := store.GetLatest(ctx, w.store, repo)
@@ -316,19 +323,91 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		return err
 	}
 	rewritten := latest != "" && !slices.Contains(chain, latest)
+
+	// 重ねる元。記録のある、いちばん新しいコミットに木があり、新しいコミットが少なければ、ふだんの取り込みにする。
+	// 新しいコミットが多いとき（初めての取り込みと同じく、まとめて push されたときなど）は、コミットごとに木を組み立てない。
+	x := snapshot.NewIndex()
+	var files tree.Files // ふだんの取り込みで、直前のコミットの木のファイル
+	var broken []tree.Violation
+	incremental := false
+	if start > 0 {
+		m, err := store.GetMain(ctx, w.store, repo, chain[start-1])
+		switch {
+		case err == nil && len(chain)-start > incrementalLimit:
+			x = snapshot.IndexFromTree(&m.Tree)
+		case err == nil:
+			x = snapshot.IndexFromTree(&m.Tree)
+			if files, err = m.Tree.Files(); err != nil {
+				return err
+			}
+			broken, incremental = m.Tree.Broken, true
+		case errors.Is(err, store.ErrNotFound):
+			if x, err = w.replay(ctx, repo, chain[:start]); err != nil {
+				return err
+			}
+		default:
+			return err
+		}
+	}
 	for i := start; i < len(chain); i++ {
-		m, err := w.buildMain(ctx, g, repo, chain[i], parent)
+		sha, prev := chain[i], ""
+		if i > 0 {
+			prev = chain[i-1]
+		}
+		c, err := g.ReadCommit(ctx, sha)
 		if err != nil {
-			return fmt.Errorf("%s: %w", chain[i], err)
+			return fmt.Errorf("%s: %w", sha, err)
+		}
+		changes, err := g.Diff(ctx, prev, sha)
+		if err != nil {
+			return fmt.Errorf("%s: %w", sha, err)
+		}
+		paths := make([]string, len(changes))
+		for j, ch := range changes {
+			paths[j] = ch.Path
+		}
+		rec := x.Record(commitInfo(c), paths)
+		if incremental {
+			if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
+				return fmt.Errorf("%s: %w", sha, err)
+			}
+			if err := w.putArtifacts(ctx, repo, files); err != nil {
+				return err
+			}
+			now := tree.Check(tree.Build(files))
+			newly, _ := tree.NewlyBroken(broken, now)
+			x.AddNewlyBroken(&rec, newly...)
+			broken = now
+		}
+		if i > 0 {
+			x.AddWorkerWarnings(&rec, w.overlap(ctx, g, x, rec)...)
 		}
 		if rewritten && i == len(chain)-1 {
-			m.AddWarnings(tree.Violation{Rule: RuleMainRewritten, Node: chain[i], Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
+			x.AddWorkerWarnings(&rec, tree.Violation{Rule: RuleMainRewritten, Node: sha, Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
 		}
-		if err := store.PutMain(ctx, w.store, repo, m); err != nil {
+		if err := store.PutCommit(ctx, w.store, repo, rec); err != nil {
 			return err
 		}
 		w.touch()
-		parent = m
+	}
+	// 今の main の木。ふだんの取り込みでは、重ねたファイルから作る。初めての取り込みでは、ここで 1 回だけ全体を読む。
+	ok, err := store.HasTree(ctx, w.store, repo, mainSHA)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if files == nil || !incremental {
+			if files, err = g.ReadFiles(ctx, mainSHA, w.cfg.MaxFileSize); err != nil {
+				return err
+			}
+			if err := w.putArtifacts(ctx, repo, files); err != nil {
+				return err
+			}
+		}
+		if err := store.PutTree(ctx, w.store, repo, mainSHA, snapshot.BuildTree(files, x)); err != nil {
+			return err
+		}
+		w.touch()
 	}
 	// latest の規則（design/backend/snapshot.md の「latest」）：今の latest が、新しい main の並びにあるときだけ書く。
 	// ないときは、main が書き換えられているので、上書きする（警告は、上でコミットに付けた）。
@@ -342,64 +421,90 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 	return err
 }
 
-// RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。
-const RuleMainRewritten tree.Rule = "main_rewritten"
+// incrementalLimit は、ふだんの取り込み（コミットごとに木を重ね、新しく破れた不変条件を確かめる）にする、新しいコミットの数の上限である。
+// これより多ければ、初めての取り込みと同じく、記録だけを作り、最後に木を 1 回だけ作る。
+// なぜ：コミットごとに木を組み立てると、コミットの数と木の大きさの積の時間がかかるから。
+const incrementalLimit = 20
 
-func (w *Worker) buildMain(ctx context.Context, g *gitx.Repo, repo, sha string, parent *snapshot.Main) (*snapshot.Main, error) {
-	c, err := g.ReadCommit(ctx, sha)
-	if err != nil {
-		return nil, err
-	}
-	var files tree.Files
-	if parent == nil {
-		files, err = g.ReadFiles(ctx, sha, w.cfg.MaxFileSize)
-	} else {
-		var pf tree.Files
-		if pf, err = parent.Tree.Files(); err == nil {
-			files, err = g.NextFiles(ctx, pf, parent.Commit.Revision, sha, w.cfg.MaxFileSize)
+// RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。
+const RuleMainRewritten = snapshot.RuleMainRewritten
+
+// replay は、main の並びの、記録のあるコミット（chain）の記録を順に読み、Index を作る。木は読まない。
+func (w *Worker) replay(ctx context.Context, repo string, chain []string) (*snapshot.Index, error) {
+	x := snapshot.NewIndex()
+	for _, sha := range chain {
+		c, err := store.GetCommit(ctx, w.store, repo, sha)
+		if err != nil {
+			return nil, fmt.Errorf("%s の記録: %w", sha, err)
 		}
+		x.Replay(c)
 	}
+	return x, nil
+}
+
+// buildTree は、main のコミット sha の木を作る。なければ作り、あれば何もしない。sha の記録がなければ store.ErrNotFound。
+// history とノードの変更の一覧は、最初のリビジョンから sha までの記録を、Parent をたどって読んで求める。
+// ブランチの base と、API で指定された過去のリビジョンに使う。
+func (w *Worker) buildTree(ctx context.Context, g *gitx.Repo, repo, sha string) error {
+	if ok, err := store.HasTree(ctx, w.store, repo, sha); err != nil || ok {
+		return err
+	}
+	var chain []string
+	for cur := sha; ; {
+		c, err := store.GetCommit(ctx, w.store, repo, cur)
+		if err != nil {
+			return err
+		}
+		if c.Kind != snapshot.KindMain {
+			return store.ErrNotFound
+		}
+		chain = append(chain, cur)
+		if c.Parent == nil {
+			break
+		}
+		cur = *c.Parent
+	}
+	slices.Reverse(chain)
+	x, err := w.replay(ctx, repo, chain)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	files, err := g.ReadFiles(ctx, sha, w.cfg.MaxFileSize)
+	if err != nil {
+		return err
 	}
 	if err := w.putArtifacts(ctx, repo, files); err != nil {
-		return nil, err
+		return err
 	}
-	m, err := snapshot.BuildMain(files, commitInfo(c), parent)
-	if err != nil {
-		return nil, err
-	}
-	if parent != nil {
-		m.AddWarnings(w.overlap(ctx, g, m, parent)...)
-	}
-	return m, nil
+	return store.PutTree(ctx, w.store, repo, sha, snapshot.BuildTree(files, x))
 }
 
 // overlap は、反映のコミットについて、対象ノードが、その base のあとに別の反映で変わっていないかを確かめる。
 // base は、反映した版のコミット（Logiforge-Version:）と、反映の直前の main の分かれた点である。
-func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, m, parent *snapshot.Main) []tree.Violation {
-	if snapshot.HasTrailer(m.Commit, snapshot.TrailerApplyRequest) == "" {
+// x は、c まで足した Index である。
+func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, x *snapshot.Index, c snapshot.Commit) []tree.Violation {
+	if snapshot.HasTrailer(c, snapshot.TrailerApplyRequest) == "" {
 		return nil
 	}
 	unchecked := func(why string) []tree.Violation {
-		return []tree.Violation{{Rule: snapshot.RuleOverlapUnchecked, Node: m.Commit.Revision, Detail: why}}
+		return []tree.Violation{{Rule: snapshot.RuleOverlapUnchecked, Node: c.Revision, Detail: why}}
 	}
-	version := snapshot.VersionCommit(m.Commit)
+	version := snapshot.VersionCommit(c)
 	if version == "" {
 		return unchecked("Logiforge-Version: がない")
 	}
 	if ok, err := g.HasCommit(ctx, version); err != nil || !ok {
 		return unchecked("版のコミット " + version + " が手元にない")
 	}
-	base, err := g.MergeBase(ctx, version, parent.Commit.Revision)
+	base, err := g.MergeBase(ctx, version, *c.Parent)
 	if err != nil {
 		return unchecked("base を求められない：" + err.Error())
 	}
-	n := m.Tree.HistoryNumber(base)
+	n := x.Number(base)
 	if n == 0 {
 		return unchecked("base " + base + " が main の並びにない")
 	}
-	return m.OverlapWarnings(n)
+	return x.OverlapWarnings(c, n)
 }
 
 // putArtifacts は、中身を読んだ artifact を、sha256 の名前で置き場に置く。すでにあれば置かない。
@@ -464,6 +569,12 @@ func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head,
 		}
 	} else if err != nil {
 		return BranchResult{}, err
+	}
+	// base の木を作る。バックエンドは、base の木にブランチの差分を重ねて検査する（design/backend/snapshot.md の「木を作るコミット」）。
+	if err := w.buildTree(ctx, g, repo, base); errors.Is(err, store.ErrNotFound) {
+		w.cfg.Log.Warn("base の記録がないので、base の木を作れない", "repository", repo, "branch", name, "base", base)
+	} else if err != nil {
+		return BranchResult{}, fmt.Errorf("base の木：%w", err)
 	}
 	// ブランチの名前の一覧に、先に足す。履歴を書いたあとに止まっても、消えたことを見つけられるようにするため。
 	if err := w.addToIndex(ctx, repo, name); err != nil {
@@ -589,25 +700,71 @@ func (w *Worker) ReadBranch(ctx context.Context, repoName, branch string) (Branc
 	}
 	// ブランチの base（main と分かれた点）のスナップショットがないと、バックエンドは差分を検査できない。先に main を進める。
 	if mainSHA, ok := heads["main"]; ok {
-		done := make(chan error, 1)
-		// 要求が切れても、取り込みは続ける。Run の ctx が終われば止まる。
-		go func() { done <- w.syncMain(w.backgroundCtx(), g, r.Name, mainSHA) }()
-		select {
-		case err := <-done:
-			if err != nil {
-				return BranchResult{}, fmt.Errorf("main: %w", err)
-			}
-		case <-time.After(time.Until(deadline)):
-			// 取り込みが終わるまで、repository のロックを持ち続ける。終わったら放す。
+		handedOff, err := w.waitOrHandOff(deadline, unlock, func(ctx context.Context) error { return w.syncMain(ctx, g, r.Name, mainSHA) })
+		if handedOff {
 			locked = false
-			go func() {
-				if err := <-done; err != nil {
-					w.cfg.Log.Error("main の取り込みに失敗した", "repository", r.Name, "err", err)
-				}
-				unlock()
-			}()
 			return BranchResult{}, ErrSnapshotPending
+		}
+		if err != nil {
+			return BranchResult{}, fmt.Errorf("main: %w", err)
 		}
 	}
 	return w.syncBranch(ctx, g, r.Name, branch, head, heads["main"])
+}
+
+var shaPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// waitOrHandOff は、fn を、要求が切れても止まらないよう Run の ctx で動かし、deadline まで終わるのを待つ。
+// 終われば、その誤りを返す（ロックは呼んだ側が持ったまま）。終わらなければ、repository のロック（unlock）を fn に渡し、
+// fn が終わったら放すようにして、handedOff を true で返す。
+func (w *Worker) waitOrHandOff(deadline time.Time, unlock func(), fn func(context.Context) error) (handedOff bool, err error) {
+	done := make(chan error, 1)
+	go func() { done <- fn(w.backgroundCtx()) }()
+	select {
+	case err := <-done:
+		return false, err
+	case <-time.After(time.Until(deadline)):
+		go func() {
+			if err := <-done; err != nil {
+				w.cfg.Log.Error("裏の取り込みに失敗した", "err", err)
+			}
+			unlock()
+		}()
+		return true, nil
+	}
+}
+
+// BuildTree は、main のコミット sha の木を作る（worker の内部 API の「木を作る」）。あれば何もしない。
+// sha の記録がなければ ports.ErrNotFound。上限（Config.ReadBranchWait）までに終わらなければ、裏で続けたまま ErrSnapshotPending を返す。
+func (w *Worker) BuildTree(ctx context.Context, repoName, sha string) error {
+	if !shaPattern.MatchString(sha) {
+		return ports.ErrNotFound
+	}
+	if ok, err := store.HasTree(ctx, w.store, repoName, sha); err != nil || ok {
+		return err
+	}
+	if _, err := store.GetCommit(ctx, w.store, repoName, sha); errors.Is(err, store.ErrNotFound) {
+		return ports.ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(w.cfg.ReadBranchWait)
+	unlock := w.tryLock(repoName, deadline)
+	if unlock == nil {
+		return ErrSnapshotPending
+	}
+	g, err := w.repo(ctx, repoName)
+	if err != nil {
+		unlock()
+		return err
+	}
+	handedOff, err := w.waitOrHandOff(deadline, unlock, func(ctx context.Context) error { return w.buildTree(ctx, g, repoName, sha) })
+	if handedOff {
+		return ErrSnapshotPending
+	}
+	unlock()
+	if errors.Is(err, store.ErrNotFound) {
+		return ports.ErrNotFound
+	}
+	return err
 }

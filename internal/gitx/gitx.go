@@ -340,11 +340,21 @@ type Change struct {
 }
 
 // Diff は、a から b への、変わったファイルを返す。名前の変更は、消えたと加わったの組にする。
+// a が空なら、空の木から b への差分（b のすべてのファイルが加わった）を返す。最初のリビジョンに使う。
 func (r *Repo) Diff(ctx context.Context, a, b string) ([]Change, error) {
-	if err := checkRevs(a, b); err != nil {
-		return nil, err
+	args := []string{"diff-tree", "-r", "-z", "--no-renames", "--no-commit-id"}
+	if a == "" {
+		if err := checkRevs(b); err != nil {
+			return nil, err
+		}
+		args = append(args, "--root", "--end-of-options", b)
+	} else {
+		if err := checkRevs(a, b); err != nil {
+			return nil, err
+		}
+		args = append(args, "--end-of-options", a, b)
 	}
-	out, err := r.run(ctx, nil, "diff-tree", "-r", "-z", "--no-renames", "--no-commit-id", "--end-of-options", a, b)
+	out, err := r.run(ctx, nil, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +378,12 @@ func (r *Repo) NextFiles(ctx context.Context, parent tree.Files, from, to string
 	if err != nil {
 		return nil, err
 	}
+	return r.ApplyChanges(ctx, parent, changes, maxSize)
+}
+
+// ApplyChanges は、parent の木のファイルに、Diff で求めた差分を重ねる。加わったか変わったパスだけを読む。
+// 差分をほかにも使うときに、Diff を 2 度動かさずに済むようにするため。
+func (r *Repo) ApplyChanges(ctx context.Context, parent tree.Files, changes []Change, maxSize int64) (tree.Files, error) {
 	next := tree.Files{}
 	for p, f := range parent {
 		next[p] = f

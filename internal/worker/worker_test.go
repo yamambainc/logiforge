@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -161,9 +163,24 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	if latest, _ := store.GetLatest(ctx, st, "q"); latest != m2 {
 		t.Fatalf("latest: %s", latest)
 	}
+	// m1 は、latest にならなかったので、記録だけがあり、木はない。
+	c1, err := store.GetCommit(ctx, st, "q", m1)
+	if err != nil || len(c1.Warnings) != 0 || c1.Number != 2 {
+		t.Fatalf("m1: %+v %v", c1, err)
+	}
+	if ok, _ := store.HasTree(ctx, st, "q", m1); ok {
+		t.Fatal("latest でないコミットに、木を作った")
+	}
+	// 「木を作る」で、あとから作れる。history とノードの変更の一覧は、m1 までである。
+	if err := w.BuildTree(ctx, "q", m1); err != nil {
+		t.Fatal(err)
+	}
 	s1m, err := store.GetMain(ctx, st, "q", m1)
-	if err != nil || len(s1m.Commit.Warnings) != 0 {
-		t.Fatalf("m1: %+v %v", s1m.Commit.Warnings, err)
+	if err != nil || len(s1m.Tree.History) != 2 || len(s1m.Tree.Nodes["h-3333333333"].Changes) != 2 {
+		t.Fatalf("m1 の木：%+v %v", s1m, err)
+	}
+	if err := w.BuildTree(ctx, "q", strings.Repeat("b", 40)); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("記録のないコミット：%v", err)
 	}
 	s2m, err := store.GetMain(ctx, st, "q", m2)
 	if err != nil {
@@ -447,5 +464,76 @@ func TestBackgroundIngestStopsWithRun(t *testing.T) {
 			t.Fatal("Run を止めても、裏の取り込みがロックを放さない")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// 初めての取り込み（記録を順に作り、最後に木を 1 回作る）と、ふだんの取り込み（1 コミットずつ前の木に重ねる）で、
+// コミットの記録と今の main の木が同じになる。違うのは、途中のコミットの「新しく破れた不変条件」だけである。
+func TestInitialImportMatchesIncremental(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	inc, incSt := newWorker(t, r)
+	syncRepo(t, inc)
+	var shas []string
+	step := func(sha string) {
+		shas = append(shas, sha)
+		syncRepo(t, inc)
+	}
+	base := r.git("rev-parse", "main")
+	// 2 つのブランチが、どちらも H1 を対象にする（重なりの警告が出る）。
+	r.git("checkout", "--quiet", "-b", "x", base)
+	r.write(h1+"/verdicts/v-7777777777.md", tree.MarshalVerdict(tree.VerdictContent{ID: "v-7777777777", Value: true, Report: "r\n"}))
+	r.commit("x")
+	r.git("checkout", "--quiet", "-b", "y", base)
+	r.write(h1+"/background.md", []byte("背景\n"))
+	r.commit("y")
+	step(r.squash("x", "apr_x"))
+	step(r.squash("y", "apr_y"))
+	// 新しいストーリーと、inactive 化。
+	r.write(h2+"/s-5555555555/story.md", tree.MarshalStory(tree.StoryContent{ID: "s-5555555555", Title: "t2", Summary: "s"}))
+	r.write(h2+"/s-5555555555/h-6666666666/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-6666666666", Statement: "孫"}))
+	step(r.commit("反映\n\nLogiforge-Apply-Request: apr_z"))
+	r.write(h2+"/s-5555555555/inactivated.md", []byte("理由\n"))
+	step(r.commit("反映\n\nLogiforge-Apply-Request: apr_w"))
+	// 木の外のファイル（不変条件が破れる）と、反映の記録のないコミット。
+	r.write("README.md", []byte("x"))
+	step(r.commit("手で直した"))
+
+	all, allSt := newWorker(t, r)
+	syncRepo(t, all)
+	for _, sha := range shas {
+		a, err1 := store.GetCommit(ctx, allSt, "q", sha)
+		b, err2 := store.GetCommit(ctx, incSt, "q", sha)
+		if err1 != nil || err2 != nil {
+			t.Fatal(err1, err2)
+		}
+		// 初めての取り込みでは、途中のコミットの「新しく破れた不変条件」を確かめない。
+		b.Warnings = slices.DeleteFunc(b.Warnings, func(v tree.Violation) bool { return v.Rule == tree.RuleOutsideTree })
+		if !reflect.DeepEqual(a, b) {
+			t.Fatalf("%s の記録が違う：\n初めて：%+v\nふだん：%+v", sha, a, b)
+		}
+	}
+	latest := shas[len(shas)-1]
+	a, _ := store.GetMain(ctx, allSt, "q", latest)
+	b, _ := store.GetMain(ctx, incSt, "q", latest)
+	if a == nil || b == nil {
+		t.Fatal("今の main の木がない")
+	}
+	if !b.Tree.History[len(b.Tree.History)-1].NewlyBroken || a.Tree.History[len(a.Tree.History)-1].NewlyBroken {
+		t.Fatalf("新しく破れた不変条件の印：ふだん %+v、初めて %+v", b.Tree.History, a.Tree.History)
+	}
+	b.Tree.History[len(b.Tree.History)-1].NewlyBroken = false
+	if !reflect.DeepEqual(a.Tree, b.Tree) {
+		t.Fatalf("今の main の木が違う：\n初めて：%+v\nふだん：%+v", a.Tree, b.Tree)
+	}
+	if !contains(rules(a.Tree.Broken), tree.RuleOutsideTree) {
+		t.Fatalf("今の main の木の Broken：%v", a.Tree.Broken)
+	}
+	// 重なりと inactive 化の子孫は、初めての取り込みでも求める。
+	if c, _ := store.GetCommit(ctx, allSt, "q", shas[1]); !contains(rules(c.Warnings), snapshot.RuleOverlap) {
+		t.Fatalf("重なりの警告：%v", c.Warnings)
+	}
+	if rs := a.Tree.Nodes["h-6666666666"].Changes; len(rs) != 2 || rs[1].Revision != shas[3] {
+		t.Fatalf("inactive 化した子孫の変更の一覧：%v", rs)
 	}
 }

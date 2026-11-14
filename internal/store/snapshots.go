@@ -23,7 +23,7 @@ func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit
 	return d.Commit, nil
 }
 
-// GetMain は、main のコミットのスナップショットを読む。
+// GetMain は、main のコミットの記録と木を読む。どちらかがなければ ErrNotFound。
 func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, error) {
 	c, err := GetCommit(ctx, r, repo, sha)
 	if err != nil {
@@ -63,21 +63,39 @@ func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branc
 	return &snapshot.Branch{FormatVersion: snapshot.FormatVersion, Commit: c, Diff: d.Diff}, nil
 }
 
-// PutMain は、main のスナップショットを置く。木を先に置き、コミットの記録をあとに置く。
-// コミットの記録があれば、木もある。
+// PutMain は、main のコミットの記録と木を置く。木を先に置き、コミットの記録をあとに置く。
 func PutMain(ctx context.Context, w Writer, repo string, m *snapshot.Main) error {
-	tree, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: m.Tree})
+	if err := PutTree(ctx, w, repo, m.Commit.Revision, &m.Tree); err != nil {
+		return err
+	}
+	return PutCommit(ctx, w, repo, m.Commit)
+}
+
+// PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot.md）。
+func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) error {
+	b, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: c})
 	if err != nil {
 		return err
 	}
-	if err := w.Put(ctx, SnapshotKey(repo, m.Commit.Revision), tree); err != nil {
-		return err
-	}
-	c, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: m.Commit})
+	return w.Put(ctx, CommitKey(repo, c.Revision), b)
+}
+
+// PutTree は、main のコミットの木を置く。木を作るのは、latest、ブランチの base、API で指定されたリビジョンだけである。
+func PutTree(ctx context.Context, w Writer, repo, sha string, t *snapshot.Tree) error {
+	b, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: *t})
 	if err != nil {
 		return err
 	}
-	return w.Put(ctx, CommitKey(repo, m.Commit.Revision), c)
+	return w.Put(ctx, SnapshotKey(repo, sha), b)
+}
+
+// HasTree は、main のコミットの木があるかを返す。
+func HasTree(ctx context.Context, r Reader, repo, sha string) (bool, error) {
+	_, err := r.Get(ctx, SnapshotKey(repo, sha))
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // PutBranch は、ブランチの先頭のスナップショットを置く。

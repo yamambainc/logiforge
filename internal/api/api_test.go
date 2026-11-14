@@ -44,7 +44,8 @@ func (emptySnap) Artifact(context.Context, string, string) ([]byte, error) {
 func (emptySnap) ReadBranch(context.Context, string, string) (ports.BranchRead, error) {
 	return ports.BranchRead{}, ports.ErrUnavailable
 }
-func (emptySnap) Wake(context.Context, string) {}
+func (emptySnap) Wake(context.Context, string)                    {}
+func (emptySnap) BuildTree(context.Context, string, string) error { return ports.ErrNotFound }
 
 type auth struct{}
 
