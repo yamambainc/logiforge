@@ -166,6 +166,8 @@ type result struct {
 	beBuild, beCompute        time.Duration
 	beCheckChange             time.Duration
 	storeBytes                int64
+	// 先頭のスナップショットツリーの、圧縮後の大きさ：history を外したもの、history とノードの変更の一覧を外したもの。
+	noHistory, noHistoryChanges int
 }
 
 func median(ds []time.Duration) time.Duration {
@@ -251,6 +253,7 @@ func measure(t *testing.T, targetNodes, commits int) result {
 			_ = jsonEncode(&raw, &snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: *tr})
 			p.rawSize = raw.Len()
 			r.nodes = len(tr.Nodes)
+			r.noHistory, r.noHistoryChanges = sizeWithout(t, tr)
 		}
 		r.perCommit = append(r.perCommit, p)
 	}
@@ -385,6 +388,8 @@ func TestSnapshotTree(t *testing.T) {
 			ms(r.fullRead), ms(r.fullBuild), ms(r.fullPut),
 			ms(r.beGet), ms(r.beFiles), ms(r.beOverlay), ms(r.beBuild), ms(r.beCompute), ms(be), ms(r.beCheckChange),
 			float64(p.treeSize)/1024, float64(p.rawSize)/1024, p.commit, r.ingest.Seconds(), float64(r.storeBytes)/1024/1024)
+		t.Logf("ノード %d：先頭の圧縮後 %.1f KiB、history を外すと %.1f KiB、history とノードの変更の一覧を外すと %.1f KiB",
+			r.nodes, float64(p.treeSize)/1024, float64(r.noHistory)/1024, float64(r.noHistoryChanges)/1024)
 		t.Logf("ノード %d：済み（取り込み %.1f s）\n%s", r.nodes, r.ingest.Seconds(), out.String())
 	}
 	t.Log("時間の単位は ms。1 コミットの値は、最後の 20 コミットの中央値。全体と BE は 5 回・10 回の中央値。" + out.String())
@@ -398,4 +403,25 @@ func revParse(t *testing.T, dir, rev string) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// sizeWithout は、tr から history を外したときと、history とノードの変更の一覧を外したときの、圧縮後の大きさを返す。
+func sizeWithout(t *testing.T, tr *snapshot.Tree) (int, int) {
+	c := *tr
+	c.History = nil
+	a, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Nodes = map[string]*snapshot.Node{}
+	for id, n := range tr.Nodes {
+		m := *n
+		m.Changes = nil
+		c.Nodes[id] = &m
+	}
+	b, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(a), len(b)
 }
