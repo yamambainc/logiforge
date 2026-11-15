@@ -1,0 +1,17 @@
+go: downloading go.yaml.in/yaml/v3 v3.0.6
+go: downloading golang.org/x/text v0.44.0
+=== RUN   TestSnapshotTree
+    snapshottree_test.go:364: go go1.27.4, GOMAXPROCS 8, main のコミット 1000
+    snapshottree_test.go:388: ノード 97：済み（取り込み 45.6 s）
+        
+        | ノード | git 読み | ApplyChanges | Build+Check | BuildTree | PutTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildTree | 全体 PutTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの記録 | 全コミット取り込み | 置き場の合計 |
+        |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+        | 97 | 14.24 | 8.78 | 5.43 | 5.89 | 20.10 | 16.25 | 0.28 | 50.86 | 18.16 | 6.10 | 16.47 | 14.02 | 0.15 | 0.07 | 4.43 | 0.06 | 18.73 | 8.85 | 68.1 KiB | 317.0 KiB | 319 B | 45.6 s | 37.7 MiB |
+    snapshottree_test.go:390: 時間の単位は ms。1 コミットの値は、最後の 20 コミットの中央値。全体と BE は 5 回・10 回の中央値。
+        | ノード | git 読み | ApplyChanges | Build+Check | BuildTree | PutTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildTree | 全体 PutTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの記録 | 全コミット取り込み | 置き場の合計 |
+        |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+        | 97 | 14.24 | 8.78 | 5.43 | 5.89 | 20.10 | 16.25 | 0.28 | 50.86 | 18.16 | 6.10 | 16.47 | 14.02 | 0.15 | 0.07 | 4.43 | 0.06 | 18.73 | 8.85 | 68.1 KiB | 317.0 KiB | 319 B | 45.6 s | 37.7 MiB |
+        
+--- PASS: TestSnapshotTree (46.49s)
+PASS
+ok  	github.com/yamambainc/hypothesis-verification-harness/internal/bench	46.498s
