@@ -365,7 +365,18 @@ func TestSnapshotTree(t *testing.T) {
 	var out strings.Builder
 	out.WriteString("\n| ノード | git 読み | ApplyChanges | Build+Check | BuildTree | PutTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildTree | 全体 PutTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの記録 | 全コミット取り込み | 置き場の合計 |\n")
 	out.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
-	for _, n := range []int{100, 1000, 4000} {
+	sizes := []int{100, 1000, 4000}
+	if v := os.Getenv("BENCH_NODES"); v != "" { // 例：BENCH_NODES=1000,4000
+		sizes = nil
+		for _, f := range strings.Split(v, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sizes = append(sizes, n)
+		}
+	}
+	for _, n := range sizes {
 		r := measure(t, n, commits)
 		p := tipAvg(r.perCommit, 20)
 		be := r.beGet + r.beFiles + r.beOverlay + r.beBuild + r.beCompute
@@ -374,7 +385,7 @@ func TestSnapshotTree(t *testing.T) {
 			ms(r.fullRead), ms(r.fullBuild), ms(r.fullPut),
 			ms(r.beGet), ms(r.beFiles), ms(r.beOverlay), ms(r.beBuild), ms(r.beCompute), ms(be), ms(r.beCheckChange),
 			float64(p.treeSize)/1024, float64(p.rawSize)/1024, p.commit, r.ingest.Seconds(), float64(r.storeBytes)/1024/1024)
-		t.Logf("ノード %d：済み（取り込み %.1f s）", r.nodes, r.ingest.Seconds())
+		t.Logf("ノード %d：済み（取り込み %.1f s）\n%s", r.nodes, r.ingest.Seconds(), out.String())
 	}
 	t.Log("時間の単位は ms。1 コミットの値は、最後の 20 コミットの中央値。全体と BE は 5 回・10 回の中央値。" + out.String())
 }
