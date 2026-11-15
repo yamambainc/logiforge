@@ -330,7 +330,9 @@ func dirSize(t *testing.T, root string) int64 {
 	return n
 }
 
-func ms(d time.Duration) string { return strconv.FormatFloat(float64(d.Microseconds())/1000, 'f', 2, 64) }
+func ms(d time.Duration) string {
+	return strconv.FormatFloat(float64(d.Microseconds())/1000, 'f', 2, 64)
+}
 
 // tipAvg は、最後の n コミット（ノードの数が目標に届いたあと）の、段階ごとの中央値である。
 func tipAvg(ps []phases, n int) phases {
