@@ -158,7 +158,14 @@ export function TreeScreen({ repo }: { repo: string }) {
     setSelected(id);
   }, [ix]);
   // 「次の変更」「前の変更」（n、p）。変わるノードを行の並びでたどる（design/webui/graph-navigation.md）
-  const order = useMemo(() => (ix && data?.changes ? changeOrder(ix, data.changes) : []), [ix, data]);
+  // 絞り込み・検索・inactive を隠しているあいだは、今の行にある変化だけをたどる
+  const order = useMemo(() => {
+    if (!ix || !data?.changes) return [];
+    const all = changeOrder(ix, data.changes);
+    if (include === null && showInactive) return all;
+    const shown = new Set(rows.map((r) => r.id));
+    return all.filter((id) => shown.has(id));
+  }, [ix, data, include, showInactive, rows]);
   const stepChange = useCallback((dir: 1 | -1) => {
     if (!order.length) return;
     const i = selectedRef.current ? order.indexOf(selectedRef.current) : -1;
@@ -197,7 +204,10 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (v && !touched.current) setExpanded((e) => openLevels(ix, isMobileNow() ? 3 : 4, e));
   };
   const toggleFilter = (k: Filter) => setFilters((f) => { const g = new Set(f); if (g.has(k)) g.delete(k); else g.add(k); return g; });
-  const total = ix.nodes.length;
+  // 消えるノードは、ノード数に数えない
+  const total = ix.nodes.length - (data.removed?.length ?? 0);
+  // 過去の時点の番号と時刻。選択肢の 50 個になければ、SHA だけを示す
+  const pastInfo = data.past ? commits.find((c) => c.commit === data.past!.commit) : undefined;
   // 詳細を読む時点。消えるノードは、比べた向き先のコミットで読む（apply_request を付けると not_found になるため）
   const detailAt: At | undefined = source.kind === 'commit' ? { commit: data.commit }
     : source.kind === 'ar' ? (selected && data.changes?.get(selected)?.kind === 'removed' ? { commit: data.commit } : { apply_request: source.id })
@@ -290,7 +300,7 @@ export function TreeScreen({ repo }: { repo: string }) {
         {(!mobile || filterSheet) && (
           <div className={`chips ${mobile ? 'filter-sheet' : ''}`}>
             {mobile && <div className="fs-head"><b>絞り込み</b><button className="link" onClick={() => setFilterSheet(false)}>閉じる</button></div>}
-            {FILTERS.filter((f) => f.key !== 'changed' || data.changes).map((f) => (
+            {FILTERS.filter((f) => (f.key !== 'changed' || data.changes) && (!data.past || (f.key !== 'ar' && f.key !== 'hr'))).map((f) => (
               <button key={f.key} className={`chip chip-${f.key} ${filters.has(f.key) ? 'on' : ''}`} onClick={() => toggleFilter(f.key)}>{f.label}</button>
             ))}
             <label className="check">
@@ -329,7 +339,7 @@ export function TreeScreen({ repo }: { repo: string }) {
       {data.past && (
         <div className="banner past" role="status">
           <span className="banner-title">過去の時点</span>
-          <span>{data.past.number ? `#${data.past.number}` : ''} {fmtTime(data.past.committed_at)}</span>
+          {pastInfo && <span>#{pastInfo.number} {fmtTime(pastInfo.committed_at)}</span>}
           <span className="mono dim">{data.past.commit.slice(0, 7)}</span>
           <span className="dim">審査中の AR と依頼の札は示しません</span>
           <span className="spacer" />

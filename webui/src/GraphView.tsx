@@ -1,7 +1,7 @@
 // スナップショットツリーの図。開いている部分（rows）だけを、左から右へ並べて SVG で描く。
 // レイアウトは自前（葉に縦の位置を順に割り当て、親は子の真ん中に置く）。ズームとパンもポインタのイベントで自前に書く。
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { textOf, vLabel, type Change, type Index, type Row, type Stats } from './model';
+import { changeLabel, textOf, vLabel, type Change, type Index, type Row, type Stats } from './model';
 
 interface Props {
   ix: Index;
@@ -358,12 +358,11 @@ const NodeCard = memo(function NodeCard(props: {
   const rest = text.slice(n1);
   const line2 = rest.length > n2 ? rest.slice(0, n2 - 1) + '…' : rest;
   const st = ix.stats.get(n.id)!;
-  const valueChange = change?.kind === 'changed' ? change.fields.find((f) => f.name === '値') : undefined;
+  const label = change ? changeLabel(change) : null;
   const badges: { c: string; t: string }[] = [];
   if (change?.kind === 'added') badges.push({ c: 'b-added', t: '追加' });
   if (change?.kind === 'removed') badges.push({ c: 'b-removed', t: '消える' });
-  if (valueChange) badges.push({ c: 'b-changed', t: `${valueChange.before}→${valueChange.after}` });
-  else if (change?.kind === 'changed') badges.push({ c: 'b-changed', t: '変化' });
+  if (label) badges.push({ c: 'b-changed', t: label.replace(/ → /g, '→') });
   if (isH && node.needs_reconsideration) badges.push({ c: 'b-nr', t: '要再検討' });
   if (node.open_apply_request_ids.length) badges.push({ c: 'b-ar', t: 'AR' });
   if (node.open_human_request_ids.length) badges.push({ c: 'b-hr', t: '依頼' });

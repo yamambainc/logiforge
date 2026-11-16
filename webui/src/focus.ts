@@ -24,8 +24,8 @@ export function initialFocus(ix: Index, node: string | null): Focus {
   return { root: ix.rootId, expanded, selected, around: null };
 }
 
-/** apply request を重ねたとき（design/webui/overlay.md）。変わるノードの祖先を開き、最初に変わるノードを選ぶ（URL の node があれば、それ）。
- * 図では、変わるノードとその親のまわりを最初に収める。 */
+/** apply request を重ねたとき（design/webui/overlay.md）。直接に変わるノードの祖先を開き、最初に直接に変わるノードを選ぶ（URL の node があれば、それ）。
+ * 図では、直接に変わるノードとその親のまわりを最初に収める。伝播だけで変わる祖先は、まわりに入れない。 */
 export function overlayFocus(ix: Index, changes: Map<string, Change>, node: string | null): Focus {
   const f = initialFocus(ix, node);
   const order = changeOrder(ix, changes);

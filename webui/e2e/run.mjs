@@ -137,21 +137,24 @@ try {
   await signedIn(page);
   await page.waitForSelector('.row.sel', { timeout: 20000 });
 
-  step('AR を重ねる：変わるノード（伝播で変わる祖先も）に印。最初の変更を選び、n と p でたどる。帯に件数');
+  step('AR を重ねる：変わるノード（伝播で変わる祖先も）に印。最初の直接の変更を選び、n と p でたどる（伝播だけの祖先はたどらない）。帯に件数');
   await page.select('select[aria-label="AR を重ねる"]', AR_MAIN);
   await page.waitForSelector('.banner.overlay', { timeout: 30000 });
   if (new URL(page.url()).searchParams.get('apply_request') !== AR_MAIN) throw new Error('URL に apply_request が入らない');
   await page.waitForSelector('.row.chg-changed', { timeout: 10000 });
   const changed = await page.$$eval('.row.chg-changed .text', (els) => els.map((e) => e.textContent));
   if (!changed.some((t) => t.includes('継続率も')) || !changed.includes('招待の導線')) throw new Error('変わるノード（と伝播で変わる祖先）に印がない：' + changed.join(' / '));
-  if (!(await page.$('.row.sel[class*="chg-"]'))) throw new Error('最初の変更を選ばない');
+  if (!(await selText(page)).includes('継続率も')) throw new Error('最初の直接の変更を選ばない：' + (await selText(page)));
   const stepText = () => page.$eval('.banner .steps .dim', (e) => e.textContent);
-  const s1 = await stepText();
+  if ((await stepText()) !== '1 / 1') throw new Error('直接の変更の数：' + (await stepText()));
+  // 伝播だけの祖先（ストーリー）を選んでから n を押すと、直接の変更に戻る
+  await page.evaluate(() => [...document.querySelectorAll('.row')].find((r) => r.querySelector('.text').textContent === '招待の導線').click());
+  await page.waitForFunction(() => document.querySelector('.banner .steps .dim')?.textContent === '0 / 1', { timeout: 5000 });
   await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press('n');
-  await page.waitForFunction((s) => document.querySelector('.banner .steps .dim')?.textContent !== s, { timeout: 5000 }, s1);
+  await page.waitForFunction(() => document.querySelector('.banner .steps .dim')?.textContent === '1 / 1' && document.querySelector('.row.sel .text')?.textContent.includes('継続率も'), { timeout: 5000 });
   await page.keyboard.press('p');
-  await page.waitForFunction((s) => document.querySelector('.banner .steps .dim')?.textContent === s, { timeout: 5000 }, s1);
+  await page.waitForFunction(() => document.querySelector('.banner .steps .dim')?.textContent === '1 / 1', { timeout: 5000 });
   await page.evaluate(() => [...document.querySelectorAll('.row')].find((r) => r.textContent.includes('継続率も')).click());
   await page.waitForFunction(() => [...document.querySelectorAll('.d-sec h3')].some((h) => h.textContent.startsWith('この AR での変化')) && document.querySelector('table.changes')?.textContent.includes('値'), { timeout: 10000 });
   await page.waitForFunction(() => document.querySelector('.verdict .val')?.textContent === '偽', { timeout: 20000 });
@@ -174,6 +177,10 @@ try {
   await page.screenshot({ path: OUT + '/overlay-unchecked.png' });
   await page.goBack();
   await page.waitForFunction((a) => new URL(location.href).searchParams.get('apply_request') === a && document.querySelector('.banner.overlay:not(.unchecked)'), { timeout: 30000 }, AR_MAIN);
+  await page.goForward();
+  await page.waitForFunction((a) => new URL(location.href).searchParams.get('apply_request') === a && document.querySelector('.banner.overlay.unchecked'), { timeout: 30000 }, AR_DEV);
+  await page.goBack();
+  await page.waitForSelector('.banner.overlay:not(.unchecked)', { timeout: 30000 });
 
   step('過去の時点：main の古いコミットを選ぶと、その時点の姿。審査中の AR の札は出さない。今の main に戻れる');
   const oldest = await page.$$eval('select[aria-label="時点"] option', (os) => os[os.length - 1].value);
@@ -182,8 +189,14 @@ try {
   await page.waitForSelector('.row', { timeout: 10000 });
   if ((await rowTexts(page)).some((t) => t.includes('招待の導線'))) throw new Error('最初のコミットに、あとで足したストーリーが出る');
   if (await page.$('.row .t-ar')) throw new Error('過去の時点に、審査中の AR の札が出る');
+  if ((await page.$$eval('.chip', (cs) => cs.map((c) => c.textContent))).some((t) => t === '審査中の AR' || t === 'open の依頼')) throw new Error('過去の時点に、審査中の AR と依頼の絞り込みが出る');
   await detailLoaded(page);
   await page.screenshot({ path: OUT + '/past.png' });
+  // 戻る・進むで、時点も戻る
+  await page.goBack();
+  await page.waitForFunction(() => !document.querySelector('.banner.past') && document.querySelector('.banner.overlay'), { timeout: 30000 });
+  await page.goForward();
+  await page.waitForSelector('.banner.past', { timeout: 30000 });
   await page.evaluate(() => [...document.querySelectorAll('.banner.past button')].find((b) => b.textContent === '今の main に戻る').click());
   await page.waitForFunction(() => !document.querySelector('.banner') && !new URL(location.href).searchParams.get('commit'), { timeout: 30000 });
   await page.waitForSelector('.row', { timeout: 10000 });
