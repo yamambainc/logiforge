@@ -1,7 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
 
-const ROW = 30;
 const OVERSCAN = 12;
 
 interface Props {
@@ -17,9 +16,12 @@ interface Props {
   onExpandAll: () => void;
   onCollapseAll: () => void;
   summary: { total: number; rootValue: TruthValue };
+  mobile: boolean;
 }
 
 export function TreePane(p: Props) {
+  const ROW = p.mobile ? 40 : 30;
+  const INDENT = p.mobile ? 12 : 18;
   const ref = useRef<HTMLDivElement>(null);
   const [scroll, setScroll] = useState(0);
   const [height, setHeight] = useState(600);
@@ -94,6 +96,8 @@ export function TreePane(p: Props) {
               onSelect={p.onSelect}
               onToggle={p.onToggle}
               filtered={p.filtered}
+              h={ROW}
+              indent={INDENT}
             />
           ))}
         </div>
@@ -113,10 +117,10 @@ function Legend() {
 
 interface RowProps {
   top: number; row: Row; ix: Index; selected: boolean; match: boolean; dimmed: boolean; query: string;
-  change: Change | null; onSelect: (id: string) => void; onToggle: (id: string) => void; filtered: boolean;
+  change: Change | null; onSelect: (id: string) => void; onToggle: (id: string) => void; filtered: boolean; h: number; indent: number;
 }
 
-const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, query, change, onSelect, onToggle, filtered }: RowProps) {
+const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, query, change, onSelect, onToggle, filtered, h, indent }: RowProps) {
   const n = ix.byId.get(row.id)!;
   const v = n.value;
   const vc = v === true ? 'v-true' : v === false ? 'v-false' : 'v-null';
@@ -126,14 +130,14 @@ const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, q
   return (
     <div
       className={`row ${selected ? 'sel' : ''} ${n.inactive ? 'inactive' : ''} ${dimmed ? 'ctx' : ''} ${change ? 'chg-' + change.kind : ''} ${isH ? '' : 'story'}`}
-      style={{ top }}
+      style={{ top, height: h }}
       onClick={() => onSelect(n.id)}
       role="treeitem"
       aria-selected={selected}
       aria-expanded={row.hasChildren ? row.open : undefined}
     >
-      <span className="indent" style={{ width: row.depth * 18 }}>
-        {Array.from({ length: row.depth }, (_, i) => <span key={i} className="guide" style={{ left: i * 18 + 8 }} />)}
+      <span className="indent" style={{ width: row.depth * indent }}>
+        {Array.from({ length: row.depth }, (_, i) => <span key={i} className="guide" style={{ left: i * indent + indent / 2 - 1 }} />)}
       </span>
       <span
         className={`chev ${row.hasChildren ? '' : 'none'} ${row.open ? 'open' : ''}`}

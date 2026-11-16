@@ -3,6 +3,19 @@ import { listApplyRequests, listNodes, Problem, type ApplyRequestSummary } from 
 import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, withRemoved, type Index, type Change } from './model';
 import { TreePane } from './TreePane';
 import { DetailPane } from './DetailPane';
+import { GraphView } from './GraphView';
+
+function useMobile() {
+  const q = '(max-width: 767px)';
+  const [m, setM] = useState(() => matchMedia(q).matches);
+  useEffect(() => {
+    const mq = matchMedia(q);
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return m;
+}
 
 const params = new URLSearchParams(location.search);
 const N = Number(params.get('n') ?? 100);
@@ -35,6 +48,11 @@ export function App() {
   const [filters, setFilters] = useState<Set<Filter>>(new Set((params.get('f') ?? '').split(',').filter(Boolean) as Filter[]));
   const [showInactive, setShowInactive] = useState(params.get('inactive') !== '0');
   const searchRef = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<'outline' | 'graph'>(params.get('view') === 'graph' ? 'graph' : 'outline');
+  const mobile = useMobile();
+  const [sheet, setSheet] = useState(params.get('sheet') === '1');
+  // 利用者が選んだとき（モバイルでは詳細のボトムシートを開く）
+  const pick = useCallback((id: string) => { setSelected(id); if (matchMedia('(max-width: 767px)').matches) setSheet(true); }, []);
 
   useEffect(() => {
     (async () => {
@@ -166,6 +184,16 @@ export function App() {
       </header>
 
       <div className="toolbar">
+        <div className="seg mode" role="tablist" aria-label="表示">
+          <button className={view === 'outline' ? 'on' : ''} onClick={() => setView('outline')}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3.5h12M5 8h9M8 12.5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+            アウトライン
+          </button>
+          <button className={view === 'graph' ? 'on' : ''} onClick={() => setView('graph')}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><rect x="1" y="6" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="2" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="10" width="4" height="4" rx="1" fill="currentColor" /><path d="M5 8h3M8 4v8M8 4h3M8 12h3" stroke="currentColor" strokeWidth="1.3" fill="none" /></svg>
+            図
+          </button>
+        </div>
         <div className="view">
           <div className="seg">
             <button className={overlay.state === 'none' ? 'on' : ''} onClick={() => openOverlay(null)}>
@@ -245,11 +273,42 @@ export function App() {
             )}
           </section>
         ) : (
+          view === 'graph' ? (
+            <GraphView
+              ix={ix}
+              rows={rows}
+              selected={selected}
+              onSelect={pick}
+              onToggle={toggle}
+              matches={matchSet}
+              changes={changes}
+              filtered={include !== null}
+              mobile={mobile}
+              searching={query.trim() !== ''}
+              head={
+                <div className="tree-head">
+                  <span className="dim">
+                    {total.toLocaleString()} ノード
+                    {include !== null && <> · 一致 <b>{matchSet.size.toLocaleString()}</b></>}
+                    {' '}· {rows.length.toLocaleString()} 個を描画対象
+                  </span>
+                  <span className="spacer" />
+                  {include === null && (
+                    <>
+                      <button className="link" onClick={() => setExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
+                      <button className="link" onClick={() => setExpanded(new Set([ix.rootId]))}>閉じる</button>
+                    </>
+                  )}
+                </div>
+              }
+            />
+          ) : (
           <TreePane
             ix={ix}
             rows={rows}
+            mobile={mobile}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={pick}
             onToggle={toggle}
             query={query.trim()}
             matches={matchSet}
@@ -259,14 +318,25 @@ export function App() {
             onCollapseAll={() => setExpanded(new Set([ix.rootId]))}
             summary={{ total, rootValue: root.value }}
           />
+          )
         )}
-        {!blocked && <DetailPane
+        {!blocked && (!mobile || sheet) && <DetailPane
           ix={ix}
+          mobile={mobile}
+          onClose={() => setSheet(false)}
           id={selected}
           change={selected && changes ? changes.get(selected) ?? null : null}
-          onReveal={reveal}
+          onReveal={(id) => { reveal(id); }}
         />}
       </main>
+      {mobile && (
+        <nav className="bottom-nav">
+          <a className="on"><svg viewBox="0 0 20 20" width="20" height="20"><rect x="2" y="8" width="5" height="4" rx="1" /><rect x="13" y="3" width="5" height="4" rx="1" /><rect x="13" y="13" width="5" height="4" rx="1" /><path d="M7 10h3M10 5v10M10 5h3M10 15h3" fill="none" /></svg>ツリー</a>
+          <a><svg viewBox="0 0 20 20" width="20" height="20"><path d="M3 4h14v10H8l-4 3v-3H3z" fill="none" /></svg>依頼</a>
+          <a><svg viewBox="0 0 20 20" width="20" height="20"><circle cx="6" cy="5" r="2" fill="none" /><circle cx="6" cy="15" r="2" fill="none" /><circle cx="14" cy="15" r="2" fill="none" /><path d="M6 7v6M14 13V9a3 3 0 00-3-3H9" fill="none" /></svg>AR</a>
+          <a><svg viewBox="0 0 20 20" width="20" height="20"><path d="M3 17V9M8 17V4M13 17v-6M17 17V7" fill="none" /></svg>状況</a>
+        </nav>
+      )}
     </div>
   );
 }

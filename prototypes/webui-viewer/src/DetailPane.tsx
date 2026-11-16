@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { getNodeExtra, type NodeDetailExtra } from './api';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 
-interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void }
+interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void }
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
 
-export function DetailPane({ ix, id, change, onReveal }: Props) {
+export function DetailPane({ ix, id, change, onReveal, mobile, onClose }: Props) {
   const n = id ? ix.byId.get(id) : undefined;
   const [extra, setExtra] = useState<NodeDetailExtra | null>(null);
   useEffect(() => {
@@ -25,7 +25,15 @@ export function DetailPane({ ix, id, change, onReveal }: Props) {
   const st = ix.stats.get(n.id)!;
 
   return (
-    <aside className="detail">
+    <aside className={`detail ${mobile ? 'sheet' : ''}`} aria-label="ノードの詳細">
+      {mobile && (
+        <div className="sheet-bar">
+          <span className="grab" />
+          <button className="sheet-close" onClick={onClose} aria-label="閉じる">
+            <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+      )}
       <div className="crumbs">
         {path.map((a) => (
           <button key={a} className="crumb" onClick={() => onReveal(a)} title={textOf(ix.byId.get(a)!)}>
