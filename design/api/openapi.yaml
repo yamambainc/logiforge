@@ -795,7 +795,7 @@ components:
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。コミットの記録の trailer Logiforge-Apply-Request: の値。反映によらないコミットでは null
+          description: 反映した apply request。コミットの記録の trailer（Logiforge-Apply-Request）の値。反映によらないコミットでは null
     Commit:
       type: string
       minLength: 1
