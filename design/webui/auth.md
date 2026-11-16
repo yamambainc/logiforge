@@ -22,8 +22,9 @@ BE が主体を確かめる方法は、[認証](../backend/ports/authentication.
 ## スコープ
 
 - スコープは、`read:user` と `read:organization` だけにする。
-  - なぜ：BE は、利用者のトークンを、主体を確かめるのにだけ使う（`GET /user`、`GET /user/teams`）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
-  - Forgejo 17 で、このスコープのトークンで `GET /user` と `GET /user/teams` が通り、書き込みと repository の読みは `403` になることを確かめた。BE の認証は、今のままでよい。
+  - なぜ：BE は、利用者のトークンを、主体を確かめるのにだけ使う（`GET /user`、`GET /user/teams`）。repository を読めるかは、主体が organization にいることで決まり、利用者のトークンで Forgejo を呼ばない（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
+  - なぜ `read:repository` を求めないか：そのスコープは、利用者が Forgejo で読めるすべての repository（個人の private や、ほかの organization のもの）の中身まで読めるからである。盗まれたときに読まれる範囲を、Logiforge の外に広げない。
+  - Forgejo 17 で、このスコープのトークンで `GET /user` と `GET /user/teams` が通り、書き込みと repository の読みは `403` になることを確かめた。
 
 ## サインインの流れ
 

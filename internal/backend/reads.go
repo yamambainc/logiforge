@@ -102,6 +102,8 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 	r := Repository{Name: repo, GitURL: b.Forge.GitURL(ref)}
 	if root := v.tree.Root(); root != nil {
 		r.RootHypothesisID = root.ID
+		st := root.Statement
+		r.RootStatement = &st
 		r.RootValue = v.main.SnapshotTree.Nodes[root.ID].Value
 	}
 	return r, nil

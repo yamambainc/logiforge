@@ -74,7 +74,11 @@ services:
       LOGIFORGE_WRITER: logiforge-writer
       LOGIFORGE_WRITER_TOKEN_FILE: /run/secrets/writer_token
       LOGIFORGE_RECORD_KEYS_FILE: /run/secrets/record_keys
-    secrets: [writer_token, record_keys, worker_token]
+      # WebUI のサインイン（Forgejo の OAuth2）。アプリケーションは scripts/compose-setup.sh が登録する。
+      LOGIFORGE_OAUTH_CLIENT_ID_FILE: /run/secrets/oauth_client_id
+      LOGIFORGE_OAUTH_CLIENT_SECRET_FILE: /run/secrets/oauth_client_secret
+      LOGIFORGE_OAUTH_REDIRECT_URI: http://localhost:8080/oauth/callback
+    secrets: [writer_token, record_keys, worker_token, oauth_client_id, oauth_client_secret]
     volumes:
       # バックエンドは、置き場を読むだけである。
       - store:/var/lib/logiforge/store:ro
@@ -98,3 +102,7 @@ secrets:
     file: .compose/secrets/writer_token
   record_keys:
     file: .compose/secrets/record_keys
+  oauth_client_id:
+    file: .compose/secrets/oauth_client_id
+  oauth_client_secret:
+    file: .compose/secrets/oauth_client_secret

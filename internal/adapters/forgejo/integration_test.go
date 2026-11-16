@@ -414,11 +414,13 @@ func TestForgejo(t *testing.T) {
 			t.Fatalf("organization の外：%v", err)
 		}
 	}
+	// organization の主体は、organization のすべての repository を読める。主体のトークンで Forgejo を呼ばない
+	// （WebUI のトークンには read:repository がない）。organization の外の人は、Authenticate で止まる（上）。
 	if ok, err := auth.CanRead(ctx, e.tokens["alice"], "q"); !ok || err != nil {
 		t.Fatalf("can read: %v %v", ok, err)
 	}
-	if ok, _ := auth.CanRead(ctx, e.tokens["outsider"], "q"); ok {
-		t.Fatal("organization の外の人が読める")
+	if ok, err := auth.CanRead(ctx, "token-without-read-repository", "q"); !ok || err != nil {
+		t.Fatalf("CanRead が主体のトークンで Forgejo を呼んでいる：%v %v", ok, err)
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/hypothesis-verification-harness/webui"
 )
 
 func main() {
@@ -206,6 +207,26 @@ func envs(dsts map[string]*string) error {
 	return nil
 }
 
+// oauthConfig は、WebUI のサインインの中継の設定を読む（design/webui/oauth-relay.md）。
+// 3 つともなければ nil を返す（サインインの中継を動かさない）。一部だけなら、誤りにする。
+func oauthConfig(forgejoURL string) (*api.OAuth, error) {
+	names := []string{"LOGIFORGE_OAUTH_CLIENT_ID", "LOGIFORGE_OAUTH_CLIENT_SECRET", "LOGIFORGE_OAUTH_REDIRECT_URI"}
+	set := 0
+	for _, n := range names {
+		if os.Getenv(n) != "" || os.Getenv(n+"_FILE") != "" {
+			set++
+		}
+	}
+	if set == 0 {
+		return nil, nil
+	}
+	var id, secret, redirect string
+	if err := envs(map[string]*string{names[0]: &id, names[1]: &secret, names[2]: &redirect}); err != nil {
+		return nil, fmt.Errorf("WebUI のサインインには、%s の 3 つが要る：%w", strings.Join(names, "、"), err)
+	}
+	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
+}
+
 // keyring は、記録の MAC の鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=鍵,…」で、最初のものを書くときに使う。
 func keyring(v string) (pullreq.Keyring, error) {
 	k := pullreq.Keyring{Keys: map[string][]byte{}}
@@ -234,6 +255,9 @@ func keyring(v string) (pullreq.Keyring, error) {
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（worker と同じ）
 //	LOGIFORGE_RECORD_KEYS      記録の MAC の鍵（鍵の ID=鍵,…。最初のものを書くときに使う）
 //	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
+//	LOGIFORGE_OAUTH_CLIENT_ID、LOGIFORGE_OAUTH_CLIENT_SECRET、LOGIFORGE_OAUTH_REDIRECT_URI
+//	                           WebUI のサインイン（Forgejo の OAuth2）。3 つともなければ、サインインの中継を動かさない
+//	LOGIFORGE_FORGEJO_PUBLIC_URL  ブラウザから Forgejo への URL（authorize に使う）。既定は LOGIFORGE_FORGEJO_URL
 func runServe(ctx context.Context) error {
 	var storeDir, url, org, team, writer, writerToken, workerLogin, workerToken, keys string
 	if err := envs(map[string]*string{
@@ -277,7 +301,11 @@ func runServe(ctx context.Context) error {
 		}
 		b.WaitTimeout = d
 	}
-	srv := &http.Server{Addr: addr, Handler: api.NewHandler(b, slog.Default()), ReadHeaderTimeout: 10 * time.Second}
+	oauth, err := oauthConfig(url)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Addr: addr, Handler: api.NewServer(b, slog.Default(), api.Options{OAuth: oauth, WebUI: webui.Dist()}), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 	slog.Info("バックエンドを始めた", "addr", addr)

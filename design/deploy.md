@@ -5,7 +5,7 @@
 
 ## イメージ
 
-- イメージは 1 つである。中身は、`logiforge` のバイナリと git だけである（alpine の上に置く）。
+- イメージは 1 つである。中身は、`logiforge` のバイナリ（WebUI を含む）と git だけである（alpine の上に置く）。
   - なぜ alpine か：worker の git の credential helper が、sh で動くから。distroless には sh がない。
   - base のイメージは、digest で固定する。なぜ：同じタグのまま中身が変わっても、ビルドの結果が変わらないようにするため。
 - コンテナごとに、コマンドを変える。
@@ -100,6 +100,7 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_OAUTH_CLIENT_ID` | | WebUI のサインインに使う、Forgejo の OAuth2 のアプリケーションの client_id（[サインインの中継](webui/oauth-relay.md)） |
 | `LOGIFORGE_OAUTH_CLIENT_SECRET` | ✓ | その client secret |
 | `LOGIFORGE_OAUTH_REDIRECT_URI` | | Forgejo に登録した `redirect_uri`。登録したものと完全に一致させる |
+| `LOGIFORGE_FORGEJO_PUBLIC_URL` | | ブラウザから Forgejo への URL。WebUI のサインインで、authorize に使う。既定は `LOGIFORGE_FORGEJO_URL`。BE から Forgejo への URL（内部の名前など）と、ブラウザからの URL が違う配置で付ける |
 
 worker（`logiforge worker`）：
 

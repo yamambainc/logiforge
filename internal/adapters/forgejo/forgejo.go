@@ -3,7 +3,6 @@ package forgejo
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"net/http"
 	"net/url"
 	"sort"
@@ -177,16 +176,14 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 	return ports.Principal{Login: u.Login, Kind: kind}, nil
 }
 
-// CanRead は、主体が repository を読めるかを、主体のトークンで確かめる。
-func (a *Auth) CanRead(ctx context.Context, token, repo string) (bool, error) {
-	rp, err := repoPath(a.c.cfg.Org + "/" + repo)
-	if err != nil {
+// CanRead は、主体が repository を読めるかを返す。Forgejo を使う構成では、organization のすべての主体が、
+// organization のすべての repository を読める（design/adapters/forgejo.md の「認証」）。主体が organization にいることは
+// Authenticate が確かめているので、ここでは主体のトークンで Forgejo を呼ばない。
+// なぜ：利用者のトークンに read:repository を求めずに済むから（WebUI のトークンは読むだけの最小のスコープにする。design/webui/auth.md）。
+// repository があるかは、呼ぶ側がスナップショットで確かめる。
+func (a *Auth) CanRead(_ context.Context, _ string, repo string) (bool, error) {
+	if _, err := repoPath(a.c.cfg.Org + "/" + repo); err != nil {
 		return false, err
 	}
-	err = a.c.do(ctx, token, http.MethodGet, rp, nil, nil)
-	var e *apiError
-	if errors.As(err, &e) && (e.Status == http.StatusNotFound || e.Status == http.StatusForbidden) {
-		return false, nil
-	}
-	return err == nil, err
+	return true, nil
 }

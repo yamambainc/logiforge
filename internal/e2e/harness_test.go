@@ -151,7 +151,11 @@ func (w *world) restartWorker() {
 }
 
 // setup は、Forgejo に organization と主体を作り、serve と worker を動かす。
-func setup(t *testing.T) *world {
+func setup(t *testing.T) *world { return setupWith(t, nil) }
+
+// setupWith は、setup と同じだが、serve を動かす前に extra を呼び、返った環境変数を serve に足す。
+// extra は、serve の URL（/v1 の手前まで）を受け取る。
+func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *world {
 	fu, admin := os.Getenv("FORGEJO_URL"), os.Getenv("FORGEJO_ADMIN_TOKEN")
 	if fu == "" || admin == "" {
 		t.Skip("FORGEJO_URL と FORGEJO_ADMIN_TOKEN がない（scripts/forgejo-test.sh で Forgejo を起動する）")
@@ -188,7 +192,11 @@ func setup(t *testing.T) *world {
 		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
 	w.workerEnv = append(common, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s")
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
-	w.start("serve", append(common, "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
+	var more []string
+	if extra != nil {
+		more = extra(w, "http://"+serveAddr)
+	}
+	w.start("serve", append(append(common, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
 		"LOGIFORGE_WRITER="+w.login("writer"), "LOGIFORGE_WRITER_TOKEN="+w.tokens["writer"], "LOGIFORGE_RECORD_KEYS=k1=e2e-secret",
 		"LOGIFORGE_WAIT_TIMEOUT=20s", "LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
 	w.api = "http://" + serveAddr

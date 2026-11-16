@@ -1,12 +1,23 @@
-# Logiforge のイメージ。中身は logiforge のバイナリと git だけである。
+# Logiforge のイメージ。中身は logiforge のバイナリ（WebUI を含む）と git だけである。
 # コンテナごとに、コマンドを変える（logiforge serve、logiforge worker）。動かし方は design/deploy.md に書く。
 # base は digest で固定する。上げるときは、タグと digest を一緒に書き換える。
+
+# WebUI をビルドする（design/webui/stack.md の「配り方」）。出力は webui/dist/ で、Go の段が embed する。
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS webui
+WORKDIR /src/webui
+COPY webui/package.json webui/package-lock.json ./
+RUN npm ci
+COPY webui/ ./
+RUN npm run build
+
 FROM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+COPY webui/embed.go ./webui/
+COPY --from=webui /src/webui/dist ./webui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/logiforge ./cmd/logiforge
 
 FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
