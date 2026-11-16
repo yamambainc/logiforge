@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -37,6 +38,8 @@ type App struct {
 	// Dir は、作業ディレクトリ。空ならプロセスの作業ディレクトリ。
 	Dir  string
 	HTTP *http.Client
+	// PendingWait は、snapshot_pending が返ったときに、送り直すまで待つ時間である。0 なら 1 秒。
+	PendingWait time.Duration
 
 	json bool
 	// errorExtra は、エラーの --json の出力（Problem）に足す項目である（例：ar create の idempotency_key）。
@@ -330,15 +333,38 @@ type response struct {
 	status  int
 }
 
+// pendingRetries は、snapshot_pending が返ったときに、送り直す回数である。
+// worker は見回りの間隔（既定 1 秒）ごとに取り込むので、数秒待てば、多くは読む側に出ている（design/api/writes.md の「書いた直後の読み」）。
+const pendingRetries = 3
+
 func (a *App) call(ctx context.Context, r request) (response, error) {
 	res, err := a.callOnce(ctx, r)
-	if r.retry && err != nil {
+	// snapshot_pending は、何も書かずに返るので、どの要求でも、短く待って送り直してよい。
+	for i := 0; i < pendingRetries && isPending(err); i++ {
+		wait := a.PendingWait
+		if wait == 0 {
+			wait = time.Second
+		}
+		select {
+		case <-ctx.Done():
+			return res, err
+		case <-time.After(wait):
+		}
+		res, err = a.callOnce(ctx, r)
+	}
+	if r.retry && err != nil && !isPending(err) {
 		var p *problem
 		if !errors.As(err, &p) || p.Status == http.StatusBadGateway || p.Status == http.StatusServiceUnavailable || p.Status == http.StatusGatewayTimeout {
 			return a.callOnce(ctx, r)
 		}
 	}
 	return res, err
+}
+
+// isPending は、snapshot_pending の応答かを返す。
+func isPending(err error) bool {
+	var p *problem
+	return errors.As(err, &p) && p.Code == "snapshot_pending"
 }
 
 func (a *App) callOnce(ctx context.Context, r request) (response, error) {

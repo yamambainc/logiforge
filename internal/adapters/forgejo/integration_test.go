@@ -222,7 +222,7 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("同じブランチ：%v", err)
 	}
 	got, err := gf.GetApplyRequest(ctx, ref, "apr_1")
-	if err != nil || got.FirstRevision != head1 || got.Opener != e.login("agent") || got.Description != "説明" {
+	if err != nil || got.FirstRevision != head1 || got.Opener != e.login("agent") || got.Description != "説明" || got.Target != "main" {
 		t.Fatalf("get: %+v %v", got, err)
 	}
 
@@ -275,8 +275,8 @@ func TestForgejo(t *testing.T) {
 	if msg := mustGit(t, alice, "log", "-1", "--format=%B", "origin/main"); !strings.Contains(msg, "Logiforge-Apply-Request: apr_1") || mustGit(t, alice, "rev-parse", "origin/main") != sha {
 		t.Fatalf("反映のコミット：%s", msg)
 	}
-	if got, _ := gf.GetApplyRequest(ctx, ref, "apr_1"); got.State != ports.StateMerged {
-		t.Fatalf("state: %v", got.State)
+	if got, _ := gf.GetApplyRequest(ctx, ref, "apr_1"); got.State != ports.StateMerged || got.MergedRevision != sha {
+		t.Fatalf("state: %v merged: %s", got.State, got.MergedRevision)
 	}
 	// 送り直しは、同じ反映のコミットを返す。
 	if again, err := gf.Merge(ctx, ref, "apr_1", head1, "反映", "本文"); err != nil || again != sha {

@@ -19,6 +19,8 @@ const (
 	CodeSameSession             Code = "same_session"
 	CodeNotOpen                 Code = "not_open"
 	CodeCommitConflict          Code = "commit_conflict"
+	CodeOverlayConflict         Code = "overlay_conflict"
+	CodeOverlayUnsupported      Code = "overlay_unsupported"
 	CodeTooLarge                Code = "too_large"
 	CodeRepositoryExists        Code = "repository_exists"
 	CodeUnavailable             Code = "unavailable"

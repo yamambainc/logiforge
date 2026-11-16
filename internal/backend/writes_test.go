@@ -123,7 +123,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if err != nil || trailerValue(m, "Logiforge-Apply-Request") != id || !strings.HasPrefix(trailerValue(m, "Logiforge-Version"), "1 ") || trailerValue(m, "Logiforge-Session-Id") != "s3" {
 		t.Fatalf("反映のコミットの trailer: %+v %v", m, err)
 	}
-	if v, _ := b.GetNode(ctx, agent, "q", H2, ""); v.Verdict == nil || v.Verdict.ID != "v-9999999999" {
+	if v, _ := b.GetNode(ctx, agent, "q", H2, At{}); v.Verdict == nil || v.Verdict.ID != "v-9999999999" {
 		t.Fatalf("反映した検証結果が読めない：%+v", v.Verdict)
 	}
 	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Session: "s9"}); code(err) != CodeNotOpen {

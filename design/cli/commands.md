@@ -54,6 +54,9 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
 - `ar create` は、`Idempotency-Key` を、呼び出しごとに乱数で作る。その呼び出しの中で送り直すとき（通信の誤り、502、503、504）だけ、同じキーを使う（[同じ要求の繰り返し](../api/writes.md)）。
   - `--json` の出力に、使ったキー（`idempotency_key`）を書く。あとで送り直すときは、`--idempotency-key` にそのキーを渡す。
+- どのコマンドも、`snapshot_pending` が返ったら、1 秒待って、3 回まで送り直す。それでも `snapshot_pending` なら、そのまま返す。
+  - なぜ：worker は見回りの間隔（既定 1 秒）ごとに取り込むので、数秒待てば、多くは読む側に出ているから（[書いた直後の読み](../api/writes.md)）。
+  - `snapshot_pending` の応答は、何も書かずに返るので、送り直しても二重にならない。
   - なぜ呼び出しごとか：レビューの鎖が切れたときの「close して、同じブランチから作り直す」で、閉じた apply request が返らないようにするため（[反映の手順](../backend/merge.md)）。同じブランチの二重の作成は、バックエンドが拒む。
 - `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
 

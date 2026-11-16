@@ -253,8 +253,13 @@ func (x *Index) prune(files tree.Files) {
 // ノードを最後に変えたコミット、inactivated.md と検証結果が加わったコミット、警告のあるコミットの一覧は、Index から写す。破れている不変条件は、組み立てた木から求める。
 // 木を組み立てるのは、ここの 1 回だけである。
 func BuildSnapshotTree(files tree.Files, x *Index) *SnapshotTree {
+	return BuildSnapshotTreeOf(tree.Build(files), files, x)
+}
+
+// BuildSnapshotTreeOf は、組み立て済みの木 t（files から tree.Build で作ったもの）から、スナップショットツリーを作る。
+// 木を組み立て直さないので、呼ぶ側も t を使うとき（バックエンドの、反映したあとの木）に使う。
+func BuildSnapshotTreeOf(t *tree.Tree, files tree.Files, x *Index) *SnapshotTree {
 	x.prune(files)
-	t := tree.Build(files)
 	vals := tree.Compute(t)
 	out := &SnapshotTree{Nodes: map[string]*Node{}, Warned: x.Warned()}
 	owner := map[string]*Node{} // ディレクトリから、ファイルを持つノードを引く

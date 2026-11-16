@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
@@ -30,7 +31,7 @@ func (e env) get(k string) string { return e[k] }
 func run(t *testing.T, dir string, e env, stdin string, args ...string) (int, string, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	a := &App{Stdout: &out, Stderr: &errb, Stdin: strings.NewReader(stdin), Getenv: e.get, Dir: dir}
+	a := &App{Stdout: &out, Stderr: &errb, Stdin: strings.NewReader(stdin), Getenv: e.get, Dir: dir, PendingWait: time.Millisecond}
 	code := a.Run(context.Background(), args)
 	return code, out.String(), errb.String()
 }
@@ -378,5 +379,27 @@ func TestViewShowsCommits(t *testing.T) {
 	code, out, errs = run(t, dir, e, "", "ar", "view", "apr_1")
 	if code != 0 || !strings.Contains(out, "先頭のコミット "+sha) || !strings.Contains(out, base+" 2026-11-14T01:02:03Z") || !strings.Contains(out, sha+" （worker がまだ取り込んでいない）") {
 		t.Fatalf("ar view：%d %q %s", code, out, errs)
+	}
+}
+
+// snapshot_pending が返ったら、短く待って、数回まで送り直す。
+func TestRetryOnSnapshotPending(t *testing.T) {
+	var st stub
+	pending := 2
+	host := st.server(t, func(r *http.Request) (int, string, string) {
+		if pending > 0 {
+			pending--
+			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"snapshot_pending"}`
+		}
+		return 200, "application/json", `{"root_hypothesis_id":"h-0000000000","root_value":null,"commit":"c","warnings":[]}`
+	})
+	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok"}
+	if code, out, errOut := run(t, t.TempDir(), e, "", "tree", "view", "--repo", "q", "--json"); code != 0 || len(st.reqs) != 3 {
+		t.Fatalf("送り直し：%d %s %s（要求 %d 回）", code, out, errOut, len(st.reqs))
+	}
+	// 送り直しても snapshot_pending のままなら、あきらめて返す（最初の 1 回と、送り直し 3 回）。
+	st.reqs, pending = nil, 100
+	if code, _, _ := run(t, t.TempDir(), e, "", "tree", "view", "--repo", "q", "--json"); code == 0 || len(st.reqs) != 1+pendingRetries {
+		t.Fatalf("あきらめない：%d（要求 %d 回）", code, len(st.reqs))
 	}
 }

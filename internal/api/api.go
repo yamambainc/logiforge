@@ -24,6 +24,8 @@ var statuses = map[backend.Code]int{
 	backend.CodeSameSession:             http.StatusForbidden,
 	backend.CodeNotOpen:                 http.StatusConflict,
 	backend.CodeCommitConflict:          http.StatusConflict,
+	backend.CodeOverlayConflict:         http.StatusConflict,
+	backend.CodeOverlayUnsupported:      http.StatusUnprocessableEntity,
 	backend.CodeTooLarge:                http.StatusRequestEntityTooLarge,
 	backend.CodeRepositoryExists:        http.StatusConflict,
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
@@ -176,7 +178,7 @@ func (s *server) getRepository(ctx context.Context, c backend.Caller, r *http.Re
 }
 
 func (s *server) getTree(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetTree(ctx, c, r.PathValue("repository"), r.URL.Query().Get("commit"))
+	return s.b.GetTree(ctx, c, r.PathValue("repository"), at(r))
 }
 
 func (s *server) listNodes(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -188,7 +190,7 @@ func (s *server) listNodes(ctx context.Context, c backend.Caller, r *http.Reques
 		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "depth は 0 以上"}
 	}
 	q := r.URL.Query()
-	return s.b.ListNodes(ctx, c, r.PathValue("repository"), q.Get("commit"), q.Get("root"), depth)
+	return s.b.ListNodes(ctx, c, r.PathValue("repository"), at(r), q.Get("root"), depth)
 }
 
 func (s *server) getCompletion(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -211,7 +213,13 @@ func (s *server) exportTree(ctx context.Context, c backend.Caller, r *http.Reque
 }
 
 func (s *server) getNode(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetNode(ctx, c, r.PathValue("repository"), r.PathValue("nodeId"), r.URL.Query().Get("commit"))
+	return s.b.GetNode(ctx, c, r.PathValue("repository"), r.PathValue("nodeId"), at(r))
+}
+
+// at は、木を読む時点（commit か apply_request）を、クエリから読む。
+func at(r *http.Request) backend.At {
+	q := r.URL.Query()
+	return backend.At{Commit: q.Get("commit"), ApplyRequest: q.Get("apply_request")}
 }
 
 func (s *server) getNodeHistory(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
