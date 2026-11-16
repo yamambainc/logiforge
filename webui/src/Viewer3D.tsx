@@ -27,8 +27,45 @@ interface Props {
 const COL = { t: new THREE.Color('#17a34a'), f: new THREE.Color('#e0393e'), u: new THREE.Color('#9aa3b2'), inactive: new THREE.Color('#d5d9e1'), white: new THREE.Color('#ffffff') };
 const HALO = { added: new THREE.Color('#17a34a'), changed: new THREE.Color('#e3a008'), removed: new THREE.Color('#e0393e'), match: new THREE.Color('#ffd43b') };
 
+type R = { x: number; y: number; w: number; h: number };
+type Side = 'right' | 'left' | 'above' | 'below';
+const SIDES: Side[] = ['right', 'left', 'above', 'below'];
+const LABEL_H = 20;
+const hit = (a: R, b: R) => a.x < b.x + b.w + 4 && b.x < a.x + a.w + 4 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
+
+/** ラベルの文字。16 字までにし、長いものは「…」で切る */
+function labelText(ix: Index, id: string) {
+  const t = textOf(ix.byId.get(id)!);
+  return t.length > 16 ? t.slice(0, 15) + '…' : t;
+}
+
+// ラベルの幅は、ラベルと同じフォントで実際に測る（.l3 の 12px と左右の余白 6px、枠 1px）
+let measureCtx: CanvasRenderingContext2D | null = null;
+const widths = new Map<string, number>();
+function labelWidth(text: string): number {
+  let v = widths.get(text);
+  if (v !== undefined) return v;
+  if (!measureCtx) {
+    measureCtx = document.createElement('canvas').getContext('2d');
+    if (measureCtx) measureCtx.font = `12px ${getComputedStyle(document.body).fontFamily}`;
+  }
+  v = Math.ceil((measureCtx ? measureCtx.measureText(text).width : text.length * 12.5) + 14);
+  widths.set(text, v);
+  return v;
+}
+
+/** ノードの画面の位置 (x, y) に対して、向き side に置いたラベルの場所。画面の中に収める */
+function labelRect(text: string, x: number, y: number, side: Side, w: number, h: number): R {
+  const lw = labelWidth(text);
+  const at = side === 'right' ? { x: x + 12, y: y - LABEL_H / 2 }
+    : side === 'left' ? { x: x - 12 - lw, y: y - LABEL_H / 2 }
+    : side === 'above' ? { x: x - lw / 2, y: y - 12 - LABEL_H }
+    : { x: x - lw / 2, y: y + 12 };
+  return { x: Math.min(Math.max(at.x, 4), w - lw - 4), y: Math.min(Math.max(at.y, 4), h - LABEL_H - 4), w: lw, h: LABEL_H };
+}
+
 // 選んだノードの道具（値と「開く」「閉じる」）の場所。ラベルのすぐ下に、画面の中に収めて置く
-function toolsRect(label: { x: number; y: number; h: number }, w: number, mobile: boolean) {
+function toolsRect(label: { x: number; y: number; h: number }, w: number, mobile: boolean): R {
   const tw = mobile ? 170 : 150, th = mobile ? 44 : 34;
   return { x: Math.min(Math.max(label.x, 4), w - tw - 4), y: label.y + label.h + 4, w: tw, h: th };
 }
@@ -43,14 +80,15 @@ export default function Viewer3D(p: Props) {
   const hideHint = () => { setHint(false); sessionStorage.setItem('3d-hint', 'seen'); };
   const hideRef = useRef(hideHint);
   hideRef.current = hideHint;
-  const [selScreen, setSelScreen] = useState<{ x: number; y: number } | null>(null);
+  // 選んだノードの道具。毎フレーム React で描き直さず、style.transform で直接動かす
+  const toolsRef = useRef<HTMLDivElement>(null);
   const placed = useMemo(() => layoutCone(p.rows, p.ix), [p.rows, p.ix]);
 
   // three.js の部品は 1 回だけ作り、ref に持つ
   const g = useRef<{
     renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
     hyp: THREE.InstancedMesh; story: THREE.InstancedMesh; halo: THREE.InstancedMesh; edges: THREE.LineSegments; sel: THREE.Mesh;
-    ids: { hyp: string[]; story: string[] }; dirty: boolean; frames: number; ms: number;
+    ids: { hyp: string[]; story: string[] }; dirty: boolean; frames: number; ms: number; wake: () => void;
   } | null>(null);
 
   // 作る
@@ -69,7 +107,8 @@ export default function Viewer3D(p: Props) {
     renderer.domElement.setAttribute('aria-label', 'スナップショットツリーの 3D。アウトラインで同じ内容を読めます');
     el.prepend(renderer.domElement);
     // 5 WebGL の文脈が失われたとき（モバイルで裏に回したときなど）は、作り直しを促す
-    renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setLost(true); });
+    const onLost = (e: Event) => { e.preventDefault(); setLost(true); };
+    renderer.domElement.addEventListener('webglcontextlost', onLost);
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight('#ffffff', '#c9d1e0', 2.2));
     const sun = new THREE.DirectionalLight('#ffffff', 1.2);
@@ -99,27 +138,33 @@ export default function Viewer3D(p: Props) {
     const sel = new THREE.Mesh(new THREE.TorusGeometry(13, 1.6, 8, 40), new THREE.MeshBasicMaterial({ color: '#3563e9' }));
     sel.visible = false;
     scene.add(sel);
-    g.current = { renderer, scene, camera, controls, hyp, story, halo, edges, sel, ids: { hyp: [], story: [] }, dirty: true, frames: 0, ms: 0 };
-    controls.addEventListener('change', () => { if (g.current) g.current.dirty = true; });
+    // 描くのは、動いたときと、変わったときだけ。止まったら requestAnimationFrame の繰り返しもやめ、wake で始め直す
+    let raf = 0;
+    const wake = () => { if (g.current) g.current.dirty = true; if (!raf) raf = requestAnimationFrame(loop); };
+    g.current = { renderer, scene, camera, controls, hyp, story, halo, edges, sel, ids: { hyp: [], story: [] }, dirty: true, frames: 0, ms: 0, wake };
+    controls.addEventListener('change', wake);
+    controls.addEventListener('start', wake);
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
       renderer.setSize(w, h);
       camera.aspect = w / Math.max(h, 1);
       camera.updateProjectionMatrix();
-      if (g.current) g.current.dirty = true;
+      wake();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
     resize();
 
-    let raf = 0;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      const s = g.current!;
+    // raf は、繰り返しているあいだ 0 でない。loop の中の controls.update が change を出しても、wake が 2 本目を始めないように、止めるときだけ 0 にする
+    function loop() {
+      const s = g.current;
+      if (!s) { raf = 0; return; }
       const moved = controls.update();
-      // 動いたときだけ描く（止まっているあいだは描かない）
-      if (moved || s.dirty || controls.autoRotate) {
+      // 動いたときだけ描く（止まっているあいだは描かず、繰り返しもやめる）
+      if (!(moved || s.dirty || controls.autoRotate)) { raf = 0; return; }
+      raf = requestAnimationFrame(loop);
+      {
         s.sel.quaternion.copy(camera.quaternion);
         const t0 = performance.now();
         renderer.render(scene, camera);
@@ -131,22 +176,33 @@ export default function Viewer3D(p: Props) {
         s.ms += performance.now() - t0;
         s.dirty = false;
       }
-    };
+    }
     raf = requestAnimationFrame(loop);
-    // E2E と性能の計測のための口（描いたフレームの数と、その JavaScript の時間）
-    (window as unknown as { __3d: unknown }).__3d = {
-      autoRotate: (on: boolean, speed = 2) => { controls.autoRotate = on; controls.autoRotateSpeed = speed; },
-      frames: () => g.current?.frames ?? 0,
-      ms: () => g.current?.ms ?? 0,
-      dolly: (f: number) => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); g.current!.dirty = true; },
-      orbit: (deg: number) => { const off = camera.position.clone().sub(controls.target); off.applyAxisAngle(new THREE.Vector3(0, 1, 0), (deg * Math.PI) / 180); camera.position.copy(controls.target).add(off); g.current!.dirty = true; },
-    };
+    // E2E と性能の計測のための口（描いたフレームの数と、その JavaScript の時間）。開発のときと、自動で動かしているブラウザ（E2E）のときだけ置く
+    const probe = import.meta.env.DEV || navigator.webdriver;
+    if (probe) {
+      (window as unknown as { __3d?: unknown }).__3d = {
+        autoRotate: (on: boolean, speed = 2) => { controls.autoRotate = on; controls.autoRotateSpeed = speed; wake(); },
+        frames: () => g.current?.frames ?? 0,
+        ms: () => g.current?.ms ?? 0,
+        loseContext: () => renderer.getContext().getExtension('WEBGL_lose_context')?.loseContext(),
+      };
+    }
     return () => {
       cancelAnimationFrame(raf);
+      raf = 0;
       ro.disconnect();
       controls.dispose();
+      // 片づけ：ジオメトリとマテリアルを捨て、文脈の失われた知らせを外してから、文脈を手放す（行き来で文脈が溜まらないように）
+      for (const m of [hyp, story, halo, edges, sel]) {
+        m.geometry.dispose();
+        (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose());
+      }
+      renderer.domElement.removeEventListener('webglcontextlost', onLost);
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
+      if (probe) delete (window as unknown as { __3d?: unknown }).__3d;
       g.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +246,7 @@ export default function Viewer3D(p: Props) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(segs, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     s.edges.geometry = geo;
-    s.dirty = true;
+    s.wake();
   }, [placed, p.ix, p.changes, p.matches, p.filtered, p.searching]);
 
   // 収める：最初と、検索・絞り込みを変えたとき
@@ -213,7 +269,7 @@ export default function Viewer3D(p: Props) {
     // 少し上から見下ろす（層が重ならずに見える）
     s.camera.position.copy(target).add(new THREE.Vector3(0.7, 0.32, 0.7).normalize().multiplyScalar(dist));
     s.controls.update();
-    s.dirty = true;
+    s.wake();
   }, [placed, p.fitKey, p.mobile]);
 
   // 選んだノード：輪を付け、見えなければそちらへ向ける（最初の表示では向けない）
@@ -240,7 +296,7 @@ export default function Viewer3D(p: Props) {
         s.controls.update();
       }
     }
-    s.dirty = true;
+    s.wake();
   }, [p.selected, placed]);
 
   // 押して選ぶ（ドラッグとは、動いた量で見分ける）
@@ -277,7 +333,9 @@ export default function Viewer3D(p: Props) {
   const latest = useRef({ placed, p });
   latest.current = { placed, p };
   const lastPick = useRef(0);
-  const shown = useRef<string[]>([]);
+  // 出しているラベルと、置いた向き（ノードの右・左・上・下）
+  const shown = useRef<{ id: string; side: Side }[]>([]);
+
   // 出しているラベルの位置だけを、今のカメラで動かす
   function moveLabels() {
     const s = g.current, box = labelsRef.current;
@@ -285,20 +343,23 @@ export default function Viewer3D(p: Props) {
     const { placed: pl, p: pp } = latest.current;
     const w = box.clientWidth, h = box.clientHeight;
     const v = new THREE.Vector3();
-    shown.current.forEach((id, i) => {
+    shown.current.forEach(({ id, side }, i) => {
       const n = pl.get(id);
       const d = box.children[i] as HTMLDivElement | undefined;
       if (!n || !d) return;
       v.copy(n.pos).project(s.camera);
-      const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
-      const lw = Math.min(textOf(pp.ix.byId.get(id)!).length, 16) * 12.5 + 14;
-      const lx = Math.min(Math.max(x + 12, 4), w - lw - 4), ly = Math.min(Math.max(y - 10, 4), h - 24);
-      d.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly)}px)`;
-      if (id === pp.selected) {
-        const t = toolsRect({ x: lx, y: ly, h: 20 }, w, pp.mobile);
-        setSelScreen((prev) => (prev && Math.abs(prev.x - t.x) < 1 && Math.abs(prev.y - t.y) < 1 ? prev : { x: t.x, y: t.y }));
-      }
+      const r = labelRect(labelText(pp.ix, id), (v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h, side, w, h);
+      d.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
+      if (id === pp.selected) placeTools(toolsRect(r, w, pp.mobile));
     });
+  }
+
+  function placeTools(t: R | null) {
+    const el = toolsRef.current;
+    if (!el) return;
+    if (!t) { el.style.visibility = 'hidden'; return; }
+    el.style.transform = `translate(${Math.round(t.x)}px, ${Math.round(t.y)}px)`;
+    el.style.visibility = 'visible';
   }
 
   function updateLabels() {
@@ -316,49 +377,48 @@ export default function Viewer3D(p: Props) {
       cand.push({ id: n.id, d: n.pos.distanceTo(camPos), x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h });
     }
     cand.sort((a, b) => a.d - b.d);
-    const show = new Map<string, { x: number; y: number }>();
     const root = pp.rows[0]?.id;
-    for (const c of cand) if (c.id === pp.selected || c.id === root) show.set(c.id, c);
-    // ラベルは画面の中に収める。重なるラベルと、選んだノードの道具に重なるラベルは出さない（幅は文字数から見積もる）
-    const wOf = (id: string) => Math.min(textOf(pp.ix.byId.get(id)!).length, 16) * 12.5 + 14;
-    const at = (id: string, c: { x: number; y: number }) => { const lw = wOf(id); return { x: Math.min(Math.max(c.x + 12, 4), w - lw - 4), y: Math.min(Math.max(c.y - 10, 4), h - 24), w: lw, h: 20 }; };
-    type R = { x: number; y: number; w: number; h: number };
-    const hit = (a: R, b: R) => a.x < b.x + b.w + 4 && b.x < a.x + a.w + 4 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
-    const pos = new Map<string, R>();
+    // 選んだノードと根は、いつも右に出す。ほかは、右・左・上・下の順に試し、重なるなら出さない
+    const out: { id: string; side: Side; r: R }[] = [];
     const taken: R[] = [];
-    for (const [id, c] of show) { const r = at(id, c); pos.set(id, r); taken.push(r); }
-    const sc0 = pp.selected ? show.get(pp.selected) : undefined;
-    const tools = sc0 ? toolsRect(pos.get(pp.selected!)!, w, pp.mobile) : null;
+    for (const c of cand) {
+      if (c.id !== pp.selected && c.id !== root) continue;
+      const r = labelRect(labelText(pp.ix, c.id), c.x, c.y, 'right', w, h);
+      out.push({ id: c.id, side: 'right', r }); taken.push(r);
+    }
+    const sel = out.find((o) => o.id === pp.selected);
+    const tools = sel ? toolsRect(sel.r, w, pp.mobile) : null;
     if (tools) taken.push(tools);
     for (const c of cand) {
-      if (show.size >= limit) break;
-      if (show.has(c.id)) continue;
-      const r = at(c.id, c);
-      if (taken.some((t) => hit(r, t))) continue;
-      show.set(c.id, c); pos.set(c.id, r); taken.push(r);
+      if (out.length >= limit) break;
+      if (c.id === pp.selected || c.id === root) continue;
+      const text = labelText(pp.ix, c.id);
+      for (const side of SIDES) {
+        const r = labelRect(text, c.x, c.y, side, w, h);
+        if (taken.some((t) => hit(r, t))) continue;
+        out.push({ id: c.id, side, r }); taken.push(r);
+        break;
+      }
     }
     // 使い回す div の数を合わせる
     while (box.children.length < limit + 2) { const d = document.createElement('div'); d.className = 'l3'; box.appendChild(d); }
     let i = 0;
-    for (const [id, c] of show) {
+    for (const { id, r } of out) {
       const d = box.children[i++] as HTMLDivElement;
       const node = pp.ix.byId.get(id)!;
-      const t = textOf(node);
-      const txt = (t.length > 16 ? t.slice(0, 15) + '…' : t);
+      const txt = labelText(pp.ix, id);
       const key = `${id}|${txt}|${id === pp.selected}`;
       if (d.dataset.k !== key) {
         d.dataset.k = key;
         d.textContent = txt;
         d.className = `l3 ${id === pp.selected ? 'sel' : ''} ${node.value === true ? 'v-true' : node.value === false ? 'v-false' : 'v-null'}`;
       }
-      const r = pos.get(id)!;
       d.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
-      void c;
       d.style.display = '';
     }
     for (; i < box.children.length; i++) (box.children[i] as HTMLDivElement).style.display = 'none';
-    shown.current = [...show.keys()];
-    setSelScreen((prev) => (tools ? (prev && Math.abs(prev.x - tools.x) < 1 && Math.abs(prev.y - tools.y) < 1 ? prev : { x: tools.x, y: tools.y }) : null));
+    shown.current = out.map(({ id, side }) => ({ id, side }));
+    placeTools(tools);
   }
 
   const selNode = p.selected ? p.ix.byId.get(p.selected) : undefined;
@@ -409,8 +469,8 @@ export default function Viewer3D(p: Props) {
         e.preventDefault();
       }}>
         <div className="labels3" ref={labelsRef} />
-        {selNode && selScreen && (
-          <div className="sel3" style={{ transform: `translate(${Math.round(selScreen.x)}px, ${Math.round(selScreen.y)}px)` }}>
+        {selNode && (
+          <div className="sel3" ref={toolsRef}>
             <span className={`val ${selNode.value === true ? 'v-true' : selNode.value === false ? 'v-false' : 'v-null'}`}>{vLabel(selNode.value)}</span>
             {selRow?.hasChildren && !p.filtered && (
               <button className="btn3" onClick={() => p.onToggle(selNode.id)}>{selRow.open ? '閉じる' : `開く（${(p.ix.stats.get(selNode.id)?.total ?? 1) - 1}）`}</button>

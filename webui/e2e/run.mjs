@@ -250,6 +250,26 @@ try {
   await detailLoaded(page);
   await page.screenshot({ path: OUT + '/3d.png' });
 
+  step('3D：アウトラインと 20 回行き来しても描ける（片づけで、WebGL の文脈が溜まらない）');
+  const modeBtn = (label) => page.evaluate((l) => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent.includes(l)).click(), label);
+  for (let i = 0; i < 20; i++) {
+    await modeBtn('アウトライン');
+    await page.waitForSelector('.tree-scroll', { timeout: 10000 });
+    await modeBtn('3D');
+    await page.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 10000 });
+  }
+
+  // 止まっているあいだは描かない（requestAnimationFrame の繰り返しもやめる）
+  await new Promise((r) => setTimeout(r, 1500));
+  const idle = await page.evaluate(async () => { const f0 = window.__3d.frames(); await new Promise((r) => setTimeout(r, 700)); return window.__3d.frames() - f0; });
+  if (idle !== 0) throw new Error('止まっているのに描いている：' + idle + ' フレーム');
+
+  step('3D：WebGL の文脈が失われたら「3D の描画が止まりました」。「3D を作り直す」で描ける');
+  await page.evaluate(() => window.__3d.loseContext());
+  await page.waitForFunction(() => document.querySelector('.empty-title')?.textContent === '3D の描画が止まりました', { timeout: 10000 });
+  await page.evaluate(() => [...document.querySelectorAll('.empty-box button')].find((b) => b.textContent === '3D を作り直す').click());
+  await page.waitForFunction(() => window.__3d && window.__3d.frames() > 0 && document.querySelector('.three canvas'), { timeout: 10000 });
+
   step('3D でも AR を重ねられる');
   await page.select('select[aria-label="AR を重ねる"]', AR_MAIN);
   await page.waitForSelector('.banner.overlay', { timeout: 30000 });
@@ -274,6 +294,23 @@ try {
   await nogl.evaluate(() => [...document.querySelectorAll('.empty-box button')].find((b) => b.textContent === '図で見る').click());
   await nogl.waitForSelector('.gnode', { timeout: 10000 });
   await nogl.close();
+
+  step('3D の部分の読み込みに失敗したら、そう示す。図に移ってから 3D に戻ると、読み直して描ける');
+  const flaky = await browser.newPage();
+  logErrors(flaky);
+  await flaky.setViewport({ width: 1280, height: 800 });
+  await flaky.setRequestInterception(true);
+  let failedOnce = false;
+  flaky.on('request', (r) => {
+    if (!failedOnce && /\/assets\/Viewer3D-.*\.js/.test(r.url())) { failedOnce = true; r.abort(); } else r.continue();
+  });
+  await flaky.goto(BASE + `/r/${REPO}/tree?view=3d`, { waitUntil: 'networkidle0' });
+  await flaky.waitForFunction(() => document.querySelector('.empty-box p')?.textContent.includes('3D の部分を読み込めませんでした'), { timeout: 30000 });
+  await flaky.evaluate(() => [...document.querySelectorAll('.empty-box button')].find((b) => b.textContent === '図で見る').click());
+  await flaky.waitForSelector('.gnode', { timeout: 10000 });
+  await flaky.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent === '3D').click());
+  await flaky.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 30000 });
+  await flaky.close();
 
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');

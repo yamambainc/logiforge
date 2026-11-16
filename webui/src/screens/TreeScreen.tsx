@@ -29,12 +29,15 @@ type View = 'outline' | 'graph' | '3d';
 const viewOf = (v: string | null): View => (v === 'graph' || v === '3d' ? v : 'outline');
 
 // 3D の部分（three.js を含む）は、3D を開いたときだけ読み込む（design/webui/viewer-3d.md の「描き方」）
-const Viewer3D = lazy(() => import('../Viewer3D'));
+const load3d = () => import('../Viewer3D');
+let Viewer3D = lazy(load3d);
 
-// 3D の部分の読み込みに失敗したとき（回線など）に、図へ戻れるようにする
+// 3D の部分の読み込みに失敗したとき（回線など）に、図へ戻れるようにする。
+// React の lazy は失敗を覚えるので、作り直す。3D に戻ると（LoadGuard を作り直すと）、読み直す
 class LoadGuard extends Component<{ onFallback: () => void; children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { Viewer3D = lazy(load3d); }
   render() {
     if (!this.state.failed) return this.props.children;
     return (
