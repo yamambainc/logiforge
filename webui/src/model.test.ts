@@ -37,6 +37,8 @@ describe('表示する行', () => {
   });
   it('表示の根を変えられる', () => {
     expect(visibleRows(ix, new Set(['s1']), null, true, 's1').map((r) => r.id)).toEqual(['s1', 'h1', 'h2']);
+    // 深さは、表示の根からの深さ
+    expect(visibleRows(ix, new Set(['s1']), null, true, 's1').map((r) => r.depth)).toEqual([0, 1, 1]);
   });
 });
 
