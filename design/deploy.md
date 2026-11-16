@@ -31,16 +31,15 @@ flowchart TB
   end
   FG["GitForge"]
   C --> BE
-  BE -->|内部 API（localhost）| W
   W --> V1
   W -->|書く| V2
-  BE -.->|読むだけ| V2
+  BE -->|読む| V2
   BE --> FG
   W -->|読む| FG
 ```
 
-- バックエンドと worker は、同じタスクの中で、localhost の [内部 API](backend/worker-api.md) でつなぐ。
-  - worker の内部 API は、`127.0.0.1` で待ち受ける。タスクの外には出さない。
+- バックエンドと worker は、互いを呼ばない。置き場のボリュームを共有するだけである。
+  - worker は、どのポートでも待ち受けない（[worker](backend/worker.md)）。
 - worker は、clone を置く永続のボリュームを持つ。
   - clone は正本ではない。失っても、worker が clone し直す。ただし、作り直すあいだ、読む側が遅れる。
 - 置き場を手元のディレクトリにするとき（Forgejo を使う構成）は、タスクの中で共有のボリュームにする。
@@ -48,7 +47,7 @@ flowchart TB
   - 置き場の `branches/` は、バックアップを取る（[組み合わせ](adapters/README.md#組み合わせ)）。そのため、このボリュームも永続にする。
 - このタスクは、レプリカを 1 にする。
   - なぜ：worker は 1 つだけ動かすから（[worker](backend/worker.md)）。2 つ目の worker は、ロックが取れずに止まる。
-- なぜ 1 つのタスクにまとめるか：内部 API を localhost に閉じ、ボリュームをタスクの中で共有するだけで動くから。動かすものの数が少ない。
+- なぜ 1 つのタスクにまとめるか：ボリュームをタスクの中で共有するだけで動くから。動かすものの数が少ない。
 
 ### バックエンドだけを増やすとき
 
@@ -61,26 +60,21 @@ flowchart TB
   - 静的ファイルストレージ（[組み合わせ](adapters/README.md#組み合わせ)）は、そのアダプタを作ってからの選択肢である。
 - 共有のボリュームでは、ファイルのロック（flock）が効かないことがある。worker が 2 つ動いても、起動のときのロックで止められるとは限らない。
   - そのため、worker が 1 つという決まりは、worker のタスクのレプリカを 1 にし、入れ替えを `Recreate`（か StatefulSet）にすることで守る。
-  - 誤って 2 つ動いても、木もブランチの履歴も壊れない（[worker を 1 つだけ動かす](backend/worker.md#worker-を-1-つだけ動かす)）。
-- 内部 API は、タスクの間のネットワークでつなぐ。
-  - worker は、`LOGIFORGE_WORKER_ADDR` で、タスクの外から届くアドレスで待ち受ける。
-  - 内部 API は平文の HTTP で、要求に Bearer の鍵が乗る。そのため、内部 API は、バックエンドと同じプライベートなネットワークの中にだけ出す。ネットワークを信頼できないときは、TLS を通す（サービスメッシュやサイドカーなど）。
-  - 内部 API に届くのは、バックエンドのタスクだけにする（ネットワークの規則で絞る）。内部 API の鍵でも確かめる。
+  - 誤って 2 つ動いても、スナップショットツリーもブランチの履歴も壊れない（[worker を 1 つだけ動かす](backend/worker.md#worker-を-1-つだけ動かす)）。
+- バックエンドと worker の間のネットワークは、要らない。どちらも置き場と GitForge に届けばよい。
 
 ## ヘルスチェック
 
-| コンテナ | 口 | 認証 |
+| コンテナ | 確かめ方 | 認証 |
 |---|---|---|
 | バックエンド | `GET /healthz`（API と同じポート） | 要らない |
-| worker | `GET /healthz`（内部 API と同じポート） | 要らない |
+| worker | コンテナの中で `logiforge worker-health` を動かす（exec probe） | 要らない |
 
 - バックエンドは、プロセスが要求を受けられれば `200` を返す。
-- worker は、巡回が止まっていなければ `200`、止まっていれば `503` を返す。
-  - 止まっているとは、最後に巡回を始めたか、`main` のコミットを 1 つ取り込んでから、巡回の間隔の 5 倍より長くたったことである。
-  - 取り込みが進んだ時刻も見るのは、初めての取り込みが長く、次の巡回を始められないあいだを、止まっているとみなさないためである。
+- `logiforge worker-health` は、worker のハートビートのファイルを見る。新しければ 0、古ければ 0 以外で終わる（[ハートビート](backend/worker.md#ハートビート)）。
+  - なぜファイルか：worker は、どのポートでも待ち受けないから。
 - GitForge や置き場に届くかは、確かめない。
   - なぜ：外のサービスが止まったときに、コンテナを再起動し続けないようにするため。外のサービスに届かないときは、API が `unavailable` を返す（[API](api/README.md)）。
-- worker のヘルスチェックは、内部 API と同じく、タスクの中から呼ぶ（例：コンテナの中で `wget`）。
 
 ## 環境変数と秘密
 
@@ -92,8 +86,6 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 |---|---|---|
 | `LOGIFORGE_ADDR` | | 待ち受けるアドレス。既定は `127.0.0.1:8080`。コンテナでは `0.0.0.0:8080` にする |
 | `LOGIFORGE_STORE_DIR` | | 置き場（手元のディレクトリ）のパス。読むだけ |
-| `LOGIFORGE_WORKER_URL` | | worker の内部 API の URL（例：`http://127.0.0.1:8081`） |
-| `LOGIFORGE_INTERNAL_KEY` | ✓ | 内部 API の鍵。worker と同じもの |
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL。クライアントに返す git の URL にも使う |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_USER_TEAM` | | `user` とみなす team |
@@ -110,16 +102,13 @@ worker（`logiforge worker`）：
 
 | 名前 | 秘密 | 中身 |
 |---|---|---|
-| `LOGIFORGE_WORKER_ADDR` | | 内部 API を待ち受けるアドレス。既定は `127.0.0.1:8081` |
 | `LOGIFORGE_WORKER_DIR` | | clone を置く、永続のボリュームのパス |
 | `LOGIFORGE_STORE_DIR` | | 置き場（手元のディレクトリ）のパス。読み書きする |
-| `LOGIFORGE_INTERNAL_KEY` | ✓ | 内部 API の鍵。バックエンドと同じもの |
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
-| `LOGIFORGE_WORKER_INTERVAL` | | 巡回の間隔。既定は `1m` |
-| `LOGIFORGE_BUILD_TREE_TIMEOUT` | | 「木を作る」で、作り終えるのを待つ上限。既定は `60s` |
+| `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
 
 ## 例：Kubernetes の Pod
@@ -150,8 +139,6 @@ spec:
       env:
         - { name: LOGIFORGE_ADDR, value: "0.0.0.0:8080" }
         - { name: LOGIFORGE_STORE_DIR, value: /var/lib/logiforge/store }
-        - { name: LOGIFORGE_WORKER_URL, value: "http://127.0.0.1:8081" }
-        - { name: LOGIFORGE_INTERNAL_KEY_FILE, value: /run/secrets/logiforge/internal_key }
         - { name: LOGIFORGE_FORGEJO_URL, value: "https://forgejo.example.com" }
         - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
         - { name: LOGIFORGE_USER_TEAM, value: logiforge-users }
@@ -178,13 +165,12 @@ spec:
       env:
         - { name: LOGIFORGE_WORKER_DIR, value: /var/lib/logiforge/worker }
         - { name: LOGIFORGE_STORE_DIR, value: /var/lib/logiforge/store }
-        - { name: LOGIFORGE_INTERNAL_KEY_FILE, value: /run/secrets/logiforge/internal_key }
         - { name: LOGIFORGE_FORGEJO_URL, value: "https://forgejo.example.com" }
         - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
         - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
         - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
       livenessProbe:
-        exec: { command: ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"] }
+        exec: { command: ["logiforge", "worker-health"] }
       volumeMounts:
         - { name: worker, mountPath: /var/lib/logiforge/worker }
         - { name: store, mountPath: /var/lib/logiforge/store }
@@ -209,8 +195,7 @@ spec:
     - 複製を消す仕組みは、作らない。`emptyDir` の大きさの上限（`sizeLimit`）は、目安に余裕を足して決める。
     - 上限を超えると、Pod が作り直される。複製は使い捨てのキャッシュなので、作り直された Pod は、要求ごとに空から clone し直す。そのあいだ、初めての `ar create` が遅くなるだけで、壊れるものはない。
     - バックエンドは、起動のときに、`LOGIFORGE_GIT_CACHE_DIR` の下の古い複製（`workcopy-*`）を消す。そのため、`LOGIFORGE_GIT_CACHE_DIR` は、プロセスごとの場所にする。1 台のマシンで、コンテナに分けずにバックエンドを何台か動かすときは、それぞれに別の場所を渡す。
-- worker の `livenessProbe` は、`exec` でコンテナの中から `wget` で呼ぶ。
-  - なぜ：worker の内部 API は `127.0.0.1` で待ち受けるので、kubelet の `httpGet` は届かないから。
+- worker の `livenessProbe` は、`exec` で `logiforge worker-health` を動かす（[ヘルスチェック](#ヘルスチェック)）。
 
 ## ローカルと E2E：compose
 
@@ -218,7 +203,6 @@ spec:
 
 - バックエンドと worker は、Forgejo のネットワークを共有する（`network_mode: service:forgejo`）。
   - なぜ：Forgejo の URL を、手元のマシンからもコンテナからも、同じ `http://localhost:3000` にするため。バックエンドがクライアントに返す git の URL が、手元のマシンでもそのまま使える。
-  - worker の内部 API は `127.0.0.1:8081` で待ち受け、公開しない。届くのは、同じネットワークの中だけである。
 - worker は、clone と置き場に、永続のボリュームを持つ。バックエンドは、置き場を読むだけでマウントする。
 - 秘密は、compose の `secrets` で、ファイルとして渡す。秘密と、Forgejo の organization、team、ユーザー、トークンは、`scripts/compose-setup.sh` が作る。setup に使った admin のトークンは、最後に消す。
 - バックエンドと worker は Forgejo のネットワークを共有するので、Forgejo だけが再起動したときは、2 つを作り直す（手順は README）。

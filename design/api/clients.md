@@ -30,6 +30,7 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)（ファイルは回答に含める） |
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
 | apply request と履歴 | 過去の時点の木 | [木のノードを読む](endpoints/tree/list-nodes.md) |
+| apply request と履歴 | 反映したあとの木 | [木のノードを読む](endpoints/tree/list-nodes.md)、[ノードの詳細を読む](endpoints/node/get.md)（どちらも `apply_request` を指定する） |
 | [ダッシュボード](../../docs/webui/dashboard.md) | 根の値と、作業の終わりの判定 | [作業の終わりを判定する](endpoints/tree/completion.md) |
 | ダッシュボード | 種類ごとの着手できる作業の件数 | [着手できる作業を読む](endpoints/work/list.md) |
 

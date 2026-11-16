@@ -5,7 +5,7 @@
 
 ## 読むもの（worker とバックエンド）
 
-- worker は、巡回で git を読み、スナップショットを作って置き場に書く。
+- worker は、見回りで git を読み、スナップショットを作って置き場に書く。
 - バックエンドは、apply request の作成のときだけ、作業用の git の複製から git を読んで検査する（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）。置き場には書かない。
 - サーバの側が git に書くのは、GitForge の API による repository の用意と、pull request の squash merge だけである（[GitForge のポート](../backend/ports/gitforge.md)）。
   - そのため、このアダプタには、書く操作がない。
