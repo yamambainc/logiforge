@@ -60,12 +60,18 @@ func TestWebUISignIn(t *testing.T) {
 	agent.must(&sc, "story", "new", "--parent", repo0.Root, "--title", "招待の導線", "--summary", "招待で入った人は、成果物まで早く着く",
 		"--hypothesis", "招待経由で、成果物までの時間が半分になる", "--hypothesis", "招待した人の継続率も下がらない")
 	hA := sc.IDs["hypothesis_ids"].([]any)[0].(string)
+	hB := sc.IDs["hypothesis_ids"].([]any)[1].(string) // 検証結果のない葉
+	var sc2 scaffold
+	agent.must(&sc2, "story", "new", "--parent", repo0.Root, "--title", "広告の導線", "--summary", "広告で入った人も、同じ速さで着く",
+		"--hypothesis", "広告から来た人も、成果物までの時間が短い")
+	inactiveStory := sc2.IDs["story_id"].(string)
 	agent.commitPush("b1", "分解")
 	if got, code, out := reviewer.review(agent.create("b1").ID, "approve", 1); code != 0 || got.State != "merged" {
 		t.Fatalf("分解の approve：%d %s", code, out)
 	}
 	agent.branch("b2")
 	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("r1.md", "# 検証\n\n比較実験で、成果物までの時間が半分になった。\n"), "--artifact", agent.file("data.csv", "x,y\n1,2\n"))
+	agent.must(nil, "story", "inactivate", inactiveStory, "--reason", "広告は出さない")
 	agent.commitPush("b2", "検証")
 	if got, code, out := reviewer.review(agent.create("b2").ID, "approve", 1); code != 0 || got.State != "merged" {
 		t.Fatalf("検証の approve：%d %s", code, out)
@@ -106,7 +112,7 @@ func TestWebUISignIn(t *testing.T) {
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
 	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
-		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {

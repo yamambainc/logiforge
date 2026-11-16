@@ -64,16 +64,18 @@ export interface HistoryEntry { commit: string; committed_at: string; apply_requ
 
 const enc = encodeURIComponent;
 export const listNodes = (repo: string) => call<NodeList>(`/repositories/${enc(repo)}/tree/nodes`);
-export const getNode = (repo: string, id: string) => call<NodeDetail>(`/repositories/${enc(repo)}/nodes/${enc(id)}`);
-export const getNodeHistory = (repo: string, id: string) =>
-  call<{ items: HistoryEntry[]; next_cursor: string | null }>(`/repositories/${enc(repo)}/nodes/${enc(id)}/history?limit=20`);
+export const getNode = (repo: string, id: string, signal?: AbortSignal) => call<NodeDetail>(`/repositories/${enc(repo)}/nodes/${enc(id)}`, { signal });
+export const getNodeHistory = (repo: string, id: string, signal?: AbortSignal) =>
+  call<{ items: HistoryEntry[]; next_cursor: string | null }>(`/repositories/${enc(repo)}/nodes/${enc(id)}/history?limit=20`, { signal });
 
 /** artifact のファイルを読む。保存させるだけにする（design/webui/security.md の「ファイルの開き方」）。 */
 export async function fetchArtifact(repo: string, sha256: string): Promise<Blob> {
   const a = getAuth();
   if (a.kind !== 'signed-in') throw new Problem(401, 'unauthenticated', '');
   const r = await fetch(`/v1/repositories/${enc(repo)}/artifacts/${enc(sha256)}`, { headers: { Authorization: `Bearer ${a.token}` } });
+  if (r.status === 401) { onUnauthorized(); throw new Problem(401, 'unauthenticated', ''); }
   if (!r.ok) throw new Problem(r.status, 'not_found', '');
+  markVerified();
   return r.blob();
 }
 

@@ -7,6 +7,8 @@ import { ancestors, textOf, vLabel, type Index, type Node, type TruthValue } fro
 interface Props { repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void }
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
+const DETAIL_DELAY_MS = 150;
+const DETAIL_TIMEOUT_MS = 20_000;
 const IMAGE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
@@ -14,13 +16,19 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // 選ぶノードが続けて変わる（矢印のキーを押し続ける、検索の語を打つ）ときに、1 つごとに要求を送らない。
+  // 150 ms 止まってから送り、別のノードを選んだら前の要求をやめる。20 秒で答えがなければ、読めなかったと示す。
   useEffect(() => {
     setDetail(null); setHistory(null); setFailed(false);
     if (!id) return;
-    let live = true;
-    getNode(repo, id).then((d) => live && setDetail(d)).catch(() => live && setFailed(true));
-    getNodeHistory(repo, id).then((h) => live && setHistory(h.items)).catch(() => live && setHistory([]));
-    return () => { live = false; };
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      const signal = AbortSignal.any([ctrl.signal, AbortSignal.timeout(DETAIL_TIMEOUT_MS)]);
+      const live = () => !ctrl.signal.aborted;
+      getNode(repo, id, signal).then((d) => live() && setDetail(d)).catch(() => live() && setFailed(true));
+      getNodeHistory(repo, id, signal).then((h) => live() && setHistory(h.items)).catch(() => live() && setHistory([]));
+    }, DETAIL_DELAY_MS);
+    return () => { clearTimeout(t); ctrl.abort(); };
   }, [repo, id]);
 
   if (!n) return <aside className={`detail empty ${mobile ? 'sheet' : ''}`}><p className="dim">ノードを選ぶと、ここに詳細が出ます。</p></aside>;

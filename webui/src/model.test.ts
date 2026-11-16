@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildIndex, visibleRows, withAncestors, type Node } from './model';
+import { buildIndex, filterNodes, rowPositions, visibleRows, withAncestors, type Filter, type Node } from './model';
 
 const h = (id: string, parent: string | null, value: boolean | null, extra: Partial<Node> = {}): Node =>
   ({ node_type: 'hypothesis', id, parent_story_id: parent, statement: id, value, leaf: true, needs_reconsideration: false, inactive: false, open_apply_request_ids: [], open_human_request_ids: [], ...extra }) as Node;
@@ -37,5 +37,33 @@ describe('表示する行', () => {
   });
   it('表示の根を変えられる', () => {
     expect(visibleRows(ix, new Set(['s1']), null, true, 's1').map((r) => r.id)).toEqual(['s1', 'h1', 'h2']);
+  });
+});
+
+describe('検索と絞り込み', () => {
+  const ix = buildIndex(nodes);
+  it('なにもなければ、すべて', () => {
+    expect(filterNodes(ix, '  ', new Set(), true)).toEqual({ include: null, matches: [] });
+  });
+  it('検索は、主文と識別子の部分一致で、大文字と小文字を区別しない', () => {
+    expect(filterNodes(ix, 'H2', new Set(), true).matches).toEqual(['h2']);
+    expect([...filterNodes(ix, 'h2', new Set(), true).include!].sort()).toEqual(['h0', 'h2', 's1']);
+  });
+  it('値どうしは「または」', () => {
+    expect(filterNodes(ix, '', new Set(['true', 'false'] as Filter[]), true).matches).toEqual(['s1', 'h1', 'h2']);
+  });
+  it('値とほかは「かつ」、検索とも「かつ」', () => {
+    expect(filterNodes(ix, 'h1', new Set(['false'] as Filter[]), true).matches).toEqual([]);
+  });
+  it('inactive を隠す', () => {
+    expect(filterNodes(ix, '', new Set(['null'] as Filter[]), false).matches).toEqual(['h0']);
+    expect(filterNodes(ix, '', new Set(['null'] as Filter[]), true).matches).toEqual(['h0', 's2', 'h3']);
+  });
+});
+
+describe('読み上げの位置', () => {
+  it('段と、兄弟の数と、兄弟の中の位置', () => {
+    const rows = [0, 1, 2, 2, 1, 2, 1].map((depth, i) => ({ id: 'r' + i, depth, hasChildren: false, open: false }));
+    expect(rowPositions(rows).map((p) => `${p.level}:${p.posinset}/${p.setsize}`)).toEqual(['1:1/1', '2:1/3', '3:1/2', '3:2/2', '2:2/3', '3:1/1', '2:3/3']);
   });
 });

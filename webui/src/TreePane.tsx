@@ -1,5 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { rowPositions, textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
 
 const OVERSCAN = 12;
 
@@ -62,6 +62,7 @@ export function TreePane(p: Props) {
   const start = Math.max(0, Math.floor(scroll / ROW) - OVERSCAN);
   const end = Math.min(p.rows.length, Math.ceil((scroll + height) / ROW) + OVERSCAN);
   const slice = p.rows.slice(start, end);
+  const pos = useMemo(() => rowPositions(p.rows), [p.rows]);
 
   return (
     <section className="tree-pane">
@@ -80,12 +81,19 @@ export function TreePane(p: Props) {
           </>
         )}
       </div>
-      <div className="tree-scroll" ref={ref} tabIndex={0} onKeyDown={onKey} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
-        <div style={{ height: p.rows.length * ROW, position: 'relative' }}>
+      <div
+        className="tree-scroll"
+        ref={ref}
+        tabIndex={0}
+        role="tree"
+        aria-label="スナップショットツリー"
+        aria-activedescendant={selIndex >= 0 ? rowId(p.selected!) : undefined} onKeyDown={onKey} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
+        <div style={{ height: p.rows.length * ROW, position: 'relative' }} role="presentation">
           {slice.map((r, i) => (
             <TreeRow
               key={r.id}
               top={(start + i) * ROW}
+              pos={pos[start + i]}
               row={r}
               ix={p.ix}
               selected={r.id === p.selected}
@@ -106,6 +114,8 @@ export function TreePane(p: Props) {
   );
 }
 
+const rowId = (id: string) => 'row-' + id;
+
 function Legend() {
   return (
     <span className="legend">
@@ -116,11 +126,11 @@ function Legend() {
 }
 
 interface RowProps {
-  top: number; row: Row; ix: Index; selected: boolean; match: boolean; dimmed: boolean; query: string;
+  top: number; pos: { level: number; setsize: number; posinset: number }; row: Row; ix: Index; selected: boolean; match: boolean; dimmed: boolean; query: string;
   change: Change | null; onSelect: (id: string) => void; onToggle: (id: string) => void; filtered: boolean; h: number; indent: number;
 }
 
-const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, query, change, onSelect, onToggle, filtered, h, indent }: RowProps) {
+const TreeRow = memo(function TreeRow({ top, pos, row, ix, selected, match, dimmed, query, change, onSelect, onToggle, filtered, h, indent }: RowProps) {
   const n = ix.byId.get(row.id)!;
   const v = n.value;
   const vc = v === true ? 'v-true' : v === false ? 'v-false' : 'v-null';
@@ -132,7 +142,11 @@ const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, q
       className={`row ${selected ? 'sel' : ''} ${n.inactive ? 'inactive' : ''} ${dimmed ? 'ctx' : ''} ${change ? 'chg-' + change.kind : ''} ${isH ? '' : 'story'}`}
       style={{ top, height: h }}
       onClick={() => onSelect(n.id)}
+      id={rowId(n.id)}
       role="treeitem"
+      aria-level={pos.level}
+      aria-setsize={pos.setsize}
+      aria-posinset={pos.posinset}
       aria-selected={selected}
       aria-expanded={row.hasChildren ? row.open : undefined}
     >

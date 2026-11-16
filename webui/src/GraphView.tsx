@@ -280,7 +280,7 @@ export function GraphView(p: Props) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <svg width={box.w} height={box.h} role="tree" aria-label="スナップショットツリーの図">
+        <svg width={box.w} height={box.h} role="img" aria-label="スナップショットツリーの図。読み上げでは、アウトラインを使う">
           <g transform={`translate(${x},${y}) scale(${k})`}>
             {vis.map((n) => n.parent && <Edge key={'e' + n.id} n={n} par={layout.pos.get(n.parent)!} w={size.w} h={size.h} vertical={V} change={p.changes?.get(n.id) ?? null} />)}
             {vis.map((n) => (
@@ -361,8 +361,6 @@ const NodeCard = memo(function NodeCard(props: {
     <g
       transform={`translate(${n.x},${n.y})`}
       className={`gnode ${vc} ${selected ? 'sel' : ''} ${match ? 'match' : ''} ${dim ? 'ctx' : ''} ${node.inactive ? 'inactive' : ''} ${change ? 'g-' + change.kind : ''} ${isH ? 'h' : 's'}`}
-      role="treeitem"
-      aria-selected={selected}
     >
       <rect className="card" width={w} height={h} rx={isH ? 10 : 4} onClick={props.onSelect} />
       <rect className="stripe" width={4} height={h - 12} x={0} y={6} rx={2} />

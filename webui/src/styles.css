@@ -395,3 +395,4 @@ button.file { width: 100%; text-align: left; background: var(--panel); cursor: p
 .history li { flex-wrap: wrap; row-gap: 2px; }
 .history .h-ar { min-width: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history .dim { white-space: nowrap; }
+.notice { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #fff8e6; border-bottom: 1px solid var(--line); font-size: 13px; }

@@ -19,7 +19,7 @@ export function App() {
         <span className="spacer" />
         <button className="link" onClick={signOut}>サインアウト</button>
       </header>
-      {route.name === 'tree' ? <TreeScreen repo={route.repo} /> : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
+      {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} /> : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
         <div className="empty-box"><div className="empty-title">この画面はありません</div><button className="btn" onClick={() => navigate('/')}>repository の一覧へ</button></div>
       )}
     </div>

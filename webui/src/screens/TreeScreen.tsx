@@ -6,10 +6,9 @@ import { DetailPane } from '../DetailPane';
 import { initialFocus, openLevels } from '../focus';
 import { GraphView } from '../GraphView';
 import { isMobileNow, useMobile } from '../hooks';
-import { buildIndex, textOf, visibleRows, withAncestors, type Index } from '../model';
+import { buildIndex, filterNodes, visibleRows, type Filter, type Index } from '../model';
 import { TreePane } from '../TreePane';
 
-type Filter = 'true' | 'false' | 'null' | 'nr' | 'ar' | 'hr';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'true', label: '真' },
   { key: 'false', label: '偽' },
@@ -21,9 +20,14 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 type View = 'outline' | 'graph';
 
+// repository が変わったら、作り直す（App で key={repo} にする）
 export function TreeScreen({ repo }: { repo: string }) {
   const params = useRef(new URLSearchParams(location.search)).current;
-  const [data, setData] = useState<{ ix: Index; commit: string; root: string } | null>(null);
+  const [data, setData] = useState<{ ix: Index; commit: string } | null>(null);
+  // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
+  const [root, setRoot] = useState<string | null>(null);
+  // URL の node が、スナップショットツリーになかった
+  const [missing, setMissing] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -31,8 +35,10 @@ export function TreeScreen({ repo }: { repo: string }) {
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [showInactive, setShowInactive] = useState(true);
-  const [view, setView] = useState<View>(params.get('view') === 'graph' ? 'graph' : 'outline');
+  const [view, setViewRaw] = useState<View>(params.get('view') === 'graph' ? 'graph' : 'outline');
   const [vertical, setVerticalRaw] = useState(params.get('orient') === 'v');
+  // 表示と向きを利用者が変えたら、履歴に積む（戻るで前の表示に戻る）。ほかは置き換える
+  const pushNext = useRef(false);
   const mobile = useMobile();
   const [sheet, setSheet] = useState(false);
   const [filterSheet, setFilterSheet] = useState(false);
@@ -56,7 +62,10 @@ export function TreeScreen({ repo }: { repo: string }) {
         if (params.get('orient') === 'v') exp = openLevels(ix, isMobileNow() ? 3 : 4, exp);
         setExpanded(exp);
         setSelected(f.selected);
-        setData({ ix, commit: r.commit, root: f.root });
+        setRoot(f.root);
+        const want = params.get('node');
+        if (want && !ix.byId.has(want)) setMissing(want);
+        setData({ ix, commit: r.commit });
       })
       .catch((e) => {
         if (!live || (e instanceof Problem && e.status === 401)) return;
@@ -75,31 +84,31 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (settledQuery.trim()) q.set('q', settledQuery.trim());
     const s = q.toString();
     const next = location.pathname + (s ? '?' + s : '');
-    if (next !== location.pathname + location.search) history.replaceState(null, '', next);
+    if (next === location.pathname + location.search) return;
+    if (pushNext.current) history.pushState(null, '', next);
+    else history.replaceState(null, '', next);
+    pushNext.current = false;
   }, [data, view, vertical, selected, settledQuery]);
+  // 戻る・進むで、表示と向きを URL に合わせる
+  useEffect(() => {
+    const onPop = () => {
+      const q = new URLSearchParams(location.search);
+      setViewRaw(q.get('view') === 'graph' ? 'graph' : 'outline');
+      setVerticalRaw(q.get('orient') === 'v');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const ix = data?.ix;
 
   // 検索と絞り込みで、出すノードを決める（一致したノードと、その祖先）
-  const { include, matches } = useMemo(() => {
-    if (!ix) return { include: null, matches: [] as string[] };
-    const q = query.trim().toLowerCase();
-    const valueF = (['true', 'false', 'null'] as const).filter((k) => filters.has(k));
-    if (q === '' && filters.size === 0) return { include: null, matches: [] as string[] };
-    const m: string[] = [];
-    for (const n of ix.nodes) {
-      if (!showInactive && n.inactive) continue;
-      if (q && !(textOf(n).toLowerCase().includes(q) || n.id.includes(q))) continue;
-      if (valueF.length && !valueF.some((k) => String(n.value) === k)) continue;
-      if (filters.has('nr') && !(n.node_type === 'hypothesis' && n.needs_reconsideration)) continue;
-      if (filters.has('ar') && n.open_apply_request_ids.length === 0) continue;
-      if (filters.has('hr') && n.open_human_request_ids.length === 0) continue;
-      m.push(n.id);
-    }
-    return { include: withAncestors(ix, m), matches: m };
-  }, [ix, query, filters, showInactive]);
+  const { include, matches } = useMemo(
+    () => (ix ? filterNodes(ix, query, filters, showInactive) : { include: null, matches: [] as string[] }),
+    [ix, query, filters, showInactive],
+  );
 
-  const rows = useMemo(() => (ix && data ? visibleRows(ix, expanded, include, showInactive, data.root) : []), [ix, data, expanded, include, showInactive]);
+  const rows = useMemo(() => (ix && data ? visibleRows(ix, expanded, include, showInactive, root ?? ix.rootId) : []), [ix, data, root, expanded, include, showInactive]);
   const matchSet = useMemo(() => new Set(matches), [matches]);
   // 検索した語が変わったら、最初の一致を選ぶ
   useEffect(() => {
@@ -138,7 +147,9 @@ export function TreeScreen({ repo }: { repo: string }) {
   if (!data || !ix) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
 
   const userSetExpanded = (e: Set<string>) => { touched.current = true; setExpanded(e); };
+  const setView = (v: View) => { if (v !== view) pushNext.current = true; setViewRaw(v); };
   const setVertical = (v: boolean) => {
+    if (v !== vertical) pushNext.current = true;
     setVerticalRaw(v);
     if (v && !touched.current) setExpanded((e) => openLevels(ix, isMobileNow() ? 3 : 4, e));
   };
@@ -161,7 +172,7 @@ export function TreeScreen({ repo }: { repo: string }) {
       {include === null && (
         <>
           <button className="link" onClick={() => userSetExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
-          <button className="link" onClick={() => userSetExpanded(new Set([ix.rootId]))}>閉じる</button>
+          <button className="link" onClick={() => userSetExpanded(new Set([root ?? ix.rootId]))}>閉じる</button>
         </>
       )}
     </div>
@@ -223,6 +234,12 @@ export function TreeScreen({ repo }: { repo: string }) {
         )}
       </div>
 
+      {missing && (
+        <div className="notice" role="status">
+          <span>このノードはありません（<span className="mono">{missing}</span>）。根を示しています。</span>
+          <button className="link" onClick={() => setMissing(null)}>閉じる</button>
+        </div>
+      )}
       <main className="body">
         {view === 'graph' ? (
           <GraphView
@@ -254,7 +271,7 @@ export function TreeScreen({ repo }: { repo: string }) {
             changes={null}
             filtered={include !== null}
             onExpandAll={() => userSetExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}
-            onCollapseAll={() => userSetExpanded(new Set([ix.rootId]))}
+            onCollapseAll={() => userSetExpanded(new Set([root ?? ix.rootId]))}
             summary={{ total, rootValue: ix.byId.get(ix.rootId)!.value }}
           />
         )}
