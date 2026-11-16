@@ -53,6 +53,8 @@ export function DetailPane({ ix, id, change, onReveal }: Props) {
         <Section title="この AR での変化" tone="chg">
           {change.kind === 'added' ? (
             <p>この AR で加わるノードです。</p>
+          ) : change.kind === 'removed' ? (
+            <p>この AR を反映すると消えるノードです。値と詳細は、比べた main のものです。</p>
           ) : (
             <table className="kv">
               <tbody>

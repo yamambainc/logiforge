@@ -189,12 +189,18 @@ function gen(N, seed) {
     const h = { id: id(r, 'h'), parent: ns.id, statement: st, background: '', stories: [], depth: parentForStory.depth + 1, verdict: null };
     t.hyps.set(h.id, h); ns.hyps.push(h.id);
   }
+  // 重複したストーリーを消す（消えるノードの表示を確かめるため）
+  const leafStory = (sid) => t.stories.get(sid).hyps.every((x) => t.hyps.get(x).stories.length === 0);
+  const dupParent = hs.find((h) => h.depth === 2 && h.stories.length >= 2 && leafStory(h.stories[h.stories.length - 1])) ?? hs.find((h) => h.depth === 2 && h.stories.length >= 2 && h.stories.every((sid) => t.stories.get(sid).hyps.every((x) => t.hyps.get(x).stories.length === 0)));
+  const dup = dupParent.stories[dupParent.stories.length - 1];
+  dupParent.stories = dupParent.stories.filter((x) => x !== dup);
+  claim(dup).ar.push(apr1);
   const overlayClaims = structuredClone(claims);
   for (const k of Object.keys(overlayClaims)) overlayClaims[k].ar = overlayClaims[k].ar.filter((a) => a !== apr1);
   const overlay = toNodes(t, overlayClaims);
 
   const ars = [
-    { id: apr1, state: 'open', branch: 'opener/invite-story', target: 'main', head_commit: 'c41e9a07d2', awaiting: 'review', description: '招待の導線のストーリーを足し、未決の葉に検証結果を出す',
+    { id: apr1, state: 'open', branch: 'opener/invite-story', target: 'main', head_commit: 'c41e9a07d2', awaiting: 'review', description: '招待の導線のストーリーを足し、重複したストーリーを消す',
       operations: [
         { position: 0, kind: 'story.create', story_id: ns.id, parent_hypothesis_id: parentForStory.id, title: ns.title },
         { position: 1, kind: 'verdict.submit', verdict_id: 'v-' + target.id.slice(2), hypothesis_id: target.id, value: true },

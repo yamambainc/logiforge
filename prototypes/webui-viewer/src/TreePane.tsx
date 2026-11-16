@@ -146,6 +146,7 @@ const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, q
         <Highlight text={textOf(n)} q={match ? query : ''} />
       </span>
       {change?.kind === 'added' && <span className="tag t-added">追加</span>}
+      {change?.kind === 'removed' && <span className="tag t-removed">消える</span>}
       {valueChange && <span className="tag t-changed">{valueChange.before} → {valueChange.after}</span>}
       {change?.kind === 'changed' && !valueChange && <span className="tag t-changed">変化</span>}
       {isH && n.needs_reconsideration && <span className="tag t-nr">要再検討</span>}

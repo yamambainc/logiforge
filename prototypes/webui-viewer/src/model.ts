@@ -125,7 +125,7 @@ export function withAncestors(ix: Index, ids: Iterable<string>): Set<string> {
   return s;
 }
 
-export type Change = { kind: 'added' } | { kind: 'changed'; fields: { name: string; before: string; after: string }[] };
+export type Change = { kind: 'added' } | { kind: 'removed' } | { kind: 'changed'; fields: { name: string; before: string; after: string }[] };
 
 const vLabel = (v: TruthValue) => (v === true ? '真' : v === false ? '偽' : '未決');
 
@@ -148,6 +148,38 @@ export function diff(before: Index, after: Index): { changes: Map<string, Change
   }
   const removed = before.nodes.filter((n) => !after.byId.has(n.id)).map((n) => n.id);
   return { changes, removed };
+}
+
+// 反映すると消えるノードを、比べた main での位置に差し込んだ、深さ優先の並びを返す
+export function withRemoved(after: Index, before: Index, removed: string[]): Node[] {
+  const children = new Map<string, string[]>();
+  for (const [k, v] of after.children) children.set(k, [...v]);
+  const gone = new Set(removed);
+  for (const id of removed) {
+    const p = parentOf(before.byId.get(id)!);
+    if (!p || gone.has(p)) continue; // 消える部分木の子孫は、親と一緒に入る
+    const sibs = before.children.get(p) ?? [];
+    const list = children.get(p) ?? [];
+    let at = 0;
+    for (const s of sibs) {
+      if (s === id) break;
+      const i = list.indexOf(s);
+      if (i >= 0) at = i + 1;
+    }
+    list.splice(at, 0, id);
+    children.set(p, list);
+  }
+  for (const id of removed) {
+    const p = parentOf(before.byId.get(id)!);
+    if (p && gone.has(p)) children.set(p, before.children.get(p) ?? []);
+  }
+  const out: Node[] = [];
+  const walk = (id: string) => {
+    out.push(after.byId.get(id) ?? before.byId.get(id)!);
+    for (const c of children.get(id) ?? []) walk(c);
+  };
+  walk(after.rootId);
+  return out;
 }
 
 export { vLabel };

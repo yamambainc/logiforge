@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listApplyRequests, listNodes, Problem, type ApplyRequestSummary } from './api';
-import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, type Index, type Change } from './model';
+import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, withRemoved, type Index, type Change } from './model';
 import { TreePane } from './TreePane';
 import { DetailPane } from './DetailPane';
 
@@ -21,7 +21,7 @@ const FILTERS: { key: Filter; label: string; overlayOnly?: boolean }[] = [
 type Overlay =
   | { state: 'none' }
   | { state: 'loading'; ar: ApplyRequestSummary }
-  | { state: 'ok'; ar: ApplyRequestSummary; ix: Index; changes: Map<string, Change>; removed: string[] }
+  | { state: 'ok'; ar: ApplyRequestSummary; ix: Index; changes: Map<string, Change>; removed: string[]; base: string }
   | { state: 'unsupported'; ar: ApplyRequestSummary }
   | { state: 'conflict'; ar: ApplyRequestSummary; paths: string[] };
 
@@ -68,9 +68,12 @@ export function App() {
     setOverlay({ state: 'loading', ar });
     try {
       const r = await listNodes(N, ar);
-      const ix = buildIndex(r.nodes);
-      const d = diff(base, ix);
-      setOverlay({ state: 'ok', ar, ix, changes: d.changes, removed: d.removed });
+      // 比べる相手は、重ねた向き先のコミット（r.commit）の main。手元の main と違えば読み直す（試作では同じ）
+      const after = buildIndex(r.nodes);
+      const d = diff(base, after);
+      const ix = d.removed.length ? buildIndex(withRemoved(after, base, d.removed)) : after;
+      for (const id of d.removed) d.changes.set(id, { kind: 'removed' });
+      setOverlay({ state: 'ok', ar, ix, changes: d.changes, removed: d.removed, base: r.commit });
       // 変わるノードの祖先を開く
       setExpanded((e) => { const s = new Set(e); for (const id of d.changes.keys()) for (const a of ancestors(ix, id)) s.add(a); return s; });
       if (!params.get('node')) { const first = [...d.changes.keys()][0]; if (first) setSelected(first); }
@@ -214,7 +217,7 @@ export function App() {
         <div className="banner overlay">
           <span className="banner-title">反映したあとの姿</span>
           <span>{overlay.ar.description}</span>
-          <span className="mono dim">{overlay.ar.id} · {overlay.ar.branch} → main</span>
+          <span className="mono dim">{overlay.ar.id} · {overlay.ar.branch} → main · 比べた main {overlay.base.slice(0, 7)}</span>
           <span className="spacer" />
           <span className="pill added">追加 {[...overlay.changes.values()].filter((c) => c.kind === 'added').length}</span>
           <span className="pill changed">変化 {[...overlay.changes.values()].filter((c) => c.kind === 'changed').length}</span>

@@ -101,7 +101,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .row.ctx .glyph, .row.ctx .val, .row.ctx .tag { opacity: .45; }
 .row.chg-added { border-left-color: var(--add); background: #f3fbf6; }
 .row.chg-changed { border-left-color: var(--chg); background: #fffaf0; }
-.row.sel.chg-added, .row.sel.chg-changed { background: var(--sel); }
+.row.chg-removed { border-left-color: var(--f); background: #fdf3f3; }
+.row.chg-removed .text { text-decoration: line-through; text-decoration-color: #e0393e99; color: var(--sub); }
+.row.sel.chg-added, .row.sel.chg-changed, .row.sel.chg-removed { background: var(--sel); }
+.t-removed { background: var(--f-bg); color: var(--f-fg); }
 .row.story .text { color: var(--sub); }
 .row.story.sel .text { color: var(--text); }
 .indent { position: relative; flex: none; height: 100%; }
