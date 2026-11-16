@@ -31,7 +31,24 @@ E2E（[internal/e2e](internal/e2e/)）も、同じ Forgejo で動かす。テス
 go test -count=1 -timeout 20m -v ./internal/e2e/
 ```
 
+ブラウザの E2E（WebUI のサインインから）は、Chrome のパスを `LOGIFORGE_E2E_CHROME` に渡したときだけ動かす。先に WebUI をビルドしておく（下の「WebUI」）。スクリーンショットは `LOGIFORGE_E2E_OUT` に書く。
+
 大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS`（main のコミットの数。例：300）を付けたときだけ測る。
+
+## WebUI
+
+WebUI は [webui/](webui/) にある。React と TypeScript を Vite でビルドし、出力（`webui/dist/`）を `logiforge serve` が embed して配る。設計は [design/webui](design/webui/README.md) に書く。
+
+```sh
+cd webui
+npm ci
+npm test            # 単体のテスト
+npm run build       # 型の検査、ビルド、インラインの script と style がないことの確かめ
+npm run dev         # 開発。/v1 は手元の serve（127.0.0.1:8080）に渡す
+```
+
+- `webui/dist/` をビルドしてから `go build` すると、バイナリに WebUI が入る。ビルドしていなければ、`serve` は WebUI のかわりに案内を返す。
+- サインインには、`serve` に `LOGIFORGE_OAUTH_CLIENT_ID`、`LOGIFORGE_OAUTH_CLIENT_SECRET`、`LOGIFORGE_OAUTH_REDIRECT_URI` を渡す（[サインイン](design/webui/auth.md)）。
 
 ## compose で動かす
 
@@ -45,6 +62,7 @@ docker compose up -d --wait
 
 - バックエンドの API は `http://localhost:8080`、Forgejo は `http://localhost:3000` で待ち受ける。
 - 秘密は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。利用者 alice のトークンは `.compose/alice_token` にある。
+- WebUI は `http://localhost:8080/` で開く。alice と、パスワード（`.compose/alice_password`）で、Forgejo にログインしてサインインする。
 - CLI で試すときは、`logiforge auth login --with-token --host http://localhost:8080 < .compose/alice_token` のあと、`logiforge auth setup-git --url http://localhost:3000 --insecure` を行う。
 - Forgejo だけが再起動したときは、`docker compose up -d --force-recreate worker backend` で、worker とバックエンドを作り直す。2 つは Forgejo のネットワークを共有しているので、Forgejo のコンテナが変わると、つながらなくなるからである。
 - すべて消すときは、`docker compose down -v` のあと、`.compose` を消す。
@@ -63,10 +81,11 @@ CI は、イメージをビルドし、compose で動かして、repository の�
 | [internal/worker](internal/worker/) | worker（見回り、スナップショットと latest とブランチの履歴、反映の重なりの警告、ハートビート） |
 | [internal/adapters/snapstore](internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む） |
 | [internal/backend](internal/backend/) | バックエンド（認可、読む API と書く API、反映の手順、着手できる作業、作業の終わりの判定、書き出し） |
-| [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json |
+| [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json。WebUI の配り方、サインインの中継、応答のヘッダーと gzip |
 | [internal/cli](internal/cli/) | opener と reviewer の CLI（認証、clone、ひな形、check、commit、apply request、作業、木、人への依頼。`--json` と終了コード） |
 | [internal/e2e](internal/e2e/) | Forgejo と logiforge（serve、worker、CLI）をつないだ E2E |
-| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（API）、`logiforge worker`、それ以外は CLI（`logiforge help`） |
+| [webui](webui/) | WebUI（React と TypeScript）。ビルドした `dist/` を `embed.go` がバイナリに入れる |
+| [cmd/logiforge](cmd/logiforge/) | 1 つのバイナリ。`logiforge serve`（API と WebUI）、`logiforge worker`、それ以外は CLI（`logiforge help`） |
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |

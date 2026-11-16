@@ -95,6 +95,9 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 type raw struct {
 	contentType string
 	body        []byte
+	// attachment は、利用者やエージェントが置いた任意のファイルである。保存させるだけにし、同じオリジンの文書として動かさない
+	// （design/webui/security.md の「ファイルの開き方」）。
+	attachment bool
 }
 
 // created は、書き込みの応答である。status と、書いたものが読む側に出ていないときのコミットを持つ。
@@ -116,8 +119,7 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 			out, err = h(r.Context(), c, r)
 			if err == nil {
 				if rw, ok := out.(raw); ok {
-					w.Header().Set("Content-Type", rw.contentType)
-					_, _ = w.Write(rw.body)
+					s.writeRaw(w, rw)
 					return
 				}
 				if cr, ok := out.(created); ok {
@@ -141,6 +143,15 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 		}
 		writeProblem(w, e)
 	}
+}
+
+func (s *server) writeRaw(w http.ResponseWriter, rw raw) {
+	w.Header().Set("Content-Type", rw.contentType)
+	if rw.attachment {
+		w.Header().Set("Content-Disposition", "attachment")
+		w.Header().Set("Content-Security-Policy", "sandbox")
+	}
+	_, _ = w.Write(rw.body)
 }
 
 func writeProblem(w http.ResponseWriter, e *backend.Error) {
@@ -272,7 +283,7 @@ func (s *server) getArtifact(ctx context.Context, c backend.Caller, r *http.Requ
 	if err != nil {
 		return nil, err
 	}
-	return raw{contentType: "application/octet-stream", body: data}, nil
+	return raw{contentType: "application/octet-stream", body: data, attachment: true}, nil
 }
 
 func (s *server) getVerdict(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -297,7 +308,7 @@ func (s *server) getAnswerAttachment(ctx context.Context, c backend.Caller, r *h
 	if err != nil {
 		return nil, err
 	}
-	return raw{contentType: "application/octet-stream", body: data}, nil
+	return raw{contentType: "application/octet-stream", body: data, attachment: true}, nil
 }
 
 // decodeBody は、JSON の本文を読む。32 MiB を超えれば too_large、形が正しくなければ validation_failed にする。

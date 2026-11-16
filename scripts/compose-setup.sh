@@ -2,7 +2,7 @@
 # compose.yaml の Forgejo に、Logiforge が使う organization、team、ユーザーとトークンを作り、
 # 秘密を .compose/secrets/ に書く。初めの 1 回だけ動かす。
 # 使い方：scripts/compose-setup.sh
-# 終わると、利用者（alice）のトークンを .compose/alice_token に書く。
+# 終わると、利用者（alice）のトークンを .compose/alice_token に、WebUI にサインインするパスワードを .compose/alice_password に書く。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dir=.compose/secrets
@@ -20,6 +20,8 @@ chmod 700 .compose "$dir"
 echo "k1=$(rand)" >"$dir/record_keys"
 : >"$dir/writer_token"
 : >"$dir/worker_token"
+: >"$dir/oauth_client_id"
+: >"$dir/oauth_client_secret"
 chmod 644 "$dir"/*
 
 docker compose up -d --wait forgejo
@@ -53,8 +55,20 @@ user logiforge-writer "$writers" all >"$dir/writer_token"
 user logiforge-reader "$readers" read:repository,read:organization >"$dir/worker_token"
 user alice "$users" all >.compose/alice_token
 chmod 600 .compose/alice_token
+# WebUI には、Forgejo にログインしてサインインする。alice のパスワードを決めて、手元に置く。
+alicepw=$(rand)
+fj admin user change-password --username alice --password "$alicepw" --must-change-password=false >/dev/null
+echo "$alicepw" >.compose/alice_password
+chmod 600 .compose/alice_password
+
+# WebUI のサインインに使う OAuth2 のアプリケーション（confidential client）を登録する（design/webui/auth.md）。
+# redirect_uri は、compose.yaml の LOGIFORGE_OAUTH_REDIRECT_URI と完全に一致させる。
+app=$(call POST /user/applications/oauth2 '{"name":"logiforge-webui","redirect_uris":["http://localhost:8080/oauth/callback"],"confidential_client":true}')
+echo "$app" | grep -o '"client_id":"[^"]*"' | cut -d'"' -f4 >"$dir/oauth_client_id"
+echo "$app" | grep -o '"client_secret":"[^"]*"' | cut -d'"' -f4 >"$dir/oauth_client_secret"
 
 # setup に使った admin のトークン（scope は all）は、もう要らないので消す。
 curl -fsS -X DELETE -u "logiforge-admin:$adminpw" "$api/users/logiforge-admin/tokens/setup" >/dev/null
 echo "用意した。次に docker compose up -d --wait で、worker とバックエンドを動かす。"
 echo "利用者 alice のトークンは .compose/alice_token にある。"
+echo "WebUI は http://localhost:8080/ で、alice とパスワード（.compose/alice_password）でサインインする。"

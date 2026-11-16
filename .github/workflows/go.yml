@@ -22,6 +22,23 @@ jobs:
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go test -race ./...
 
+  webui:
+    # WebUI の型の検査、単体のテスト、ビルド。ビルドした出力にインラインの script と style がないことも確かめる（design/webui/security.md）。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
   forgejo:
     # 動く Forgejo での結合テスト（internal/adapters/forgejo）。
     runs-on: ubuntu-latest
@@ -80,7 +97,28 @@ jobs:
           chmod +x ~/.cache/forgejo/forgejo
       - name: Forgejo を起動する
         run: scripts/forgejo-test.sh ~/.cache/forgejo/forgejo 3999 >> "$GITHUB_ENV"
+      # WebUI をビルドしてから、logiforge をビルドする（embed する）。ブラウザの E2E は、runner の Chrome で動かす。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: WebUI をビルドする
+        working-directory: webui
+        run: |
+          npm ci
+          npm run build
       - run: go test -count=1 -timeout 20m -v ./internal/e2e/
+        env:
+          LOGIFORGE_E2E_CHROME: /usr/bin/google-chrome
+          LOGIFORGE_E2E_OUT: ${{ runner.temp }}/e2e-webui
+      - name: ブラウザの E2E のスクリーンショット
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-webui
+          path: ${{ runner.temp }}/e2e-webui
+          if-no-files-found: ignore
 
   container:
     # イメージをビルドし、compose で Forgejo、worker、バックエンドを動かして、つながることを確かめる（design/deploy.md）。

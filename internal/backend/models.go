@@ -13,7 +13,9 @@ type Repository struct {
 	Name             string `json:"name"`
 	GitURL           string `json:"git_url"`
 	RootHypothesisID string `json:"root_hypothesis_id"`
-	RootValue        *bool  `json:"root_value"`
+	// RootStatement は、根の仮説の主文（今の main）。スナップショットツリーがまだなければ null（WebUI の repository の一覧のため）。
+	RootStatement *string `json:"root_statement"`
+	RootValue     *bool   `json:"root_value"`
 }
 
 // Tree は、木の概要である。

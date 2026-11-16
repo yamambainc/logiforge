@@ -5,7 +5,7 @@
 
 ## イメージ
 
-- イメージは 1 つである。中身は、`logiforge` のバイナリと git だけである（alpine の上に置く）。
+- イメージは 1 つである。中身は、`logiforge` のバイナリ（WebUI を含む）と git だけである（alpine の上に置く）。
   - なぜ alpine か：worker の git の credential helper が、sh で動くから。distroless には sh がない。
   - base のイメージは、digest で固定する。なぜ：同じタグのまま中身が変わっても、ビルドの結果が変わらないようにするため。
 - コンテナごとに、コマンドを変える。
