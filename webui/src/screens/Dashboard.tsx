@@ -11,7 +11,7 @@ const KINDS: { key: string; label: string; to?: (repo: string) => string }[] = [
   { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr` },
   { key: 'review_waiting', label: 'レビュー待ち' },
   { key: 'fix_waiting', label: '修正待ち' },
-  { key: 'human_request_answered', label: '回答済みの依頼' },
+  { key: 'human_request_answered', label: '回答済みの依頼', to: (r) => `/r/${r}/human-requests?state=answered` },
   { key: 'citation_changed', label: '引用元が変化した検証結果' },
 ];
 const vc = (v: boolean | null) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');

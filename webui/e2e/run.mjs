@@ -4,11 +4,11 @@
 // 環境変数：BASE（serve の URL）、LOGIN、PASSWORD、CHROME（Chrome のパス）、OUT（スクリーンショットの置き場）、REPO、
 // OUTSIDER_LOGIN、OUTSIDER_PASSWORD（organization にいない Forgejo のユーザー）、NODE_A（検証結果のある仮説）、NODE_B（検証結果のない葉）。
 // スナップショットツリーには、inactive のストーリー「広告の導線」もある。
-// AR_MAIN（main 向きで open。NODE_B に検証結果（偽）を出す）、AR_DEV（向き先が develop。NODE_A の背景情報を足す）。
-import { mkdirSync } from 'node:fs';
+// HR（open の PVR）。AR_MAIN（main 向きで open。NODE_B に検証結果（偽）を出す）、AR_DEV（向き先が develop。NODE_A の背景情報を足す）。
+import { mkdirSync, writeFileSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR } = process.env;
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -341,6 +341,45 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
   await page.waitForSelector('.row', { timeout: 20000 });
 
+  step('人への依頼：タブで移り、PVR を開く。本文は文字列のまま。回答の書きかけは、リロードしても残る');
+  await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === '人への依頼').click());
+  await page.waitForFunction((r) => location.pathname === `/r/${r}/human-requests`, { timeout: 5000 }, REPO);
+  await page.waitForSelector('ul.items a', { timeout: 20000 });
+  await page.evaluate((id) => [...document.querySelectorAll('ul.items a')].find((a) => a.getAttribute('href') === `?id=${id}`).click(), HR);
+  await page.waitForFunction(() => document.querySelector('.item-pane .report')?.textContent.includes('# 手順'), { timeout: 20000 });
+  await page.type('.answer-form textarea', '測った。継続率は下がらなかった');
+  const measure = OUT + '/measure.txt';
+  writeFileSync(measure, 'rate,0.42\n');
+  const pick = async () => { const input = await page.$('.answer-form input[type="file"]'); await input.uploadFile(measure); await page.waitForFunction(() => document.querySelector('ul.attached')?.textContent.includes('measure.txt'), { timeout: 5000 }); };
+  await pick();
+  await page.reload({ waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForFunction(() => document.querySelector('.answer-form textarea')?.value.includes('下がらなかった'), { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.answer-form .note')?.textContent.includes('measure.txt'), { timeout: 5000 });
+  await pick();
+  if (await page.$('.answer-form .note')) throw new Error('選び直したのに、選び直しの案内が残る');
+  await page.type('input[aria-label="リンクの名前"]', '集計表');
+  await page.type('input[aria-label="リンクの URL"]', 'https://example.com/sheet');
+  await page.evaluate(() => [...document.querySelectorAll('.link-add button')].find((b) => b.textContent === 'リンクを添える').click());
+  await page.screenshot({ path: OUT + '/hr-answer.png' });
+  await page.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  await page.waitForSelector('.answer', { timeout: 30000 });
+  const files = await page.$$eval('.answer .file', (fs) => fs.map((f) => f.textContent));
+  if (!files.some((t) => t.includes('measure.txt'))) throw new Error('回答の添付が出ない：' + files.join(' / '));
+  // リンクの添付は、BE が回答の本文の末尾に書く（internal/backend/writes.go の AnswerHumanRequest）
+  if (!(await page.$eval('.answer .report', (e) => e.textContent)).includes('集計表：https://example.com/sheet')) throw new Error('リンクの添付が、回答の本文にない');
+  if (await page.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('回答したのに、書きかけが残る');
+  await page.screenshot({ path: OUT + '/hr-answered.png' });
+
+  step('ダッシュボードの「回答済みの依頼」を押すと、回答済みの依頼の一覧へ行く');
+  await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'ダッシュボード').click());
+  await page.waitForSelector('ul.counts', { timeout: 20000 });
+  await page.evaluate(() => [...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('回答済みの依頼')).click());
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('state') === 'answered' && document.querySelector('ul.items a'), { timeout: 20000 });
+  await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.row', { timeout: 20000 });
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });
@@ -414,6 +453,18 @@ try {
   await mobile.waitForSelector('table.judge', { timeout: 20000 });
   if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('ダッシュボードが幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/dashboard-mobile.png' });
+
+  step('モバイルの人への依頼：一覧から選ぶと画面全体で示し、左上の「← 一覧」で戻る');
+  await mobile.evaluate(() => [...document.querySelectorAll('.bottom-nav a')].find((a) => a.textContent.includes('依頼')).click());
+  await mobile.waitForSelector('.list-filters', { timeout: 20000 });
+  await mobile.select('.list-filters label:nth-child(2) select', 'answered');
+  await mobile.waitForSelector('ul.items a', { timeout: 20000 });
+  await mobile.tap('ul.items a');
+  await mobile.waitForSelector('.item-pane .answer', { timeout: 20000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('人への依頼が幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/hr-mobile.png' });
+  await mobile.evaluate(() => [...document.querySelectorAll('.item-pane .back')][0].click());
+  await mobile.waitForSelector('ul.items a', { timeout: 10000 });
 
   step('モバイルで AR を重ねる：帯が出て、はみ出さない');
   await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });

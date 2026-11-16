@@ -127,7 +127,13 @@ function scheduleExpiry() {
   expiryTimer = setTimeout(() => { void reauthorize(); }, Math.max(0, state.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
 }
 
-async function reauthorize() {
+/** アクセストークンの残りの時間（ミリ秒）。サインインしていなければ 0 */
+export function remainingMs(): number {
+  return state.kind === 'signed-in' ? state.expiresAt - Date.now() : 0;
+}
+
+/** 今すぐ authorize に行き直す（回答を送る直前に、残りが少ないとき）。戻り先は今の URL */
+export async function reauthorize() {
   set({ kind: 'starting' });
   await signIn();
 }

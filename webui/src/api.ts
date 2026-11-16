@@ -143,3 +143,27 @@ export interface Completion { commit: string; root_value: boolean | null; decide
 export const getCompletion = (repo: string) => call<Completion>(`/repositories/${enc(repo)}/tree/completion`);
 /** 着手できる作業の、種類ごとの件数（ページに関わらず全体。listWork の counts） */
 export const workCounts = (repo: string) => call<{ counts: Record<string, number> }>(`/repositories/${enc(repo)}/work?limit=1`).then((r) => r.counts);
+
+// --- 人への依頼（design/webui/screens.md の「人への依頼」） ---
+
+export interface HumanRequest {
+  id: string; node_id: string; kind: 'pvr' | 'decision'; body: string; state: 'open' | 'answered';
+  answer?: { body: string; attachments: Artifact[]; answered_at: string } | null;
+}
+export type AttachmentInput = { kind: 'file'; name: string; media_type?: string; content_base64: string } | { kind: 'link'; name: string; uri: string };
+
+export function listHumanRequests(repo: string, kind: string, state: string) {
+  const q = new URLSearchParams();
+  if (kind) q.set('kind', kind);
+  if (state) q.set('state', state);
+  const s = q.toString();
+  return listAll<HumanRequest>(`/repositories/${enc(repo)}/human-requests${s ? '?' + s : ''}`);
+}
+export const getHumanRequest = (repo: string, id: string) => call<HumanRequest>(`/repositories/${enc(repo)}/human-requests/${enc(id)}`);
+export const answerHumanRequest = (repo: string, id: string, body: string, attachments: AttachmentInput[]) =>
+  call<HumanRequest>(`/repositories/${enc(repo)}/human-requests/${enc(id)}/answer`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attachments.length ? { body, attachments } : { body }),
+  });
+export async function fetchAnswerAttachment(repo: string, id: string, sha256: string): Promise<Blob> {
+  return (await send(`/repositories/${enc(repo)}/human-requests/${enc(id)}/attachments/${enc(sha256)}`)).blob();
+}
