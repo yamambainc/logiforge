@@ -10,7 +10,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | 画面 | パス |
 |---|---|
 | repository の一覧 | `/` |
-| スナップショットツリーのビュワー | `/r/{repository}/tree?view=&node=&commit=&apply_request=&q=` |
+| スナップショットツリーのビュワー | `/r/{repository}/tree?view=&orient=&node=&commit=&apply_request=&q=`（`view` は `outline`、`graph`、`3d`。`orient` は図の向きで、`h` か `v`） |
 | 人への依頼 | `/r/{repository}/human-requests?kind=&state=&id=` |
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
