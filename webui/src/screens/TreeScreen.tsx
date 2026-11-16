@@ -15,8 +15,9 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'true', label: '真' },
   { key: 'false', label: '偽' },
   { key: 'null', label: '未決' },
-  { key: 'leaf', label: '未決の葉' },
+  { key: 'leaf', label: '未決の葉（作業）' },
   { key: 'nr', label: '要再検討' },
+  { key: 'nr-work', label: '要再検討（作業）' },
   { key: 'ar', label: '審査中の AR' },
   { key: 'hr', label: 'open の依頼' },
   { key: 'changed', label: 'この AR で変わる' },
@@ -371,7 +372,7 @@ export function TreeScreen({ repo }: { repo: string }) {
         {(!mobile || filterSheet) && (
           <div className={`chips ${mobile ? 'filter-sheet' : ''}`}>
             {mobile && <div className="fs-head"><b>絞り込み</b><button className="link" onClick={() => setFilterSheet(false)}>閉じる</button></div>}
-            {FILTERS.filter((f) => (f.key !== 'changed' || data.changes) && (!data.past || (f.key !== 'ar' && f.key !== 'hr'))).map((f) => (
+            {FILTERS.filter((f) => (f.key !== 'changed' || data.changes) && (f.key !== 'nr-work' || filters.has('nr-work')) && (!data.past || (f.key !== 'ar' && f.key !== 'hr'))).map((f) => (
               <button key={f.key} className={`chip chip-${f.key} ${filters.has(f.key) ? 'on' : ''}`} onClick={() => toggleFilter(f.key)}>{f.label}</button>
             ))}
             <label className="check">

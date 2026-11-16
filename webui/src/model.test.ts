@@ -87,3 +87,18 @@ describe('未決の葉の絞り込み', () => {
     expect(filterNodes(ix2, '', new Set(['leaf'] as Filter[]), true).matches).toEqual(['h4']);
   });
 });
+
+describe('作業としての絞り込み（ダッシュボードの件数と同じ）', () => {
+  it('AR が対象にしているノードと、依頼のあるノードは出さない', () => {
+    const ix = buildIndex([
+      h('h0', null, null, { leaf: false }), s('s1', 'h0', null),
+      h('a', 's1', null), h('b', 's1', null, { open_apply_request_ids: ['apr_1'] }), h('c', 's1', null, { open_human_request_ids: ['hrq_1'] }),
+      h('d', 's1', null, { needs_reconsideration: true } as Partial<Node>), h('e', 's1', null, { needs_reconsideration: true, open_apply_request_ids: ['apr_2'] } as Partial<Node>),
+      h('f', 's1', null, { needs_reconsideration: true, open_human_request_ids: ['hrq_2'] } as Partial<Node>),
+    ]);
+    expect(filterNodes(ix, '', new Set(['leaf'] as Filter[]), true).matches).toEqual(['a', 'd']);
+    expect(filterNodes(ix, '', new Set(['nr-work'] as Filter[]), true).matches).toEqual(['d']);
+    // ふだんの要再検討は、そのまま
+    expect(filterNodes(ix, '', new Set(['nr'] as Filter[]), true).matches).toEqual(['d', 'e', 'f']);
+  });
+});

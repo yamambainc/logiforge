@@ -71,6 +71,17 @@ try {
   await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
   await page.waitForFunction(() => location.pathname === '/r/made/tree', { timeout: 30000 });
   await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === 'ブラウザから作った問い'), { timeout: 60000 });
+
+  step('ダッシュボードの件数を押すと、同じ数に絞り込んだビュワーが開く（未決の葉。作業と同じ定義）');
+  await page.goto(BASE + '/r/made', { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('ul.counts a', { timeout: 30000 });
+  const leafCount = await page.evaluate(() => Number([...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).querySelector('b').textContent));
+  if (leafCount !== 1) throw new Error('作ったばかりの repository の未決の葉：' + leafCount);
+  await page.evaluate(() => [...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).click());
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('f') === 'leaf' && document.querySelector('.tree-head b'), { timeout: 30000 });
+  const shownCount = await page.$eval('.tree-head b', (b) => Number(b.textContent));
+  if (shownCount !== leafCount) throw new Error(`ダッシュボードの件数 ${leafCount} と、ビュワーの一致 ${shownCount} が違う`);
   await page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('.repo-list', { timeout: 20000 });
