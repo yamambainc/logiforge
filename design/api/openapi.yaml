@@ -1109,7 +1109,7 @@ components:
         awaiting:
           type: [string, 'null']
           enum: [review, fix, null]
-          description: open のとき、レビュー待ち（review）か修正待ち（fix）か
+          description: open のとき、レビュー待ち（review）か修正待ち（fix）か。向き先（target）が main でない apply request では null
         closed_reason: { type: [string, 'null'] }
         closed_by_session_id: { type: [string, 'null'] }
         warnings:
