@@ -207,7 +207,9 @@ export function App() {
         <div className="view">
           <div className="seg">
             <button className={overlay.state === 'none' ? 'on' : ''} onClick={() => openOverlay(null)}>
-              main <span className="mono dim">#{main.number} · {main.commit.slice(0, 7)}</span>
+              {overlay.state === 'ok' && overlay.ar.target !== 'main'
+                ? <>{overlay.ar.target} <span className="mono dim">{overlay.base.slice(0, 7)}</span></>
+                : <>main <span className="mono dim">#{main.number} · {main.commit.slice(0, 7)}</span></>}
             </button>
             <select
               className={overlay.state !== 'none' ? 'on' : ''}
@@ -354,6 +356,7 @@ export function App() {
           id={selected}
           change={selected && changes ? changes.get(selected) ?? null : null}
           unchecked={overlay.state === 'ok' && overlay.ar.target !== 'main'}
+          notInMain={!!selected && !main.ix.byId.has(selected)}
           onReveal={(id) => { reveal(id); }}
         />}
       </main>

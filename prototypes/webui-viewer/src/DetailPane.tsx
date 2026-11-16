@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { getNodeExtra, type NodeDetailExtra } from './api';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 
-interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void; unchecked: boolean }
+interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void; unchecked: boolean; notInMain: boolean }
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
 
-export function DetailPane({ ix, id, change, onReveal, mobile, onClose, unchecked }: Props) {
+export function DetailPane({ ix, id, change, onReveal, mobile, onClose, unchecked, notInMain }: Props) {
   const n = id ? ix.byId.get(id) : undefined;
   const [extra, setExtra] = useState<NodeDetailExtra | null>(null);
   useEffect(() => {
@@ -142,7 +142,7 @@ export function DetailPane({ ix, id, change, onReveal, mobile, onClose, unchecke
       )}
 
       <Section title="履歴">
-        {change?.kind === 'added' ? <p className="dim">まだ main にありません。反映されたコミットが、最初の履歴になります。</p> : !extra ? <Skeleton /> : (
+        {change?.kind === 'added' || notInMain ? <p className="dim">まだ main にありません。反映されたコミットが、最初の履歴になります。</p> : !extra ? <Skeleton /> : (
           <ol className="history">
             {extra.history.map((h) => (
               <li key={h.commit}>
