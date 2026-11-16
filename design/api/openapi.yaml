@@ -131,7 +131,7 @@ paths:
         - $ref: '#/components/parameters/ApplyRequestView'
         - name: root
           in: query
-          description: 部分木の根にするノード
+          description: 部分木の根にするノード。apply_request を指定したとき、その apply request を反映すると消えるノードは not_found（404）になる
           schema: { $ref: '#/components/schemas/NodeId' }
         - name: depth
           in: query
@@ -198,6 +198,7 @@ paths:
       tags: [tree]
       operationId: getNode
       summary: ノードの詳細
+      description: apply_request を指定したとき、その apply request を反映すると消えるノードは not_found（404）になる。
       parameters:
         - $ref: '#/components/parameters/NodeIdPath'
         - $ref: '#/components/parameters/Commit'
@@ -697,6 +698,8 @@ components:
         反映したあとの木を返す（../../design/backend/snapshot.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
         commit と同時には指定できない（validation_failed）。
         重ねられなければ overlay_conflict を返す。apply request の向き先が main でなければ、重ねずに overlay_unsupported を返す。先頭のコミットのスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
+        その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、not_found を返す。
+        getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとの木に、そのノードがないからである。
       schema: { type: string, pattern: '^apr_' }
     Cursor:
       name: cursor
@@ -795,7 +798,7 @@ components:
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
-            | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした |
+            | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
             | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料と、反映したあとの木を返せない |
             | overlay_conflict | 409 | apply request の差分を、向き先の今の先頭に重ねられない。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
