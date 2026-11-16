@@ -415,3 +415,10 @@ table.changes .before { color: var(--sub); text-decoration: line-through; }
 .scope { display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13px; flex-wrap: wrap; }
 .scope-item { display: inline-flex; align-items: center; gap: 6px; }
 .scope-btn { margin: 4px 0 8px; font-size: 13px; padding: 4px 10px; }
+/* 3D（design/webui/viewer-3d.md） */
+.empty-3d .empty-box { margin: auto; }
+.sel3 { background: rgba(255,255,255,.95); border: 1px solid #c3cde8; border-radius: 8px; padding: 3px; box-shadow: 0 2px 8px rgba(20,30,50,.12); }
+.hint3 { pointer-events: auto; display: flex; gap: 8px; align-items: center; }
+.help3 { position: absolute; left: 12px; bottom: 12px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--sub); font-weight: 700; cursor: pointer; }
+@media (max-width: 767px) { .help3 { width: 40px; height: 40px; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

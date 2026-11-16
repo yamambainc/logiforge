@@ -236,6 +236,45 @@ try {
   await signedIn(page);
   await page.waitForSelector('.row', { timeout: 20000 });
 
+  step('3D：開くと描く（URL に view=3d）。canvas は role=img。キーボードで選ぶと、詳細と読み上げの領域に出る');
+  await page.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent === '3D').click());
+  await page.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 30000 });
+  if (new URL(page.url()).searchParams.get('view') !== '3d') throw new Error('URL に view=3d が入らない');
+  const canvas = await page.$eval('.three canvas', (c) => [c.getAttribute('role'), c.getAttribute('aria-label')]);
+  if (canvas[0] !== 'img' || !canvas[1].includes('アウトライン')) throw new Error('3D の canvas の読み上げ：' + canvas.join(' / '));
+  await page.focus('.three');
+  await page.keyboard.press('ArrowDown');
+  await page.waitForFunction(() => document.querySelector('.three .sr-only[aria-live]')?.textContent.includes('値は'), { timeout: 5000 });
+  await page.waitForSelector('.sel3', { timeout: 5000 });
+  if ((await page.$$('.l3:not([style*="display: none"])')).length === 0) throw new Error('3D のラベルが出ない');
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/3d.png' });
+
+  step('3D でも AR を重ねられる');
+  await page.select('select[aria-label="AR を重ねる"]', AR_MAIN);
+  await page.waitForSelector('.banner.overlay', { timeout: 30000 });
+  await page.waitForFunction(() => window.__3d && window.__3d.frames() > 0 && document.querySelector('.three canvas'), { timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 300));
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/3d-overlay.png' });
+  await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.row', { timeout: 20000 });
+
+  step('WebGL が使えない端末では「この端末では 3D を表示できません」と示し、図で見られる');
+  const nogl = await browser.newPage();
+  logErrors(nogl);
+  await nogl.setViewport({ width: 1280, height: 800 });
+  await nogl.evaluateOnNewDocument(() => {
+    const orig = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (t, ...rest) { return /webgl/.test(t) ? null : orig.call(this, t, ...rest); };
+  });
+  await nogl.goto(BASE + `/r/${REPO}/tree?view=3d`, { waitUntil: 'networkidle0' });
+  await nogl.waitForFunction(() => document.querySelector('.empty-title')?.textContent === 'この端末では 3D を表示できません', { timeout: 30000 });
+  await nogl.evaluate(() => [...document.querySelectorAll('.empty-box button')].find((b) => b.textContent === '図で見る').click());
+  await nogl.waitForSelector('.gnode', { timeout: 10000 });
+  await nogl.close();
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });
@@ -295,6 +334,13 @@ try {
   await mobile.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent.includes('図')).click());
   await mobile.waitForSelector('.gnode', { timeout: 10000 });
   await mobile.screenshot({ path: OUT + '/viewer-mobile-graph.png' });
+
+  step('モバイルの 3D：描けて、はみ出さない');
+  await mobile.goto(BASE + `/r/${REPO}/tree?view=3d`, { waitUntil: 'networkidle0' });
+  await mobile.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 300));
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('3D が幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/3d-mobile.png' });
 
   step('モバイルで AR を重ねる：帯が出て、はみ出さない');
   await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });

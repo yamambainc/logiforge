@@ -62,8 +62,10 @@ export function overlayFocus(ix: Index, changes: Map<string, Change>, node: stri
 }
 
 /** 縦にしたときに開く段（デスクトップ 4 段、モバイル 3 段。design/webui/graph-navigation.md） */
-export function openLevels(ix: Index, levels: number, base: Set<string>): Set<string> {
+export function openLevels(ix: Index, levels: number, base: Set<string>, root = ix.rootId): Set<string> {
+  // 段は、表示の根から数える（「ここから見る」では、表示の根が 0 段目）
+  const d0 = ix.depth.get(root) ?? 0;
   const s = new Set(base);
-  for (const n of ix.nodes) if ((ix.depth.get(n.id) ?? 0) < levels - 1) s.add(n.id);
+  for (const n of ix.nodes) if ((ix.depth.get(n.id) ?? 0) - d0 < levels - 1 && inSubtree(ix, n.id, root)) s.add(n.id);
   return s;
 }

@@ -1,7 +1,7 @@
 // スナップショットツリーのビュワー（design/webui/snapshot-tree-viewer.md）。アウトラインと図（横と縦）を切り替える。
 // 状態（選んだノード、開いたノード、検索、絞り込み）は 2 つの表示で共通にする。表示と選んだノードと検索の語は URL に持つ。
 // 示す時点（今の main、過去の時点、apply request を重ねた姿）も URL に持つ（design/webui/overlay.md）。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listCommits, listOpenApplyRequests, Problem, type ApplyRequest, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
@@ -25,7 +25,29 @@ const short = (t: string, k = 16) => (t.length > k ? t.slice(0, k) + '…' : t);
 const sourceKey = (s: Source) => (s.kind === 'ar' ? 'ar:' + s.id : s.kind === 'commit' ? 'commit:' + s.commit : 'main');
 const fmtTime = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
 
-type View = 'outline' | 'graph';
+type View = 'outline' | 'graph' | '3d';
+const viewOf = (v: string | null): View => (v === 'graph' || v === '3d' ? v : 'outline');
+
+// 3D の部分（three.js を含む）は、3D を開いたときだけ読み込む（design/webui/viewer-3d.md の「描き方」）
+const Viewer3D = lazy(() => import('../Viewer3D'));
+
+// 3D の部分の読み込みに失敗したとき（回線など）に、図へ戻れるようにする
+class LoadGuard extends Component<{ onFallback: () => void; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <section className="graph-pane empty-3d">
+        <div className="empty-box">
+          <div className="empty-title">この端末では 3D を表示できません</div>
+          <p>3D の部分を読み込めませんでした。図かアウトラインで見てください。</p>
+          <button className="btn" onClick={this.props.onFallback}>図で見る</button>
+        </div>
+      </section>
+    );
+  }
+}
 
 // repository が変わったら、作り直す（App で key={repo} にする）
 export function TreeScreen({ repo }: { repo: string }) {
@@ -51,7 +73,9 @@ export function TreeScreen({ repo }: { repo: string }) {
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [showInactive, setShowInactive] = useState(true);
-  const [view, setViewRaw] = useState<View>(params.get('view') === 'graph' ? 'graph' : 'outline');
+  const [view, setViewRaw] = useState<View>(viewOf(params.get('view')));
+  // 「3D を作り直す」で、3D の部分を作り直す
+  const [retry3d, setRetry3d] = useState(0);
   const [vertical, setVerticalRaw] = useState(params.get('orient') === 'v');
   // 表示と向きを利用者が変えたら、履歴に積む（戻るで前の表示に戻る）。ほかは置き換える
   const pushNext = useRef(false);
@@ -82,7 +106,7 @@ export function TreeScreen({ repo }: { repo: string }) {
         const wantRoot = firstLoad.current ? params.get('root') : rootRef.current;
         const f = r.changes ? overlayFocus(r.ix, r.changes, want, wantRoot) : initialFocus(r.ix, want, wantRoot);
         let exp = f.expanded;
-        if (params.get('orient') === 'v') exp = openLevels(r.ix, isMobileNow() ? 3 : 4, exp);
+        if (params.get('orient') === 'v') exp = openLevels(r.ix, isMobileNow() ? 3 : 4, exp, f.root);
         setExpanded(exp);
         setSelected(f.selected);
         setRoot(f.root);
@@ -129,7 +153,7 @@ export function TreeScreen({ repo }: { repo: string }) {
   useEffect(() => {
     const onPop = () => {
       const q = new URLSearchParams(location.search);
-      setViewRaw(q.get('view') === 'graph' ? 'graph' : 'outline');
+      setViewRaw(viewOf(q.get('view')));
       setVerticalRaw(q.get('orient') === 'v');
       setSourceRaw((cur) => { const s = sourceFromURL(q); return sourceKey(s) === sourceKey(cur) ? cur : s; });
       popRoot.current = q.get('root');
@@ -241,7 +265,7 @@ export function TreeScreen({ repo }: { repo: string }) {
   const setVertical = (v: boolean) => {
     if (v !== vertical) pushNext.current = true;
     setVerticalRaw(v);
-    if (v && !touched.current) setExpanded((e) => openLevels(ix, isMobileNow() ? 3 : 4, e));
+    if (v && !touched.current) setExpanded((e) => openLevels(ix, isMobileNow() ? 3 : 4, e, root ?? ix.rootId));
   };
   const toggleFilter = (k: Filter) => setFilters((f) => { const g = new Set(f); if (g.has(k)) g.delete(k); else g.add(k); return g; });
   // 表示の根の部分木のノード数。消えるノードは数えない（buildIndex の skip）
@@ -287,6 +311,7 @@ export function TreeScreen({ repo }: { repo: string }) {
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><rect x="1" y="6" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="2" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="10" width="4" height="4" rx="1" fill="currentColor" /><path d="M5 8h3M8 4v8M8 4h3M8 12h3" stroke="currentColor" strokeWidth="1.3" fill="none" /></svg>
             図
           </button>
+          <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}>3D</button>
         </div>
         <div className="view sources">
           <select
@@ -402,7 +427,29 @@ export function TreeScreen({ repo }: { repo: string }) {
         </nav>
       )}
       <main className="body">
-        {view === 'graph' ? (
+        {view === '3d' ? (
+          <LoadGuard onFallback={() => setView('graph')}>
+            <Suspense fallback={<section className="graph-pane"><div className="loading">3D を読み込み中…</div></section>}>
+              <Viewer3D
+                key={retry3d}
+                ix={ix}
+                rows={rows}
+                selected={selected}
+                onSelect={pick}
+                onToggle={toggle}
+                matches={matchSet}
+                changes={data.changes}
+                filtered={include !== null}
+                searching={query.trim() !== ''}
+                mobile={mobile}
+                head={head}
+                fitKey={`${key}|${root ?? ''}|${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
+                onFallback={() => setView('graph')}
+                onRetry={() => setRetry3d((x) => x + 1)}
+              />
+            </Suspense>
+          </LoadGuard>
+        ) : view === 'graph' ? (
           <GraphView
             ix={ix}
             rows={rows}
