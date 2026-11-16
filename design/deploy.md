@@ -97,6 +97,9 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。worker と同じ |
 | `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の MAC の鍵（`鍵の ID=鍵,…`。最初のものを書くときに使う） |
 | `LOGIFORGE_WAIT_TIMEOUT` | | 書いたものが読む側に出るまで待つ上限。既定は `10s` |
+| `LOGIFORGE_OAUTH_CLIENT_ID` | | WebUI のサインインに使う、Forgejo の OAuth2 のアプリケーションの client_id（[サインインの中継](webui/oauth-relay.md)） |
+| `LOGIFORGE_OAUTH_CLIENT_SECRET` | ✓ | その client secret |
+| `LOGIFORGE_OAUTH_REDIRECT_URI` | | Forgejo に登録した `redirect_uri`。登録したものと完全に一致させる |
 
 worker（`logiforge worker`）：
 

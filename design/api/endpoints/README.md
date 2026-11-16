@@ -5,6 +5,10 @@ API ごとの概要を引くときに使う。
 
 API を呼ぶのは、CLI と WebUI だけである。エージェント、外の仕組み、人は、CLI か WebUI を通して API を使う（[レイヤー構成](../../architecture.md)）。
 
+## サインイン（WebUI）
+
+- WebUI のサインインの中継（[サインインの中継](../../webui/oauth-relay.md)）→ `GET /oauth/config`、`POST /oauth/token`
+
 ## repository
 
 - [repository の一覧を読む](repository/list.md) → `GET /repositories`
@@ -17,6 +21,10 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 - [木のノードを読む](tree/list-nodes.md) → `GET /repositories/{repository}/tree/nodes`
 - [作業の終わりを判定する](tree/completion.md) → `GET /repositories/{repository}/tree/completion`
 - [木を書き出す](tree/export.md) → `GET /repositories/{repository}/tree/export`
+
+## main のコミット
+
+- [main のコミットの一覧を読む](commit/list.md) → `GET /repositories/{repository}/commits`
 
 ## ノード
 

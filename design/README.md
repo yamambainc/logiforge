@@ -15,7 +15,8 @@ Logiforge のバックエンドを実装するときに読む。
 7. [アダプタ](adapters/README.md)
 8. [API](api/README.md)
 9. [CLI](cli/README.md)
-10. [動かし方（コンテナ）](deploy.md)
+10. [WebUI](webui/README.md)
+11. [動かし方（コンテナ）](deploy.md)
 
 ## 用語
 

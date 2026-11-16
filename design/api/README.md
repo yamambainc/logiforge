@@ -19,8 +19,9 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
   - トークンは、[GitForge](../README.md#用語) が発行したものである（[アダプタ](../adapters/README.md)）。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
-- トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
+- トークンを発行するのは GitForge である。この API は、WebUI のために、Forgejo の OAuth2 の交換を中継するだけである（[サインインの中継](../webui/oauth-relay.md)）。
 - ヘルスチェックの `GET /healthz` だけは、`/v1` の外に置き、認証を求めない（[ヘルスチェック](../deploy.md#ヘルスチェック)）。
+- WebUI のサインインの中継（`/v1/oauth/` の下の 2 つ）も、認証を求めない。サインインの前に呼ぶからである（[サインインの中継](../webui/oauth-relay.md)）。
 
 ## repository
 
@@ -42,6 +43,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 ## コミット
 
 - 木を読むエンドポイントは、`commit` でコミットの SHA を指定できる。
+  - `main` のコミットか、worker がブランチのスナップショットを作ったブランチのコミットである。ブランチのコミットの木は、読むたびに作る（[ブランチのコミットのスナップショットツリー](../backend/snapshot.md#ブランチのコミットのスナップショットツリー)）。
   - 指定しなければ、今の `main` のコミットを返す。
 - 木を読むエンドポイントのうち、木の概要、木のノード、ノードの詳細は、`apply_request` で open の apply request を指定できる。その apply request を反映したあとの木を返す（[向き先に重ねる](../backend/snapshot.md#向き先に重ねる)）。
   - `commit` と同時には指定できない。

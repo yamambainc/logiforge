@@ -30,8 +30,54 @@ tags:
     description: 人への依頼（PVR と判断の依頼）
   - name: history
     description: 履歴とエクスポート
+  - name: oauth
+    description: WebUI のサインイン（Forgejo の OAuth2 の中継）
 
 paths:
+  /oauth/config:
+    get:
+      tags: [oauth]
+      operationId: getOAuthConfig
+      summary: WebUI のサインインに使う OAuth2 の設定
+      description: 認証を求めない。設計は ../../design/webui/auth.md に従う。
+      security: []
+      responses:
+        '200':
+          description: authorize の URL など
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorize_url, client_id, redirect_uri, scope]
+                properties:
+                  authorize_url: { type: string, format: uri }
+                  client_id: { type: string }
+                  redirect_uri: { type: string, format: uri }
+                  scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization）' }
+  /oauth/token:
+    post:
+      tags: [oauth]
+      operationId: exchangeOAuthCode
+      summary: 認可コードをアクセストークンに交換する（BE が client secret を足して Forgejo に中継する）
+      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。決まりは ../../design/webui/oauth-relay.md に従う。Forgejo が拒んだら unauthenticated。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, code_verifier]
+              properties:
+                code: { type: string }
+                code_verifier: { type: string }
+      responses:
+        '200':
+          description: Forgejo の応答
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthToken' }
+        '4XX': { $ref: '#/components/responses/Problem' }
   /repositories:
     get:
       tags: [repository]
@@ -189,6 +235,34 @@ paths:
               schema: { type: object }
             text/markdown:
               schema: { type: string }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/commits:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    get:
+      tags: [history]
+      operationId: listCommits
+      summary: main のコミットの一覧（新しい順）
+      description: |
+        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot.md の「コミットの記録から引くもの」）。
+        カーソルは、次に読むコミットの number である。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: main のコミットの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MainCommit' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/nodes/{nodeId}:
@@ -687,17 +761,20 @@ components:
       name: commit
       in: query
       description: >-
-        読む main のコミットの SHA。指定しなければ、今の main のコミット（latest）。
+        読むコミットの SHA。main のコミットか、worker がブランチのスナップショットを作ったブランチのコミットである。指定しなければ、今の main のコミット（latest）。
+        ブランチのコミットのスナップショットツリーは、その base の main のスナップショットツリーにブランチの差分を重ねて、読むたびに作る（../../design/backend/snapshot.md の「ブランチのコミットのスナップショットツリー」）。
         worker が、まだそのコミットを取り込んでいなければ、snapshot_pending になる。少し待って送り直す。
       schema: { $ref: '#/components/schemas/Commit' }
     ApplyRequestView:
       name: apply_request
       in: query
       description: >-
-        open の apply request の識別子。指定すると、その先頭のコミットの差分を、向き先の今の先頭（latest）のスナップショットツリーに重ねた、
+        open の apply request の識別子。指定すると、その先頭のコミットの差分を、向き先の今の先頭のスナップショットツリーに重ねた、
         反映したあとの木を返す（../../design/backend/snapshot.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
+        向き先が main なら、今の先頭は latest である。向き先が main でなければ、向き先のブランチの履歴の最後のコミットである。このとき、Logiforge は検査しないので、値は決まりに沿っているかを確かめていない。
         commit と同時には指定できない（validation_failed）。
-        重ねられなければ overlay_conflict を返す。apply request の向き先が main でなければ、重ねずに overlay_unsupported を返す。先頭のコミットのスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
+        向き先が main で、重ねられなければ overlay_conflict を返す。向き先が main でなければ、衝突は判定しない（差分が変えたパスは先頭のファイル、ほかは向き先のファイルを使う）。先頭のコミットか、向き先の今の先頭のスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
+        向き先のブランチが消えていれば、not_found を返す。
         その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、not_found を返す。
         getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとの木に、そのノードがないからである。
       schema: { type: string, pattern: '^apr_' }
@@ -739,6 +816,14 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
+    OAuthToken:
+      type: object
+      description: リフレッシュトークンは含めない（../../design/webui/auth.md の「トークンの持ち方」）
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string }
+        expires_in: { type: integer, description: アクセストークンの寿命（秒） }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
@@ -752,7 +837,22 @@ components:
           type: string
           description: 木の git リポジトリの URL。CLI は、ここから clone し、ブランチを push する
         root_hypothesis_id: { type: string, pattern: '^h-' }
+        root_statement:
+          type: [string, 'null']
+          description: 根の仮説の主文（今の main）。スナップショットツリーがまだなければ null
         root_value: { $ref: '#/components/schemas/TruthValue' }
+    MainCommit:
+      type: object
+      required: [number, commit, committed_at, apply_request_id]
+      properties:
+        number:
+          type: integer
+          description: main のコミットの番号。最初のコミットを 1 とする
+        commit: { $ref: '#/components/schemas/Commit' }
+        committed_at: { type: string, format: date-time }
+        apply_request_id:
+          type: [string, 'null']
+          description: 反映した apply request。コミットの記録の trailer（Logiforge-Apply-Request）の値。反映によらないコミットでは null
     Commit:
       type: string
       minLength: 1
@@ -799,8 +899,8 @@ components:
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
             | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
-            | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料と、反映したあとの木を返せない |
-            | overlay_conflict | 409 | apply request の差分を、向き先の今の先頭に重ねられない。detail に、衝突したパスを書く |
+            | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料を返せない |
+            | overlay_conflict | 409 | apply request の差分を、今の main に重ねられない（向き先が main のときだけ）。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
