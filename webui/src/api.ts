@@ -98,3 +98,14 @@ export async function withPendingRetry<T>(f: () => Promise<T>, onPending: (waiti
     }
   }
 }
+
+/** parent でやめたときと、ms たったときに、やめる signal。done で時計を止める。
+ * AbortSignal.any（Safari 17.4 から）と AbortSignal.timeout（Safari 16 から）は使わない。古い iOS でも止まるように。 */
+export function abortAfter(parent: AbortSignal, ms: number): { signal: AbortSignal; done: () => void } {
+  const ctrl = new AbortController();
+  const stop = () => { clearTimeout(t); ctrl.abort(); };
+  const t = setTimeout(stop, ms);
+  if (parent.aborted) stop();
+  else parent.addEventListener('abort', stop, { once: true });
+  return { signal: ctrl.signal, done: () => { clearTimeout(t); parent.removeEventListener('abort', stop); } };
+}

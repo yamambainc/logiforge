@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildIndex, filterNodes, rowPositions, visibleRows, withAncestors, type Filter, type Node } from './model';
+import { buildIndex, filterNodes, rowPositions, rowsToDraw, visibleRows, withAncestors, type Filter, type Node } from './model';
 
 const h = (id: string, parent: string | null, value: boolean | null, extra: Partial<Node> = {}): Node =>
   ({ node_type: 'hypothesis', id, parent_story_id: parent, statement: id, value, leaf: true, needs_reconsideration: false, inactive: false, open_apply_request_ids: [], open_human_request_ids: [], ...extra }) as Node;
@@ -65,5 +65,14 @@ describe('読み上げの位置', () => {
   it('段と、兄弟の数と、兄弟の中の位置', () => {
     const rows = [0, 1, 2, 2, 1, 2, 1].map((depth, i) => ({ id: 'r' + i, depth, hasChildren: false, open: false }));
     expect(rowPositions(rows).map((p) => `${p.level}:${p.posinset}/${p.setsize}`)).toEqual(['1:1/1', '2:1/3', '3:1/2', '3:2/2', '2:2/3', '3:1/1', '2:3/3']);
+  });
+});
+
+describe('描く行', () => {
+  it('見えている範囲と、範囲の外の選んだ行', () => {
+    expect(rowsToDraw(10, 13, 11)).toEqual([10, 11, 12]);
+    expect(rowsToDraw(10, 13, 40)).toEqual([10, 11, 12, 40]);
+    expect(rowsToDraw(10, 13, 2)).toEqual([10, 11, 12, 2]);
+    expect(rowsToDraw(10, 13, -1)).toEqual([10, 11, 12]);
   });
 });

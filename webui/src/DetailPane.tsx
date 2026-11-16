@@ -1,7 +1,7 @@
 // 詳細のパネル（design/webui/snapshot-tree-viewer.md の「詳細のパネル」、docs/webui/tree-viewer.md の「ノードの詳細」）。
 // listNodes で分かる項目は、すぐに示す。getNode と getNodeHistory の応答が来たら、検証結果や履歴を示す。
 import { useEffect, useState } from 'react';
-import { fetchArtifact, getNode, getNodeHistory, type Artifact, type HistoryEntry, type NodeDetail } from './api';
+import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type HistoryEntry, type NodeDetail } from './api';
 import { ancestors, textOf, vLabel, type Index, type Node, type TruthValue } from './model';
 
 interface Props { repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void }
@@ -23,10 +23,12 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
     if (!id) return;
     const ctrl = new AbortController();
     const t = setTimeout(() => {
-      const signal = AbortSignal.any([ctrl.signal, AbortSignal.timeout(DETAIL_TIMEOUT_MS)]);
+      const { signal, done } = abortAfter(ctrl.signal, DETAIL_TIMEOUT_MS);
       const live = () => !ctrl.signal.aborted;
-      getNode(repo, id, signal).then((d) => live() && setDetail(d)).catch(() => live() && setFailed(true));
-      getNodeHistory(repo, id, signal).then((h) => live() && setHistory(h.items)).catch(() => live() && setHistory([]));
+      Promise.allSettled([
+        getNode(repo, id, signal).then((d) => live() && setDetail(d)).catch(() => live() && setFailed(true)),
+        getNodeHistory(repo, id, signal).then((h) => live() && setHistory(h.items)).catch(() => live() && setHistory([])),
+      ]).then(done);
     }, DETAIL_DELAY_MS);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [repo, id]);

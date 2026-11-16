@@ -113,6 +113,14 @@ export function rowPositions(rows: Row[]): { level: number; setsize: number; pos
   return out;
 }
 
+/** 描く行の番号。見えている範囲（start から end の前まで）と、選んだ行（範囲の外でも。aria-activedescendant が描いた行を指すように）。 */
+export function rowsToDraw(start: number, end: number, selIndex: number): number[] {
+  const out: number[] = [];
+  for (let i = start; i < end; i++) out.push(i);
+  if (selIndex >= 0 && (selIndex < start || selIndex >= end)) out.push(selIndex);
+  return out;
+}
+
 // 表示する行。include があれば、その集合のノードだけを（祖先を開いて）出す。
 export function visibleRows(ix: Index, expanded: Set<string>, include: Set<string> | null, showInactive: boolean, root = ix.rootId): Row[] {
   const rows: Row[] = [];

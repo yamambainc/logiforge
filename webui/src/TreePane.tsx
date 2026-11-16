@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { rowPositions, textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
+import { rowPositions, rowsToDraw, textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
 
 const OVERSCAN = 12;
 
@@ -61,7 +61,6 @@ export function TreePane(p: Props) {
 
   const start = Math.max(0, Math.floor(scroll / ROW) - OVERSCAN);
   const end = Math.min(p.rows.length, Math.ceil((scroll + height) / ROW) + OVERSCAN);
-  const slice = p.rows.slice(start, end);
   const pos = useMemo(() => rowPositions(p.rows), [p.rows]);
 
   return (
@@ -89,11 +88,11 @@ export function TreePane(p: Props) {
         aria-label="スナップショットツリー"
         aria-activedescendant={selIndex >= 0 ? rowId(p.selected!) : undefined} onKeyDown={onKey} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
         <div style={{ height: p.rows.length * ROW, position: 'relative' }} role="presentation">
-          {slice.map((r, i) => (
+          {rowsToDraw(start, end, selIndex).map((i) => ({ i, r: p.rows[i] })).map(({ i, r }) => (
             <TreeRow
               key={r.id}
-              top={(start + i) * ROW}
-              pos={pos[start + i]}
+              top={i * ROW}
+              pos={pos[i]}
               row={r}
               ix={p.ix}
               selected={r.id === p.selected}
