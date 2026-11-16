@@ -329,15 +329,15 @@ func TestReads(t *testing.T) {
 	if _, err := b.GetRepository(ctx, Caller{Token: "stranger"}, "q"); code(err) != CodeNotFound {
 		t.Fatalf("読めない主体：%v", err)
 	}
-	if _, err := b.GetTree(ctx, c, "q", strings.Repeat("0", 40)); code(err) != CodeSnapshotPending {
+	if _, err := b.GetTree(ctx, c, "q", At{Commit: strings.Repeat("0", 40)}); code(err) != CodeSnapshotPending {
 		t.Fatalf("ないリビジョン：%v", err)
 	}
-	tr, err := b.GetTree(ctx, c, "q", f.c1)
+	tr, err := b.GetTree(ctx, c, "q", At{Commit: f.c1})
 	if err != nil || tr.Commit != f.c1 || len(tr.Warnings) != 0 {
 		t.Fatalf("tree: %+v %v", tr, err)
 	}
 
-	nodes, err := b.ListNodes(ctx, c, "q", "", "", -1)
+	nodes, err := b.ListNodes(ctx, c, "q", At{}, "", -1)
 	if err != nil || len(nodes.Nodes) != 4 {
 		t.Fatalf("nodes: %+v %v", nodes, err)
 	}
@@ -345,11 +345,11 @@ func TestReads(t *testing.T) {
 	if h2.ID != H2 || len(h2.OpenApplyRequestIDs) != 1 || h2.OpenApplyRequestIDs[0] != "apr_2" || !h2.Leaf || h2.Value != nil {
 		t.Fatalf("H2: %+v", h2)
 	}
-	if n, _ := b.ListNodes(ctx, c, "q", "", S1, 0); len(n.Nodes) != 1 {
+	if n, _ := b.ListNodes(ctx, c, "q", At{}, S1, 0); len(n.Nodes) != 1 {
 		t.Fatalf("depth 0: %+v", n)
 	}
 
-	node, err := b.GetNode(ctx, c, "q", H1, "")
+	node, err := b.GetNode(ctx, c, "q", H1, At{})
 	if err != nil || node.Verdict == nil || node.Verdict.SubmittedCommit != f.c2 || node.Verdict.ApplyRequestID != "apr_1" || node.Verdict.SupersededCommit != nil {
 		t.Fatalf("node: %+v %v", node.Verdict, err)
 	}
@@ -499,11 +499,11 @@ func TestAwaiting(t *testing.T) {
 	}{
 		{"決めるレビューなし", nil, nil, "review"},
 		{"request_changes", []ports.Review{{Kind: ports.ReviewRequestChanges, Revision: "h"}}, nil, "fix"},
-		{"approve で反映待ち", approve, nil, ""},
+		{"approve したが open のまま（approve し直しを待つ）", approve, nil, "review"},
 		{"conflict で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "conflict"}}, "fix"},
 		{"stale_target で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "stale_target"}}, "fix"},
 		{"snapshot_pending で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "snapshot_pending"}}, "review"},
-		{"前の版の失敗は数えない", approve, []ports.MergeFailure{{Revision: "old", Reason: "conflict"}}, ""},
+		{"前の版の失敗は数えない", approve, []ports.MergeFailure{{Revision: "old", Reason: "conflict"}}, "review"},
 	}
 	for _, c := range cases {
 		got := awaiting("h", c.reviews, c.failures)

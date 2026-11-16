@@ -14,6 +14,9 @@
   - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、バックエンドの検査の結果から返す。
   - 先頭のコミットのスナップショットは、worker がブランチを取り込んでから、読む側に出る。それまで、そのコミットへのレビューは `snapshot_pending` になる。少し待って送り直す。
 - 利用者がブランチに push した新しい先頭のコミットは、worker が次に見回ったときに、読む側に出る（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
+- バックエンドは、`snapshot_pending` を、GitForge にも git にも何かを書く前にだけ返す。
+  - なぜ：クライアントが、`snapshot_pending` のあとに同じ要求を送り直しても、二重に書かないようにするため（[コマンドの一覧](../cli/commands.md)）。
+  - 書いたあとに、読む側に出るのを待ちきれなかったときは、`snapshot_pending` ではなく、成功として `Logiforge-Pending-Commit` を付けて応答する（上の決まり）。
 - GitForge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。GitForge から直接読むので、すぐに見える。
 - worker が止まっていても、apply request の作成はできる。ただし、先頭のコミットのスナップショットができないので、レビューは `snapshot_pending` のままになる。
 - GitForge の git を読めないと、apply request の作成は `unavailable` を返す。少し待ってから送り直す。

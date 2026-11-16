@@ -91,7 +91,11 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if c.Principal.Login == d.port.Opener {
 		warnings = append(warnings, "reviewer の主体が、apply request を作った主体と同じ（セッションは自己申告なので、確かめられない）")
 	}
-	if kind == ports.ReviewApprove {
+	// 向き先が main でない apply request は、Logiforge の反映の対象でない。approve は記録するだけで、反映の手順に進まない
+	// （design/backend/apply-request.md の「向き先」）。
+	if kind == ports.ReviewApprove && !targetsMain(d.port) {
+		warnings = append(warnings, "向き先が main でない（"+d.port.Target+"）ので、approve しても Logiforge は反映しない")
+	} else if kind == ports.ReviewApprove {
 		pending, err := b.merge(ctx, repo, ref, id)
 		if err != nil {
 			return out, err

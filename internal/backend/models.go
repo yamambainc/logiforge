@@ -162,8 +162,10 @@ type MergeFailure struct {
 
 // ApplyRequest は、apply request である。
 type ApplyRequest struct {
-	ID                string         `json:"id"`
-	Branch            string         `json:"branch"`
+	ID     string `json:"id"`
+	Branch string `json:"branch"`
+	// Target は、向き先（pull request の base のブランチ）である。main でなければ、Logiforge は検査も反映もしない。
+	Target            string         `json:"target"`
 	State             string         `json:"state"`
 	HeadCommit        string         `json:"head_commit"`
 	HeadCommits       []HeadCommit   `json:"head_commits"`

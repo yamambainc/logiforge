@@ -179,6 +179,11 @@ func TestE2E(t *testing.T) {
 	if len(mat.Targets) != 1 || mat.Targets[0]["id"] != repo.Root {
 		t.Fatalf("レビューの材料：%+v", mat)
 	}
+	// 反映したあとの木（WebUI の apply request の画面）：新しい仮説 A と B が、反映の前から見える。
+	if code, body := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+ar1.ID, nil); code != 200 ||
+		!strings.Contains(string(body), hA) || !strings.Contains(string(body), hB) {
+		t.Fatalf("反映したあとの木：%d %s", code, body)
+	}
 	if got, code, out := reviewer.review(ar1.ID, "approve", 1); code != 0 || got.State != "merged" {
 		t.Fatalf("approve：%d %s", code, out)
 	}

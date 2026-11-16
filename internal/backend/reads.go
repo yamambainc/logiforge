@@ -108,11 +108,12 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 }
 
 // GetTree は、木の概要を返す。
-func (b *Backend) GetTree(ctx context.Context, c Caller, repo, revision string) (Tree, error) {
-	if _, err := b.access(ctx, c, repo); err != nil {
+func (b *Backend) GetTree(ctx context.Context, c Caller, repo string, at At) (Tree, error) {
+	ref, err := b.access(ctx, c, repo)
+	if err != nil {
 		return Tree{}, err
 	}
-	v, err := b.mainAt(ctx, repo, revision)
+	v, err := b.readAt(ctx, repo, ref, at)
 	if err != nil {
 		return Tree{}, err
 	}
@@ -124,12 +125,12 @@ func (b *Backend) GetTree(ctx context.Context, c Caller, repo, revision string) 
 }
 
 // ListNodes は、木か部分木のノードを返す。depth が負なら、すべての段。
-func (b *Backend) ListNodes(ctx context.Context, c Caller, repo, revision, root string, depth int) (NodeList, error) {
+func (b *Backend) ListNodes(ctx context.Context, c Caller, repo string, at At, root string, depth int) (NodeList, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
 		return NodeList{}, err
 	}
-	v, err := b.mainAt(ctx, repo, revision)
+	v, err := b.readAt(ctx, repo, ref, at)
 	if err != nil {
 		return NodeList{}, err
 	}
@@ -152,12 +153,12 @@ func (b *Backend) ListNodes(ctx context.Context, c Caller, repo, revision, root 
 }
 
 // GetNode は、ノードの詳細を返す。
-func (b *Backend) GetNode(ctx context.Context, c Caller, repo, id, revision string) (NodeDetail, error) {
+func (b *Backend) GetNode(ctx context.Context, c Caller, repo, id string, at At) (NodeDetail, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
 		return NodeDetail{}, err
 	}
-	v, err := b.mainAt(ctx, repo, revision)
+	v, err := b.readAt(ctx, repo, ref, at)
 	if err != nil {
 		return NodeDetail{}, err
 	}

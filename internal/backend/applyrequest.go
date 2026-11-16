@@ -93,7 +93,11 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	d := &arDetail{port: ar, reviews: reviews}
 	vs := headCommits(ar, h)
 	m := &d.model
-	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
+	target := ar.Target
+	if target == "" {
+		target = mainTarget
+	}
+	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
 		Operations: []Operation{}, Reviews: []Review{}, MergeFailures: []MergeFailure{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
@@ -124,9 +128,9 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		m.Warnings = append(m.Warnings, "レビューの鎖が切れている。反映できない。close して、同じブランチから作り直す")
 	}
 	m.Warnings = append(m.Warnings, reviews.Warnings...)
-	if m.State == string(ports.StateOpen) {
-		a := awaiting(d.current.Commit, reviews.Items, ar.MergeFailures)
-		m.Awaiting = a
+	// 向き先が main でない apply request は、Logiforge の検査と反映の対象でないので、レビュー待ちにも修正待ちにもしない。
+	if m.State == string(ports.StateOpen) && targetsMain(ar) {
+		m.Awaiting = awaiting(d.current.Commit, reviews.Items, ar.MergeFailures)
 	}
 	// 反映したコミットは、GitForge の merge のコミットである。worker が取り込んで、読む側に出ているときだけ返す。
 	if m.State == string(ports.StateMerged) && latest != nil && ar.MergedRevision != "" {
@@ -148,7 +152,8 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 			return nil, err
 		}
 	}
-	if withOps && d.branch != nil {
+	// 向き先が main でなければ、差分を検査しないので、操作の一覧は空にする（design/backend/apply-request.md の「向き先」）。
+	if withOps && d.branch != nil && targetsMain(ar) {
 		ops, base, err := b.operations(ctx, repo, d.branch)
 		if err != nil {
 			return nil, err
@@ -158,12 +163,11 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	return d, nil
 }
 
-// awaiting は、open の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（docs/work/README.md）。
+// awaiting は、open で向き先が main の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/README.md の「計算」）。
 //   - 修正待ち：先頭のコミットへの最後の決めるレビュー（approve か request_changes）が request_changes か、
 //     先頭のコミットの反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
-//   - レビュー待ち：先頭のコミットへの決めるレビューがないか、approve のあと、そのほかの理由（snapshot_pending など）で反映に失敗した
-//     （approve し直しを待つ）。
-//   - 先頭のコミットへの最後の決めるレビューが approve で、反映の失敗もなければ、どちらでもない（反映を待っている）。
+//   - レビュー待ち：修正待ちでないもの。決めるレビューがないか、最後の決めるレビューが approve なのに、まだ open である
+//     （snapshot_pending などで反映に失敗した、向き先が main でないあいだに approve され、あとで main に戻した、など。approve し直しを待つ）。
 func awaiting(current string, reviews []ports.Review, failures []ports.MergeFailure) *string {
 	var last ports.ReviewKind
 	for _, r := range reviews {
@@ -172,15 +176,9 @@ func awaiting(current string, reviews []ports.Review, failures []ports.MergeFail
 		}
 	}
 	failed := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current && openerFixes[f.Reason] })
-	retry := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current && !openerFixes[f.Reason] })
-	var s string
-	switch {
-	case last == ports.ReviewRequestChanges || failed:
+	s := "review"
+	if last == ports.ReviewRequestChanges || failed {
 		s = "fix"
-	case last == "" || retry:
-		s = "review"
-	default:
-		return nil
 	}
 	return &s
 }
@@ -286,7 +284,12 @@ func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*o
 		if arState(ar, h) != ports.StateOpen {
 			continue
 		}
+		// 向き先が main でないものも、回答を引用した検証結果を探すのに使う（積み上げた変更は、いずれ main 向きの提案に含まれるから）。
+		// ただし、検査と反映の対象でないので、ノードを対象にしたもの（作業から外すもの）には数えない。
 		st.ars = append(st.ars, ar)
+		if !targetsMain(ar) {
+			continue
+		}
 		br, err := b.Snap.Branch(ctx, repo, ar.HeadRevision)
 		if errors.Is(err, ports.ErrNotFound) {
 			continue

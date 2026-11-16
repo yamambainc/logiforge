@@ -21,6 +21,10 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
+	// 向き先が main でない apply request は、Logiforge は検査しないので、レビューの材料も作らない。
+	if !targetsMain(ar) {
+		return ReviewMaterial{}, fail(CodeOverlayUnsupported, "apply request %s の向き先が main でない（%s）。Logiforge は検査しない", id, ar.Target)
+	}
 	v, err := b.mainAt(ctx, repo, "")
 	if err != nil {
 		return ReviewMaterial{}, err

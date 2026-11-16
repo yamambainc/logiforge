@@ -56,6 +56,9 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
   - `--json` の出力に、使ったキー（`idempotency_key`）を書く。あとで送り直すときは、`--idempotency-key` にそのキーを渡す。
   - なぜ呼び出しごとか：レビューの鎖が切れたときの「close して、同じブランチから作り直す」で、閉じた apply request が返らないようにするため（[反映の手順](../backend/merge.md)）。同じブランチの二重の作成は、バックエンドが拒む。
 - `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
+- どのコマンドも、`snapshot_pending` が返ったら、1 秒待って、3 回まで送り直す。それでも `snapshot_pending` なら、そのまま返す。
+  - なぜ：worker は見回りの間隔（既定 1 秒）ごとに取り込むので、数秒待てば、多くは読む側に出ているから（[書いた直後の読み](../api/writes.md)）。
+  - バックエンドは、`snapshot_pending` を、何かを書く前にだけ返す（[書いた直後の読み](../api/writes.md)）。そのため、送り直しても二重にならない。
 
 ## 作業と人への依頼
 
