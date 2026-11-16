@@ -237,7 +237,8 @@ const vLabel = (v: TruthValue) => (v === true ? '真' : v === false ? '偽' : '�
 
 export { vLabel };
 
-export type Filter = 'true' | 'false' | 'null' | 'nr' | 'ar' | 'hr' | 'changed';
+export type Filter = 'true' | 'false' | 'null' | 'leaf' | 'nr' | 'ar' | 'hr' | 'changed';
+export const FILTER_KEYS: Filter[] = ['true', 'false', 'null', 'leaf', 'nr', 'ar', 'hr', 'changed'];
 
 /** 検索と絞り込みで、出すノードを決める（design/webui/snapshot-tree-viewer.md の「検索と絞り込み」）。
  * 検索は主文・タイトル・識別子の部分一致（大文字と小文字を区別しない）。値どうしは「または」、ほかとは「かつ」。
@@ -251,6 +252,8 @@ export function filterNodes(ix: Index, query: string, filters: Set<Filter>, show
     if (!showInactive && n.inactive) continue;
     if (q && !(textOf(n).toLowerCase().includes(q) || n.id.toLowerCase().includes(q))) continue;
     if (valueF.length && !valueF.some((k) => String(n.value) === k)) continue;
+    // 未決の葉：葉の仮説で、値が未決（作業の「未決の葉」と同じ。inactive は除く）
+    if (filters.has('leaf') && !(n.node_type === 'hypothesis' && n.leaf && n.value === null && !n.inactive)) continue;
     if (filters.has('nr') && !(n.node_type === 'hypothesis' && n.needs_reconsideration)) continue;
     if (filters.has('ar') && n.open_apply_request_ids.length === 0) continue;
     if (filters.has('hr') && n.open_human_request_ids.length === 0) continue;

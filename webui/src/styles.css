@@ -427,3 +427,39 @@ table.changes .before { color: var(--sub); text-decoration: line-through; }
 /* フォーカスの枠は、キーボードで移ったときだけ、内側に描く */
 .three:focus { outline: none; }
 .three:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 画面（一覧、ダッシュボード、フォーム） */
+.tab { text-decoration: none; }
+.page { max-width: 960px; width: 100%; margin: 0 auto; padding: 24px 16px 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.page-head .page-title { margin: 0; }
+.page-head .btn { margin-top: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.card h2 { font-size: 14px; margin: 0 0 12px; }
+.root-card { display: flex; align-items: center; gap: 12px; }
+.root-card .root-text { flex: 1; font-weight: 700; font-size: 16px; color: inherit; text-decoration: none; }
+.root-card .root-text:hover { text-decoration: underline; }
+table.judge { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.judge th { text-align: left; font-weight: 400; padding: 6px 0; color: var(--sub); }
+table.judge td { text-align: right; font-weight: 700; }
+table.judge td.ok { color: var(--t-fg); }
+table.judge td.ng { color: var(--sub); }
+ul.counts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+ul.counts li { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 8px; }
+ul.counts li b { font-size: 20px; }
+ul.counts li.zero { color: var(--dim); }
+.small { font-size: 12px; margin: 8px 0 0; }
+form.create { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+form.create label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--sub); }
+form.create input, form.create textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
+form.create .over { color: var(--f-fg); font-weight: 700; }
+.form-error { color: var(--f-fg); margin: 0; }
+.form-actions { display: flex; gap: 8px; }
+.form-actions .btn { margin-top: 0; }
+@media (max-width: 767px) {
+  .topbar .tabs { display: none; }
+  .page, .repos { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+}
+.bottom-nav a { text-decoration: none; }
+ul.counts li a { display: flex; justify-content: space-between; align-items: baseline; width: 100%; color: var(--accent); text-decoration: none; }
+ul.counts li a:hover { text-decoration: underline; }
+table.judge td.note-cell { font-weight: 400; font-size: 13px; }

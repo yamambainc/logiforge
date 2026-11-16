@@ -8,7 +8,8 @@ export class Problem extends Error {
   }
 }
 
-export async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** BE に要求を送る。アクセストークンを付け、401 をサインインに渡し、ほかのエラーは Problem にする。 */
+export async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const a = getAuth();
   if (a.kind !== 'signed-in') throw new Problem(401, 'unauthenticated', 'サインインしていない');
   const r = await fetch('/v1' + path, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${a.token}` } });
@@ -22,8 +23,10 @@ export async function call<T>(path: string, init: RequestInit = {}): Promise<T> 
     throw new Problem(r.status, code, detail);
   }
   markVerified();
-  return (await r.json()) as T;
+  return r;
 }
+
+export const call = async <T>(path: string, init: RequestInit = {}): Promise<T> => (await (await send(path, init)).json()) as T;
 
 export interface Repository {
   name: string;
@@ -49,6 +52,7 @@ export async function listAll<T>(path: string): Promise<T[]> {
 }
 
 export const listRepositories = () => listAll<Repository>('/repositories');
+export const getRepository = (repo: string) => call<Repository>(`/repositories/${encodeURIComponent(repo)}`);
 
 // --- スナップショットツリー（design/api/openapi.yaml の listNodes、getNode、getNodeHistory） ---
 
@@ -79,13 +83,7 @@ export const getNodeHistory = (repo: string, id: string, signal?: AbortSignal) =
 
 /** artifact のファイルを読む。保存させるだけにする（design/webui/security.md の「ファイルの開き方」）。 */
 export async function fetchArtifact(repo: string, sha256: string): Promise<Blob> {
-  const a = getAuth();
-  if (a.kind !== 'signed-in') throw new Problem(401, 'unauthenticated', '');
-  const r = await fetch(`/v1/repositories/${enc(repo)}/artifacts/${enc(sha256)}`, { headers: { Authorization: `Bearer ${a.token}` } });
-  if (r.status === 401) { onUnauthorized(); throw new Problem(401, 'unauthenticated', ''); }
-  if (!r.ok) throw new Problem(r.status, 'not_found', '');
-  markVerified();
-  return r.blob();
+  return (await send(`/repositories/${enc(repo)}/artifacts/${enc(sha256)}`)).blob();
 }
 
 /** 取り込み中（snapshot_pending）のあいだ読み直す（design/webui/snapshot-tree-viewer.md の「取り込み中の読み直し」）。
@@ -128,3 +126,20 @@ export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(
 export interface MainCommit { number: number; commit: string; committed_at: string; apply_request_id: string | null }
 export const listCommits = (repo: string, cursor?: string | null) =>
   call<{ items: MainCommit[]; next_cursor: string | null }>(`/repositories/${enc(repo)}/commits?limit=50${cursor ? '&cursor=' + enc(cursor) : ''}`);
+
+// --- repository の作成、ダッシュボード（design/webui/screens.md） ---
+
+/** repository を作る。応答の Logiforge-Pending-Commit があれば、スナップショットツリーはまだ取り込み中である。 */
+export async function createRepository(name: string, statement: string, background: string): Promise<{ repo: Repository; pending: boolean }> {
+  const r = await send('/repositories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(background ? { name, statement, background } : { name, statement }),
+  });
+  return { repo: (await r.json()) as Repository, pending: r.headers.has('Logiforge-Pending-Commit') };
+}
+
+export interface Completion { commit: string; root_value: boolean | null; decided: boolean; remaining_work: number; done: boolean }
+export const getCompletion = (repo: string) => call<Completion>(`/repositories/${enc(repo)}/tree/completion`);
+/** 着手できる作業の、種類ごとの件数（ページに関わらず全体。listWork の counts） */
+export const workCounts = (repo: string) => call<{ counts: Record<string, number> }>(`/repositories/${enc(repo)}/work?limit=1`).then((r) => r.counts);

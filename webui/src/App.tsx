@@ -2,12 +2,16 @@ import { useSyncExternalStore } from 'react';
 import { getAuth, subscribe, signOut } from './auth';
 import { match, navigate, useLocation } from './router';
 import { SignIn } from './screens/SignIn';
+import { useMobile } from './hooks';
+import { BottomNav, TopTabs } from './RepoNav';
+import { Dashboard } from './screens/Dashboard';
 import { RepositoryList } from './screens/RepositoryList';
 import { TreeScreen } from './screens/TreeScreen';
 
 export function App() {
   const auth = useSyncExternalStore(subscribe, getAuth);
   const loc = useLocation();
+  const mobile = useMobile();
   if (auth.kind === 'starting') return <div className="loading">サインインしています…</div>;
   if (auth.kind === 'signed-out') return <SignIn reason={auth.reason} />;
   const route = match(loc.pathname);
@@ -15,13 +19,17 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <a className="brand" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>Logiforge</a>
-        {route.name === 'tree' && <span className="crumb-repo">{route.repo}</span>}
+        {'repo' in route && <span className="crumb-repo">{route.repo}</span>}
+        {'repo' in route && <TopTabs repo={route.repo} on={route.name} />}
         <span className="spacer" />
         <button className="link" onClick={signOut}>サインアウト</button>
       </header>
-      {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} /> : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
+      {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} />
+        : route.name === 'dashboard' ? <Dashboard key={route.repo} repo={route.repo} />
+        : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
         <div className="empty-box"><div className="empty-title">この画面はありません</div><button className="btn" onClick={() => navigate('/')}>repository の一覧へ</button></div>
       )}
+      {mobile && 'repo' in route && <BottomNav repo={route.repo} on={route.name} />}
     </div>
   );
 }

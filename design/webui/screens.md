@@ -10,7 +10,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | 画面 | パス |
 |---|---|
 | repository の一覧 | `/` |
-| スナップショットツリーのビュワー | `/r/{repository}/tree?view=&orient=&root=&node=&commit=&apply_request=&q=`（`view` は `outline`、`graph`、`3d`。`orient` は図の向きで、`h` か `v`。`root` は「ここから見る」の表示の根） |
+| スナップショットツリーのビュワー | `/r/{repository}/tree?view=&orient=&root=&node=&commit=&apply_request=&q=&f=`（`view` は `outline`、`graph`、`3d`。`orient` は図の向きで、`h` か `v`。`root` は「ここから見る」の表示の根） |
 | 人への依頼 | `/r/{repository}/human-requests?kind=&state=&id=` |
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
@@ -48,8 +48,10 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 ### [ダッシュボード](../../docs/webui/dashboard.md)
 
 - 根の値と作業の終わりの判定：`getCompletion`。
-- 種類ごとの着手できる作業の件数：`listWork` を、`next_cursor` が null になるまで `limit=200` で読んで数える。
-  - なぜ件数の API を足さないか：作業は数百件までで、数回の要求で読み終わるから。数が増えて遅くなったら、件数の API を足す。
+- 種類ごとの着手できる作業の件数：`listWork` を `limit=1` で呼び、応答の `counts`（ページに関わらない、種類ごとの全体の件数）を使う。
+  - 件数は、open の apply request が対象にしているノードの作業を数えない（`include_claimed` を付けない）。作業の一覧と同じ数え方である。
+- 件数を押すと、その作業の一覧へ行く。未決の葉と要再検討は、ビュワーを絞り込んで開く（`f=leaf`、`f=nr`）。レビュー待ちと修正待ちは apply request の一覧、回答済みの依頼は人への依頼の一覧、引用元が変化した検証結果はビュワーの絞り込みに、それぞれの画面ができたらつなぐ。
+- 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[すべての画面の決まり](mobile.md#すべての画面の決まり)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
 
 ## 足す API
 
