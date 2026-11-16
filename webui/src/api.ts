@@ -119,8 +119,21 @@ export function abortAfter(parent: AbortSignal, ms: number): { signal: AbortSign
 
 // --- apply request と、main のコミット（design/webui/overlay.md） ---
 
-export interface ApplyRequest { id: string; state: string; branch: string; target: string; description?: string; head_commit: string }
+export type Operation =
+  | { kind: 'story.create'; position: number; story_id: string; parent_hypothesis_id: string; title: string; summary: string; hypotheses: { id: string; statement: string }[] }
+  | { kind: 'story.inactivate'; position: number; story_id: string; reason: string }
+  | { kind: 'verdict.submit'; position: number; verdict_id: string; hypothesis_id: string; value: boolean; report_body: string }
+  | { kind: 'node.edit'; position: number; hypothesis_id: string; append_background: string };
+export interface ApplyRequest {
+  id: string; state: 'open' | 'merged' | 'closed'; branch: string; target: string; description?: string; head_commit: string;
+  head_commits?: { commit: string; base_commit: string; seen_at: string | null; author_session_id: string | null }[];
+  operations?: Operation[];
+  reviews?: { id: string; kind: 'approve' | 'request_changes' | 'comment'; commit: string; body?: string; reviewer_session_id: string; valid: boolean }[];
+  merge_failures?: { commit: string; reason: string; detail: string }[];
+  awaiting?: 'review' | 'fix' | null; closed_reason?: string | null; warnings?: string[]; merged_commit?: string | null;
+}
 export const listOpenApplyRequests = (repo: string) => listAll<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests?state=open`);
+export const listApplyRequests = (repo: string, state: string) => listAll<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests${state ? '?state=' + enc(state) : ''}`);
 export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}`);
 
 export interface MainCommit { number: number; commit: string; committed_at: string; apply_request_id: string | null }
@@ -170,6 +183,10 @@ export async function fetchAnswerAttachment(repo: string, id: string, sha256: st
 
 /** 作業として残っているものの対象（listWork の kind で絞り、subject_id を集める）。ダッシュボードの件数と同じ数になる */
 export async function workSubjects(repo: string, kind: string): Promise<Set<string>> {
-  const items = await listAll<{ kind: string; subject_id: string }>(`/repositories/${enc(repo)}/work?kind=${enc(kind)}`);
-  return new Set(items.map((i) => i.subject_id));
+  return new Set((await workItems(repo, kind)).map((i) => i.subject_id));
 }
+/** 作業として残っているものの対象のノード（node_id） */
+export async function workNodes(repo: string, kind: string): Promise<Set<string>> {
+  return new Set((await workItems(repo, kind)).flatMap((i) => (i.node_id ? [i.node_id] : [])));
+}
+const workItems = (repo: string, kind: string) => listAll<{ kind: string; subject_id: string; node_id?: string }>(`/repositories/${enc(repo)}/work?kind=${enc(kind)}`);

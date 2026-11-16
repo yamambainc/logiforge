@@ -52,6 +52,12 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
   - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、時刻の順に示す。
 - 反映したあとの姿：ビュワーを `?apply_request=` で開く（[差分の重ね表示](overlay.md#差分の重ね表示)）。
 - 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[足す API](#足す-api)）。
+  - 画面の「main の履歴」で、新しい 50 個ずつ示し、「もっと読む」で続きを読む。
+- 反映済みの apply request は、「反映した時点を見る」で、`merged_commit` のビュワーを開く。
+- 差分の操作の対象は、ビュワーへのリンク（`?node=`）で示す。
+- 作業としての絞り込み（`work=review_waiting`、`work=fix_waiting`）は、`listWork` のその種類の `subject_id` に入る apply request だけを示す。ダッシュボードの件数から、この絞り込みで開く。
+- URL は `/r/{repository}/apply-requests?view=&state=&id=&work=`（`view` は、apply request か `commits`）。
+- ダッシュボードの「引用元が変化した検証結果」は、ビュワーを `f=cited` で開く。`listWork` の `citation_changed` の `node_id`（検証結果を持つ仮説）だけを示す。
 
 ### [ダッシュボード](../../docs/webui/dashboard.md)
 

@@ -9,10 +9,10 @@ import { navigate } from '../router';
 const KINDS: { key: string; label: string; to?: (repo: string) => string }[] = [
   { key: 'undecided_leaf', label: '未決の葉', to: (r) => `/r/${r}/tree?f=leaf` },
   { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr-work` },
-  { key: 'review_waiting', label: 'レビュー待ち' },
-  { key: 'fix_waiting', label: '修正待ち' },
+  { key: 'review_waiting', label: 'レビュー待ち', to: (r) => `/r/${r}/apply-requests?work=review_waiting` },
+  { key: 'fix_waiting', label: '修正待ち', to: (r) => `/r/${r}/apply-requests?work=fix_waiting` },
   { key: 'human_request_answered', label: '回答済みの依頼', to: (r) => `/r/${r}/human-requests?state=answered&work=1` },
-  { key: 'citation_changed', label: '引用元が変化した検証結果' },
+  { key: 'citation_changed', label: '引用元が変化した検証結果', to: (r) => `/r/${r}/tree?f=cited` },
 ];
 const vc = (v: boolean | null) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
 

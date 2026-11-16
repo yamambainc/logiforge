@@ -2,7 +2,7 @@
 // 状態（選んだノード、開いたノード、検索、絞り込み）は 2 つの表示で共通にする。表示と選んだノードと検索の語は URL に持つ。
 // 示す時点（今の main、過去の時点、apply request を重ねた姿）も URL に持つ（design/webui/overlay.md）。
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listCommits, listOpenApplyRequests, Problem, type ApplyRequest, type At, type MainCommit } from '../api';
+import { listCommits, listOpenApplyRequests, Problem, workNodes, type ApplyRequest, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
 import { GraphView } from '../GraphView';
@@ -18,6 +18,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'leaf', label: '未決の葉（作業）' },
   { key: 'nr', label: '要再検討' },
   { key: 'nr-work', label: '要再検討（作業）' },
+  { key: 'cited', label: '引用元が変化（作業）' },
   { key: 'ar', label: '審査中の AR' },
   { key: 'hr', label: 'open の依頼' },
   { key: 'changed', label: 'この AR で変わる' },
@@ -178,13 +179,23 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (r !== rootRef.current) { setRoot(r); setExpanded((e) => new Set(e).add(r)); }
   }, [popTick, ix]);
 
+  // 「引用元が変化（作業）」で絞るときは、作業の一覧から、その仮説を読む（ダッシュボードの件数と同じもの）
+  const [cited, setCited] = useState<Set<string> | null>(null);
+  const wantCited = filters.has('cited');
+  useEffect(() => {
+    if (!wantCited) { setCited(null); return; }
+    let live = true;
+    workNodes(repo, 'citation_changed').then((s) => live && setCited(s)).catch(() => live && setCited(new Set()));
+    return () => { live = false; };
+  }, [repo, wantCited]);
+
   // 検索と絞り込みで、出すノードを決める（一致したノードと、その祖先）。「ここから見る」では、表示の根の部分木の中だけ
   const { include, matches } = useMemo(() => {
     if (!ix) return { include: null, matches: [] as string[] };
-    const r = filterNodes(ix, query, filters, showInactive, data?.changes ?? null);
+    const r = filterNodes(ix, query, filters, showInactive, data?.changes ?? null, cited);
     if (!root || root === ix.rootId || r.include === null) return r;
     return { include: r.include, matches: r.matches.filter((id) => inSubtree(ix, id, root)) };
-  }, [ix, query, filters, showInactive, data, root]);
+  }, [ix, query, filters, showInactive, data, root, cited]);
 
   const rows = useMemo(() => (ix && data ? visibleRows(ix, expanded, include, showInactive, root ?? ix.rootId) : []), [ix, data, root, expanded, include, showInactive]);
   const matchSet = useMemo(() => new Set(matches), [matches]);
@@ -372,7 +383,7 @@ export function TreeScreen({ repo }: { repo: string }) {
         {(!mobile || filterSheet) && (
           <div className={`chips ${mobile ? 'filter-sheet' : ''}`}>
             {mobile && <div className="fs-head"><b>絞り込み</b><button className="link" onClick={() => setFilterSheet(false)}>閉じる</button></div>}
-            {FILTERS.filter((f) => (f.key !== 'changed' || data.changes) && (f.key !== 'nr-work' || filters.has('nr-work')) && (!data.past || (f.key !== 'ar' && f.key !== 'hr'))).map((f) => (
+            {FILTERS.filter((f) => (f.key !== 'changed' || data.changes) && (f.key !== 'nr-work' || filters.has('nr-work')) && (f.key !== 'cited' || filters.has('cited')) && (!data.past || (f.key !== 'ar' && f.key !== 'hr'))).map((f) => (
               <button key={f.key} className={`chip chip-${f.key} ${filters.has(f.key) ? 'on' : ''}`} onClick={() => toggleFilter(f.key)}>{f.label}</button>
             ))}
             <label className="check">
