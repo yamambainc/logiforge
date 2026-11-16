@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listApplyRequests, listNodes, listNodesAt, Problem, type ApplyRequestSummary } from './api';
 import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, withRemoved, type Index, type Change } from './model';
 import { TreePane } from './TreePane';
@@ -6,6 +6,24 @@ import { DetailPane } from './DetailPane';
 import { GraphView } from './GraphView';
 // 3D は、開いたときだけ読み込む（three.js を最初の読み込みに含めない）
 const Viewer3D = lazy(() => import('./Viewer3D'));
+
+// 3D の部分の読み込みに失敗したとき（回線など）に、図へ戻れるようにする
+class LoadGuard extends Component<{ onFallback: () => void; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <section className="graph-pane empty-3d">
+        <div className="empty-box">
+          <div className="empty-title">この端末では 3D を表示できません</div>
+          <p>3D の部分を読み込めませんでした。図かアウトラインで見てください。</p>
+          <button className="btn" onClick={this.props.onFallback}>図で見る</button>
+        </div>
+      </section>
+    );
+  }
+}
 
 function useMobile() {
   const q = '(max-width: 767px)';
@@ -330,6 +348,7 @@ export function App() {
           </section>
         ) : (
           view === '3d' ? (
+            <LoadGuard onFallback={() => setView('graph')}>
             <Suspense fallback={<section className="graph-pane"><div className="loading">3D を読み込み中…</div></section>}>
               <Viewer3D
                 ix={ix}
@@ -347,6 +366,7 @@ export function App() {
                 onFallback={() => setView('graph')}
               />
             </Suspense>
+            </LoadGuard>
           ) : view === 'graph' ? (
             <GraphView
               ix={ix}

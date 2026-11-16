@@ -365,7 +365,20 @@ export default function Viewer3D(p: Props) {
   return (
     <section className="graph-pane">
       {p.head}
-      <div className="three" ref={host}>
+      <div className="three" ref={host} tabIndex={0} onKeyDown={(e) => {
+        // キーボード：アウトラインと同じく、行の並び（深さ優先）で動く
+        const i = p.selected ? p.rows.findIndex((r) => r.id === p.selected) : -1;
+        if (i < 0) return;
+        const r = p.rows[i];
+        if (e.key === 'ArrowDown' && i < p.rows.length - 1) p.onSelect(p.rows[i + 1].id);
+        else if (e.key === 'ArrowUp' && i > 0) p.onSelect(p.rows[i - 1].id);
+        else if (e.key === 'ArrowRight' && r.hasChildren && !r.open) p.onToggle(r.id);
+        else if (e.key === 'ArrowLeft') {
+          if (r.open && r.hasChildren && !p.filtered) p.onToggle(r.id);
+          else for (let j = i - 1; j >= 0; j--) if (p.rows[j].depth < r.depth) { p.onSelect(p.rows[j].id); break; }
+        } else return;
+        e.preventDefault();
+      }}>
         <div className="labels3" ref={labelsRef} />
         {selNode && selScreen && (
           <div className="sel3" style={{ transform: `translate(${Math.round(selScreen.x + 12)}px, ${Math.round(selScreen.y + 14)}px)` }}>
