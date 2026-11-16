@@ -16,6 +16,7 @@ interface Props {
   head: React.ReactNode;
   searching: boolean;
   fitKey: string; // 検索と絞り込み。変わったら収め直す
+  fitPending: boolean; // 検索の入力の途中（収め直しを待っている）
 }
 
 interface Placed { id: string; x: number; y: number; parent: string | null; row: Row }
@@ -96,13 +97,19 @@ export function GraphView(p: Props) {
   }, [layout, box, animateTo, size.w, size.h]);
 
   // 根を左端に寄せ、開いている部分が収まるまで縮める（下限 lower）
+  // モバイルは、根と 1 段目だけを収め、縮めるのは 70% まで
   const frame = useCallback((lower: number): View => {
     const pad = 16;
+    if (p.mobile && lower === LOD_K) {
+      const k = Math.max(0.7, Math.min(1, (box.w - pad * 2) / (size.col + size.w)));
+      const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
+      return { k, x: pad, y: box.h / 2 - k * ((root?.y ?? 0) + size.h / 2) };
+    }
     const k = Math.max(lower, Math.min(1, (box.w - pad * 2) / layout.width, (box.h - pad * 2) / layout.height));
     const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
     const y = k * layout.height <= box.h - pad * 2 ? (box.h - k * layout.height) / 2 : box.h / 2 - k * ((root?.y ?? 0) + size.h / 2);
     return { k, x: pad, y };
-  }, [box, layout, p.rows, size.h]);
+  }, [box, layout, p.rows, p.mobile, size.h, size.col, size.w]);
   const fit = useCallback(() => animateTo(frame(MIN_K)), [animateTo, frame]);
 
   // 最初の表示：収める（下限 45%）。選んだノードへのフォーカスは効かせない
@@ -129,7 +136,7 @@ export function GraphView(p: Props) {
   useEffect(() => {
     if (!ready.current || prevSel.current === p.selected) return;
     prevSel.current = p.selected;
-    if (!p.selected || performance.now() < quietUntil.current) return;
+    if (!p.selected || p.fitPending || performance.now() < quietUntil.current) return;
     const n = layout.pos.get(p.selected);
     if (!n) return;
     const v = viewRef.current;

@@ -51,6 +51,9 @@ export function App() {
   const [view, setView] = useState<'outline' | 'graph'>(params.get('view') === 'graph' ? 'graph' : 'outline');
   const mobile = useMobile();
   const [sheet, setSheet] = useState(params.get('sheet') === '1');
+  // 検索の語は、入力が止まって 300 ms たってから図を収め直す
+  const [settledQuery, setSettledQuery] = useState(query);
+  useEffect(() => { const t = setTimeout(() => setSettledQuery(query), 300); return () => clearTimeout(t); }, [query]);
   const [filterSheet, setFilterSheet] = useState(params.get('fsheet') === '1');
   // 利用者が選んだとき（モバイルでは詳細のボトムシートを開く）
   const pick = useCallback((id: string) => { setSelected(id); if (matchMedia('(max-width: 767px)').matches) setSheet(true); }, []);
@@ -299,7 +302,8 @@ export function App() {
               filtered={include !== null}
               mobile={mobile}
               searching={query.trim() !== ''}
-              fitKey={`${query.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
+              fitPending={settledQuery !== query}
+              fitKey={`${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
               head={
                 <div className="tree-head">
                   <span className="dim">
