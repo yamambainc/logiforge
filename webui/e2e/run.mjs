@@ -337,6 +337,7 @@ try {
   // 未決の葉は、open の AR が対象にしているので数えない（listWork の include_claimed）。レビュー待ちは、AR_MAIN
   if (counts['未決の葉'] !== 0 || !(counts['レビュー待ち'] >= 1)) throw new Error('着手できる作業の件数：' + JSON.stringify(counts));
   await page.screenshot({ path: OUT + '/dashboard.png' });
+  if (!(await page.$eval('table.judge', (t) => t.textContent)).includes('根の値が決まってから数えます')) throw new Error('根の値が決まる前の文がない');
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
   await page.waitForSelector('.row', { timeout: 20000 });
 

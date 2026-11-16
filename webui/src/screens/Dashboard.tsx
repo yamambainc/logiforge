@@ -4,10 +4,11 @@ import { getCompletion, getRepository, Problem, withPendingRetry, workCounts, ty
 import { vLabel } from '../model';
 import { navigate } from '../router';
 
-// 作業の種類（docs/work/README.md）。並びは、作業の一覧の種類の順
-const KINDS: { key: string; label: string }[] = [
-  { key: 'undecided_leaf', label: '未決の葉' },
-  { key: 'needs_reconsideration', label: '要再検討' },
+// 作業の種類（docs/work/README.md）。並びは、作業の一覧の種類の順。
+// to は、件数を押したときに行く、その作業の一覧（docs/webui/dashboard.md）。ほかの画面ができたら、つなぐ
+const KINDS: { key: string; label: string; to?: (repo: string) => string }[] = [
+  { key: 'undecided_leaf', label: '未決の葉', to: (r) => `/r/${r}/tree?f=leaf` },
+  { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr` },
   { key: 'review_waiting', label: 'レビュー待ち' },
   { key: 'fix_waiting', label: '修正待ち' },
   { key: 'human_request_answered', label: '回答済みの依頼' },
@@ -21,8 +22,9 @@ export function Dashboard({ repo }: { repo: string }) {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    withPendingRetry(() => Promise.all([getRepository(repo), getCompletion(repo), workCounts(repo)]), (w) => live && setPending(w))
-      .then(([r, c, counts]) => live && setData({ r, c, counts }))
+    // 取り込み中のあいだは、作業の終わりの判定だけを待つ。出たら、ほかを読む
+    withPendingRetry(() => getCompletion(repo), (w) => live && setPending(w))
+      .then((c) => Promise.all([getRepository(repo), workCounts(repo)]).then(([r, counts]) => live && setData({ r, c, counts })))
       .catch((e) => { if (live && !(e instanceof Problem && e.status === 401)) setError(e instanceof Problem && e.code === 'not_found' ? 'この repository はありません' : String(e)); });
     return () => { live = false; };
   }, [repo]);
@@ -42,7 +44,7 @@ export function Dashboard({ repo }: { repo: string }) {
         <table className="judge">
           <tbody>
             <tr><th>根の値が決まっている</th><td className={c.decided ? 'ok' : 'ng'}>{c.decided ? 'はい' : 'いいえ'}</td></tr>
-            <tr><th>根拠部分木で着手できる作業</th><td className={c.decided ? (c.remaining_work === 0 ? 'ok' : 'ng') : 'dim'}>{c.decided ? `${c.remaining_work} 件` : '-'}</td></tr>
+            <tr><th>根拠部分木で着手できる作業</th>{c.decided ? <td className={c.remaining_work === 0 ? 'ok' : 'ng'}>{c.remaining_work} 件</td> : <td className="dim note-cell">根の値が決まってから数えます</td>}</tr>
             <tr><th>作業の終わり</th><td className={c.done ? 'ok' : 'ng'}>{c.done ? '終わった' : 'まだ'}</td></tr>
           </tbody>
         </table>
@@ -51,7 +53,11 @@ export function Dashboard({ repo }: { repo: string }) {
         <h2>着手できる作業</h2>
         <ul className="counts">
           {KINDS.map((k) => (
-            <li key={k.key} className={counts[k.key] ? '' : 'zero'}><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></li>
+            <li key={k.key} className={counts[k.key] ? '' : 'zero'}>
+              {k.to && counts[k.key] ? (
+                <a href={k.to(repo)} onClick={(e) => { e.preventDefault(); navigate(k.to!(repo)); }}><span>{k.label}</span><b>{counts[k.key]}</b></a>
+              ) : <><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></>}
+            </li>
           ))}
         </ul>
         <p className="dim mono small">main {c.commit.slice(0, 7)}</p>

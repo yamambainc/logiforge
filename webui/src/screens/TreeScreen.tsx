@@ -7,7 +7,7 @@ import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
 import { GraphView } from '../GraphView';
 import { isMobileNow, useMobile } from '../hooks';
-import { ancestors, changeOrder, filterNodes, textOf, visibleRows, type Filter } from '../model';
+import { ancestors, changeOrder, FILTER_KEYS, filterNodes, textOf, visibleRows, type Filter } from '../model';
 import { isBlocked, loadSource, sourceFromURL, sourceToURL, type Blocked, type Loaded, type Source } from '../source';
 import { TreePane } from '../TreePane';
 
@@ -15,6 +15,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'true', label: '真' },
   { key: 'false', label: '偽' },
   { key: 'null', label: '未決' },
+  { key: 'leaf', label: '未決の葉' },
   { key: 'nr', label: '要再検討' },
   { key: 'ar', label: '審査中の AR' },
   { key: 'hr', label: 'open の依頼' },
@@ -74,7 +75,8 @@ export function TreeScreen({ repo }: { repo: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState(params.get('q') ?? '');
-  const [filters, setFilters] = useState<Set<Filter>>(new Set());
+  // 絞り込みも URL（f）に持つ。ダッシュボードの件数から、絞り込んだビュワーを開くため
+  const [filters, setFilters] = useState<Set<Filter>>(() => new Set((params.get('f') ?? '').split(',').filter((k): k is Filter => (FILTER_KEYS as string[]).includes(k))));
   const [showInactive, setShowInactive] = useState(true);
   const [view, setViewRaw] = useState<View>(viewOf(params.get('view')));
   // 「3D を作り直す」で、3D の部分を作り直す
@@ -143,13 +145,14 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (root && root !== data.ix.rootId) q.set('root', root);
     if (selected && selected !== (root ?? data.ix.rootId)) q.set('node', selected);
     if (settledQuery.trim()) q.set('q', settledQuery.trim());
+    if (filters.size) q.set('f', [...filters].join(','));
     const s = q.toString();
     const next = location.pathname + (s ? '?' + s : '');
     if (next === location.pathname + location.search) return;
     if (pushNext.current) history.pushState(null, '', next);
     else history.replaceState(null, '', next);
     pushNext.current = false;
-  }, [data, source, root, view, vertical, selected, settledQuery]);
+  }, [data, source, root, view, vertical, selected, settledQuery, filters]);
   // 戻る・進むで、表示と向きと時点と表示の根を URL に合わせる（根は、読み込んだデータで確かめてから）
   const popRoot = useRef<string | null>(null);
   const [popTick, setPopTick] = useState(0);

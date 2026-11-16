@@ -13,6 +13,7 @@ describe('URL と画面', () => {
   });
 });
 
+// 主文の 50 字と数え方は、BE と同じ（docs/tree/README.md の「仮説」、internal/tree/check.go の MaxStatementChars と CharCount）
 describe('repository の作成', () => {
   it('主文の文字数は、NFC に正規化したあとのコードポイント数', () => {
     expect(charCount('が')).toBe(1);

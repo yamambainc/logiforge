@@ -39,7 +39,9 @@ export function RepositoryList() {
   );
 }
 
-// 名前と主文の決まり（openapi の RepositoryNameValue、docs/tree/README.md の「仮説」）
+// 名前と主文の決まり（openapi の RepositoryNameValue、docs/tree/README.md の「仮説」）。
+// BE と同じ決まりである：主文は 50 字以下（internal/tree/check.go の MaxStatementChars）、
+// 文字数は NFC に正規化したあとのコードポイント数（同じく CharCount。docs/tree/README.md）。BE が最後に確かめるので、ここは送る前の案内である
 export const NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export const MAX_STATEMENT = 50;
 /** 文字数は、NFC に正規化したあとのコードポイント数で数える */

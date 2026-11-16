@@ -78,3 +78,12 @@ describe('描く行', () => {
     expect(rowsToDraw(10, 13, -1)).toEqual([10, 11, 12]);
   });
 });
+
+describe('未決の葉の絞り込み', () => {
+  it('葉の仮説で、値が未決。inactive は除く', () => {
+    // h0（葉でない）、h3（未決の葉だが inactive）
+    expect(filterNodes(buildIndex(nodes), '', new Set(['leaf'] as Filter[]), true).matches).toEqual([]);
+    const ix2 = buildIndex([...nodes, h('h4', 's1', null)]);
+    expect(filterNodes(ix2, '', new Set(['leaf'] as Filter[]), true).matches).toEqual(['h4']);
+  });
+});

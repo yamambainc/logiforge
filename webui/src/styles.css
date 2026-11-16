@@ -460,3 +460,6 @@ form.create .over { color: var(--f-fg); font-weight: 700; }
   .page, .repos { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .bottom-nav a { text-decoration: none; }
+ul.counts li a { display: flex; justify-content: space-between; align-items: baseline; width: 100%; color: var(--accent); text-decoration: none; }
+ul.counts li a:hover { text-decoration: underline; }
+table.judge td.note-cell { font-weight: 400; font-size: 13px; }
