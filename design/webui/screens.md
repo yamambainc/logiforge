@@ -34,6 +34,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 本文：`getHumanRequest`。対象ノードは、ビュワーへのリンクで示す（`?node=`）。
 - 回答：`answerHumanRequest`。添付は base64 で回答に含める（[アップロードの大きさ](../api/README.md#アップロードの大きさ)）。
   - 送る前に、ファイルが 10 MiB 以下で、要求の本文が 32 MiB 以下になるかを確かめ、超えればリンクで添えるように示す。
+- 回答の書きかけは、アクセストークンの期限でページが移動しても失わないようにする（[トークンの持ち方](auth.md#トークンの持ち方)）。
 - 回答した添付：`getAnswerAttachment`。
 
 ### [apply request と履歴](../../docs/webui/history.md)

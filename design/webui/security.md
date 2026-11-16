@@ -12,7 +12,7 @@ WebUI の応答のヘッダーと、利用者やエージェントが書いた�
 - `logiforge serve` は、WebUI と API のすべての応答に `X-Content-Type-Options: nosniff` を付ける。
 - ビルドした `index.html` に、インラインの `<script>` と `<style>` がないことを、CI で確かめる。
   - なぜ：CSP の `script-src` と `style-src` を `'self'` だけにしておくため。
-- `default-src 'self'` は、`connect-src` も `'self'` にする。そのため、注入されたスクリプトがあっても、`fetch` などでトークンを外のオリジンへ送れない。
+- `default-src 'self'` は、`connect-src` と `img-src` の外のオリジンも防ぐ。そのため、注入されたスクリプトがあっても、`fetch` や画像でトークンを外へ送ることはできない。ただし、ページの移動（`location.href` や `window.open` で外の URL を開く）は止めない（[受け入れた危険](auth.md#受け入れた危険)）。
 - スナップショットツリーの文字（主文、背景情報、レポート）は、文字列として表示する。HTML として差し込まない（React の `dangerouslySetInnerHTML` を使わない）。
 - 検証結果のレポートは、Markdown を整形しない。改行だけを保つ。
   - なぜ：整形には、HTML の無害化のライブラリが要るから。読む利用者にとって、整形の価値は小さい。

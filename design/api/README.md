@@ -19,9 +19,9 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
   - トークンは、[GitForge](../README.md#用語) が発行したものである（[アダプタ](../adapters/README.md)）。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
-- トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
+- トークンを発行するのは GitForge である。この API は、WebUI のために、Forgejo の OAuth2 の交換を中継するだけである（[サインインの中継](../webui/oauth-relay.md)）。
 - ヘルスチェックの `GET /healthz` だけは、`/v1` の外に置き、認証を求めない（[ヘルスチェック](../deploy.md#ヘルスチェック)）。
-- WebUI のサインインの中継（`/v1/oauth/` の下の 3 つ）も、認証を求めない。サインインの前に呼ぶからである（[サインイン](../webui/auth.md)）。
+- WebUI のサインインの中継（`/v1/oauth/` の下の 2 つ）も、認証を求めない。サインインの前に呼ぶからである（[サインインの中継](../webui/oauth-relay.md)）。
 
 ## repository
 

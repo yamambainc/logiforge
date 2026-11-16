@@ -17,7 +17,7 @@ WebUI の実装を、どこまでを最初の 1 件にするかを確かめる�
 
 ### 1. ビュワー
 
-- Forgejo の OAuth2 でのサインインと、BE の中継の 3 つの要求、その設定（[サインイン](auth.md)）。
+- Forgejo の OAuth2 でのサインインと、BE の中継の 2 つの要求、その設定（[サインイン](auth.md)、[サインインの中継](oauth-relay.md)）。
 - 応答のヘッダーと、ファイルの開き方（[スクリプトの注入への備えと、ファイルの開き方](security.md)）。
 - `logiforge serve` から WebUI を配ること、応答のヘッダー、gzip（[配り方](stack.md#配り方)）。
 - repository を選ぶこと（[repository の一覧](../../docs/webui/repositories.md) のうち、一覧と選択）。

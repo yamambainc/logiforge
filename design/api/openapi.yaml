@@ -58,8 +58,8 @@ paths:
     post:
       tags: [oauth]
       operationId: exchangeOAuthCode
-      summary: 認可コードをトークンに交換する（BE が client secret を足して Forgejo に中継する）
-      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。
+      summary: 認可コードをアクセストークンに交換する（BE が client secret を足して Forgejo に中継する）
+      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。決まりは ../../design/webui/oauth-relay.md に従う。Forgejo が拒んだら unauthenticated。
       security: []
       requestBody:
         required: true
@@ -78,30 +78,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OAuthToken' }
         '4XX': { $ref: '#/components/responses/Problem' }
-  /oauth/refresh:
-    post:
-      tags: [oauth]
-      operationId: refreshOAuthToken
-      summary: リフレッシュトークンでアクセストークンを更新する（BE が client secret を足して Forgejo に中継する）
-      description: 認証を求めない。リフレッシュトークンは 1 回使うと無効になるので、返った新しいものに置き換える。
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [refresh_token]
-              properties:
-                refresh_token: { type: string }
-      responses:
-        '200':
-          description: Forgejo の応答
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OAuthToken' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-
   /repositories:
     get:
       tags: [repository]
@@ -842,12 +818,12 @@ components:
   schemas:
     OAuthToken:
       type: object
-      required: [access_token, token_type, expires_in, refresh_token]
+      description: リフレッシュトークンは含めない（../../design/webui/auth.md の「トークンの持ち方」）
+      required: [access_token, token_type, expires_in]
       properties:
         access_token: { type: string }
         token_type: { type: string }
         expires_in: { type: integer, description: アクセストークンの寿命（秒） }
-        refresh_token: { type: string }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
