@@ -58,8 +58,25 @@ try {
   if (new URL(page.url()).search.includes('code=')) throw new Error('URL に code が残っている');
   await page.screenshot({ path: OUT + '/signin-desktop.png' });
 
+  step('repository を作る：名前と主文を書くと、ビュワーが開き、取り込まれしだい根が出る');
+  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === '新しい repository').click());
+  await page.type('form.create input[placeholder="question-a"]', 'made');
+  await page.type('form.create input[placeholder="ある究極の問いの主文"]', 'あ'.repeat(51));
+  await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
+  await page.waitForFunction(() => document.querySelector('.form-error')?.textContent.includes('50 字以下'), { timeout: 5000 });
+  await page.screenshot({ path: OUT + '/create.png' });
+  await page.$eval('form.create input[placeholder="ある究極の問いの主文"]', (e) => { e.select(); });
+  await page.keyboard.press('Backspace');
+  await page.type('form.create input[placeholder="ある究極の問いの主文"]', 'ブラウザから作った問い');
+  await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
+  await page.waitForFunction(() => location.pathname === '/r/made/tree', { timeout: 30000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === 'ブラウザから作った問い'), { timeout: 60000 });
+  await page.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.repo-list', { timeout: 20000 });
+
   step('repository を選ぶ');
-  await page.click('.repo-list a');
+  await page.evaluate((r) => [...document.querySelectorAll('.repo-list a')].find((a) => a.querySelector('.repo-name').textContent === r).click(), REPO);
   await page.waitForFunction((r) => location.pathname === `/r/${r}/tree`, {}, REPO);
 
   step('ビュワー：アウトラインにストーリーと仮説が出る');
@@ -312,6 +329,17 @@ try {
   await flaky.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 30000 });
   await flaky.close();
 
+  step('ダッシュボード：上のタブで移る。根の値、作業の終わりの判定、着手できる作業の件数');
+  await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'ダッシュボード').click());
+  await page.waitForFunction((r) => location.pathname === `/r/${r}`, { timeout: 5000 }, REPO);
+  await page.waitForSelector('table.judge', { timeout: 20000 });
+  const counts = await page.$$eval('ul.counts li', (ls) => Object.fromEntries(ls.map((l) => [l.querySelector('span').textContent, Number(l.querySelector('b').textContent)])));
+  // 未決の葉は、open の AR が対象にしているので数えない（listWork の include_claimed）。レビュー待ちは、AR_MAIN
+  if (counts['未決の葉'] !== 0 || !(counts['レビュー待ち'] >= 1)) throw new Error('着手できる作業の件数：' + JSON.stringify(counts));
+  await page.screenshot({ path: OUT + '/dashboard.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
+  await page.waitForSelector('.row', { timeout: 20000 });
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });
@@ -378,6 +406,13 @@ try {
   await new Promise((r) => setTimeout(r, 300));
   if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('3D が幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/3d-mobile.png' });
+
+  step('モバイル：下のタブで、ダッシュボードに移る。はみ出さない');
+  await mobile.waitForSelector('.bottom-nav', { timeout: 5000 });
+  await mobile.evaluate(() => [...document.querySelectorAll('.bottom-nav a')].find((a) => a.textContent.includes('状況')).click());
+  await mobile.waitForSelector('table.judge', { timeout: 20000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('ダッシュボードが幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/dashboard-mobile.png' });
 
   step('モバイルで AR を重ねる：帯が出て、はみ出さない');
   await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });
