@@ -107,10 +107,13 @@ describe('401', () => {
   });
 
   it('1 度は成功したあとの 401 では、サインインの画面を出さずに authorize に行く', async () => {
+    // authorize への移動は、PKCE の digest（本物の非同期）のあとなので、この試しだけ本物の時計で待つ。期限（59 分後）は来ない
+    vi.useRealTimers();
     const a = await signedIn();
     a.markVerified();
     a.onUnauthorized();
-    await vi.runAllTimersAsync();
+    await vi.waitFor(() => expect(assigned).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
     expect(assigned).toHaveLength(1);
   });
 

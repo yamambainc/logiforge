@@ -99,7 +99,7 @@ type oauthToken struct {
 
 var (
 	errExchange    = errors.New("交換を拒まれた")
-	errUnavailable = errors.New("Forgejo が 5xx を返した")
+	errUnavailable = errors.New("forgejo が 5xx を返した")
 )
 
 func (o *OAuth) exchange(ctx context.Context, form url.Values) (oauthToken, error) {
