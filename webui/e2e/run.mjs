@@ -4,15 +4,19 @@
 // 環境変数：BASE（serve の URL）、LOGIN、PASSWORD、CHROME（Chrome のパス）、OUT（スクリーンショットの置き場）、REPO、
 // OUTSIDER_LOGIN、OUTSIDER_PASSWORD（organization にいない Forgejo のユーザー）、NODE_A（検証結果のある仮説）、NODE_B（検証結果のない葉）。
 // スナップショットツリーには、inactive のストーリー「広告の導線」もある。
+// AR_MAIN（main 向きで open。NODE_B に検証結果（偽）を出す）、AR_DEV（向き先が develop。NODE_A の背景情報を足す）。
 import { mkdirSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV } = process.env;
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 800 });
 const step = (s) => console.log('…', s);
+// ページの中の誤りは、ログに出す（白い画面になったときに、理由が分かるように）
+const logErrors = (p) => p.on('pageerror', (e) => console.error('pageerror:', e.message));
+logErrors(page);
 
 // authorize への行き来を数える。WebUI が authorize に行くたびに、新しい state を作る。同意の画面（200）が出た回数も数える
 function watch(p) {
@@ -133,6 +137,57 @@ try {
   await signedIn(page);
   await page.waitForSelector('.row.sel', { timeout: 20000 });
 
+  step('AR を重ねる：変わるノード（伝播で変わる祖先も）に印。最初の変更を選び、n と p でたどる。帯に件数');
+  await page.select('select[aria-label="AR を重ねる"]', AR_MAIN);
+  await page.waitForSelector('.banner.overlay', { timeout: 30000 });
+  if (new URL(page.url()).searchParams.get('apply_request') !== AR_MAIN) throw new Error('URL に apply_request が入らない');
+  await page.waitForSelector('.row.chg-changed', { timeout: 10000 });
+  const changed = await page.$$eval('.row.chg-changed .text', (els) => els.map((e) => e.textContent));
+  if (!changed.some((t) => t.includes('継続率も')) || !changed.includes('招待の導線')) throw new Error('変わるノード（と伝播で変わる祖先）に印がない：' + changed.join(' / '));
+  if (!(await page.$('.row.sel[class*="chg-"]'))) throw new Error('最初の変更を選ばない');
+  const stepText = () => page.$eval('.banner .steps .dim', (e) => e.textContent);
+  const s1 = await stepText();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press('n');
+  await page.waitForFunction((s) => document.querySelector('.banner .steps .dim')?.textContent !== s, { timeout: 5000 }, s1);
+  await page.keyboard.press('p');
+  await page.waitForFunction((s) => document.querySelector('.banner .steps .dim')?.textContent === s, { timeout: 5000 }, s1);
+  await page.evaluate(() => [...document.querySelectorAll('.row')].find((r) => r.textContent.includes('継続率も')).click());
+  await page.waitForFunction(() => [...document.querySelectorAll('.d-sec h3')].some((h) => h.textContent.startsWith('この AR での変化')) && document.querySelector('table.changes')?.textContent.includes('値'), { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.verdict .val')?.textContent === '偽', { timeout: 20000 });
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/overlay-outline.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.chip')].find((b) => b.textContent === 'この AR で変わる').click());
+  if ((await rowTexts(page)).some((t) => t === '広告の導線')) throw new Error('「この AR で変わる」で、変わらないノードが出る');
+  await page.evaluate(() => [...document.querySelectorAll('.chip')].find((b) => b.textContent === 'この AR で変わる').click());
+  await page.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent.includes('図')).click());
+  await page.waitForSelector('.gnode.g-changed', { timeout: 10000 });
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/overlay-graph.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent.includes('アウトライン')).click());
+
+  step('向き先が main でない AR は、黄の帯で「検査していません」と示す。戻ると前の AR');
+  await page.select('select[aria-label="AR を重ねる"]', AR_DEV);
+  await page.waitForFunction(() => document.querySelector('.banner.overlay.unchecked')?.textContent.includes('main 向きではないので、検査していません'), { timeout: 30000 });
+  await page.waitForSelector('.row.chg-changed', { timeout: 10000 });
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/overlay-unchecked.png' });
+  await page.goBack();
+  await page.waitForFunction((a) => new URL(location.href).searchParams.get('apply_request') === a && document.querySelector('.banner.overlay:not(.unchecked)'), { timeout: 30000 }, AR_MAIN);
+
+  step('過去の時点：main の古いコミットを選ぶと、その時点の姿。審査中の AR の札は出さない。今の main に戻れる');
+  const oldest = await page.$$eval('select[aria-label="時点"] option', (os) => os[os.length - 1].value);
+  await page.select('select[aria-label="時点"]', oldest);
+  await page.waitForSelector('.banner.past', { timeout: 30000 });
+  await page.waitForSelector('.row', { timeout: 10000 });
+  if ((await rowTexts(page)).some((t) => t.includes('招待の導線'))) throw new Error('最初のコミットに、あとで足したストーリーが出る');
+  if (await page.$('.row .t-ar')) throw new Error('過去の時点に、審査中の AR の札が出る');
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/past.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.banner.past button')].find((b) => b.textContent === '今の main に戻る').click());
+  await page.waitForFunction(() => !document.querySelector('.banner') && !new URL(location.href).searchParams.get('commit'), { timeout: 30000 });
+  await page.waitForSelector('.row', { timeout: 10000 });
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });
@@ -192,6 +247,13 @@ try {
   await mobile.evaluate(() => [...document.querySelectorAll('.seg.mode button')].find((b) => b.textContent.includes('図')).click());
   await mobile.waitForSelector('.gnode', { timeout: 10000 });
   await mobile.screenshot({ path: OUT + '/viewer-mobile-graph.png' });
+
+  step('モバイルで AR を重ねる：帯が出て、はみ出さない');
+  await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });
+  await mobile.waitForSelector('.banner.overlay', { timeout: 30000 });
+  await mobile.waitForSelector('.row.chg-changed', { timeout: 10000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('重ねたビュワーが幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/overlay-mobile.png' });
   await mobile.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await mobile.waitForSelector('.repo-list', { timeout: 20000 });
 

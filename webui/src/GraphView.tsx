@@ -18,6 +18,8 @@ interface Props {
   fitKey: string; // 検索と絞り込み。変わったら収め直す
   fitPending: boolean; // 検索の入力の途中（収め直しを待っている）
   vertical: boolean; // 上から下（縦）。false なら左から右（横）
+  // 最初の表示と収め直しで、全体のかわりに収めるノード（design/webui/graph-navigation.md の「まわりを収める」）。null なら全体
+  focus?: Set<string> | null;
 }
 
 interface Placed { id: string; x: number; y: number; parent: string | null; row: Row }
@@ -109,6 +111,14 @@ export function GraphView(p: Props) {
   // モバイルは、根と 1 段目だけを収め、縮めるのは 70% まで
   const frame = useCallback((lower: number): View => {
     const pad = 16;
+    // まわりを収める：focus のノードの外枠が収まるまで縮め、真ん中に置く。下限は全体のときと同じ
+    const fs = lower === LOD_K && p.focus ? [...p.focus].map((id) => layout.pos.get(id)).filter((n): n is Placed => !!n) : [];
+    if (fs.length) {
+      const x0 = Math.min(...fs.map((n) => n.x)), y0 = Math.min(...fs.map((n) => n.y));
+      const w = Math.max(...fs.map((n) => n.x)) + size.w - x0, h = Math.max(...fs.map((n) => n.y)) + size.h - y0;
+      const k = Math.max(V || p.mobile ? 0.7 : LOD_K, Math.min(1, (box.w - pad * 2) / w, (box.h - pad * 2) / h));
+      return { k, x: box.w / 2 - k * (x0 + w / 2), y: box.h / 2 - k * (y0 + h / 2) };
+    }
     if (V) {
       // 縦：根を上に寄せ、開いている部分が収まるまで縮める。ただし最初の表示では 70% より縮めない（兄弟が横に並ぶので、幅に収めるとすぐ読めない大きさになる）。
       // 幅に入らない分は、横のパンで見る。横に収まらなければ、根を横の真ん中に置く
@@ -126,7 +136,7 @@ export function GraphView(p: Props) {
     const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
     const y = k * layout.height <= box.h - pad * 2 ? (box.h - k * layout.height) / 2 : box.h / 2 - k * ((root?.y ?? 0) + size.h / 2);
     return { k, x: pad, y };
-  }, [box, layout, p.rows, p.mobile, V, size.h, size.col, size.w]);
+  }, [box, layout, p.rows, p.mobile, p.focus, V, size.h, size.col, size.w]);
   const fit = useCallback(() => animateTo(frame(MIN_K)), [animateTo, frame]);
 
   // 最初の表示：収める（下限 45%）。選んだノードへのフォーカスは効かせない

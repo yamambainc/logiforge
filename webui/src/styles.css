@@ -396,3 +396,18 @@ button.file { width: 100%; text-align: left; background: var(--panel); cursor: p
 .history .h-ar { min-width: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history .dim { white-space: nowrap; }
 .notice { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #fff8e6; border-bottom: 1px solid var(--line); font-size: 13px; }
+/* 時点と、重ねる AR を選ぶ（design/webui/overlay.md） */
+.sources { display: flex; gap: 8px; min-width: 0; }
+.pick { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; max-width: 240px; min-width: 0; }
+.pick.on { border-color: var(--ar-fg); color: var(--ar-fg); font-weight: 600; }
+.banner.past { background: #eef4ff; border-bottom-color: #d6e2fb; }
+.banner .warn { font-weight: 700; color: #8a5a00; }
+.banner .steps { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+table.changes { border-collapse: collapse; font-size: 13px; }
+table.changes th { text-align: left; font-weight: 600; padding: 2px 10px 2px 0; color: var(--sub); white-space: nowrap; }
+table.changes td { padding: 2px 6px; vertical-align: top; overflow-wrap: anywhere; }
+table.changes .before { color: var(--sub); text-decoration: line-through; }
+@media (max-width: 767px) {
+  .sources { width: 100%; order: 3; }
+  .pick { flex: 1; max-width: none; }
+}

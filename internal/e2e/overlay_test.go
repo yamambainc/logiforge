@@ -38,23 +38,7 @@ func TestStackedApplyRequest(t *testing.T) {
 	agent.commitPush("b2", "上")
 	ar := agent.create("b2")
 
-	// pull request の向き先を develop に変える（GitForge の画面で、積み上げた pull request にするのと同じ）。
-	ref := w.org + "/q"
-	var pulls []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-	}
-	w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/pulls?state=open&limit=50", nil, &pulls, 200)
-	n := 0
-	for _, p := range pulls {
-		if strings.Contains(p.Title, ar.ID) {
-			n = p.Number
-		}
-	}
-	if n == 0 {
-		t.Fatalf("pull request がない：%+v", pulls)
-	}
-	w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/pulls/%d", ref, n), map[string]any{"base": "develop"}, nil, 201)
+	w.retarget("q", ar.ID, "develop")
 
 	var nodes struct {
 		Commit string `json:"commit"`
@@ -88,4 +72,22 @@ func TestStackedApplyRequest(t *testing.T) {
 	if st, b := w.call("alice", "GET", "/repositories/q/commits", nil); st != 200 || json.Unmarshal(b, &commits) != nil || len(commits.Items) == 0 || commits.Items[0].Number != len(commits.Items) {
 		t.Fatalf("listCommits：%d %s", st, b)
 	}
+}
+
+// retarget は、apply request の pull request の向き先を変える（GitForge の画面で、積み上げた pull request にするのと同じ）。
+func (w *world) retarget(repo, arID, base string) {
+	w.t.Helper()
+	ref := w.org + "/" + repo
+	var pulls []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+	}
+	w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/pulls?state=open&limit=50", nil, &pulls, 200)
+	for _, p := range pulls {
+		if strings.Contains(p.Title, arID) {
+			w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/pulls/%d", ref, p.Number), map[string]any{"base": base}, nil, 201)
+			return
+		}
+	}
+	w.t.Fatalf("%s の pull request がない：%+v", arID, pulls)
 }

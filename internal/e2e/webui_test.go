@@ -81,6 +81,26 @@ func TestWebUISignIn(t *testing.T) {
 		return st == 200 && strings.Contains(string(b), `"verdict":{`)
 	})
 
+	// 重ねて見る apply request。main 向き（open のまま）：検証結果のない葉に、検証結果（偽）を出す
+	agent.branch("b3")
+	agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "false", "--report", agent.file("r3.md", "# 検証\n\n継続率が下がった。\n"))
+	agent.commitPush("b3", "検証 2")
+	arMain := agent.create("b3")
+	// 向き先が develop（積み上げ）：develop で背景情報を足し、その上の b4 でも足す
+	agent.branch("develop")
+	agent.must(nil, "node", "edit", hA, "--append-background", agent.file("bg-dev.md", "下の背景\n"))
+	agent.commitPush("develop", "下")
+	agent.git("checkout", "--quiet", "-B", "b4", "develop")
+	agent.must(nil, "node", "edit", hA, "--append-background", agent.file("bg-b4.md", "上の背景\n"))
+	agent.commitPush("b4", "上")
+	arDev := agent.create("b4")
+	w.retarget("q", arDev.ID, "develop")
+	w.eventually("2 つの apply request を重ねて読める", 60*time.Second, func() bool {
+		s1, _ := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+arMain.ID, nil)
+		s2, b := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+arDev.ID, nil)
+		return s1 == 200 && s2 == 200 && strings.Contains(string(b), "上の背景")
+	})
+
 	// root_statement を返す
 	_, b := w.call("alice", "GET", "/repositories/q", nil)
 	var repo struct {
@@ -112,7 +132,7 @@ func TestWebUISignIn(t *testing.T) {
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
 	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
-		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {
