@@ -70,11 +70,7 @@ func (b *Backend) afterView(ctx context.Context, repo, ref, id string) (*view, e
 	if len(conflicts) > 0 {
 		return nil, fail(CodeOverlayConflict, "今の main に重ねられない。衝突したパス：%s", strings.Join(conflicts, "、"))
 	}
-	t := tree.Build(head)
-	x := snapshot.IndexFromSnapshotTree(latest.main.Commit, &latest.main.SnapshotTree)
-	st := snapshot.BuildSnapshotTreeOf(t, head, x)
-	m := &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: latest.main.Commit, SnapshotTree: *st}
-	return &view{repo: repo, main: m, tree: t, files: head}, nil
+	return viewOf(latest, head, latest.main.Commit), nil
 }
 
 // afterBranchView は、向き先が main でない apply request の差分を、向き先のブランチの今の先頭に重ねた view を返す。
@@ -95,7 +91,7 @@ func (b *Backend) afterBranchView(ctx context.Context, repo, target string, ar *
 	if err != nil {
 		return nil, err
 	}
-	return b.overlaid(tv, ar.Diff, tv.main.Commit)
+	return overlaid(tv, ar.Diff, tv.main.Commit)
 }
 
 // commitAt は、コミットの view を返す。main のコミットになければ、ブランチのコミットとして読む。空なら今の main。
@@ -104,8 +100,12 @@ func (b *Backend) commitAt(ctx context.Context, repo, revision string) (*view, e
 	if revision == "" || errCode(err) != CodeSnapshotPending {
 		return v, err
 	}
-	if _, berr := b.Snap.Branch(ctx, repo, revision); berr != nil {
-		return nil, err // main のコミットとして待つ
+	_, berr := b.Snap.Branch(ctx, repo, revision)
+	if errors.Is(berr, ports.ErrNotFound) {
+		return nil, err // main のコミットとしても、ブランチのコミットとしても、まだない。待つ
+	}
+	if berr != nil {
+		return nil, berr
 	}
 	return b.branchView(ctx, repo, revision)
 }
@@ -124,20 +124,25 @@ func (b *Backend) branchView(ctx context.Context, repo, revision string) (*view,
 	if err != nil {
 		return nil, err
 	}
-	return b.overlaid(base, br.Diff, br.Commit)
+	return overlaid(base, br.Diff, br.Commit)
 }
 
 // overlaid は、base の view に差分を衝突なしで重ね、木を組み立てて値を計算した view を返す。コミットは commit にする。
-func (b *Backend) overlaid(base *view, d snapshot.Diff, commit snapshot.Commit) (*view, error) {
+func overlaid(base *view, d snapshot.Diff, commit snapshot.Commit) (*view, error) {
 	head, err := snapshot.Apply(base.files, d)
 	if err != nil {
 		return nil, err
 	}
+	return viewOf(base, head, commit), nil
+}
+
+// viewOf は、base の view に重ねたファイル head から、木を組み立てて値を計算した view を返す。コミットは commit にする。
+func viewOf(base *view, head tree.Files, commit snapshot.Commit) *view {
 	t := tree.Build(head)
 	x := snapshot.IndexFromSnapshotTree(base.main.Commit, &base.main.SnapshotTree)
 	st := snapshot.BuildSnapshotTreeOf(t, head, x)
 	m := &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: commit, SnapshotTree: *st}
-	return &view{repo: base.repo, main: m, tree: t, files: head}, nil
+	return &view{repo: base.repo, main: m, tree: t, files: head}
 }
 
 // errCode は、エラーの code を返す。Logiforge のエラーでなければ空。

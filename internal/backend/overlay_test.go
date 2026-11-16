@@ -2,11 +2,15 @@ package backend
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
@@ -203,6 +207,22 @@ func TestReadAfterStackedApplyRequest(t *testing.T) {
 			t.Fatalf("ブランチのコミット %s：%+v %v", sha, n, err)
 		}
 	}
+	// 上の apply request を作ったあとに、向き先が進んでも、上の apply request が変えていないファイルの変更は残る。
+	f.r.git("checkout", "--quiet", "develop")
+	f.r.write(dH1+"/background.md", []byte("develop が進んだ\n"))
+	dev2 := f.r.commit("下の続き\n\nLogiforge-Session-Id: s5")
+	f.r.git("checkout", "--quiet", "main")
+	syncFixture(t, f)
+	nodes, err = b.ListNodes(ctx, c, "q", at, "", -1)
+	if err != nil || nodes.Commit != dev2 {
+		t.Fatalf("進んだ向き先：%s %v", nodes.Commit, err)
+	}
+	for id, want := range map[string]string{H1: "develop が進んだ\n", H2: "上の背景\n"} {
+		n, err := b.GetNode(ctx, c, "q", id, at)
+		if err != nil || n.Node.(*Hypothesis).Background != want {
+			t.Fatalf("進んだ向き先の %s：%+v %v", id, n.Node, err)
+		}
+	}
 	// レビューの材料は、向き先が main でなければ作らない。
 	if _, err := b.GetReviewMaterial(ctx, c, "q", "apr_3"); code(err) != CodeOverlayUnsupported {
 		t.Fatalf("レビューの材料：%v", err)
@@ -216,5 +236,20 @@ func TestReadAfterStackedApplyRequest(t *testing.T) {
 	// 取り込まれていないコミットは、snapshot_pending。
 	if _, err := b.GetTree(ctx, c, "q", At{Commit: strings.Repeat("e", 40)}); code(err) != CodeSnapshotPending {
 		t.Fatalf("ないコミット：%v", err)
+	}
+}
+
+// ブランチのコミットの base の main が、まだ取り込まれていなければ snapshot_pending（design/backend/snapshot.md の
+// 「ブランチのコミットのスナップショットツリー」）。
+func TestBranchBasePending(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	// b の base（c2）の main のスナップショットツリーを、まだないことにする。
+	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
+	if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(store.SnapshotKey("q", f.c2)))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.b.GetTree(ctx, f.caller, "q", At{Commit: f.head}); code(err) != CodeSnapshotPending {
+		t.Fatalf("base の main がない：%v", err)
 	}
 }

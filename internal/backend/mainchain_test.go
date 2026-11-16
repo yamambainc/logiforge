@@ -2,6 +2,8 @@ package backend
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -143,5 +145,13 @@ func TestListCommits(t *testing.T) {
 	}
 	if _, err := f.b.ListCommits(ctx, f.caller, "q", "9", 1); code(err) != CodeValidationFailed {
 		t.Fatalf("先のカーソル：%v", err)
+	}
+	// 索引に抜けがあれば（worker が書いている途中）、snapshot_pending。
+	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
+	if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(store.MainIndexKey("q", 1)))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.b.ListCommits(ctx, f.caller, "q", "", 10); code(err) != CodeSnapshotPending {
+		t.Fatalf("索引の抜け：%v", err)
 	}
 }

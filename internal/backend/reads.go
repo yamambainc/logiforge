@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"sync"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
@@ -311,7 +312,7 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 			return false
 		}
 		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
-		if ar := trailerValue(cm.Trailers, "Logiforge-Apply-Request"); ar != "" {
+		if ar := trailerValue(cm.Trailers, snapshot.TrailerApplyRequest); ar != "" {
 			e.ApplyRequestID, e.Reflected = &ar, true
 		}
 		for _, t := range cm.Trailers {
@@ -546,26 +547,51 @@ func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string
 	if from > 0 {
 		n = from
 	}
-	out := Page[MainCommit]{Items: []MainCommit{}}
-	for ; n >= 1; n-- {
-		if len(out.Items) == limit {
-			next := strconv.Itoa(n)
-			out.NextCursor = &next
-			break
-		}
-		sha, err := b.Snap.MainAt(ctx, repo, n)
+	count := min(limit, n)
+	out := Page[MainCommit]{Items: make([]MainCommit, count)}
+	if n > count {
+		next := strconv.Itoa(n - count)
+		out.NextCursor = &next
+	}
+	// 置き場を、listCommitsParallel 本ずつ並べて読む
+	errs := make([]error, count)
+	sem := make(chan struct{}, listCommitsParallel)
+	var wg sync.WaitGroup
+	for i := range count {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i, num int) {
+			defer func() { <-sem; wg.Done() }()
+			out.Items[i], errs[i] = b.mainCommit(ctx, repo, num)
+		}(i, n-i)
+	}
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
 			return Page[MainCommit]{}, err
 		}
-		cm, err := b.Snap.Commit(ctx, repo, sha)
-		if err != nil {
-			return Page[MainCommit]{}, err
-		}
-		e := MainCommit{Number: n, Commit: sha, CommittedAt: cm.CommittedAt}
-		if ar := trailerValue(cm.Trailers, "Logiforge-Apply-Request"); ar != "" {
-			e.ApplyRequestID = &ar
-		}
-		out.Items = append(out.Items, e)
 	}
 	return out, nil
+}
+
+// listCommitsParallel は、listCommits で並べて読む数である。
+const listCommitsParallel = 12
+
+// mainCommit は、番号の main のコミットを、main の並びの索引とコミットの記録から引く。どちらかがなければ、worker が書いている途中なので snapshot_pending。
+func (b *Backend) mainCommit(ctx context.Context, repo string, num int) (MainCommit, error) {
+	sha, err := b.Snap.MainAt(ctx, repo, num)
+	if err == nil {
+		var cm snapshot.Commit
+		if cm, err = b.Snap.Commit(ctx, repo, sha); err == nil {
+			e := MainCommit{Number: num, Commit: sha, CommittedAt: cm.CommittedAt}
+			if ar := trailerValue(cm.Trailers, snapshot.TrailerApplyRequest); ar != "" {
+				e.ApplyRequestID = &ar
+			}
+			return e, nil
+		}
+	}
+	if errors.Is(err, ports.ErrNotFound) {
+		return MainCommit{}, fail(CodeSnapshotPending, "main のコミット %d の記録が、まだない。少し待って送り直す", num)
+	}
+	return MainCommit{}, err
 }
