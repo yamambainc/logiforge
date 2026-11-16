@@ -512,8 +512,16 @@ func TestRunHeartbeatAndSkipBusy(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if names, _ := store.GetRepositories(ctx, st); len(names) != 1 || names[0] != "q" {
-		t.Fatalf("repositories: %v", names)
+	// repositories は、latest ができたあとの見回りで書く。
+	for {
+		if names, _ := store.GetRepositories(ctx, st); len(names) == 1 && names[0] == "q" {
+			break
+		}
+		if time.Now().After(deadline) {
+			names, _ := store.GetRepositories(ctx, st)
+			t.Fatalf("repositories: %v", names)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	cancel()
 	<-done
