@@ -49,8 +49,6 @@ services:
     environment:
       <<: *common
       LOGIFORGE_WORKER_DIR: /var/lib/logiforge/worker
-      # 手元で作った repository が、すぐに見回りに入るよう、一覧を短い間隔で読み直す。本番の既定は 1 分である。
-      LOGIFORGE_WORKER_LIST_INTERVAL: 5s
     secrets: [worker_token]
     volumes:
       - worker:/var/lib/logiforge/worker

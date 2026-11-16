@@ -88,7 +88,7 @@ func env(name string) (string, error) {
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ）
 //	LOGIFORGE_WORKER_INTERVAL  見回りの間隔（既定は 1s）
 //	LOGIFORGE_GIT_TIMEOUT      git の操作 1 回の時間の上限（既定は 10m）
-//	LOGIFORGE_WORKER_LIST_INTERVAL  repository の一覧を読み直す間隔（既定は 1m）
+//	LOGIFORGE_WORKER_LIST_INTERVAL  repository の一覧を読み直す間隔（既定は 10s）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）

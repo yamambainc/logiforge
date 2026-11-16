@@ -102,7 +102,7 @@ jobs:
           curl -fsS http://localhost:8080/healthz
           token=$(cat .compose/alice_token)
           # 作成は、worker が読む側に出すまで、上限つきで待ってから応答する。置き場の共有を確かめる。
-          # worker が新しい repository を見回りに入れるのは、一覧を読み直したあと（compose では 5 秒ごと）なので、出るまで待つ。
+          # worker が新しい repository を見回りに入れるのは、一覧を読み直したあと（既定 10 秒ごと）なので、出るまで待つ。
           curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
             -d '{"name":"demo","statement":"問い"}' http://localhost:8080/v1/repositories
           for i in $(seq 30); do

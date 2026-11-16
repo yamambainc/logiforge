@@ -28,7 +28,7 @@
   - 仕事は、変わった repository の fetch と、スナップショット、ブランチの履歴、`latest` を書くことである。git には書かない。
 - clone は、artifact の中身を含むので、repository ごとに数十 MB から数百 MB である。
   - repository 30 個で、永続するストレージは、数 GB から 10 GB ほどである。
-- worker が repository の一覧を読むのは、1 分に 1 回の GitForge の API である（[見回り](backend/worker.md#見回り)）。1 日に 1,440 回である。
+- worker が repository の一覧を読むのは、10 秒に 1 回の GitForge の API である（[見回り](backend/worker.md#見回り)）。1 日に 8,640 回である。
 - 見回りの `git ls-remote` は、repository 30 個 × 1 秒ごとで、1 秒に 30 回、1 日に約 260 万回である。1 回数 KB（ブランチの数による）である。
   - GitForge の API の上限には数えないことが多いが、git の操作の、乱用を防ぐ制限には数える。
   - GitForge の側の負荷（Forgejo の CPU など）は、測っていない。`ls-remote` 1 回ごとに、GitForge は認証と ref の一覧を返す処理をする。1 秒に 30 回で足りるかは、Forgejo を使う構成で、動かして確かめる。

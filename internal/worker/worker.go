@@ -43,7 +43,7 @@ type Config struct {
 	Interval time.Duration
 	// GitTimeout は、git の操作 1 回の時間の上限。0 なら 10 分。
 	GitTimeout time.Duration
-	// ListInterval は、repository の一覧を GitForge から読み直す間隔。0 なら 1 分。
+	// ListInterval は、repository の一覧を GitForge から読み直す間隔。0 なら 10 秒。
 	ListInterval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
@@ -55,7 +55,7 @@ type Config struct {
 const DefaultInterval = time.Second
 
 // DefaultListInterval は、repository の一覧を読み直す間隔の既定である。一覧を読むのは GitForge の API なので、見回りごとには読まない。
-const DefaultListInterval = time.Minute
+const DefaultListInterval = 10 * time.Second
 
 // listTimeout は、repository の一覧を読む時間の上限である。
 const listTimeout = 30 * time.Second
