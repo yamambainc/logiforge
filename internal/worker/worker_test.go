@@ -525,3 +525,31 @@ func TestRunHeartbeatAndSkipBusy(t *testing.T) {
 		t.Fatal("ハートビートがないのに、新しいとみなした")
 	}
 }
+
+// failSource は、repository の一覧を読めない Source である（GitForge に届かない）。
+type failSource struct{ source }
+
+func (failSource) ListRepositories(context.Context) ([]ports.Repository, error) {
+	return nil, errors.New("GitForge に届かない")
+}
+
+// 一度も repository の一覧を読めていないあいだは、置き場の repositories を書き換えない。
+func TestRunDoesNotClearRepositoriesWithoutList(t *testing.T) {
+	ctx := context.Background()
+	st := &store.Dir{Root: t.TempDir()}
+	if err := store.PutRepositories(ctx, st, []string{"q"}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	w := New(Config{Dir: dir, Interval: 10 * time.Millisecond}, failSource{}, st)
+	rctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	_ = w.Run(rctx)
+	if names, _ := store.GetRepositories(ctx, st); len(names) != 1 || names[0] != "q" {
+		t.Fatalf("repositories が書き換わった：%v", names)
+	}
+	// ハートビートは、一覧を読めなくても書く。
+	if err := CheckHeartbeat(dir, time.Second, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}

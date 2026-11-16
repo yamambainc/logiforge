@@ -166,6 +166,11 @@ func (w *Worker) tick(ctx context.Context, wg *sync.WaitGroup) {
 	w.mu.Lock()
 	repos := w.repos
 	w.mu.Unlock()
+	// 一度も一覧を読めていないあいだは、repository の処理も、repositories を書くこともしない。
+	// 空の一覧で書くと、GitForge に届かないまま再起動したときに、バックエンドの repository の一覧が空になるから。
+	if repos == nil {
+		return
+	}
 	for _, r := range repos {
 		unlock := w.tryLock(r.Name)
 		if unlock == nil {
@@ -203,6 +208,9 @@ func (w *Worker) refreshRepos(ctx context.Context) {
 	if err != nil {
 		w.cfg.Log.Error("repository の一覧を読めない。前に読めた一覧を使う", "err", err)
 		return
+	}
+	if repos == nil {
+		repos = []ports.Repository{}
 	}
 	w.mu.Lock()
 	w.repos = repos
