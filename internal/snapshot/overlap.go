@@ -30,13 +30,3 @@ func VersionCommit(c Commit) string {
 	}
 	return f[len(f)-1]
 }
-
-// HistoryNumber は、main のコミットの番号を、この木の history から引く。なければ 0。
-func (t *Tree) HistoryNumber(revision string) int {
-	for _, h := range t.History {
-		if h.Revision == revision {
-			return h.Number
-		}
-	}
-	return 0
-}

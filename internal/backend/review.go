@@ -9,7 +9,6 @@ import (
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 )
 
 // chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/pull-requests.md の「レビューの書き方」）。
@@ -189,20 +188,23 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 		return "", err
 	}
 	// 3. 対象ノードの変化、重ねられるか、差分の検査。
-	baseNum := latest.main.Tree.HistoryNumber(d.branch.Diff.Base)
+	baseNum, err := b.mainNumber(ctx, latest, d.branch.Diff.Base)
+	if err != nil {
+		return "", err
+	}
 	for _, t := range targetsOf(d.model.Operations) {
-		n := latest.main.Tree.Nodes[t]
+		n := latest.main.SnapshotTree.Nodes[t]
 		if n == nil || baseNum == 0 {
 			return failure("stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t))
 		}
-		if slices.ContainsFunc(n.Changes, func(r snapshot.Rev) bool { return r.Number > baseNum }) {
+		if n.LastChanged.Number > baseNum {
 			return failure("stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t))
 		}
 	}
 	// 引用した部分木が、base のあとに変わっていれば、それも stale_target にする（design/backend/merge.md の「対象ノードの変化」）。
 	for _, op := range d.model.Operations {
 		for _, ci := range op.Citations {
-			if ci.TargetKind == "subtree" && latest.main.Tree.SubtreeChangedAfter(ci.NodeID, baseNum) {
+			if ci.TargetKind == "subtree" && latest.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
 				return failure("stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID))
 			}
 		}
@@ -265,11 +267,15 @@ func targetsOf(ops []Operation) []string {
 	return out
 }
 
-// inHistory は、latest の main の history に、sha があるかを返す。
+// inHistory は、latest までの main の並びに、sha があるかを返す。
 func (b *Backend) inHistory(ctx context.Context, repo, latest, sha string) bool {
 	if latest == sha {
 		return true
 	}
 	m, err := b.Snap.Main(ctx, repo, latest)
-	return err == nil && m.Tree.HistoryNumber(sha) > 0
+	if err != nil {
+		return false
+	}
+	n, err := b.mainNumber(ctx, &view{repo: repo, main: m}, sha)
+	return err == nil && n > 0
 }

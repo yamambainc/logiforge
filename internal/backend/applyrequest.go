@@ -128,12 +128,13 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		a := awaiting(d.current.Commit, reviews.Items, ar.MergeFailures)
 		m.Awaiting = a
 	}
-	if m.State == string(ports.StateMerged) && latest != nil {
-		for _, e := range latest.main.Tree.History {
-			if e.ApplyRequest == ar.ID {
-				r := e.Revision
-				m.MergedCommit = &r
-			}
+	// 反映したコミットは、GitForge の merge のコミットである。worker が取り込んで、読む側に出ているときだけ返す。
+	if m.State == string(ports.StateMerged) && latest != nil && ar.MergedRevision != "" {
+		if n, err := b.mainNumber(ctx, latest, ar.MergedRevision); err != nil {
+			return nil, err
+		} else if n > 0 {
+			r := ar.MergedRevision
+			m.MergedCommit = &r
 		}
 	}
 	if d.current.Commit != "" {

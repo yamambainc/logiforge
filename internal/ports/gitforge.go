@@ -44,9 +44,11 @@ const (
 // ApplyRequest は、GitForge から読んだ提案である。
 // head のブランチが消えた open の提案を closed として扱うのは、ブランチの履歴を読むバックエンドである。
 type ApplyRequest struct {
-	ID            string
-	Number        int
-	Branch        string
+	ID     string
+	Number int
+	Branch string
+	// Target は、向き先のブランチ（pull request の base）である。
+	Target        string
 	Description   string
 	FirstRevision string
 	HeadRevision  string
@@ -58,6 +60,8 @@ type ApplyRequest struct {
 	// MergeFailures は、反映の失敗の記録である（古い順）。
 	MergeFailures []MergeFailure
 	CreatedAt     time.Time
+	// MergedRevision は、反映したときの merge のコミットの SHA である。反映していなければ空。
+	MergedRevision string
 	// Warnings は、数えなかった記録（MAC が合わない、など）である。
 	Warnings []string
 }

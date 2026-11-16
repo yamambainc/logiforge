@@ -37,11 +37,18 @@ type pullJSON struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
 	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
 }
 
 func (p pullJSON) pull() pullreq.Pull {
-	return pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
-		State: p.State, Merged: p.Merged, Author: p.User.Login, CreatedAt: p.CreatedAt}
+	pr := pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
+		State: p.State, Merged: p.Merged, Base: p.Base.Ref, Author: p.User.Login, CreatedAt: p.CreatedAt}
+	if p.Merged {
+		pr.MergeCommit = p.MergeCommitSHA
+	}
+	return pr
 }
 
 func (a api) WriterLogin() string { return a.cfg.Writer }

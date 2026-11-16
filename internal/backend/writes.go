@@ -121,7 +121,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 			return out, err
 		}
 		r := v.tree.Root()
-		if len(v.main.Tree.History) != 1 || r == nil || r.Statement != statement || r.Background != background || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
+		if v.main.Commit.Number != 1 || r == nil || r.Statement != statement || r.Background != background || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
 			return out, fail(CodeRepositoryExists, "同じ名前の repository がすでにある")
 		}
 	} else if err != nil {
@@ -155,7 +155,7 @@ type NewApplyRequest struct {
 func (b *Backend) checkContext(ctx context.Context, latest *view) tree.Context {
 	return tree.Context{
 		Others: []*tree.Tree{latest.tree},
-		// 仮説が、祖先のストーリーが inactive になる直前に葉だったか。inactivated.md が加わったコミットの 1 つ前の木で確かめる。
+		// 仮説が、祖先のストーリーが inactive になる直前に葉だったか。inactivated.md が加わったコミットの 1 つ前のスナップショットツリーで確かめる。
 		WasLeafBeforeInactivation: func(hid string) (bool, error) {
 			h := latest.tree.Hypotheses[hid]
 			if h == nil {
@@ -171,49 +171,36 @@ func (b *Backend) checkContext(ctx context.Context, latest *view) tree.Context {
 			if story == nil {
 				return true, nil
 			}
-			added, err := b.inactivatedIn(ctx, latest, story)
-			if err != nil || added <= 1 {
-				return false, err
+			added := 0
+			if n := latest.main.SnapshotTree.Nodes[story.ID]; n != nil {
+				added = n.InactivatedAt
 			}
-			before, err := b.mainAt(ctx, latest.repo, latest.main.Tree.History[added-2].Revision)
+			if added <= 1 {
+				return false, nil
+			}
+			prev, err := b.Snap.MainAt(ctx, latest.repo, added-1)
 			if err != nil {
 				return false, err
 			}
-			n := before.main.Tree.Nodes[hid]
+			before, err := b.mainAt(ctx, latest.repo, prev)
+			if err != nil {
+				return false, err
+			}
+			n := before.main.SnapshotTree.Nodes[hid]
 			return n != nil && n.Leaf, nil
 		},
-		// 引用したコミットが main の並びにあり、そのスナップショットの木に、そのノードがあるか。
+		// 引用したコミットが main の並びにあり、そのスナップショットツリーに、そのノードがあるか。
 		SubtreeExists: func(nodeID, revision string) (bool, error) {
-			if latest.main.Tree.HistoryNumber(revision) == 0 {
-				return false, nil
+			if n, err := b.mainNumber(ctx, latest, revision); err != nil || n == 0 {
+				return false, err
 			}
 			v, err := b.mainAt(ctx, latest.repo, revision)
 			if err != nil {
 				return false, err
 			}
-			return v.main.Tree.Nodes[nodeID] != nil, nil
+			return v.main.SnapshotTree.Nodes[nodeID] != nil, nil
 		},
 	}
-}
-
-// inactivatedIn は、ストーリーの inactivated.md が加わった main のコミットの番号を返す。
-func (b *Backend) inactivatedIn(ctx context.Context, v *view, s *tree.Story) (int, error) {
-	n := v.main.Tree.Nodes[s.ID]
-	if n == nil {
-		return 0, nil
-	}
-	for _, r := range n.Changes {
-		c, err := b.Snap.Commit(ctx, v.repo, r.Revision)
-		if err != nil {
-			return 0, err
-		}
-		for _, ch := range c.Changes {
-			if ch.Node == s.ID && ch.File == snapshot.FileInactivated {
-				return r.Number, nil
-			}
-		}
-	}
-	return 0, nil
 }
 
 // checkVersion は、先頭のコミットの差分を、onto の木に重ねて検査する。重ねられなければ conflicts を返す。
@@ -317,7 +304,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 func (b *Backend) baseFiles(ctx context.Context, repo, ref, base string) (tree.Files, error) {
 	m, err := b.Snap.Main(ctx, repo, base)
 	if err == nil {
-		return m.Tree.Files()
+		return m.SnapshotTree.Files()
 	}
 	if !errors.Is(err, ports.ErrNotFound) {
 		return nil, err
@@ -424,7 +411,7 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 		return HumanRequest{}, err
 	}
 	// 対象は、active な仮説で、葉か要再検討であるもの（docs/human-requests/README.md）。
-	node := latest.main.Tree.Nodes[n.NodeID]
+	node := latest.main.SnapshotTree.Nodes[n.NodeID]
 	switch {
 	case node == nil:
 		return HumanRequest{}, fail(CodeValidationFailed, "ノード %s が、今の main の木にない", n.NodeID)

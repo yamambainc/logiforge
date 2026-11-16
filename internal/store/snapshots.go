@@ -31,7 +31,7 @@ func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit
 	return d.Commit, nil
 }
 
-// GetMain は、main のコミットの記録と木を読む。どちらかがなければ ErrNotFound。
+// GetMain は、main のコミットの記録とスナップショットツリーを読む。どちらかがなければ ErrNotFound。
 func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, error) {
 	c, err := GetCommit(ctx, r, repo, sha)
 	if err != nil {
@@ -44,11 +44,11 @@ func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, e
 	if err != nil {
 		return nil, err
 	}
-	var d snapshot.TreeDoc
+	var d snapshot.SnapshotTreeDoc
 	if err := snapshot.Decode(b, &d); err != nil {
 		return nil, err
 	}
-	return &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: c, Tree: d.Tree}, nil
+	return &snapshot.Main{FormatVersion: snapshot.FormatVersion, Commit: c, SnapshotTree: d.SnapshotTree}, nil
 }
 
 // GetBranch は、ブランチの先頭のスナップショットを読む。古いフォーマットバージョンのものも読む（snapshot.MinBranchFormatVersion から）。
@@ -67,14 +67,6 @@ func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branc
 	return &br, nil
 }
 
-// PutMain は、main のコミットの記録と木を置く。木を先に置き、コミットの記録をあとに置く。
-func PutMain(ctx context.Context, w Writer, repo string, m *snapshot.Main) error {
-	if err := PutTree(ctx, w, repo, m.Commit.Revision, &m.Tree); err != nil {
-		return err
-	}
-	return PutCommit(ctx, w, repo, m.Commit)
-}
-
 // PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot.md）。
 func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) error {
 	b, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: c})
@@ -84,17 +76,31 @@ func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) er
 	return w.Put(ctx, CommitKey(repo, c.Revision), b)
 }
 
-// PutTree は、main のコミットの木を置く。木を作るのは、latest、ブランチの base、API で指定されたコミットだけである。
-func PutTree(ctx context.Context, w Writer, repo, sha string, t *snapshot.Tree) error {
-	b, err := snapshot.Encode(&snapshot.TreeDoc{FormatVersion: snapshot.FormatVersion, Tree: *t})
+// PutSnapshotTree は、main のコミットのスナップショットツリーを置く。main のすべてのコミットに置く（design/backend/snapshot.md の「すべてのコミットに作る」）。
+func PutSnapshotTree(ctx context.Context, w Writer, repo, sha string, t *snapshot.SnapshotTree) error {
+	b, err := snapshot.Encode(&snapshot.SnapshotTreeDoc{FormatVersion: snapshot.FormatVersion, SnapshotTree: *t})
 	if err != nil {
 		return err
 	}
 	return w.Put(ctx, SnapshotKey(repo, sha), b)
 }
 
-// HasTree は、main のコミットの木があるかを返す。
-func HasTree(ctx context.Context, r Reader, repo, sha string) (bool, error) {
+// PutMainIndex は、main の並びの索引の、番号 number のキーに、その SHA を書く。main が書き換えられたときは上書きする。
+func PutMainIndex(ctx context.Context, w Writer, repo string, number int, sha string) error {
+	return w.Put(ctx, MainIndexKey(repo, number), []byte(sha+"\n"))
+}
+
+// GetMainIndex は、main の並びの索引から、番号 number の main のコミットの SHA を読む。なければ ErrNotFound。
+func GetMainIndex(ctx context.Context, r Reader, repo string, number int) (string, error) {
+	b, err := r.Get(ctx, MainIndexKey(repo, number))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// HasSnapshotTree は、main のコミットのスナップショットツリーがあるかを返す。
+func HasSnapshotTree(ctx context.Context, r Reader, repo, sha string) (bool, error) {
 	_, err := r.Get(ctx, SnapshotKey(repo, sha))
 	if errors.Is(err, ErrNotFound) {
 		return false, nil

@@ -93,7 +93,7 @@ func byIssue(comments []Comment) map[int][]Comment {
 // applyRequest は、pull request と、その記録から提案を組み立てる。
 // 最初の apply_request の記録が、提案の識別子を決める。ほかの記録は、その識別子を持つものだけを数える。
 func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest, bool) {
-	ar := ports.ApplyRequest{Number: p.Number, Branch: p.Head, Description: p.Body, HeadRevision: p.HeadSHA, CreatedAt: p.CreatedAt, Warnings: warnings}
+	ar := ports.ApplyRequest{Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body, HeadRevision: p.HeadSHA, CreatedAt: p.CreatedAt, Warnings: warnings}
 	found, closed := false, false
 	for _, r := range recs {
 		kind := r.Get(KeyRecord)
@@ -122,7 +122,7 @@ func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest,
 	}
 	switch {
 	case p.Merged:
-		ar.State = ports.StateMerged
+		ar.State, ar.MergedRevision = ports.StateMerged, p.MergeCommit
 	case closed || p.State == "closed":
 		ar.State = ports.StateClosed
 	default:

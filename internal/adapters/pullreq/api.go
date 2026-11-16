@@ -47,15 +47,19 @@ var ErrAttachmentsUnsupported = errors.New("この GitForge は、コメント�
 
 // Pull は、pull request である。
 type Pull struct {
-	Number    int
-	Title     string
-	Body      string
-	Head      string // ブランチの名前
-	HeadSHA   string
-	State     string // open か closed
-	Merged    bool
-	Author    string
-	CreatedAt time.Time
+	Number  int
+	Title   string
+	Body    string
+	Head    string // ブランチの名前
+	HeadSHA string
+	State   string // open か closed
+	Merged  bool
+	// Base は、向き先のブランチの名前（pull request の base）である。
+	Base string
+	// MergeCommit は、merge したときの、merge のコミットの SHA である。merge していなければ空。
+	MergeCommit string
+	Author      string
+	CreatedAt   time.Time
 }
 
 // Comment は、pull request か issue のコメントである。

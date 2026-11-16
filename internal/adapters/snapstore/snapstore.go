@@ -51,6 +51,11 @@ func (a *Adapter) Main(ctx context.Context, repo, sha string) (*snapshot.Main, e
 	return m, notFound(err)
 }
 
+func (a *Adapter) MainAt(ctx context.Context, repo string, number int) (string, error) {
+	sha, err := store.GetMainIndex(ctx, a.Store, repo, number)
+	return sha, notFound(err)
+}
+
 func (a *Adapter) Branch(ctx context.Context, repo, sha string) (*snapshot.Branch, error) {
 	b, err := store.GetBranch(ctx, a.Store, repo, sha)
 	return b, notFound(err)

@@ -18,28 +18,28 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"
 
-// BuildMain は、main のコミットの記録と木を、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
-// files は、そのコミットの木のファイルである。artifact は中身か SHA256 を持つ。
-// 親から変わったパスは、親の木のファイルと比べて求める。新しく破れた不変条件も、親の木と比べて警告にする。
-// worker は、Index と BuildTree で、木を作るコミットを選ぶ（design/backend/snapshot.md）。これは、その 1 コミット分をまとめたものである。
+// BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
+// files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。
+// 親から変わったパスは、親のスナップショットツリーのファイルと比べて求める。新しく破れた不変条件も、親と比べて警告にする。
+// worker は、Index と BuildTree で、コミットを 1 つずつ取り込む（design/backend/worker.md）。これは、その 1 コミット分をまとめたものである。
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	x := NewIndex()
 	var parentFiles tree.Files
 	var parentBroken []tree.Violation
 	if parent != nil {
-		x = IndexFromTree(&parent.Tree)
+		x = IndexFromSnapshotTree(parent.Commit, &parent.SnapshotTree)
 		var err error
-		if parentFiles, err = parent.Tree.Files(); err != nil {
+		if parentFiles, err = parent.SnapshotTree.Files(); err != nil {
 			return nil, err
 		}
-		parentBroken = parent.Tree.Broken
+		parentBroken = parent.SnapshotTree.Broken
 	}
 	c := x.Record(info, tree.ChangedPaths(parentFiles, files))
-	t := BuildTree(files, x)
+	t := BuildSnapshotTree(files, x)
 	newly, _ := tree.NewlyBroken(parentBroken, t.Broken)
 	x.AddNewlyBroken(&c, newly...)
-	t.History = append([]HistoryEntry(nil), x.History...)
-	return &Main{FormatVersion: FormatVersion, Commit: c, Tree: *t}, nil
+	t.Warned = x.Warned()
+	return &Main{FormatVersion: FormatVersion, Commit: c, SnapshotTree: *t}, nil
 }
 
 // BuildBranch は、ブランチの先頭のコミットのスナップショットを作る。base は main と分かれた点のコミットの SHA である。
@@ -70,9 +70,9 @@ func BuildBranch(baseSHA string, deltas []Delta, head tree.Files, info CommitInf
 }
 
 // SubtreeChangedAfter は、nodeID のノードか、その子孫のどれかが、number より大きい番号の main のコミットで変わったかを返す。
-// 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot.md の「ノードの変更の一覧」）。
-// ノードがこの木になければ、変わったものとみなす。
-func (t *Tree) SubtreeChangedAfter(nodeID string, number int) bool {
+// 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot.md の「ノードを変えたコミット」）。
+// ノードがこのスナップショットツリーになければ、変わったものとみなす。
+func (t *SnapshotTree) SubtreeChangedAfter(nodeID string, number int) bool {
 	if _, ok := t.Nodes[nodeID]; !ok {
 		return true
 	}
@@ -86,19 +86,17 @@ func (t *Tree) SubtreeChangedAfter(nodeID string, number int) bool {
 	for len(stack) > 0 {
 		id := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		for _, r := range t.Nodes[id].Changes {
-			if r.Number > number {
-				return true
-			}
+		if t.Nodes[id].LastChanged.Number > number {
+			return true
 		}
 		stack = append(stack, children[id]...)
 	}
 	return false
 }
 
-// Files は、main のスナップショットの木を、tree.Files に戻す。artifact は中身を持たず、SHA256 を持つ。
+// Files は、main のスナップショットツリーを、tree.Files に戻す。artifact は中身を持たず、SHA256 を持つ。
 // バックエンドは、これと Overlay で、差分の検査に渡す木を作る。
-func (t *Tree) Files() (tree.Files, error) {
+func (t *SnapshotTree) Files() (tree.Files, error) {
 	out := tree.Files{}
 	add := func(f File) error {
 		tf, err := f.toTreeFile()
@@ -125,7 +123,7 @@ func (t *Tree) Files() (tree.Files, error) {
 	return out, nil
 }
 
-// Overlay は、base の木に、ブランチの差分を重ねた木を返す。base は、差分の base でなくてもよい（反映の直前の、今の main）。
+// Overlay は、base のファイルに、ブランチの差分を重ねたファイルを返す。base は、差分の base でなくてもよい（反映の直前の、今の main）。
 // 差分が変えたパスが、差分の base のあとに base の側でも変わっていれば、重ねられないので、そのパスを conflicts に返す。
 // git の merge と同じく、両方で同じ中身になったパスは、重ねられる。
 //

@@ -13,7 +13,7 @@ import (
 
 // FormatVersion は、スナップショットのフォーマットバージョンである。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
-const FormatVersion = 5
+const FormatVersion = 6
 
 // Kind は、コミットの種類である。
 type Kind string
@@ -47,9 +47,10 @@ type Commit struct {
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
 	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
-	// 前から破れている不変条件は、Tree.Broken に持つ。
+	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`
-	// Changes は、main のコミットだけ。親から直接変わったファイルの、ノードと種類の組。
+	// Changes は、main のコミットだけ。このコミットで変わったノードごとの、変わったファイルと、そのノードを前に変えたコミット
+	// （design/backend/snapshot.md の「ノードを変えたコミット」）。ノードの識別子の順。
 	Changes []NodeChange `json:"changes,omitempty"`
 	// Paths は、branch のコミットだけ。base から変わったファイルのパスと、変わり方。
 	Paths []PathChange `json:"paths,omitempty"`
@@ -66,12 +67,30 @@ const (
 	FileInactivated FileKind = "inactivated"
 )
 
-// NodeChange は、ノードのファイルの変化である。
+// NodeChange は、1 つのコミットでの、1 つのノードの変化である。
 type NodeChange struct {
-	Node string   `json:"node"`
+	Node string `json:"node"`
+	// Files は、このノードの、変わったファイル。親のストーリーの story.md や、祖先の inactivated.md で「変わった」とみなすノードでは空。
+	Files []FileChange `json:"files,omitempty"`
+	// Previous は、このノードを前に変えた main のコミット。初めてなら nil。
+	Previous *Rev `json:"previous"`
+}
+
+// FileChange は、ノードのファイルの変化である。
+type FileChange struct {
 	File FileKind `json:"file"`
-	// Path は、変わったファイルのパス。検証結果がどのコミットで加わったかを探すのに使う。
+	// Path は、変わったファイルのパス。
 	Path string `json:"path"`
+}
+
+// HasFile は、このノードの変化に、種類 kind のファイルがあるかを返す。
+func (c NodeChange) HasFile(kind FileKind) bool {
+	for _, f := range c.Files {
+		if f.File == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // Status は、ファイルの変わり方である。
@@ -101,26 +120,37 @@ type File struct {
 	Base64  bool    `json:"base64,omitempty"`
 	// SHA256 は、artifact の中身の sha256。artifact の中身はスナップショットに入れず、置き場に別に置く。
 	SHA256 string `json:"sha256,omitempty"`
+	// Added は、main のスナップショットツリーの検証結果のファイルだけ。そのファイルが加わった main のコミット
+	// （design/backend/snapshot.md の「ノードを変えたコミット」）。
+	Added *AddedIn `json:"added,omitempty"`
+}
+
+// AddedIn は、ファイルが加わった main のコミットと、その反映の apply request の識別子である。
+type AddedIn struct {
+	Number       int    `json:"number"`
+	Revision     string `json:"revision"`
+	ApplyRequest string `json:"apply_request,omitempty"`
 }
 
 // Main は、main のコミットのスナップショットである。
 type Main struct {
-	FormatVersion int    `json:"format_version"`
-	Commit        Commit `json:"commit"`
-	Tree          Tree   `json:"tree"`
+	FormatVersion int          `json:"format_version"`
+	Commit        Commit       `json:"commit"`
+	SnapshotTree  SnapshotTree `json:"snapshot_tree"`
 }
 
-// Tree は、main のコミットの木である。すべてのノードを持つ。
-type Tree struct {
+// SnapshotTree は、main のコミットのスナップショットツリーである。すべてのノードを持つ。
+type SnapshotTree struct {
 	// Nodes は、ノードを識別子で引く。
 	Nodes map[string]*Node `json:"nodes"`
 	// Artifacts は、artifacts/sha256/ のファイルである。中身は持たない。
 	Artifacts []File `json:"artifacts"`
 	// Other は、どのノードにも、artifact にも当たらないファイルである（木の外のファイルなど）。
 	Other []File `json:"other,omitempty"`
-	// History は、最初のコミットからこのコミットまでの、main のコミットの一覧である（番号の順）。
-	History []HistoryEntry `json:"history"`
-	// Broken は、この木で破れている不変条件のすべてである（前のコミットから破れているものを含む）。
+	// Warned は、最初のコミットからこのコミットまでのうち、警告のある main のコミットである（番号の順）。
+	// history は持たない。コミットの数とともに伸びるからである（design/backend/snapshot.md の「中身」）。
+	Warned []WarnedEntry `json:"warned,omitempty"`
+	// Broken は、このスナップショットツリーで破れている不変条件のすべてである（前のコミットから破れているものを含む）。
 	Broken []tree.Violation `json:"broken,omitempty"`
 }
 
@@ -147,8 +177,10 @@ type Node struct {
 	NeedsReconsideration bool `json:"needs_reconsideration,omitempty"`
 	Inactive             bool `json:"inactive,omitempty"`
 	Evidence             bool `json:"evidence,omitempty"`
-	// Changes は、そのノードを変えた main のコミットの一覧（ノードの変更の一覧）。番号の順。
-	Changes []Rev `json:"changes"`
+	// LastChanged は、そのノードを最後に変えた main のコミットである（design/backend/snapshot.md の「ノードを変えたコミット」）。
+	LastChanged Rev `json:"last_changed"`
+	// InactivatedAt は、ストーリーだけ。inactivated.md が加わった main のコミットの番号。inactive でなければ 0。
+	InactivatedAt int `json:"inactivated_at,omitempty"`
 }
 
 // Rev は、main のコミットの番号と SHA である。
@@ -157,11 +189,10 @@ type Rev struct {
 	Revision string `json:"revision"`
 }
 
-// HistoryEntry は、main のコミットの一覧の 1 項目である。
-type HistoryEntry struct {
-	Number       int    `json:"number"`
-	Revision     string `json:"revision"`
-	ApplyRequest string `json:"apply_request,omitempty"`
+// WarnedEntry は、警告のある main のコミットである。
+type WarnedEntry struct {
+	Number   int    `json:"number"`
+	Revision string `json:"revision"`
 	// NoApplyRequest は、反映の記録がない（反映によらない変更）ことである。
 	NoApplyRequest bool `json:"no_apply_request,omitempty"`
 	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
