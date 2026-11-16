@@ -16,7 +16,7 @@ WebUI のダッシュボードや、CLI で状況をつかむときの最初の�
 - コミットを指定すると、その時点の概要を返す。
 - open の apply request を指定すると、それを反映したあとの姿を返す（[向き先に重ねる](../../../backend/snapshot.md#向き先に重ねる)）。
   - 重ねられなければ、`overlay_conflict`（409）を返し、`detail` に衝突したパスを書く。
-  - 向き先が `main` でなければ、`overlay_unsupported`（422）を返す。
+  - 向き先が `main` でなければ、向き先のブランチの今の先頭に重ねる。検査はしないので、値は決まりに沿っているかを確かめていない。向き先のブランチが消えていれば、`not_found`（404）を返す。
   - その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、`not_found`（404）を返す。
 
 ## 関係する要件
