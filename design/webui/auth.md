@@ -29,7 +29,7 @@ Forgejo を使う構成では、利用者は、Forgejo で作ったアクセス�
   - なぜ `localStorage` か：スマートフォンでも使うから（[モバイルの表示](mobile.md)）。`sessionStorage` はタブごとなので、共有されたリンクを開くたびに、トークンを作って貼り直すことになる。
   - 受け入れた危険：スクリプトの注入（XSS）で盗まれると、利用者がトークンを消すまで使われる。Forgejo のトークンには期限を付けられないので、消すまでの期間に上限はない。
   - 危険を抑えるために、次のことをする。
-    - トークンの範囲を、読むだけ（`read:user`、`read:organization`）にする（上の「トークンの受け取り方」）。盗まれても、GitForge には書き込めず、repository の中身も読めない。ただし、Logiforge の API は、その利用者として使える（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
+    - トークンの範囲を、読むだけ（`read:user`、`read:organization`）にする（上の「トークンの受け取り方」）。盗まれても、GitForge には書き込めず、GitForge から private な repository の中身も読めない（`read:repository` がないため）。ただし、Logiforge の API は、その利用者として使える（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
     - 厳しい CSP で、スクリプトの注入を防ぐ（下の「スクリプトの注入への備え」）。
     - サインアウトと、`unauthenticated`（401）で、トークンを消す。
   - なぜ cookie にしないか：BE は、要求ごとに `Authorization` ヘッダーでトークンを受け取る（[API の認証](../api/README.md#認証)）。cookie にすると、BE に CSRF の対策が要るから。
