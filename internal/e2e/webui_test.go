@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// TestWebUISignIn は、ブラウザで WebUI を開き、Forgejo の OAuth2 でサインインして、repository の一覧を出すまでを通す。
+// TestWebUISignIn は、ブラウザで WebUI を開き、Forgejo の OAuth2 でサインインして、repository の一覧から
+// スナップショットツリーのビュワー（アウトライン、図、詳細のパネル、検索）までを通す。
 // LOGIFORGE_E2E_CHROME（Chrome のパス）と、ビルドした webui/dist/index.html がなければ飛ばす。
 // ブラウザの操作は webui/e2e/run.mjs（puppeteer-core）が行う。スクリーンショットは LOGIFORGE_E2E_OUT に書く。
 func TestWebUISignIn(t *testing.T) {
@@ -35,15 +36,47 @@ func TestWebUISignIn(t *testing.T) {
 			"LOGIFORGE_OAUTH_REDIRECT_URI=" + serveURL + "/oauth/callback"}
 	})
 	// 利用者が repository を作り、スナップショットツリーが出るまで待つ
-	if st, b := w.call("alice", "POST", "/repositories", map[string]any{"name": "webui", "statement": "新しい導線で、継続率が上がる"}); st != 201 {
+	if st, b := w.call("alice", "POST", "/repositories", map[string]any{"name": "q", "statement": "新しい導線で、継続率が上がる"}); st != 201 {
 		t.Fatalf("repository の作成：%d %s", st, b)
 	}
 	w.eventually("スナップショットツリーが出る", 60*time.Second, func() bool {
-		st, _ := w.call("alice", "GET", "/repositories/webui/tree", nil)
+		st, _ := w.call("alice", "GET", "/repositories/q/tree", nil)
 		return st == 200
 	})
+	// エージェントが、ストーリー（子の仮説 2 つ）を足し、片方に検証結果（artifact 付き）を出して、反映する
+	var repo0 struct {
+		Root string `json:"root_hypothesis_id"`
+	}
+	_, rb := w.call("alice", "GET", "/repositories/q", nil)
+	_ = json.Unmarshal(rb, &repo0)
+	agent := w.user("agent", "s-agent-1")
+	agent.loginAndClone("q")
+	reviewer := w.user("reviewer", "s-reviewer")
+	if code, _ := reviewer.cli(w.tokens["reviewer"]+"\n", "auth", "login", "--with-token"); code != 0 {
+		t.Fatal("reviewer の login")
+	}
+	agent.branch("b1")
+	var sc scaffold
+	agent.must(&sc, "story", "new", "--parent", repo0.Root, "--title", "招待の導線", "--summary", "招待で入った人は、成果物まで早く着く",
+		"--hypothesis", "招待経由で、成果物までの時間が半分になる", "--hypothesis", "招待した人の継続率も下がらない")
+	hA := sc.IDs["hypothesis_ids"].([]any)[0].(string)
+	agent.commitPush("b1", "分解")
+	if got, code, out := reviewer.review(agent.create("b1").ID, "approve", 1); code != 0 || got.State != "merged" {
+		t.Fatalf("分解の approve：%d %s", code, out)
+	}
+	agent.branch("b2")
+	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("r1.md", "# 検証\n\n比較実験で、成果物までの時間が半分になった。\n"), "--artifact", agent.file("data.csv", "x,y\n1,2\n"))
+	agent.commitPush("b2", "検証")
+	if got, code, out := reviewer.review(agent.create("b2").ID, "approve", 1); code != 0 || got.State != "merged" {
+		t.Fatalf("検証の approve：%d %s", code, out)
+	}
+	w.eventually("検証結果が読む側に出る", 60*time.Second, func() bool {
+		st, b := w.call("alice", "GET", "/repositories/q/nodes/"+hA, nil)
+		return st == 200 && strings.Contains(string(b), `"verdict":{`)
+	})
+
 	// root_statement を返す
-	_, b := w.call("alice", "GET", "/repositories/webui", nil)
+	_, b := w.call("alice", "GET", "/repositories/q", nil)
 	var repo struct {
 		RootStatement *string `json:"root_statement"`
 	}
@@ -72,8 +105,8 @@ func TestWebUISignIn(t *testing.T) {
 	login := w.login("alice")
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
-	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=webui",
-		"OUTSIDER_LOGIN="+outsider, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {
