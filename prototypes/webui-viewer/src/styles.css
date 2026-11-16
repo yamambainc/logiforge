@@ -348,3 +348,10 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
 .sel3 { background: rgba(255,255,255,.95); border: 1px solid #c3cde8; border-radius: 8px; padding: 3px; box-shadow: 0 2px 8px rgba(20,30,50,.12); }
 .seg .short { display: none; }
 @media (max-width: 767px) { .seg .full { display: none; } .seg .short { display: inline; } .seg.mode button { padding: 7px 9px; gap: 4px; } }
+.hint3 { pointer-events: auto; display: flex; gap: 8px; align-items: center; }
+.help3 { position: absolute; left: 12px; bottom: 12px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--sub); font-weight: 700; cursor: pointer; }
+@media (max-width: 767px) { .help3 { width: 40px; height: 40px; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tree-head .link, .seg.mini button { white-space: nowrap; }
+.tree-head .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@media (max-width: 767px) { .tree-head { gap: 6px; } .tree-head .link { padding: 0 2px; } }

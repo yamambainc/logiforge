@@ -86,6 +86,8 @@ export function GraphView(p: Props) {
   const anim = useRef<number | null>(null);
   const animateTo = useCallback((to: View) => {
     if (anim.current) cancelAnimationFrame(anim.current);
+    // 動きを減らす設定のときは、動かさずにすぐ移る
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setView(to); return; }
     const from = viewRef.current;
     const t0 = performance.now();
     const step = (t: number) => {
@@ -108,8 +110,9 @@ export function GraphView(p: Props) {
   const frame = useCallback((lower: number): View => {
     const pad = 16;
     if (V) {
-      // 縦：根を上に寄せ、開いている部分が収まるまで縮める。横に収まらなければ、根を横の真ん中に置く
-      const k = Math.max(p.mobile && lower === LOD_K ? 0.7 : lower, Math.min(1, (box.w - pad * 2) / layout.width, (box.h - pad * 2) / layout.height));
+      // 縦：根を上に寄せ、開いている部分が収まるまで縮める。ただし最初の表示では 70% より縮めない（兄弟が横に並ぶので、幅に収めるとすぐ読めない大きさになる）。
+      // 幅に入らない分は、横のパンで見る。横に収まらなければ、根を横の真ん中に置く
+      const k = Math.max(lower === LOD_K ? 0.7 : lower, Math.min(1, (box.w - pad * 2) / layout.width, (box.h - pad * 2) / layout.height));
       const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
       const x = k * layout.width <= box.w - pad * 2 ? (box.w - k * layout.width) / 2 : box.w / 2 - k * ((root?.x ?? 0) + size.w / 2);
       return { k, x, y: pad };

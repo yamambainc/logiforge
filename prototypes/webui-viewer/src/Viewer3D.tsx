@@ -20,12 +20,20 @@ interface Props {
   head: React.ReactNode;
   fitKey: string;
   onFallback: () => void;
+  onRetry: () => void;
 }
 
 const LAYER_H = 70; // 層の間隔（高さ）
 const RING_R = 90; // 1 段ごとに広がる半径
+const MIN_GAP = 22; // 同じ層のノードどうしの、円周の上の最小の間隔
 const COL = { t: new THREE.Color('#17a34a'), f: new THREE.Color('#e0393e'), u: new THREE.Color('#9aa3b2'), inactive: new THREE.Color('#d5d9e1'), white: new THREE.Color('#ffffff') };
 const HALO = { added: new THREE.Color('#17a34a'), changed: new THREE.Color('#e3a008'), removed: new THREE.Color('#e0393e'), match: new THREE.Color('#ffd43b') };
+
+// 選んだノードの道具（値と「開く」「閉じる」）の場所。ラベルのすぐ下に、画面の中に収めて置く
+function toolsRect(label: { x: number; y: number; h: number }, w: number, mobile: boolean) {
+  const tw = mobile ? 170 : 150, th = mobile ? 44 : 34;
+  return { x: Math.min(Math.max(label.x, 4), w - tw - 4), y: label.y + label.h + 4, w: tw, h: th };
+}
 
 interface Placed { id: string; pos: THREE.Vector3; parent: string | null; row: Row; size: number }
 
@@ -51,14 +59,23 @@ function layoutCone(rows: Row[], ix: Index): Map<string, Placed> {
   const out = new Map<string, Placed>();
   if (!rows.length) return out;
   w(rows[0].id);
+  // 層の半径は max(深さ × 90, その層のノード数 × 最小の間隔 ÷ 2π)。深い層にノードが詰まらないようにする
+  const perDepth = new Map<number, number>();
+  for (const r of rows) perDepth.set(r.depth, (perDepth.get(r.depth) ?? 0) + 1);
+  const radius = (d: number) => Math.max(d * RING_R, ((perDepth.get(d) ?? 0) * MIN_GAP) / (2 * Math.PI));
+  // 円が広がったら、層の間隔も広げて、円錐の形（高さと半径の比）を保つ
+  const maxD = Math.max(...perDepth.keys());
+  let maxR = 0;
+  for (let d = 0; d <= maxD; d++) maxR = Math.max(maxR, radius(d));
+  const layerH = Math.max(LAYER_H, maxD ? (maxR * 0.8) / maxD : LAYER_H);
   const place = (id: string, a0: number, a1: number) => {
     const r = byId.get(id)!;
     const th = (a0 + a1) / 2;
-    const rad = r.depth * RING_R;
+    const rad = radius(r.depth);
     const st = ix.stats.get(id)!;
     // 閉じた部分木は、ノード数に応じて大きく描く
     const size = r.hasChildren && !r.open ? 1 + Math.log10(st.total) * 0.55 : 1;
-    out.set(id, { id, pos: new THREE.Vector3(Math.cos(th) * rad, -r.depth * LAYER_H, Math.sin(th) * rad), parent: parent.get(id) ?? null, row: r, size });
+    out.set(id, { id, pos: new THREE.Vector3(Math.cos(th) * rad, -r.depth * layerH, Math.sin(th) * rad), parent: parent.get(id) ?? null, row: r, size });
     const cs = kids.get(id);
     if (!cs) return;
     const total = weight.get(id)!;
@@ -77,6 +94,12 @@ export default function Viewer3D(p: Props) {
   const host = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const [lost, setLost] = useState(false);
+  // 操作の案内：このタブで最初の 1 回だけ出す。閉じるか操作したら消し、? で出し直せる
+  const [hint, setHint] = useState(() => sessionStorage.getItem('3d-hint') !== 'seen');
+  const hideHint = () => { setHint(false); sessionStorage.setItem('3d-hint', 'seen'); };
+  const hideRef = useRef(hideHint);
+  hideRef.current = hideHint;
   const [selScreen, setSelScreen] = useState<{ x: number; y: number } | null>(null);
   const placed = useMemo(() => layoutCone(p.rows, p.ix), [p.rows, p.ix]);
 
@@ -99,7 +122,11 @@ export default function Viewer3D(p: Props) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor('#fafbfc');
+    renderer.domElement.setAttribute('role', 'img');
+    renderer.domElement.setAttribute('aria-label', 'スナップショットツリーの 3D。アウトラインで同じ内容を読めます');
     el.prepend(renderer.domElement);
+    // 5 WebGL の文脈が失われたとき（モバイルで裏に回したときなど）は、作り直しを促す
+    renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setLost(true); });
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight('#ffffff', '#c9d1e0', 2.2));
     const sun = new THREE.DirectionalLight('#ffffff', 1.2);
@@ -111,6 +138,11 @@ export default function Viewer3D(p: Props) {
     controls.dampingFactor = 0.12;
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     controls.screenSpacePanning = true;
+    // 上下に回せる角度を絞る（下から見上げて、根が下に見えないようにする）
+    controls.minPolarAngle = 0.08 * Math.PI;
+    controls.maxPolarAngle = 0.56 * Math.PI;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) controls.enableDamping = false;
     const MAX = 8000;
     const mat = new THREE.MeshLambertMaterial();
     // 三角形を少なくする（球は 80 面、菱形は 8 面）。ノード 4,000 個でも、端末の GPU の負担を小さくするため
@@ -150,7 +182,12 @@ export default function Viewer3D(p: Props) {
         renderer.render(scene, camera);
         const t1 = performance.now();
         s.frames++;
-        updateLabels();
+        // どのラベルを出すかの選び直しは重いので、動いているあいだは 100 ms に 1 回にする。出しているラベルの位置は、毎フレーム動かす
+        const now = performance.now();
+        const ls = ((window as unknown as { __3dLab?: { pick: number; np: number; move: number; nm: number } }).__3dLab ??= { pick: 0, np: 0, move: 0, nm: 0 });
+        const tl = performance.now();
+        if (!moved || now - lastPick.current > 100) { updateLabels(); lastPick.current = now; ls.pick += performance.now() - tl; ls.np++; }
+        else { moveLabels(); ls.move += performance.now() - tl; ls.nm++; }
         const st = ((window as unknown as { __3dStat?: { r: number; l: number; n: number } }).__3dStat ??= { r: 0, l: 0, n: 0 });
         st.r += t1 - t0; st.l += performance.now() - t1; st.n++;
         s.dirty = false;
@@ -279,7 +316,7 @@ export default function Viewer3D(p: Props) {
       if (!h || h.instanceId === undefined) return null;
       return (h.object === s.hyp ? s.ids.hyp : s.ids.story)[h.instanceId];
     };
-    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; };
+    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; if (sessionStorage.getItem('3d-hint') !== 'seen') hideRef.current(); };
     const onUp = (e: PointerEvent) => {
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) { down = null; return; }
       down = null;
@@ -296,6 +333,31 @@ export default function Viewer3D(p: Props) {
   // ラベル：近いものだけを出す（デスクトップ 28、モバイル 12）。選んだノードと根はいつも出す
   const latest = useRef({ placed, p });
   latest.current = { placed, p };
+  const lastPick = useRef(0);
+  const shown = useRef<string[]>([]);
+  // 出しているラベルの位置だけを、今のカメラで動かす
+  function moveLabels() {
+    const s = g.current, box = labelsRef.current;
+    if (!s || !box) return;
+    const { placed: pl, p: pp } = latest.current;
+    const w = box.clientWidth, h = box.clientHeight;
+    const v = new THREE.Vector3();
+    shown.current.forEach((id, i) => {
+      const n = pl.get(id);
+      const d = box.children[i] as HTMLDivElement | undefined;
+      if (!n || !d) return;
+      v.copy(n.pos).project(s.camera);
+      const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
+      const lw = Math.min(textOf(pp.ix.byId.get(id)!).length, 16) * 12.5 + 14;
+      const lx = Math.min(Math.max(x + 12, 4), w - lw - 4), ly = Math.min(Math.max(y - 10, 4), h - 24);
+      d.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly)}px)`;
+      if (id === pp.selected) {
+        const t = toolsRect({ x: lx, y: ly, h: 20 }, w, pp.mobile);
+        setSelScreen((prev) => (prev && Math.abs(prev.x - t.x) < 1 && Math.abs(prev.y - t.y) < 1 ? prev : { x: t.x, y: t.y }));
+      }
+    });
+  }
+
   function updateLabels() {
     const s = g.current, box = labelsRef.current;
     if (!s || !box) return;
@@ -314,15 +376,23 @@ export default function Viewer3D(p: Props) {
     const show = new Map<string, { x: number; y: number }>();
     const root = pp.rows[0]?.id;
     for (const c of cand) if (c.id === pp.selected || c.id === root) show.set(c.id, c);
-    // 重なるラベルは出さない（ラベルの幅は、文字数から見積もる）
+    // ラベルは画面の中に収める。重なるラベルと、選んだノードの道具に重なるラベルは出さない（幅は文字数から見積もる）
     const wOf = (id: string) => Math.min(textOf(pp.ix.byId.get(id)!).length, 16) * 12.5 + 14;
-    const taken: { x: number; y: number; w: number }[] = [...show.entries()].map(([id, c]) => ({ x: c.x + 12, y: c.y - 10, w: wOf(id) }));
+    const at = (id: string, c: { x: number; y: number }) => { const lw = wOf(id); return { x: Math.min(Math.max(c.x + 12, 4), w - lw - 4), y: Math.min(Math.max(c.y - 10, 4), h - 24), w: lw, h: 20 }; };
+    type R = { x: number; y: number; w: number; h: number };
+    const hit = (a: R, b: R) => a.x < b.x + b.w + 4 && b.x < a.x + a.w + 4 && a.y < b.y + b.h + 2 && b.y < a.y + a.h + 2;
+    const pos = new Map<string, R>();
+    const taken: R[] = [];
+    for (const [id, c] of show) { const r = at(id, c); pos.set(id, r); taken.push(r); }
+    const sc0 = pp.selected ? show.get(pp.selected) : undefined;
+    const tools = sc0 ? toolsRect(pos.get(pp.selected!)!, w, pp.mobile) : null;
+    if (tools) taken.push(tools);
     for (const c of cand) {
       if (show.size >= limit) break;
       if (show.has(c.id)) continue;
-      const r = { x: c.x + 12, y: c.y - 10, w: wOf(c.id) };
-      if (taken.some((t) => r.x < t.x + t.w + 4 && t.x < r.x + r.w + 4 && Math.abs(t.y - r.y) < 22)) continue;
-      show.set(c.id, c); taken.push(r);
+      const r = at(c.id, c);
+      if (taken.some((t) => hit(r, t))) continue;
+      show.set(c.id, c); pos.set(c.id, r); taken.push(r);
     }
     // 使い回す div の数を合わせる
     while (box.children.length < limit + 2) { const d = document.createElement('div'); d.className = 'l3'; box.appendChild(d); }
@@ -338,16 +408,32 @@ export default function Viewer3D(p: Props) {
         d.textContent = txt;
         d.className = `l3 ${id === pp.selected ? 'sel' : ''} ${node.value === true ? 'v-true' : node.value === false ? 'v-false' : 'v-null'}`;
       }
-      d.style.transform = `translate(${Math.round(c.x + 12)}px, ${Math.round(c.y - 10)}px)`;
+      const r = pos.get(id)!;
+      d.style.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
+      void c;
       d.style.display = '';
     }
     for (; i < box.children.length; i++) (box.children[i] as HTMLDivElement).style.display = 'none';
-    const sc = pp.selected ? show.get(pp.selected) : undefined;
-    setSelScreen((prev) => (sc ? (prev && Math.abs(prev.x - sc.x) < 1 && Math.abs(prev.y - sc.y) < 1 ? prev : { x: sc.x, y: sc.y }) : null));
+    shown.current = [...show.keys()];
+    setSelScreen((prev) => (tools ? (prev && Math.abs(prev.x - tools.x) < 1 && Math.abs(prev.y - tools.y) < 1 ? prev : { x: tools.x, y: tools.y }) : null));
   }
 
   const selNode = p.selected ? p.ix.byId.get(p.selected) : undefined;
   const selRow = p.selected ? placed.get(p.selected)?.row : undefined;
+
+  if (lost) {
+    return (
+      <section className="graph-pane empty-3d">
+        {p.head}
+        <div className="empty-box">
+          <div className="empty-title">3D の描画が止まりました</div>
+          <p>端末が 3D の描画を止めました（画面を裏に回したときなどに起きます）。</p>
+          <button className="btn" onClick={p.onRetry}>3D を作り直す</button>{' '}
+          <button className="btn" onClick={p.onFallback}>図で見る</button>
+        </div>
+      </section>
+    );
+  }
 
   if (failed) {
     return (
@@ -381,14 +467,22 @@ export default function Viewer3D(p: Props) {
       }}>
         <div className="labels3" ref={labelsRef} />
         {selNode && selScreen && (
-          <div className="sel3" style={{ transform: `translate(${Math.round(selScreen.x + 12)}px, ${Math.round(selScreen.y + 14)}px)` }}>
+          <div className="sel3" style={{ transform: `translate(${Math.round(selScreen.x)}px, ${Math.round(selScreen.y)}px)` }}>
             <span className={`val ${selNode.value === true ? 'v-true' : selNode.value === false ? 'v-false' : 'v-null'}`}>{vLabel(selNode.value)}</span>
             {selRow?.hasChildren && !p.filtered && (
               <button className="btn3" onClick={() => p.onToggle(selNode.id)}>{selRow.open ? '閉じる' : `開く（${(p.ix.stats.get(selNode.id)?.total ?? 1) - 1}）`}</button>
             )}
           </div>
         )}
-        <div className="hint3">{p.mobile ? '1 本の指で回す・2 本の指でズームと移動・押して選ぶ' : 'ドラッグで回す・ホイールでズーム・右ドラッグで移動・押して選ぶ・ダブルクリックで開閉'}</div>
+        {hint ? (
+          <div className="hint3">
+            <span>{p.mobile ? '1 本の指で回す・2 本の指でズームと移動・押して選ぶ' : 'ドラッグで回す・ホイールでズーム・右ドラッグで移動・押して選ぶ・ダブルクリックで開閉'}</span>
+            <button className="link" onClick={hideHint} aria-label="案内を閉じる">閉じる</button>
+          </div>
+        ) : (
+          <button className="help3" onClick={() => setHint(true)} aria-label="操作の案内を出す">?</button>
+        )}
+        <div className="sr-only" aria-live="polite">{selNode ? `${textOf(selNode)}。値は${vLabel(selNode.value)}` : ''}</div>
       </div>
     </section>
   );

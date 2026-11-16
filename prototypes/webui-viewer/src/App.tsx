@@ -69,7 +69,13 @@ export function App() {
   const [showInactive, setShowInactive] = useState(params.get('inactive') !== '0');
   const searchRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<'outline' | 'graph' | '3d'>((['graph', '3d'].includes(params.get('view') ?? '') ? params.get('view') : 'outline') as 'outline' | 'graph' | '3d');
-  const [vertical, setVertical] = useState(params.get('orient') === 'v');
+  const [retry3d, setRetry3d] = useState(0);
+  const [vertical, setVerticalRaw] = useState(params.get('orient') === 'v');
+  // 縦にしたら、画面の高さに入る段まで開く（デスクトップ 4 段、モバイル 3 段）
+  const openLevels = useCallback((ixx: Index) => {
+    const lv = matchMedia('(max-width: 767px)').matches ? 3 : 4;
+    setExpanded((e) => { const s = new Set(e); for (const n of ixx.nodes) if ((ixx.depth.get(n.id) ?? 0) < lv - 1) s.add(n.id); return s; });
+  }, []);
   const mobile = useMobile();
   const [sheet, setSheet] = useState(params.get('sheet') === '1');
   // 検索の語は、入力が止まって 300 ms たってから図を収め直す
@@ -90,6 +96,7 @@ export function App() {
       const depthOpen = Number(params.get('open') ?? 2);
       const open = new Set(r.nodes.filter((n) => (ix.depth.get(n.id) ?? 0) < depthOpen).map((n) => n.id));
       setMain({ ix, commit: r.commit, number: r.number });
+      if (params.get('orient') === 'v' && !params.get('open')) setTimeout(() => openLevels(ix));
       if (!params.get('node')) setSelected(ix.rootId);
       // 試作のスクリーンショット用：検証結果のある深い葉を選ぶ
       if (params.get('pick') === 'verdict') {
@@ -188,6 +195,7 @@ export function App() {
   }, []);
 
   if (!main || !ix) return <div className="loading">読み込み中…</div>;
+  const setVertical = (v: boolean) => { setVerticalRaw(v); if (v) openLevels(ix); };
 
   const total = ix.nodes.length;
   const graphHead = (
@@ -364,6 +372,8 @@ export function App() {
                 head={graphHead}
                 fitKey={`${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
                 onFallback={() => setView('graph')}
+                onRetry={() => setRetry3d((x) => x + 1)}
+                key={retry3d}
               />
             </Suspense>
             </LoadGuard>
