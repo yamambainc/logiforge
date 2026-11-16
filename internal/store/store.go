@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -113,7 +114,7 @@ func (d *Dir) PutIf(ctx context.Context, key string, data, old []byte) error {
 
 // キーの決まり（design/backend/ports/snapshot-store.md の「置いてあるもの」）。
 //
-// git から作り直せるもの（コミットの記録、木、latest、repositories）は、フォーマットバージョンの接頭辞（例：`v4/`）の下に置く。
+// git から作り直せるもの（コミットの記録、スナップショットツリー、main の並びの索引、latest、repositories）は、フォーマットバージョンの接頭辞（例：`v4/`）の下に置く。
 // フォーマットバージョンが変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は消さない。
 // 作り直せないもの（ブランチの履歴とその一覧、ブランチのスナップショット）と、形を持たないもの（artifact の中身）は、
 // フォーマットバージョンの接頭辞の外の `keep/` の下に置く。
@@ -125,6 +126,11 @@ var Prefix = fmt.Sprintf("v%d/", snapshot.FormatVersion)
 func CommitKey(repo, sha string) string   { return Prefix + repo + "/commits/" + sha }
 func SnapshotKey(repo, sha string) string { return Prefix + repo + "/snapshots/" + sha }
 func LatestKey(repo string) string        { return Prefix + repo + "/latest" }
+
+// MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot.md の「コミットの記録から引くもの」）。
+func MainIndexKey(repo string, number int) string {
+	return Prefix + repo + "/main/" + strconv.Itoa(number)
+}
 
 // RepositoriesKey は、latest がある repository の名前の一覧のキーである。
 var RepositoriesKey = Prefix + "repositories"

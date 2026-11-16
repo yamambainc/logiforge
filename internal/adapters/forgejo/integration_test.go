@@ -397,7 +397,7 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("worker のブランチの履歴：%+v", h)
 	}
 	m, err := store.GetMain(ctx, st, "q", mustGit(t, alice, "rev-parse", "origin/main"))
-	if err != nil || len(m.Tree.History) < 3 {
+	if err != nil || m.Commit.Number < 3 {
 		t.Fatalf("worker のスナップショット：%v", err)
 	}
 	t.Log("確かめた：read:repository と read:organization のトークンで、worker が repository を列挙し、credential helper で git を読める")

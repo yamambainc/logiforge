@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"path"
 	"regexp"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
@@ -32,14 +34,14 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 	var items []WorkItem
 	arTargets := map[string][]string{}
 	active := func(id string) bool {
-		n := v.main.Tree.Nodes[id]
+		n := v.main.SnapshotTree.Nodes[id]
 		return n != nil && !n.Inactive
 	}
 	claimed := func(id string) bool { return !includeClaimed && len(open.claims.ars[id]) > 0 }
 	waitingHuman := func(id string) bool { return len(open.claims.hrs[id]) > 0 }
 
 	for _, id := range sortedKeys(v.tree.Hypotheses) {
-		n := v.main.Tree.Nodes[id]
+		n := v.main.SnapshotTree.Nodes[id]
 		if n == nil || n.Inactive || claimed(id) || waitingHuman(id) {
 			continue
 		}
@@ -62,8 +64,11 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 			if c.TargetKind != "subtree" {
 				continue
 			}
-			num := v.main.Tree.HistoryNumber(c.Commit)
-			if num == 0 || v.main.Tree.SubtreeChangedAfter(c.NodeID, num) {
+			num, err := b.mainNumber(ctx, v, c.Commit)
+			if err != nil {
+				return nil, nil, err
+			}
+			if num == 0 || v.main.SnapshotTree.SubtreeChangedAfter(c.NodeID, num) {
 				items = append(items, WorkItem{Kind: "citation_changed", SubjectID: vid, NodeID: h.ID})
 				break
 			}
@@ -186,23 +191,30 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 	return refs
 }
 
-// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md）。
+// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/README.md の「計算」）。
 //   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
-//   - 回答のあとに、対象ノードを変えた反映がある。
+//   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
+//     反映の記録のある最初のコミットである。
 func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
 	if refs.cites(hr) {
 		return true, nil
 	}
-	n := v.main.Tree.Nodes[hr.TargetNode]
-	if n == nil || len(n.Changes) == 0 {
+	n := v.main.SnapshotTree.Nodes[hr.TargetNode]
+	if n == nil {
 		return false, nil
 	}
-	last := n.Changes[len(n.Changes)-1]
-	c, err := b.Snap.Commit(ctx, repo, last.Revision)
-	if err != nil {
+	used := false
+	err := b.walkNodeChanges(ctx, repo, hr.TargetNode, n.LastChanged, func(_ snapshot.Rev, c snapshot.Commit, _ snapshot.NodeChange) bool {
+		if trailerValue(c.Trailers, "Logiforge-Apply-Request") == "" {
+			return true
+		}
+		used = c.CommittedAt.After(hr.Answer.CreatedAt)
+		return false
+	})
+	if errors.Is(err, ports.ErrNotFound) {
 		return false, nil
 	}
-	return trailerValue(c.Trailers, "Logiforge-Apply-Request") != "" && c.CommittedAt.After(hr.Answer.CreatedAt), nil
+	return used, err
 }
 
 // ListWork は、着手できる作業を返す。カーソルは、計算したコミットに結びつける（design/api/README.md の「ページング」）。
@@ -307,8 +319,8 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 	if err != nil {
 		return Completion{}, err
 	}
-	evidence := func(id string) bool { n := v.main.Tree.Nodes[id]; return n != nil && n.Evidence }
-	out := Completion{Commit: v.revision(), RootValue: v.main.Tree.Nodes[root.ID].Value}
+	evidence := func(id string) bool { n := v.main.SnapshotTree.Nodes[id]; return n != nil && n.Evidence }
+	out := Completion{Commit: v.revision(), RootValue: v.main.SnapshotTree.Nodes[root.ID].Value}
 	out.Decided = out.RootValue != nil
 	for _, it := range all {
 		if ts, ok := arTargets[it.SubjectID]; ok {

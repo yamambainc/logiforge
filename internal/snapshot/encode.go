@@ -65,11 +65,11 @@ func decode(data []byte, v any, min int) error {
 
 type versioned interface{ formatVersion() int }
 
-func (m *Main) formatVersion() int      { return m.FormatVersion }
-func (b *Branch) formatVersion() int    { return b.FormatVersion }
-func (d *CommitDoc) formatVersion() int { return d.FormatVersion }
-func (d *TreeDoc) formatVersion() int   { return d.FormatVersion }
-func (d *DiffDoc) formatVersion() int   { return d.FormatVersion }
+func (m *Main) formatVersion() int            { return m.FormatVersion }
+func (b *Branch) formatVersion() int          { return b.FormatVersion }
+func (d *CommitDoc) formatVersion() int       { return d.FormatVersion }
+func (d *SnapshotTreeDoc) formatVersion() int { return d.FormatVersion }
+func (d *DiffDoc) formatVersion() int         { return d.FormatVersion }
 
 // CommitDoc は、置き場の <repository>/commits/<SHA> に置く、コミットの記録である。
 type CommitDoc struct {
@@ -77,10 +77,10 @@ type CommitDoc struct {
 	Commit        Commit `json:"commit"`
 }
 
-// TreeDoc は、置き場の <repository>/snapshots/<SHA> に置く、main のコミットの木である。
-type TreeDoc struct {
-	FormatVersion int  `json:"format_version"`
-	Tree          Tree `json:"tree"`
+// SnapshotTreeDoc は、置き場の <repository>/snapshots/<SHA> に置く、main のコミットのスナップショットツリーである。
+type SnapshotTreeDoc struct {
+	FormatVersion int          `json:"format_version"`
+	SnapshotTree  SnapshotTree `json:"snapshot_tree"`
 }
 
 // DiffDoc は、置き場の <repository>/snapshots/<SHA> に置く、ブランチの先頭の差分である。

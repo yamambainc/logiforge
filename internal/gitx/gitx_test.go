@@ -187,7 +187,7 @@ func TestNextFilesFromSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, err := m1.Tree.Files()
+	parent, err := m1.SnapshotTree.Files()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,8 +210,8 @@ func TestNextFilesFromSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m2.Tree.Artifacts) != 1 || m2.Tree.Artifacts[0].SHA256 != sha2 {
-		t.Fatalf("artifacts: %+v", m2.Tree.Artifacts)
+	if len(m2.SnapshotTree.Artifacts) != 1 || m2.SnapshotTree.Artifacts[0].SHA256 != sha2 {
+		t.Fatalf("artifacts: %+v", m2.SnapshotTree.Artifacts)
 	}
 
 	changes, changed, err := r.ChangedFiles(ctx, c1, c2, 1<<20)

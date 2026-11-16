@@ -88,7 +88,7 @@ func (b *Backend) access(ctx context.Context, c Caller, repo string) (string, er
 	return b.Forge.GitForgeRef(ctx, repo)
 }
 
-// view は、ある main のコミットの木である。スナップショットから戻した木と、worker が計算した値を持つ。
+// view は、ある main のコミットのスナップショットツリーと、そこから戻したファイルと木である。値は、worker が計算したものを持つ。
 type view struct {
 	repo  string
 	main  *snapshot.Main
@@ -108,8 +108,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 	}
 	m, err := b.Snap.Main(ctx, repo, revision)
 	if errors.Is(err, ports.ErrNotFound) {
-		// 木を作るのは、latest とブランチの base だけである。ほかのコミットの木は、ここで worker に作らせる
-		// （design/backend/snapshot.md の「木を作るコミット」）。worker は、上限まで待って返す。
+		// main のすべてのコミットにスナップショットツリーを作るので、ないのは worker が追いついていないときである。
 		switch berr := b.Worker.BuildTree(ctx, repo, revision); {
 		case berr == nil:
 			m, err = b.Snap.Main(ctx, repo, revision)
@@ -124,7 +123,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 	if err != nil {
 		return nil, err
 	}
-	files, err := m.Tree.Files()
+	files, err := m.SnapshotTree.Files()
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +135,7 @@ func (v *view) revision() string { return v.main.Commit.Revision }
 // dirNode は、ディレクトリからノードの識別子を引く。
 func (v *view) dirNode() map[string]string {
 	m := map[string]string{}
-	for id, n := range v.main.Tree.Nodes {
+	for id, n := range v.main.SnapshotTree.Nodes {
 		m[n.Dir] = id
 	}
 	return m
@@ -157,7 +156,7 @@ func targetOf(dirs map[string]string, p string) string {
 
 // hypothesis は、仮説のノードの応答を作る。
 func (v *view) hypothesis(h *tree.Hypothesis, claims claims) *Hypothesis {
-	n := v.main.Tree.Nodes[h.ID]
+	n := v.main.SnapshotTree.Nodes[h.ID]
 	out := &Hypothesis{NodeType: "hypothesis", ID: h.ID, Statement: h.Statement, Background: h.Background,
 		OpenApplyRequestIDs: claims.ar(h.ID), OpenHumanRequestIDs: claims.hr(h.ID)}
 	if h.Parent != nil {
@@ -176,7 +175,7 @@ func (v *view) hypothesis(h *tree.Hypothesis, claims claims) *Hypothesis {
 
 // story は、ストーリーのノードの応答を作る。
 func (v *view) story(s *tree.Story, claims claims) *Story {
-	n := v.main.Tree.Nodes[s.ID]
+	n := v.main.SnapshotTree.Nodes[s.ID]
 	out := &Story{NodeType: "story", ID: s.ID, ParentHypothesisID: s.Parent.ID, Title: s.Title, Summary: s.Summary, State: "active",
 		OpenApplyRequestIDs: claims.ar(s.ID), OpenHumanRequestIDs: claims.hr(s.ID)}
 	if s.Inactivated {
@@ -238,7 +237,7 @@ func (v *view) inSubtree(root, id string) bool {
 		if id == root {
 			return true
 		}
-		n := v.main.Tree.Nodes[id]
+		n := v.main.SnapshotTree.Nodes[id]
 		if n == nil {
 			return false
 		}
@@ -250,7 +249,7 @@ func (v *view) inSubtree(root, id string) bool {
 // warnings は、反映の手順によらない変更や、worker が見つけた警告を、木の警告にする。
 func (v *view) warnings() []string {
 	out := []string{}
-	for _, h := range v.main.Tree.History {
+	for _, h := range v.main.SnapshotTree.Warned {
 		if h.NoApplyRequest {
 			out = append(out, h.Revision+"：反映の記録がないコミット（反映の手順によらない変更）")
 		}

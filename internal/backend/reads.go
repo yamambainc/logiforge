@@ -8,6 +8,7 @@ import (
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
@@ -101,7 +102,7 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 	r := Repository{Name: repo, GitURL: b.Forge.GitURL(ref)}
 	if root := v.tree.Root(); root != nil {
 		r.RootHypothesisID = root.ID
-		r.RootValue = v.main.Tree.Nodes[root.ID].Value
+		r.RootValue = v.main.SnapshotTree.Nodes[root.ID].Value
 	}
 	return r, nil
 }
@@ -119,7 +120,7 @@ func (b *Backend) GetTree(ctx context.Context, c Caller, repo, revision string) 
 	if root == nil {
 		return Tree{}, fail(CodeNotFound, "根の仮説がない")
 	}
-	return Tree{RootHypothesisID: root.ID, RootValue: v.main.Tree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings()}, nil
+	return Tree{RootHypothesisID: root.ID, RootValue: v.main.SnapshotTree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings()}, nil
 }
 
 // ListNodes は、木か部分木のノードを返す。depth が負なら、すべての段。
@@ -224,24 +225,16 @@ func (b *Backend) verdict(ctx context.Context, v *view, tv *tree.Verdict) (Verdi
 	return out, nil
 }
 
-// addedIn は、ノードの変更の一覧のコミットのうち、path のファイルを変えた最初のコミットと、その反映の apply request を返す。
-func (b *Backend) addedIn(ctx context.Context, v *view, node, p string) (string, string, error) {
-	n := v.main.Tree.Nodes[node]
+// addedIn は、検証結果のファイル p が加わったコミットと、その反映の apply request を返す。
+// worker がスナップショットツリーのファイルに書いた値を使うので、置き場を読まない（design/backend/snapshot.md の「ノードを変えたコミット」）。
+func (b *Backend) addedIn(_ context.Context, v *view, node, p string) (string, string, error) {
+	n := v.main.SnapshotTree.Nodes[node]
 	if n == nil {
 		return "", "", nil
 	}
-	for _, r := range n.Changes {
-		c, err := b.Snap.Commit(ctx, v.repo, r.Revision)
-		if errors.Is(err, ports.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return "", "", err
-		}
-		for _, ch := range c.Changes {
-			if ch.Path == p {
-				return r.Revision, trailerValue(c.Trailers, "Logiforge-Apply-Request"), nil
-			}
+	for _, f := range n.Files {
+		if f.Path == p && f.Added != nil {
+			return f.Added.Revision, f.Added.ApplyRequest, nil
 		}
 	}
 	return "", "", nil
@@ -280,24 +273,39 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 	if err != nil {
 		return Page[NodeHistoryEntry]{}, err
 	}
-	n := v.main.Tree.Nodes[id]
+	n := v.main.SnapshotTree.Nodes[id]
 	if n == nil {
 		return Page[NodeHistoryEntry]{}, fail(CodeNotFound, "ノード %s がない", id)
 	}
-	out := Page[NodeHistoryEntry]{Items: []NodeHistoryEntry{}}
-	for i := len(n.Changes) - 1; i >= 0; i-- {
-		r := n.Changes[i]
-		if from > 0 && r.Number > from {
-			continue
+	// 始めのコミット。カーソルがあれば、その番号のコミットを main の並びの索引で引く。
+	start := n.LastChanged
+	if from > 0 && from > start.Number {
+		return Page[NodeHistoryEntry]{}, fail(CodeValidationFailed, "カーソルが正しくない")
+	}
+	if from > 0 && from < start.Number {
+		sha, err := b.Snap.MainAt(ctx, repo, from)
+		if errors.Is(err, ports.ErrNotFound) {
+			return Page[NodeHistoryEntry]{}, fail(CodeValidationFailed, "カーソルが正しくない")
 		}
+		if err != nil {
+			return Page[NodeHistoryEntry]{}, err
+		}
+		start = snapshot.Rev{Number: from, Revision: sha}
+		// カーソルは、そのノードを変えたコミットでなければならない。
+		c, err := b.Snap.Commit(ctx, repo, sha)
+		if err != nil {
+			return Page[NodeHistoryEntry]{}, err
+		}
+		if !slices.ContainsFunc(c.Changes, func(ch snapshot.NodeChange) bool { return ch.Node == id }) {
+			return Page[NodeHistoryEntry]{}, fail(CodeValidationFailed, "カーソルが正しくない")
+		}
+	}
+	out := Page[NodeHistoryEntry]{Items: []NodeHistoryEntry{}}
+	err = b.walkNodeChanges(ctx, repo, id, start, func(r snapshot.Rev, cm snapshot.Commit, _ snapshot.NodeChange) bool {
 		if len(out.Items) == limit {
 			next := strconv.Itoa(r.Number)
 			out.NextCursor = &next
-			break
-		}
-		cm, err := b.Snap.Commit(ctx, repo, r.Revision)
-		if err != nil {
-			return Page[NodeHistoryEntry]{}, err
+			return false
 		}
 		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
 		if ar := trailerValue(cm.Trailers, "Logiforge-Apply-Request"); ar != "" {
@@ -309,6 +317,10 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 			}
 		}
 		out.Items = append(out.Items, e)
+		return true
+	})
+	if err != nil {
+		return Page[NodeHistoryEntry]{}, err
 	}
 	return out, nil
 }
@@ -403,7 +415,7 @@ func (b *Backend) hasArtifact(ctx context.Context, repo, sha, revision string) b
 		if err != nil {
 			return false
 		}
-		for _, a := range v.main.Tree.Artifacts {
+		for _, a := range v.main.SnapshotTree.Artifacts {
 			if a.SHA256 == sha {
 				return true
 			}

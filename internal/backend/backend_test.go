@@ -161,7 +161,7 @@ func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string)
 		return "", fmt.Errorf("%w: %s", ports.ErrConflict, out)
 	}
 	sha := f.remote.commit(title + "\n\n" + message)
-	ar.State = ports.StateMerged
+	ar.State, ar.MergedRevision = ports.StateMerged, sha
 	return sha, nil
 }
 func (f *fakeForge) Close(_ context.Context, _, id, reason, session string) error {
@@ -294,7 +294,7 @@ func setup(t *testing.T) *fixture {
 	now := time.Now().UTC()
 	forge := &fakeForge{
 		ars: []ports.ApplyRequest{
-			{ID: "apr_1", Number: 1, Branch: "a", State: ports.StateMerged},
+			{ID: "apr_1", Number: 1, Branch: "a", Target: "main", State: ports.StateMerged, MergedRevision: c2},
 			{ID: "apr_2", Number: 2, Branch: "b", State: ports.StateOpen, FirstRevision: head, HeadRevision: head, CreatedAt: now.Add(time.Hour), Description: "説明"},
 		},
 		reviews: map[string]ports.Reviews{},

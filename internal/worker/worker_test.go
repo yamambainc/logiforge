@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -163,21 +162,20 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	if latest, _ := store.GetLatest(ctx, st, "q"); latest != m2 {
 		t.Fatalf("latest: %s", latest)
 	}
-	// m1 は、latest にならなかったので、記録だけがあり、木はない。
+	// m1 も、スナップショットツリーと main の並びの索引がある。
 	c1, err := store.GetCommit(ctx, st, "q", m1)
 	if err != nil || len(c1.Warnings) != 0 || c1.Number != 2 {
 		t.Fatalf("m1: %+v %v", c1, err)
 	}
-	if ok, _ := store.HasTree(ctx, st, "q", m1); ok {
-		t.Fatal("latest でないコミットに、木を作った")
+	if got, _ := store.GetMainIndex(ctx, st, "q", 2); got != m1 {
+		t.Fatalf("main の並びの索引 2：%s", got)
 	}
-	// 「木を作る」で、あとから作れる。history とノードの変更の一覧は、m1 までである。
 	if err := w.BuildTree(ctx, "q", m1); err != nil {
 		t.Fatal(err)
 	}
 	s1m, err := store.GetMain(ctx, st, "q", m1)
-	if err != nil || len(s1m.Tree.History) != 2 || len(s1m.Tree.Nodes["h-3333333333"].Changes) != 2 {
-		t.Fatalf("m1 の木：%+v %v", s1m, err)
+	if err != nil || s1m.SnapshotTree.Nodes["h-3333333333"].LastChanged.Number != 2 {
+		t.Fatalf("m1 のスナップショットツリー：%+v %v", s1m, err)
 	}
 	if err := w.BuildTree(ctx, "q", strings.Repeat("b", 40)); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("記録のないコミット：%v", err)
@@ -189,8 +187,8 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	if got := rules(s2m.Commit.Warnings); len(got) != 1 || got[0] != snapshot.RuleOverlap || s2m.Commit.Warnings[0].Node != "h-3333333333" {
 		t.Fatalf("重なりの警告：%v", s2m.Commit.Warnings)
 	}
-	if !s2m.Tree.History[2].WorkerWarned {
-		t.Fatalf("history: %+v", s2m.Tree.History)
+	if w := s2m.SnapshotTree.Warned; len(w) != 1 || w[0].Number != 3 || !w[0].WorkerWarned {
+		t.Fatalf("warned: %+v", w)
 	}
 
 	// 何度動かしても、結果は同じ。
@@ -220,6 +218,13 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	s3m, _ := store.GetMain(ctx, st, "q", m3)
 	if got := rules(s3m.Commit.Warnings); !contains(got, RuleMainRewritten) || !contains(got, snapshot.RuleNoApplyRequest) {
 		t.Fatalf("書き換えの警告：%v", got)
+	}
+	// 書き換えのあとの新しいコミットで、main の並びの索引が上書きされる。
+	if s3m.Commit.Number != 2 {
+		t.Fatalf("m3 の番号：%d", s3m.Commit.Number)
+	}
+	if got, _ := store.GetMainIndex(ctx, st, "q", 2); got != m3 {
+		t.Fatalf("main の並びの索引 2：%s（m1 は %s）", got, m1)
 	}
 	w.SyncAll(ctx)
 	if names, _ := store.GetRepositories(ctx, st); len(names) != 1 || names[0] != "q" {
@@ -389,81 +394,8 @@ func TestSecondWorkerDoesNotStart(t *testing.T) {
 	again()
 }
 
-// 「木を作る」が上限までに終わらなければ、ErrSnapshotPending を返し、作るのは裏で続ける。
-func TestBuildTreePendingKeepsBuilding(t *testing.T) {
-	ctx := context.Background()
-	r := setupRemote(t)
-	var old string
-	for i := 0; i <= incrementalLimit; i++ {
-		r.write(h2+"/background.md", []byte(fmt.Sprintf("%d\n", i)))
-		sha := r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
-		if i == 3 {
-			old = sha
-		}
-	}
-	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir(), BuildTreeWait: time.Nanosecond}, source{r.dir}, st)
-	syncRepo(t, w)
-	if ok, _ := store.HasTree(ctx, st, "q", old); ok {
-		t.Fatal("まとめて取り込んだ途中のコミットに、木がある")
-	}
-	if err := w.BuildTree(ctx, "q", old); !errors.Is(err, ErrSnapshotPending) {
-		t.Fatalf("got %v", err)
-	}
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		if ok, _ := store.HasTree(ctx, st, "q", old); ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("裏で木を作るのが終わらない")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if err := w.BuildTree(ctx, "q", old); err != nil {
-		t.Fatalf("作ったあと：%v", err)
-	}
-}
-
-// 裏の取り込みは、Run の ctx が終われば止まる。
-func TestBackgroundIngestStopsWithRun(t *testing.T) {
-	r := setupRemote(t)
-	for i := 0; i < 30; i++ {
-		r.write(h2+"/background.md", []byte(fmt.Sprintf("%d\n", i)))
-		r.commit(fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_%d", i, i))
-	}
-	r.git("checkout", "--quiet", "-b", "b")
-	r.write(h1+"/background.md", []byte("b\n"))
-	r.commit("b")
-	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir(), Interval: time.Hour, BuildTreeWait: time.Nanosecond}, source{r.dir}, st)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { _ = w.Run(ctx); close(done) }()
-	time.Sleep(50 * time.Millisecond) // Run が ctx を持つまで
-	// Run の最初の巡回が、ロックを持っているかもしれない。その間は、すぐに ErrSnapshotPending になる。
-	if err := w.BuildTree(context.Background(), "q", r.git("rev-parse", "main")); err != nil && !errors.Is(err, ErrSnapshotPending) && !errors.Is(err, ports.ErrNotFound) {
-		t.Fatal(err)
-	}
-	cancel()
-	<-done
-	// 止めたあとは、ロックが放される（裏の取り込みも止まっている）。
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if unlock := w.tryLock("q", time.Now()); unlock != nil {
-			unlock()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("Run を止めても、裏の取り込みがロックを放さない")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// 初めての取り込み（記録を順に作り、最後に木を 1 回作る）と、ふだんの取り込み（1 コミットずつ前の木に重ねる）で、
-// コミットの記録と今の main の木が同じになる。違うのは、「新しく破れた不変条件」の付け方だけである。
-// 初めての取り込みでは、今の木で破れているもの全体を、最後のコミットの警告にする。
+// 溜まったコミットをまとめて取り込んでも、1 つずつ取り込んでも、コミットの記録とスナップショットツリーは同じになる。
+// どちらも、古い順に 1 つずつ、すべてのコミットにスナップショットツリーを作るからである。
 func TestInitialImportMatchesIncremental(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
@@ -496,119 +428,83 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 
 	all, allSt := newWorker(t, r)
 	syncRepo(t, all)
-	for _, sha := range shas {
-		a, err1 := store.GetCommit(ctx, allSt, "q", sha)
-		b, err2 := store.GetCommit(ctx, incSt, "q", sha)
+	for i, sha := range shas {
+		a, err1 := store.GetMain(ctx, allSt, "q", sha)
+		b, err2 := store.GetMain(ctx, incSt, "q", sha)
 		if err1 != nil || err2 != nil {
 			t.Fatal(err1, err2)
 		}
-		// 「新しく破れた不変条件」は、下で別に確かめる。
-		notBroken := func(v tree.Violation) bool { return v.Rule == tree.RuleOutsideTree }
-		a.Warnings = slices.DeleteFunc(a.Warnings, notBroken)
-		b.Warnings = slices.DeleteFunc(b.Warnings, notBroken)
 		if !reflect.DeepEqual(a, b) {
-			t.Fatalf("%s の記録が違う：\n初めて：%+v\nふだん：%+v", sha, a, b)
+			t.Fatalf("%d 番目の %s が違う：\nまとめて：%+v\n1 つずつ：%+v", i, sha, a, b)
+		}
+		if got, _ := store.GetMainIndex(ctx, allSt, "q", a.Commit.Number); got != sha {
+			t.Fatalf("main の並びの索引 %d：%s", a.Commit.Number, got)
 		}
 	}
+	// 新しく破れた不変条件は、破ったコミットにだけ付く。
 	latest := shas[len(shas)-1]
-	a, _ := store.GetMain(ctx, allSt, "q", latest)
-	b, _ := store.GetMain(ctx, incSt, "q", latest)
-	if a == nil || b == nil {
-		t.Fatal("今の main の木がない")
+	for _, sha := range shas {
+		c, _ := store.GetCommit(ctx, allSt, "q", sha)
+		if got := contains(rules(c.Warnings), tree.RuleOutsideTree); got != (sha == latest) {
+			t.Fatalf("%s の警告：%v", sha, c.Warnings)
+		}
 	}
-	if !b.Tree.History[len(b.Tree.History)-1].NewlyBroken || !a.Tree.History[len(a.Tree.History)-1].NewlyBroken {
-		t.Fatalf("新しく破れた不変条件の印：ふだん %+v、初めて %+v", b.Tree.History, a.Tree.History)
+	m, _ := store.GetMain(ctx, allSt, "q", latest)
+	// 3 は重なり、4 と 5 は Logiforge-Version: がないので overlap_unchecked、6 は反映の記録がなく、新しく破った。
+	if w := m.SnapshotTree.Warned; len(w) != 4 || w[0].Number != 3 || !w[0].WorkerWarned || w[3].Number != 6 || !w[3].NewlyBroken || !w[3].NoApplyRequest {
+		t.Fatalf("warned: %+v", w)
 	}
-	if c, _ := store.GetCommit(ctx, allSt, "q", latest); !contains(rules(c.Warnings), tree.RuleOutsideTree) || !strings.Contains(c.Warnings[len(c.Warnings)-1].Detail, "まとめて取り込んだ") {
-		t.Fatalf("最後のコミットの、まとめて取り込んだときの警告：%+v", c.Warnings)
-	}
-	if !reflect.DeepEqual(a.Tree, b.Tree) {
-		t.Fatalf("今の main の木が違う：\n初めて：%+v\nふだん：%+v", a.Tree, b.Tree)
-	}
-	if !contains(rules(a.Tree.Broken), tree.RuleOutsideTree) {
-		t.Fatalf("今の main の木の Broken：%v", a.Tree.Broken)
-	}
-	// 重なりと inactive 化の子孫は、初めての取り込みでも求める。
+	// 重なりと inactive 化の子孫。
 	if c, _ := store.GetCommit(ctx, allSt, "q", shas[1]); !contains(rules(c.Warnings), snapshot.RuleOverlap) {
 		t.Fatalf("重なりの警告：%v", c.Warnings)
 	}
-	if rs := a.Tree.Nodes["h-6666666666"].Changes; len(rs) != 2 || rs[1].Revision != shas[3] {
-		t.Fatalf("inactive 化した子孫の変更の一覧：%v", rs)
+	if lc := m.SnapshotTree.Nodes["h-6666666666"].LastChanged; lc.Revision != shas[3] {
+		t.Fatalf("inactive 化した子孫を最後に変えたコミット：%v", lc)
+	}
+	if n := m.SnapshotTree.Nodes["s-5555555555"]; n.InactivatedAt != 5 {
+		t.Fatalf("inactivated_at: %+v", n)
 	}
 }
 
-// 前の latest の木があり、新しいコミットが多いとき（まとめての取り込み）は、始めの木と比べて新しく破れたものだけを、
-// 最後のコミットの警告にする。始めの木から破れていたものは、警告にしない。
-func TestBulkImportNewlyBroken(t *testing.T) {
-	ctx := context.Background()
-	r := setupRemote(t)
-	r.write("README.md", []byte("前から破れている"))
-	r.commit("手で直した")
-	w, st := newWorker(t, r)
-	syncRepo(t, w)
-	var first, last string
-	for i := 0; i <= incrementalLimit; i++ {
-		r.write(fmt.Sprintf("%s/background.md", h2), []byte(fmt.Sprintf("背景 %d\n", i)))
-		last = r.commit("反映\n\nLogiforge-Apply-Request: apr_" + fmt.Sprint(i))
-		if first == "" {
-			first = last
-		}
-	}
-	r.write("NOTES.md", []byte("新しく破れた"))
-	last = r.commit("反映\n\nLogiforge-Apply-Request: apr_last")
-	syncRepo(t, w)
-	c, err := store.GetCommit(ctx, st, "q", last)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, v := range c.Warnings {
-		if v.Rule == tree.RuleOutsideTree {
-			got = append(got, v.Node)
-			if !strings.Contains(v.Detail, "まとめて取り込んだ "+first+".."+last) {
-				t.Fatalf("detail: %q", v.Detail)
-			}
-		}
-	}
-	if !reflect.DeepEqual(got, []string{"NOTES.md"}) {
-		t.Fatalf("新しく破れた不変条件：%v", c.Warnings)
-	}
-	m, _ := store.GetMain(ctx, st, "q", last)
-	if !m.Tree.History[len(m.Tree.History)-1].NewlyBroken {
-		t.Fatal("history の印がない")
-	}
-}
-
-// まとめての取り込みが、最後のコミットの記録を置く前に止まっても、次の巡回で、前から破れていたものを新しく破れたとしない。
-// 記録のある祖先のうち、木のあるいちばん新しいもの（前の latest）の broken と比べるため。
-func TestBulkImportResumesWithStartTree(t *testing.T) {
+// 取り込みが途中で止まっても、次の巡回で、latest の次のコミットから続ける。
+func TestResumeFromLatest(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
 	r.write("README.md", []byte("前から破れている"))
 	before := r.commit("手で直した")
 	w, st := newWorker(t, r)
 	syncRepo(t, w)
-	var first, last string
-	for i := 0; i <= incrementalLimit; i++ {
+	var shas []string
+	for i := 0; i < 5; i++ {
 		r.write(h2+"/background.md", []byte(fmt.Sprintf("背景 %d\n", i)))
-		last = r.commit("反映\n\nLogiforge-Apply-Request: apr_" + fmt.Sprint(i))
-		if first == "" {
-			first = last
-		}
+		shas = append(shas, r.commit("反映\n\nLogiforge-Apply-Request: apr_"+fmt.Sprint(i)))
 	}
 	r.write("NOTES.md", []byte("新しく破れた"))
-	last = r.commit("反映\n\nLogiforge-Apply-Request: apr_last")
+	last := r.commit("反映\n\nLogiforge-Apply-Request: apr_last")
 	syncRepo(t, w)
-	// 最後の記録を置く前に止まった状態にする：最後の記録と木を消し、latest を前に戻す。
-	for _, k := range []string{store.CommitKey("q", last), store.SnapshotKey("q", last), store.LatestKey("q")} {
-		if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(k))); err != nil {
-			t.Fatal(err)
+	// 3 番目のコミットの記録と索引を置き、スナップショットツリーを置く前に止まった状態にする：
+	// 3 番目より先は記録も消し、3 番目はスナップショットツリーだけを消し、latest を 2 番目に戻す。
+	for i, sha := range append(shas[2:], last) {
+		keys := []string{store.SnapshotKey("q", sha)}
+		if i > 0 {
+			keys = append(keys, store.CommitKey("q", sha))
+		}
+		for _, k := range keys {
+			if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(k))); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	if err := store.SetLatest(ctx, st, "q", before, ""); err != nil {
+	if err := os.Remove(filepath.Join(st.Root, filepath.FromSlash(store.LatestKey("q")))); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetLatest(ctx, st, "q", shas[1], ""); err != nil {
 		t.Fatal(err)
 	}
 	syncRepo(t, w)
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != last {
+		t.Fatalf("latest: %s", latest)
+	}
 	c, err := store.GetCommit(ctx, st, "q", last)
 	if err != nil {
 		t.Fatal(err)
@@ -617,15 +513,17 @@ func TestBulkImportResumesWithStartTree(t *testing.T) {
 	for _, v := range c.Warnings {
 		if v.Rule == tree.RuleOutsideTree {
 			got = append(got, v.Node)
-			if !strings.Contains(v.Detail, "まとめて取り込んだ "+first+".."+last) {
-				t.Fatalf("detail: %q", v.Detail)
-			}
 		}
 	}
 	if !reflect.DeepEqual(got, []string{"NOTES.md"}) {
 		t.Fatalf("新しく破れた不変条件（README.md は前から破れている）：%v", c.Warnings)
 	}
-	if latest, _ := store.GetLatest(ctx, st, "q"); latest != last {
-		t.Fatalf("latest: %s", latest)
+	for _, sha := range append(shas, last) {
+		if ok, _ := store.HasSnapshotTree(ctx, st, "q", sha); !ok {
+			t.Fatalf("%s のスナップショットツリーがない", sha)
+		}
+	}
+	if c, _ := store.GetCommit(ctx, st, "q", before); !contains(rules(c.Warnings), tree.RuleOutsideTree) {
+		t.Fatalf("README.md を足したコミットの警告：%v", c.Warnings)
 	}
 }

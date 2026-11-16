@@ -78,42 +78,40 @@ func mustMain(t *testing.T, f fs, ci CommitInfo, parent *Main) *Main {
 	return m
 }
 
-func numbers(rs []Rev) []int {
-	var out []int
-	for _, r := range rs {
-		out = append(out, r.Number)
-	}
-	return out
-}
-
-func TestBuildMainChangesAndHistory(t *testing.T) {
+func TestBuildMainChangesAndWarned(t *testing.T) {
 	f1 := baseFiles()
 	m1 := mustMain(t, f1, info(rev(1), ""), nil)
 	if m1.Commit.Number != 1 || m1.Commit.Parent != nil || len(m1.Commit.Warnings) != 0 {
 		t.Fatalf("commit 1: %+v", m1.Commit)
 	}
-	if got := numbers(m1.Tree.Nodes[H2].Changes); !reflect.DeepEqual(got, []int{1}) {
+	if got := m1.SnapshotTree.Nodes[H2].LastChanged; got.Number != 1 {
 		t.Fatalf("H2: %v", got)
+	}
+	for _, ch := range m1.Commit.Changes {
+		if ch.Previous != nil {
+			t.Fatalf("最初のコミットの previous: %+v", ch)
+		}
 	}
 
 	// H1 に検証結果を出す。
 	f2 := f1.clone()
 	f2.put(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: true, Report: "r\n"}))
 	m2 := mustMain(t, f2, info(rev(2), "apr_2"), m1)
-	if want := []NodeChange{{H1, FileVerdict, dH1 + "/verdicts/" + V1 + ".md"}}; !reflect.DeepEqual(m2.Commit.Changes, want) {
-		t.Fatalf("changes: %v", m2.Commit.Changes)
+	want := []NodeChange{{Node: H1, Files: []FileChange{{FileVerdict, dH1 + "/verdicts/" + V1 + ".md"}}, Previous: &Rev{1, rev(1)}}}
+	if !reflect.DeepEqual(m2.Commit.Changes, want) {
+		t.Fatalf("changes: %+v", m2.Commit.Changes)
 	}
-	if got := numbers(m2.Tree.Nodes[H1].Changes); !reflect.DeepEqual(got, []int{1, 2}) {
+	if got := m2.SnapshotTree.Nodes[H1].LastChanged; got != (Rev{2, rev(2)}) {
 		t.Fatalf("H1: %v", got)
 	}
-	if got := numbers(m2.Tree.Nodes[H2].Changes); !reflect.DeepEqual(got, []int{1}) {
+	if got := m2.SnapshotTree.Nodes[H2].LastChanged; got.Number != 1 {
 		t.Fatalf("H2: %v", got)
 	}
-	if v := m2.Tree.Nodes[H1].Value; v == nil || !*v || !m2.Tree.Nodes[H1].Leaf {
-		t.Fatalf("H1 の値: %+v", m2.Tree.Nodes[H1])
+	if v := m2.SnapshotTree.Nodes[H1].Value; v == nil || !*v || !m2.SnapshotTree.Nodes[H1].Leaf {
+		t.Fatalf("H1 の値: %+v", m2.SnapshotTree.Nodes[H1])
 	}
-	if want := []HistoryEntry{{Number: 1, Revision: rev(1)}, {Number: 2, Revision: rev(2), ApplyRequest: "apr_2"}}; !reflect.DeepEqual(m2.Tree.History, want) {
-		t.Fatalf("history: %v", m2.Tree.History)
+	if len(m2.SnapshotTree.Warned) != 0 {
+		t.Fatalf("warned: %v", m2.SnapshotTree.Warned)
 	}
 
 	// S1 を inactive にすると、S1、親の H0、子孫の H1、H2 が変わる。
@@ -121,28 +119,39 @@ func TestBuildMainChangesAndHistory(t *testing.T) {
 	f3.put(dS1+"/inactivated.md", []byte("理由\n"))
 	m3 := mustMain(t, f3, info(rev(3), "apr_3"), m2)
 	for _, id := range []string{S1, H0, H1, H2} {
-		if rs := m3.Tree.Nodes[id].Changes; rs[len(rs)-1].Number != 3 {
-			t.Fatalf("%s: %v", id, rs)
+		if got := m3.SnapshotTree.Nodes[id].LastChanged; got.Number != 3 {
+			t.Fatalf("%s: %v", id, got)
 		}
 	}
-	if !m3.Tree.Nodes[H1].Inactive {
-		t.Fatal("H1 が inactive でない")
+	if got := len(m3.Commit.Changes); got != 4 {
+		t.Fatalf("changes: %+v", m3.Commit.Changes)
+	}
+	if !m3.SnapshotTree.Nodes[H1].Inactive || m3.SnapshotTree.Nodes[S1].InactivatedAt != 3 {
+		t.Fatalf("S1: %+v", m3.SnapshotTree.Nodes[S1])
 	}
 
 	// 反映の記録のないコミットは警告にする。
 	f4 := f3.clone()
 	f4.put("README.md", []byte("x"))
 	m4 := mustMain(t, f4, info(rev(4), ""), m3)
-	if h := m4.Tree.History[3]; !hasRule(m4.Commit.Warnings, RuleNoApplyRequest) || !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) || !h.NoApplyRequest || !h.NewlyBroken {
-		t.Fatalf("warnings: %v %+v", m4.Commit.Warnings, h)
+	w := m4.SnapshotTree.Warned
+	if !hasRule(m4.Commit.Warnings, RuleNoApplyRequest) || !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) ||
+		len(w) != 1 || w[0].Number != 4 || !w[0].NoApplyRequest || !w[0].NewlyBroken {
+		t.Fatalf("warnings: %v %+v", m4.Commit.Warnings, w)
 	}
 
-	// 前から破れている条件は、次のコミットの警告にしない。Tree.Broken に残る。
+	// 前から破れている条件は、次のコミットの警告にしない。SnapshotTree.Broken に残る。inactivated_at は引き継ぐ。
 	f5 := f4.clone()
 	f5.put(dH2+"/background.md", []byte("背景\n"))
 	m5 := mustMain(t, f5, info(rev(5), "apr_5"), m4)
-	if len(m5.Commit.Warnings) != 0 || !hasRule(m5.Tree.Broken, tree.RuleOutsideTree) || m5.Tree.History[4].NewlyBroken {
-		t.Fatalf("warnings: %v broken: %v", m5.Commit.Warnings, m5.Tree.Broken)
+	if len(m5.Commit.Warnings) != 0 || !hasRule(m5.SnapshotTree.Broken, tree.RuleOutsideTree) || len(m5.SnapshotTree.Warned) != 1 {
+		t.Fatalf("warnings: %v broken: %v", m5.Commit.Warnings, m5.SnapshotTree.Broken)
+	}
+	if m5.SnapshotTree.Nodes[S1].InactivatedAt != 3 {
+		t.Fatalf("S1: %+v", m5.SnapshotTree.Nodes[S1])
+	}
+	if p := m5.Commit.Changes[0].Previous; m5.Commit.Changes[0].Node != H2 || p == nil || p.Number != 3 {
+		t.Fatalf("H2 の previous: %+v", m5.Commit.Changes)
 	}
 }
 
@@ -175,7 +184,7 @@ func TestSubtreeChangedAfter(t *testing.T) {
 		{"h-zzzzzzzzzz", 1, true}, // ない
 	}
 	for _, c := range cases {
-		if got := m2.Tree.SubtreeChangedAfter(c.node, c.number); got != c.want {
+		if got := m2.SnapshotTree.SubtreeChangedAfter(c.node, c.number); got != c.want {
 			t.Fatalf("%s after %d: %v", c.node, c.number, got)
 		}
 	}
@@ -223,7 +232,7 @@ func TestRoundTrip(t *testing.T) {
 	if err := Decode(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	files, err := got.Tree.Files()
+	files, err := got.SnapshotTree.Files()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +275,7 @@ func TestBranchOverlayAndCheck(t *testing.T) {
 	}
 
 	// 同じ base に重ねると、ブランチの先頭と同じ木になる。
-	mainFiles, err := mainSnap.Tree.Files()
+	mainFiles, err := mainSnap.SnapshotTree.Files()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,5 +418,55 @@ func TestOverlayTable(t *testing.T) {
 				t.Fatalf("got %+v", f)
 			}
 		})
+	}
+}
+
+// inactivated_at は、inactivated.md が加わったコミットのまま動かない。消えたら、値もなくなる。
+// 検証結果のファイルの、加わったコミットも同じである。
+func TestAddedCommitsStay(t *testing.T) {
+	f1 := baseFiles()
+	m1 := mustMain(t, f1, info(rev(1), ""), nil)
+	f2 := f1.clone()
+	f2.put(dS1+"/inactivated.md", []byte("理由\n"))
+	f2.put(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: true, Report: "r\n"}))
+	m2 := mustMain(t, f2, info(rev(2), "apr_2"), m1)
+	if got := m2.SnapshotTree.Nodes[S1].InactivatedAt; got != 2 {
+		t.Fatalf("加えたコミット：%d", got)
+	}
+	added := func(m *Main) *AddedIn {
+		for _, f := range m.SnapshotTree.Nodes[H1].Files {
+			if f.Path == dH1+"/verdicts/"+V1+".md" {
+				return f.Added
+			}
+		}
+		return nil
+	}
+	if a := added(m2); a == nil || *a != (AddedIn{2, rev(2), "apr_2"}) {
+		t.Fatalf("検証結果が加わったコミット：%+v", a)
+	}
+	// 書き直しても、加わったコミットのまま。
+	f3 := f2.clone()
+	f3.put(dS1+"/inactivated.md", []byte("理由を書き直した\n"))
+	f3.put(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: false, Report: "r2\n"}))
+	m3 := mustMain(t, f3, info(rev(3), "apr_3"), m2)
+	if got := m3.SnapshotTree.Nodes[S1].InactivatedAt; got != 2 {
+		t.Fatalf("書き直したあと：%d", got)
+	}
+	if a := added(m3); a == nil || a.Number != 2 {
+		t.Fatalf("書き直したあとの検証結果：%+v", a)
+	}
+	// 消すと、値もなくなる。もう一度加えたら、そのコミットになる。
+	f4 := f3.clone()
+	delete(f4, dS1+"/inactivated.md")
+	delete(f4, dH1+"/verdicts/"+V1+".md")
+	m4 := mustMain(t, f4, info(rev(4), "apr_4"), m3)
+	if got := m4.SnapshotTree.Nodes[S1].InactivatedAt; got != 0 {
+		t.Fatalf("消したあと：%d", got)
+	}
+	f5 := f4.clone()
+	f5.put(dS1+"/inactivated.md", []byte("理由\n"))
+	m5 := mustMain(t, f5, info(rev(5), "apr_5"), m4)
+	if got := m5.SnapshotTree.Nodes[S1].InactivatedAt; got != 5 {
+		t.Fatalf("加え直したあと：%d", got)
 	}
 }

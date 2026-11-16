@@ -29,6 +29,7 @@ func (emptySnap) Latest(context.Context, string) (string, error) { return "", po
 func (emptySnap) Commit(context.Context, string, string) (snapshot.Commit, error) {
 	return snapshot.Commit{}, ports.ErrNotFound
 }
+func (emptySnap) MainAt(context.Context, string, int) (string, error) { return "", ports.ErrNotFound }
 func (emptySnap) Main(context.Context, string, string) (*snapshot.Main, error) {
 	return nil, ports.ErrNotFound
 }
