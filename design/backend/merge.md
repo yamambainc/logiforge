@@ -8,22 +8,24 @@ apply request を main に反映するとき、バックエンドが何を確か
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
 1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
+   - pull request の向き先が `main` である。違えば、反映の手順に進まない。レビューを記録し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request.md#向き先)）。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
    - 先頭のコミット（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。
    - 先頭のコミットに、書いたセッションの trailer がある（[セッション](../files/revisions.md#セッション)）。
    - その reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。
-   - GitForge の `main` が `latest` より進んでいれば、worker を起こして、追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
+   - GitForge の `main` が `latest` より進んでいれば、worker が追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
    - GitForge の `main` は、GitForge のポートの「`main` の先頭を読む」で読む（[GitForge のポート](ports/gitforge.md)）。
-   - 待ち始めに読んだ `main` の先頭が、`latest` の `history` に入ったら、待つのをやめる。そのあとに `main` がさらに進んでもよい。
+   - 待ち始めに読んだ `main` の先頭が、`main` の並びに入り、その番号が `latest` の番号以下になったら、待つのをやめる（[コミットの記録から引くもの](snapshot.md#コミットの記録から引くもの)）。そのあとに `main` がさらに進んでもよい。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
-   - 先頭のコミットの差分を、今の `main` に重ねる。差分が変えたファイルが、base のあとに `main` でも変わっていれば重ねられないので、`conflict`（[スナップショット](snapshot.md) のブランチの木）。
+   - 先頭のコミットの差分を、今の `main` に重ねる（重ね方は [向き先に重ねる](snapshot.md#向き先に重ねる)）。重ねられなければ、`conflict`。
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して呼ぶ。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
-5. worker を起こし、`latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
+5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
+   - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request.md#向き先)）。
 6. 手順 1〜4 で反映できなければ、失敗の理由を GitForge に記録する。apply request は open のまま残る。
 
 - reviewer の主体が、pull request を作った主体と同じなら、反映はするが、レビューの応答と apply request に警告を付ける。
@@ -34,10 +36,10 @@ apply request を main に反映するとき、バックエンドが何を確か
 - 各操作の対象ノードについて、「変わった」とみなすパスを決める。
   - 仮説：自分の `hypothesis.md`、`background.md`、`verdicts/`、子ストーリーの `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
   - ストーリー：自分の `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
-  - 引用した部分木のノード（部分木のどれかのノードの変更の一覧に、base の番号より大きい番号があれば、変わったとみなす）
-- 今の `main` のスナップショットで、対象ノードの [ノードの変更の一覧](snapshot.md) に、base の番号より大きい番号があれば、変わったとみなす。
-  - 1 つのスナップショットを読むだけで確かめられる。
-  - base が今の `main` の `history` になければ、変わったものとみなす。
+  - 引用した部分木のノード（部分木のどれかのノードの `last_changed` の番号が、base の番号より大きければ、変わったとみなす）
+- 今の `main` のスナップショットツリーで、対象ノードの `last_changed` の番号が、base の番号より大きければ、変わったとみなす（[ノードを変えたコミット](snapshot.md#ノードを変えたコミット)）。
+  - 1 つのスナップショットツリーを読むだけで確かめられる。
+  - base が `main` の並びになければ、変わったものとみなす（[コミットの記録から引くもの](snapshot.md#コミットの記録から引くもの)）。
 - 伝播で値だけが変わることは、ファイルに現れないので、「変わった」に含まれない。
   - なぜ：値は保存しないから（[保存しないもの](../files/layout.md)）。
 

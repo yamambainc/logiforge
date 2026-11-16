@@ -24,6 +24,26 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、書き込み主体のコメントに置く（[記録のコメント](../adapters/pull-requests.md)）。
   - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。
 
+## 向き先
+
+- apply request の向き先は、pull request の base のブランチである。
+- バックエンドが作る pull request の向き先は、いつも `main` である。作成の API に、向き先を指定するものはない（[作成](#作成)）。
+  - ほかの apply request のブランチに積み上げたブランチも、`main` 向きの apply request になる。差分は、`main` との分かれた点からなので、下の apply request の変更も含む。
+- GitForge の画面などで、pull request の base を `main` 以外に変えることはできる。Logiforge は、それを止めない。
+- Logiforge が検査し、反映するのは、向き先が `main` の apply request だけである。
+  - なぜ：向き先が `main` でない pull request は、`main` に入らないから。その変更は、いずれ `main` に向かう apply request になったときに、そこで検査される。
+  - 向き先のブランチへの merge は、GitForge で起きる。Logiforge は、止めないし、記録もしない。
+- 向き先が `main` でない apply request は、次のように扱う。
+  - バックエンドは、提案を読むときに、向き先を GitForge から読み、apply request の `target` として返す（[GitForge のポート](ports/gitforge.md)）。
+  - 操作の一覧は返さない（空にする）。差分を検査しないからである。差分と先頭のコミットの一覧は、ほかの apply request と同じく返す。
+  - レビューは、GitForge に記録する。`approve` しても、反映の手順に進まない。応答の警告に、Logiforge の反映の対象でないことを書く（[反映の手順](merge.md)）。
+  - レビューの材料と、反映したあとの木は返さず、`overlay_unsupported`（422）を返す（[向き先に重ねる](snapshot.md#向き先に重ねる)）。
+  - 着手できる作業と、作業の終わりの判定には数えない（[計算](README.md#計算)）。
+- 向き先は、読むたびに GitForge から読む。そのため、向き先を変えると、次に読んだときから、変えたあとの向き先で扱う。
+  - `main` に変えたら、ほかの apply request と同じく、差分を検査し、レビューと反映の対象になる。差分は、もともと `main` との分かれた点からのものである。
+  - `main` に変えたあとは、`approve` し直すと反映する。それまでの `approve` では反映していないので、レビュー待ちになる（[計算](README.md#計算)）。
+  - `main` から変えたら、それまでのレビューと反映の失敗の記録は残るが、反映の対象から外れる。
+
 ## 先頭のコミット
 
 - apply request の先頭のコミットは、[worker](worker.md) が見たブランチの先頭のコミットである。SHA で指す。
@@ -48,25 +68,25 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 3. 作業用の git の複製に、`main` とブランチを fetch する（下の「作業用の git の複製」）。
 4. ブランチの先頭と `main` の分かれた点（base）を求め、base から変わったファイルだけを読む。
    - 要求に `commit` があり、ブランチの先頭と違えば、`validation_failed` で受け付けない。
-   - base の木は、置き場にスナップショットがあれば、それを使う。なければ、作業用の複製から読む。
+   - base の木は、置き場にスナップショットツリーがあれば、それを使う。なければ（worker が追いついていない）、作業用の複製から読む。
 5. 差分に、[差分の検査](checks.md) を行う。4 種類の操作として読めない変化があれば、`validation_failed` で受け付けない。
    - 解析のコードは、worker と CLI の `check` と同じものである。
 6. GitForge に、pull request を作り、識別子と、作ったときの先頭のコミットを、記録のコメントに書く。
    - そのブランチに open の pull request がすでにあれば、`validation_failed` で受け付けない。
-7. worker を起こし、応答する。
+7. 応答する。
    - 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker がブランチを取り込むまで、レビューは `snapshot_pending` になる（[レビュー](../api/writes.md)）。
    - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、手順 5 の検査の結果から返す。
    - 注記：作成の時点の base と、worker があとでブランチを取り込むときの base（そのときの `main` との分かれた点）は、あいだに `main` が進むと違いうる。先頭のコミットの一覧とレビューの材料は、worker が求めた base で作る。反映の前に、今の `main` に対して確かめ直す（[反映の手順](merge.md)）ので、正しさには関わらない。
 
 - 作成は、worker を待たない。なぜ：検査をバックエンドで行えば、バックエンドを増やすだけで、作成の数に合わせて広げられるから。
-- 作成の時点の検査は、今の `latest` の木を、検査の文脈（引用元など）に使う。worker が `main` に追いついていなければ、文脈は少し古い。反映の前の検査（[反映の手順](merge.md)）で、今の `main` に対して確かめ直す。
+- 作成の時点の検査は、今の `latest` のスナップショットツリーを、検査の文脈（引用元など）に使う。worker が `main` に追いついていなければ、文脈は少し古い。反映の前の検査（[反映の手順](merge.md)）で、今の `main` に対して確かめ直す。
 
 ## 作業用の git の複製
 
 - バックエンドは、repository ごとに、作業用の git の複製（bare）を持つ。
   - 置き場所は、一時的なディスク（コンテナの `/tmp` や `emptyDir`）である。
   - 初めて要るときに、1 度だけ clone する。そのあとの要求では、`main` とそのブランチを fetch するだけにする。要求ごとに clone しない。
-  - blob を省いた clone（`--filter=blob:none`）にはしない。なぜ：置き場に base の木がないとき、base のすべてのファイルを読む。blob を省くと、そのとき blob ごとに GitForge へ取りに行き、遅くなるから。
+  - blob を省いた clone（`--filter=blob:none`）にはしない。なぜ：置き場に base のスナップショットツリーがないとき、base のすべてのファイルを読む。blob を省くと、そのとき blob ごとに GitForge へ取りに行き、遅くなるから。
 - 複製は、正本ではない。使い捨てのキャッシュである。消えても、次の要求で作り直す。
   - プロセスごとに持ち、プロセスの間で共有しない。プロセスが止まるときに消す。
 - 同じプロセスの中で、同じ repository への要求が重なったら、repository ごとのロックで、1 つずつ通す。
@@ -74,7 +94,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - git は、worker と同じ、読むだけのユーザーの資格情報で読む（[git アダプタ](../adapters/git.md)）。書く鍵は使わない。
 
 - 人への依頼の起票は、手順 2 のあと、GitForge に記録して応答する。git には書かない。
-  - 対象は、今の `main` の木の、active な仮説で、葉か要再検討であるものに限る（[人への依頼](../../docs/human-requests/README.md)）。違えば `validation_failed` にする。
+  - 対象は、今の `main` のスナップショットツリーの、active な仮説で、葉か要再検討であるものに限る（[人への依頼](../../docs/human-requests/README.md)）。違えば `validation_failed` にする。
 
 ## 更新
 

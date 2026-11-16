@@ -107,7 +107,6 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
   - 鍵は、バックアップを取る。鍵を失うと、それまでのすべての記録の MAC が確かめられず、すべて数えない記録になる。
   - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
-- worker の内部 API の宛先と、内部 API の鍵（[worker の内部 API](../backend/worker-api.md)）
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
 - git を読む、読むだけの資格情報（worker と同じもの）と、作業用の git の複製を置く一時的なディレクトリ（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）
 - GitHub を使う構成だけ
@@ -125,9 +124,8 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
   - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
   - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
-- 内部 API の鍵（バックエンドと同じもの）
 - 置き場の接続先と、書く鍵
-- 巡回の間隔と、内部 API を受ける HTTP のエンドポイント
+- 見回りの間隔（[見回り](../backend/worker.md#見回り)）と、git の操作の時間の上限（[すること](../backend/worker.md#すること)）
 - clone を置く、永続するストレージのパス
 
 鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。

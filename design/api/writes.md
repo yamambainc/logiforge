@@ -5,15 +5,15 @@
 
 ## 書いた直後の読み
 
-- 木は、[worker](../backend/worker.md) がスナップショットにしてから、読む側に出る。
-- git に関わる書き込み（repository の作成、`approve` による反映）の API は、書いたあとに worker を起こし、読む側に出るまで待ってから応答する。
+- 木は、[worker](../backend/worker.md) がスナップショットにしてから、読む側に出る。worker は、見回りの間隔（既定 1 秒）ごとに git を見て取り込む（[見回り](../backend/worker.md#見回り)）。
+- git に関わる書き込み（repository の作成、`approve` による反映）の API は、書いたあと、読む側に出るまで（`latest` がそのコミットに進むまで）待ってから応答する。worker は起こさない。
   - 待つ時間の上限は、設定にする（[設定と秘密情報](../adapters/README.md)）。
   - 上限を過ぎたら、成功として応答し、`Logiforge-Pending-Commit` ヘッダーに、待っていた `main` のコミットを入れる。
   - クライアントは、少し待ってから、そのコミットを指定して読み直す。スナップショットがまだなければ、`snapshot_pending` が返る。
-- apply request の作成は、worker を待たない。バックエンドが、作業用の git の複製から読んで検査し、pull request を作ったら、worker を起こして応答する（[作成](../backend/apply-request.md#作成)）。
+- apply request の作成は、worker を待たない。バックエンドが、作業用の git の複製から読んで検査し、pull request を作ったら応答する（[作成](../backend/apply-request.md#作成)）。
   - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、バックエンドの検査の結果から返す。
   - 先頭のコミットのスナップショットは、worker がブランチを取り込んでから、読む側に出る。それまで、そのコミットへのレビューは `snapshot_pending` になる。少し待って送り直す。
-- 利用者がブランチに push した新しい先頭のコミットは、worker が次に巡回したときに、読む側に出る（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
+- 利用者がブランチに push した新しい先頭のコミットは、worker が次に見回ったときに、読む側に出る（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
 - GitForge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。GitForge から直接読むので、すぐに見える。
 - worker が止まっていても、apply request の作成はできる。ただし、先頭のコミットのスナップショットができないので、レビューは `snapshot_pending` のままになる。
 - GitForge の git を読めないと、apply request の作成は `unavailable` を返す。少し待ってから送り直す。
