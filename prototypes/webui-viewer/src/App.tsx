@@ -51,13 +51,18 @@ export function App() {
   const [view, setView] = useState<'outline' | 'graph'>(params.get('view') === 'graph' ? 'graph' : 'outline');
   const mobile = useMobile();
   const [sheet, setSheet] = useState(params.get('sheet') === '1');
+  const [filterSheet, setFilterSheet] = useState(params.get('fsheet') === '1');
   // 利用者が選んだとき（モバイルでは詳細のボトムシートを開く）
   const pick = useCallback((id: string) => { setSelected(id); if (matchMedia('(max-width: 767px)').matches) setSheet(true); }, []);
 
   useEffect(() => {
     (async () => {
+      const t0 = performance.now();
       const r = await listNodes(N);
+      const t1 = performance.now();
       const ix = buildIndex(r.nodes);
+      const lf = (window as unknown as { __lf: Record<string, number> }).__lf;
+      lf.load = t1 - t0; lf.index = performance.now() - t1;
       const depthOpen = Number(params.get('open') ?? 2);
       const open = new Set(r.nodes.filter((n) => (ix.depth.get(n.id) ?? 0) < depthOpen).map((n) => n.id));
       setMain({ ix, commit: r.commit, number: r.number });
@@ -229,7 +234,15 @@ export function App() {
             <kbd>/</kbd>
           )}
         </div>
-        <div className="chips">
+        {mobile && (
+          <button className={`filter-btn ${filters.size || !showInactive ? 'on' : ''}`} onClick={() => setFilterSheet(true)}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden><path d="M2 4h12M4.5 8h7M7 12h2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+            絞り込み{filters.size ? ` ${filters.size}` : ''}
+          </button>
+        )}
+        {(!mobile || filterSheet) && (
+        <div className={`chips ${mobile ? 'filter-sheet' : ''}`}>
+          {mobile && <div className="fs-head"><b>絞り込み</b><button className="link" onClick={() => setFilterSheet(false)}>閉じる</button></div>}
           {FILTERS.filter((f) => !f.overlayOnly || overlay.state === 'ok').map((f) => (
             <button key={f.key} className={`chip chip-${f.key} ${filters.has(f.key) ? 'on' : ''}`} onClick={() => toggleFilter(f.key)}>
               {f.label}
@@ -239,6 +252,7 @@ export function App() {
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> inactive
           </label>
         </div>
+        )}
       </div>
 
       {overlay.state === 'ok' && (
@@ -285,6 +299,7 @@ export function App() {
               filtered={include !== null}
               mobile={mobile}
               searching={query.trim() !== ''}
+              fitKey={`${query.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
               head={
                 <div className="tree-head">
                   <span className="dim">

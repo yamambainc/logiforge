@@ -32,7 +32,7 @@ button, select, input { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 .loading { padding: 40px; color: var(--dim); }
 
-.app { display: flex; flex-direction: column; height: 100%; }
+.app { display: flex; flex-direction: column; height: 100%; height: 100dvh; }
 
 /* 上の帯 */
 .topbar { height: 48px; display: flex; align-items: center; gap: 20px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -248,11 +248,11 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
 .toggle path { stroke: var(--sub); stroke-width: 1.6; stroke-linecap: round; }
 .toggle:hover circle { stroke: var(--accent); }
 .toggle .hit { fill: transparent; stroke: none; }
-.graph-ctl { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 2px 8px rgba(20, 30, 50, .08); }
+.graph-ctl { position: absolute; left: 14px; bottom: 14px; display: flex; flex-direction: row; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 2px 8px rgba(20, 30, 50, .08); }
 .graph-ctl button { width: 32px; height: 32px; border: 0; background: none; border-radius: 7px; cursor: pointer; display: grid; place-items: center; color: var(--sub); font-size: 15px; }
 .graph-ctl button:hover { background: #f1f3f7; color: var(--text); }
 .graph-ctl button:disabled { opacity: .35; }
-.graph-ctl .zoom { font-size: 10.5px; color: var(--dim); padding: 2px 0 1px; font-variant-numeric: tabular-nums; }
+.graph-ctl .zoom { font-size: 11px; color: var(--dim); padding: 0 6px 0 2px; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
 
 /* モバイル（幅 767px 以下） */
 .bottom-nav { display: none; }
@@ -262,7 +262,11 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
   .brand { font-size: 0; gap: 0; }
   .repo-label, .tabs { display: none; }
   .repo select { max-width: 200px; }
-  .toolbar { gap: 8px; padding: 8px 12px; }
+  .toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "mode view view" "search search filter"; gap: 8px; padding: 8px 12px; }
+  .toolbar .seg.mode { grid-area: mode; }
+  .toolbar .view { grid-area: view; min-width: 0; }
+  .toolbar .search { grid-area: search; }
+  .toolbar .filter-btn { grid-area: filter; }
   .toolbar .seg.mode { order: 1; }
   .toolbar .view { order: 2; flex: 1; min-width: 0; }
   .toolbar .view .seg { width: 100%; }
@@ -271,16 +275,22 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
   .toolbar .view .seg select { flex: 1; min-width: 0; max-width: none; }
   .seg > * { padding: 7px 10px; }
   .seg.mode button { padding: 7px 10px; }
-  .search { order: 3; width: 100%; height: 40px; }
+  .search { order: 3; flex: 1; min-width: 0; width: auto; height: 40px; }
   .search input { font-size: 16px; }
   .search kbd { display: none; }
-  .chips { order: 4; flex-wrap: nowrap; overflow-x: auto; width: calc(100% + 24px); margin: 0 -12px; padding: 0 12px 2px; scrollbar-width: none; }
-  .chip { flex: none; padding: 6px 12px; font-size: 13px; }
+  .filter-btn { order: 4; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--sub); white-space: nowrap; }
+  .filter-btn.on { color: var(--accent); border-color: #b9c8f5; background: var(--sel); font-weight: 600; }
+  .chips.filter-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--panel); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(20, 30, 50, .18);
+    padding: 12px 16px calc(20px + env(safe-area-inset-bottom)); gap: 8px; flex-wrap: wrap; animation: up .2s ease-out; }
+  .fs-head { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 2px 0 6px; }
+  .fs-head .link { font-size: 14px; padding: 8px; }
+  .chip { flex: none; padding: 9px 14px; font-size: 14px; }
+  .check { padding: 9px 4px; font-size: 14px; }
   .check { flex: none; }
   .banner { flex-wrap: wrap; gap: 6px 10px; padding: 8px 12px; }
   .banner .mono { width: 100%; order: 5; }
   .banner .spacer { display: none; }
-  .body { grid-template-columns: 1fr; padding-bottom: 60px; }
+  .body { grid-template-columns: 1fr; padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
   .tree-pane, .graph-pane { border-right: 0; }
   .legend { display: none; }
   .tree-head { padding: 6px 12px; }
@@ -288,18 +298,18 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
   .row .id, .row .sub { display: none; }
   .chev { width: 24px; height: 24px; }
   .val { min-width: 34px; }
-  .graph-ctl { bottom: 76px; right: 12px; }
+  .graph-ctl { bottom: 12px; left: 12px; }
   .graph-ctl button { width: 40px; height: 40px; }
 
   .detail.sheet { position: fixed; left: 0; right: 0; bottom: 0; height: 62vh; z-index: 20; border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 30px rgba(20, 30, 50, .18); padding: 0 16px 80px; animation: up .2s ease-out; }
+    box-shadow: 0 -8px 30px rgba(20, 30, 50, .18); padding: 0 16px calc(80px + env(safe-area-inset-bottom)); animation: up .2s ease-out; }
   .sheet-bar { position: sticky; top: 0; background: var(--panel); display: flex; justify-content: center; padding: 8px 0 6px; margin: 0 -16px 4px; z-index: 1; }
   .grab { width: 40px; height: 5px; border-radius: 3px; background: #d5d9e1; margin-top: 2px; }
   .sheet-close { position: absolute; right: 8px; top: 4px; width: 40px; height: 40px; border: 0; background: none; color: var(--sub); display: grid; place-items: center; }
   .d-title { font-size: 17px; }
   .sheet .crumbs { padding-right: 40px; }
 
-  .bottom-nav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 60px; background: var(--panel); border-top: 1px solid var(--line); z-index: 10; }
+  .bottom-nav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: calc(60px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--panel); border-top: 1px solid var(--line); z-index: 10; }
   .bottom-nav a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; color: var(--dim); }
   .bottom-nav a.on { color: var(--accent); font-weight: 600; }
   .bottom-nav svg { stroke: currentColor; stroke-width: 1.6; fill: none; }

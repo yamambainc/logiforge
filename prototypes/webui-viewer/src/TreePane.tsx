@@ -140,10 +140,10 @@ const TreeRow = memo(function TreeRow({ top, row, ix, selected, match, dimmed, q
         {Array.from({ length: row.depth }, (_, i) => <span key={i} className="guide" style={{ left: i * indent + indent / 2 - 1 }} />)}
       </span>
       <span
-        className={`chev ${row.hasChildren ? '' : 'none'} ${row.open ? 'open' : ''}`}
+        className={`chev ${row.hasChildren && !filtered ? '' : 'none'} ${row.open ? 'open' : ''}`}
         onClick={(e) => { e.stopPropagation(); if (row.hasChildren && !filtered) onToggle(n.id); }}
       >
-        {row.hasChildren && <svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+        {row.hasChildren && !filtered && <svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       </span>
       <i className={`glyph ${isH ? 'h' : 's'} ${vc}`} />
       <span className="text">

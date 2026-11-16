@@ -15,6 +15,7 @@ interface Props {
   mobile: boolean;
   head: React.ReactNode;
   searching: boolean;
+  fitKey: string; // 検索と絞り込み。変わったら収め直す
 }
 
 interface Placed { id: string; x: number; y: number; parent: string | null; row: Row }
@@ -22,6 +23,7 @@ interface View { k: number; x: number; y: number }
 
 const MIN_K = 0.12;
 const MAX_K = 2.5;
+const LOD_K = 0.45; // これより小さいと文字を省く
 
 export function GraphView(p: Props) {
   const size = p.mobile ? { w: 212, h: 70, col: 260, row: 82 } : { w: 264, h: 72, col: 324, row: 86 };
@@ -59,7 +61,7 @@ export function GraphView(p: Props) {
   }, [p.rows, size.col, size.row, size.w, size.h]);
 
   const ref = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 800, h: 600 });
+  const [box, setBox] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View>({ k: 1, x: 40, y: 40 });
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -93,14 +95,41 @@ export function GraphView(p: Props) {
     animateTo({ k, x: box.w / 2 - k * (n.x + size.w / 2), y: box.h / 2 - k * (n.y + size.h / 2) });
   }, [layout, box, animateTo, size.w, size.h]);
 
-  const fit = useCallback(() => {
-    const k = Math.max(MIN_K, Math.min(1, (box.w - 48) / layout.width, (box.h - 48) / layout.height));
-    animateTo({ k, x: (box.w - k * layout.width) / 2, y: (box.h - k * layout.height) / 2 });
-  }, [box, layout, animateTo]);
+  // 根を左端に寄せ、開いている部分が収まるまで縮める（下限 lower）
+  const frame = useCallback((lower: number): View => {
+    const pad = 16;
+    const k = Math.max(lower, Math.min(1, (box.w - pad * 2) / layout.width, (box.h - pad * 2) / layout.height));
+    const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
+    const y = k * layout.height <= box.h - pad * 2 ? (box.h - k * layout.height) / 2 : box.h / 2 - k * ((root?.y ?? 0) + size.h / 2);
+    return { k, x: pad, y };
+  }, [box, layout, p.rows, size.h]);
+  const fit = useCallback(() => animateTo(frame(MIN_K)), [animateTo, frame]);
+
+  // 最初の表示：収める（下限 45%）。選んだノードへのフォーカスは効かせない
+  const ready = useRef(false);
+  const prevSel = useRef<string | null>(null);
+  const quietUntil = useRef(0);
+  useEffect(() => {
+    if (ready.current || !p.rows.length || box.w < 50) return;
+    ready.current = true;
+    prevSel.current = p.selected;
+    setView(frame(LOD_K));
+  }, [box, p.rows, frame, p.selected]);
+
+  // 検索や絞り込みを変えたら、収め直す
+  const lastFitKey = useRef(p.fitKey);
+  useEffect(() => {
+    if (!ready.current || lastFitKey.current === p.fitKey) return;
+    lastFitKey.current = p.fitKey;
+    quietUntil.current = performance.now() + 400; // 続いて起きる「最初の一致を選ぶ」でフォーカスしない
+    animateTo(frame(LOD_K));
+  }, [p.fitKey, frame, animateTo]);
 
   // 選んだノードが画面の外にあれば、そこへ動かす（図の中で押したときは、もう見えているので動かない）
   useEffect(() => {
-    if (!p.selected) return;
+    if (!ready.current || prevSel.current === p.selected) return;
+    prevSel.current = p.selected;
+    if (!p.selected || performance.now() < quietUntil.current) return;
     const n = layout.pos.get(p.selected);
     if (!n) return;
     const v = viewRef.current;
@@ -108,16 +137,6 @@ export function GraphView(p: Props) {
     if (sx < 0 || sy < 0 || sx + v.k * size.w > box.w || sy + v.k * size.h > box.h) centerOn(p.selected, Math.max(v.k, 0.85));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.selected, layout]);
-
-  // 最初は根を左の真ん中に置く
-  const placedOnce = useRef(false);
-  useEffect(() => {
-    if (placedOnce.current || !p.rows.length || box.w < 50) return;
-    placedOnce.current = true;
-    const root = layout.pos.get(p.rows[0].id)!;
-    const k = Math.max(p.mobile ? 0.7 : 0.6, Math.min(1, (box.w - 48) / layout.width, (box.h - 48) / layout.height));
-    setView({ k, x: 24, y: box.h / 2 - k * (root.y + size.h / 2) });
-  }, [layout, box, p.rows, p.mobile, size.h]);
 
   // ズームとパン（ホイール、ドラッグ、2 本の指）
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -134,11 +153,14 @@ export function GraphView(p: Props) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      if (e.ctrlKey || (!e.shiftKey && !e.deltaX)) {
-        zoomAt(viewRef.current.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - r.left, e.clientY - r.top);
+      // ホイールとトラックパッドの移動はパン。Ctrl＋ホイールと、トラックパッドのピンチ（ctrlKey が付く）はズーム
+      if (e.ctrlKey || e.metaKey) {
+        zoomAt(viewRef.current.k * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
       } else {
         const v = viewRef.current;
-        setView({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
+        const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && !e.deltaX ? 0 : e.deltaY;
+        setView({ ...v, x: v.x - dx, y: v.y - dy });
       }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
@@ -203,7 +225,22 @@ export function GraphView(p: Props) {
   }, [layout, x, y, k, box, size.w, size.h]);
 
   const click = (fn: () => void) => () => { if (!gesture.current.moved) fn(); };
-  const lod = k < 0.45; // 引いたときは、文字を省いて形と色だけにする
+
+  // キーボード：アウトラインと同じく、行の並び（深さ優先）で動く
+  const onKey = (e: React.KeyboardEvent) => {
+    const i = p.selected ? p.rows.findIndex((r) => r.id === p.selected) : -1;
+    if (i < 0) return;
+    const r = p.rows[i];
+    if (e.key === 'ArrowDown' && i < p.rows.length - 1) p.onSelect(p.rows[i + 1].id);
+    else if (e.key === 'ArrowUp' && i > 0) p.onSelect(p.rows[i - 1].id);
+    else if (e.key === 'ArrowRight' && r.hasChildren && !r.open) p.onToggle(r.id);
+    else if (e.key === 'ArrowLeft') {
+      if (r.open && r.hasChildren && !p.filtered) p.onToggle(r.id);
+      else for (let j = i - 1; j >= 0; j--) if (p.rows[j].depth < r.depth) { p.onSelect(p.rows[j].id); break; }
+    } else return;
+    e.preventDefault();
+  };
+  const lod = k < LOD_K - 0.001; // 引いたときは、文字を省いて形と色だけにする
 
   return (
     <section className="graph-pane">
@@ -211,6 +248,8 @@ export function GraphView(p: Props) {
       <div
         className="graph"
         ref={ref}
+        tabIndex={0}
+        onKeyDown={onKey}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -239,8 +278,8 @@ export function GraphView(p: Props) {
           </g>
         </svg>
         <div className="graph-ctl" onPointerDown={(e) => e.stopPropagation()}>
-          <button title="拡大" onClick={() => zoomAt(k * 1.25, box.w / 2, box.h / 2)}>＋</button>
-          <button title="縮小" onClick={() => zoomAt(k / 1.25, box.w / 2, box.h / 2)}>－</button>
+          {!p.mobile && <button title="拡大" onClick={() => zoomAt(k * 1.25, box.w / 2, box.h / 2)}>＋</button>}
+          {!p.mobile && <button title="縮小" onClick={() => zoomAt(k / 1.25, box.w / 2, box.h / 2)}>－</button>}
           <button title="全体を表示" onClick={fit}>
             <svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
           </button>

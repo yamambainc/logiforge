@@ -29,7 +29,12 @@ export async function listNodes(n: number, applyRequest?: ApplyRequestSummary): 
     return r.json();
   }
   const r = await fetch(`${base(n)}/main.json`);
-  return r.json();
+  // 計測のため、受け取りとパースを分ける
+  const text = await r.text();
+  const t = performance.now();
+  const body = JSON.parse(text);
+  (window as unknown as { __lf: Record<string, number> }).__lf = { parse: performance.now() - t, bytes: text.length };
+  return body;
 }
 
 export async function listApplyRequests(n: number): Promise<ApplyRequestSummary[]> {
