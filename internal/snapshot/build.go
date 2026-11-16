@@ -21,7 +21,7 @@ const TrailerInit = "Logiforge-Init"
 // BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。
 // 親から変わったパスは、親のスナップショットツリーのファイルと比べて求める。新しく破れた不変条件も、親と比べて警告にする。
-// worker は、Index と BuildTree で、コミットを 1 つずつ取り込む（design/backend/worker.md）。これは、その 1 コミット分をまとめたものである。
+// worker は、Index と BuildSnapshotTree で、コミットを 1 つずつ取り込む（design/backend/worker.md）。これは、その 1 コミット分をまとめたものである。
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	x := NewIndex()
 	var parentFiles tree.Files

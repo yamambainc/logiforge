@@ -17,7 +17,6 @@ rand() { od -An -tx1 -N20 /dev/urandom | tr -d ' \n'; }
 # コンテナのユーザー（uid 10001）が読めるよう、ファイルは 644、ディレクトリは 700 にする。
 mkdir -p "$dir"
 chmod 700 .compose "$dir"
-rand >"$dir/internal_key"
 echo "k1=$(rand)" >"$dir/record_keys"
 : >"$dir/writer_token"
 : >"$dir/worker_token"

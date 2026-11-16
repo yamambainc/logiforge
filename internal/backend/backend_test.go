@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/workerclient"
 )
 
 // ---- テスト用のリモートの git リポジトリ ----
@@ -304,14 +302,11 @@ func setup(t *testing.T) *fixture {
 		},
 		files: map[string][]byte{tree.SHA256Hex([]byte("jpg")): []byte("jpg")},
 	}
-	// 過去のリビジョンの木は、読むときに worker が作る。その内部 API をつなぐ。
-	srv := httptest.NewServer(w.Handler("k"))
-	t.Cleanup(srv.Close)
 	git, err := workcopy.NewCache(t.TempDir(), nil, func(string) string { return r.dir })
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &Backend{Forge: forge, Auth: fakeAuth{}, Snap: &snapstore.Adapter{Store: st}, Worker: &workerclient.Client{URL: srv.URL, Key: "k"}, Git: git}
+	b := &Backend{Forge: forge, Auth: fakeAuth{}, Snap: &snapstore.Adapter{Store: st}, Git: git}
 	return &fixture{b: b, forge: forge, r: r, c1: c1, c2: c2, head: head, art: art, caller: Caller{Token: "agent"}, answerT: now}
 }
 

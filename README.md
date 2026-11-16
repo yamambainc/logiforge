@@ -60,8 +60,8 @@ CI は、イメージをビルドし、compose で動かして、repository の�
 | [internal/snapshot](internal/snapshot/) | スナップショットの形（Go の型が正本）、作り方、tree.Files への戻し方、ブランチの差分の重ね方（Overlay）。git には触れない |
 | [internal/gitx](internal/gitx/) | git の CLI で、木の git リポジトリを読む。書く操作はない |
 | [internal/store](internal/store/) | スナップショットの置き場（キーの決まり、スナップショットの読み書き、手元のディレクトリ） |
-| [internal/worker](internal/worker/) | worker（巡回、スナップショットと latest とブランチの履歴、反映の重なりの警告、内部 API） |
-| [internal/adapters/snapstore](internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む、worker の内部 API のクライアント） |
+| [internal/worker](internal/worker/) | worker（見回り、スナップショットと latest とブランチの履歴、反映の重なりの警告、ハートビート） |
+| [internal/adapters/snapstore](internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む） |
 | [internal/backend](internal/backend/) | バックエンド（認可、読む API と書く API、反映の手順、着手できる作業、作業の終わりの判定、書き出し） |
 | [internal/api](internal/api/) | HTTP の API（/v1）。エラーは application/problem+json |
 | [internal/cli](internal/cli/) | opener と reviewer の CLI（認証、clone、ひな形、check、commit、apply request、作業、木、人への依頼。`--json` と終了コード） |

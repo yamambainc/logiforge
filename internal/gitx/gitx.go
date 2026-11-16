@@ -29,7 +29,16 @@ type Repo struct {
 	// credential helper などは GIT_CONFIG_COUNT、GIT_CONFIG_KEY_n、GIT_CONFIG_VALUE_n で渡す。
 	// 手元から切り離す環境変数より後ろに足すので、同じ名前なら Env が勝つ（例：テストで GIT_ALLOW_PROTOCOL に http を足す）。
 	Env []string
+	// Timeout は、git の操作 1 回の時間の上限である。0 なら上限を付けない。
+	// 超えたら、git を止めて、ErrTimeout を包んだ誤りを返す（design/backend/worker.md の「すること」）。
+	Timeout time.Duration
 }
+
+// waitDelay は、git を止めたあと、出力のパイプが閉じるのを待つ時間の上限である。
+const waitDelay = 5 * time.Second
+
+// ErrTimeout は、git の操作が、時間の上限を超えたことを表す。
+var ErrTimeout = errors.New("gitx: 時間の上限を超えた")
 
 // ErrNotFound は、コミットやブランチがないことを表す。
 var ErrNotFound = errors.New("gitx: not found")
@@ -59,19 +68,36 @@ var isolatedEnv = []string{
 	"GIT_LITERAL_PATHSPECS=1",
 }
 
-func (r *Repo) command(ctx context.Context, args ...string) *exec.Cmd {
+// command は、git を動かすコマンドを作る。Timeout があれば、その時間で止まる ctx を使う。終わったら、返した関数を呼ぶ。
+func (r *Repo) command(ctx context.Context, args ...string) (*exec.Cmd, context.Context, context.CancelFunc) {
+	cancel := context.CancelFunc(func() {})
+	if r.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+	}
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir}, args...)...)
 	cmd.Env = append(append(cmd.Environ(), isolatedEnv...), r.Env...)
-	return cmd
+	// 止めたあと、子のプロセスがパイプを持ったまま残っても、待ちを打ち切る。
+	cmd.WaitDelay = waitDelay
+	killGroup(cmd)
+	return cmd, ctx, cancel
+}
+
+// failed は、git の誤りを包む。時間の上限を超えたときは、ErrTimeout も包む。
+func failed(ctx context.Context, args []string, err error, stderr string) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("git %s: %w: %w", strings.Join(args, " "), ErrTimeout, err)
+	}
+	return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr))
 }
 
 func (r *Repo) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
-	cmd := r.command(ctx, args...)
+	cmd, cctx, cancel := r.command(ctx, args...)
+	defer cancel()
 	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		return nil, failed(cctx, args, err, errb.String())
 	}
 	return out.Bytes(), nil
 }
@@ -286,7 +312,8 @@ func (r *Repo) catBlobs(ctx context.Context, files tree.Files, paths []string) (
 	if len(paths) == 0 {
 		return nil
 	}
-	cmd := r.command(ctx, "cat-file", "--batch")
+	cmd, cctx, cancel := r.command(ctx, "cat-file", "--batch")
+	defer cancel()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -302,7 +329,7 @@ func (r *Repo) catBlobs(ctx context.Context, files tree.Files, paths []string) (
 	}
 	defer func() {
 		if werr := cmd.Wait(); err == nil && werr != nil {
-			err = fmt.Errorf("git cat-file: %w: %s", werr, strings.TrimSpace(errb.String()))
+			err = failed(cctx, []string{"cat-file", "--batch"}, werr, errb.String())
 		}
 	}()
 	shas := make([]string, len(paths)) // goroutine は files を読まない（下で書き換えるため）

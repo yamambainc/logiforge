@@ -21,23 +21,12 @@ type Backend struct {
 	Forge ports.GitForge
 	Auth  ports.Authenticator
 	Snap  ports.SnapshotStore
-	// Worker は、worker の内部 API を呼ぶ（internal/workerclient）。worker はどの構成でも同じなので、ポートにしない。
-	Worker WorkerClient
 	// Git は、apply request の作成で、ブランチを git から読む（internal/workcopy の作業用の複製）。
 	Git GitReader
 	// WaitTimeout は、書いたものが読む側に出るまで待つ時間の上限（design/api/writes.md の「書いた直後の読み」）。0 なら 10 秒。
 	WaitTimeout time.Duration
 	// Now は、時刻を返す。nil なら time.Now。
 	Now func() time.Time
-}
-
-// WorkerClient は、バックエンドが worker に頼むことである。実装は internal/workerclient で、テストのために interface にする。
-type WorkerClient interface {
-	// BuildTree は、main のコミット sha の木を作ってもらう。上限まで待つ。
-	// 記録がなければ ports.ErrNotFound、上限までに終わらなければ ports.ErrSnapshotPending、頼めなければ ports.ErrUnavailable。
-	BuildTree(ctx context.Context, repo, sha string) error
-	// Wake は、巡回を始めてもらう。失敗は返さない。
-	Wake(ctx context.Context, repo string)
 }
 
 // GitReader は、apply request の作成で、git からブランチを読むことである。実装は internal/workcopy の作業用の複製で、
@@ -107,16 +96,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 		revision = latest
 	}
 	m, err := b.Snap.Main(ctx, repo, revision)
-	if errors.Is(err, ports.ErrNotFound) {
-		// main のすべてのコミットにスナップショットツリーを作るので、ないのは worker が追いついていないときである。
-		switch berr := b.Worker.BuildTree(ctx, repo, revision); {
-		case berr == nil:
-			m, err = b.Snap.Main(ctx, repo, revision)
-		case errors.Is(berr, ports.ErrNotFound), errors.Is(berr, ports.ErrSnapshotPending):
-		default:
-			return nil, berr
-		}
-	}
+	// main のすべてのコミットにスナップショットツリーを作るので、ないのは worker が追いついていないか、git にもないときである。
 	if errors.Is(err, ports.ErrNotFound) {
 		return nil, fail(CodeSnapshotPending, "main のコミット %s のスナップショットが、まだない", revision)
 	}
