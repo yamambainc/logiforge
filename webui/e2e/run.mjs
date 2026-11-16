@@ -4,11 +4,11 @@
 // 環境変数：BASE（serve の URL）、LOGIN、PASSWORD、CHROME（Chrome のパス）、OUT（スクリーンショットの置き場）、REPO、
 // OUTSIDER_LOGIN、OUTSIDER_PASSWORD（organization にいない Forgejo のユーザー）、NODE_A（検証結果のある仮説）、NODE_B（検証結果のない葉）。
 // スナップショットツリーには、inactive のストーリー「広告の導線」もある。
-// AR_MAIN（main 向きで open。NODE_B に検証結果（偽）を出す）、AR_DEV（向き先が develop。NODE_A の背景情報を足す）。
-import { mkdirSync } from 'node:fs';
+// HR（open の PVR）、HR2（open の判断）。AR_MAIN（main 向きで open。NODE_B に検証結果（偽）を出す）、AR_DEV（向き先が develop。NODE_A の背景情報を足す）。
+import { mkdirSync, writeFileSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR, HR2 } = process.env;
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -71,6 +71,17 @@ try {
   await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
   await page.waitForFunction(() => location.pathname === '/r/made/tree', { timeout: 30000 });
   await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === 'ブラウザから作った問い'), { timeout: 60000 });
+
+  step('ダッシュボードの件数を押すと、同じ数に絞り込んだビュワーが開く（未決の葉。作業と同じ定義）');
+  await page.goto(BASE + '/r/made', { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('ul.counts a', { timeout: 30000 });
+  const leafCount = await page.evaluate(() => Number([...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).querySelector('b').textContent));
+  if (leafCount !== 1) throw new Error('作ったばかりの repository の未決の葉：' + leafCount);
+  await page.evaluate(() => [...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).click());
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('f') === 'leaf' && document.querySelector('.tree-head b'), { timeout: 30000 });
+  const shownCount = await page.$eval('.tree-head b', (b) => Number(b.textContent));
+  if (shownCount !== leafCount) throw new Error(`ダッシュボードの件数 ${leafCount} と、ビュワーの一致 ${shownCount} が違う`);
   await page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('.repo-list', { timeout: 20000 });
@@ -341,6 +352,99 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
   await page.waitForSelector('.row', { timeout: 20000 });
 
+  step('人への依頼：タブで移り、PVR を開く。本文は文字列のまま。回答の書きかけは、リロードしても残る');
+  await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === '人への依頼').click());
+  await page.waitForFunction((r) => location.pathname === `/r/${r}/human-requests`, { timeout: 5000 }, REPO);
+  await page.waitForSelector('ul.items a', { timeout: 20000 });
+  await page.evaluate((id) => [...document.querySelectorAll('ul.items a')].find((a) => a.getAttribute('href') === `?id=${id}`).click(), HR);
+  await page.waitForFunction(() => document.querySelector('.item-pane .report')?.textContent.includes('# 手順'), { timeout: 20000 });
+  await page.type('.answer-form textarea', '測った。継続率は下がらなかった');
+  const measure = OUT + '/measure.txt';
+  writeFileSync(measure, 'rate,0.42\n');
+  const pick = async () => { const input = await page.$('.answer-form input[type="file"]'); await input.uploadFile(measure); await page.waitForFunction(() => document.querySelector('ul.attached')?.textContent.includes('measure.txt'), { timeout: 5000 }); };
+  await pick();
+  await page.reload({ waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForFunction(() => document.querySelector('.answer-form textarea')?.value.includes('下がらなかった'), { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.answer-form .note')?.textContent.includes('measure.txt'), { timeout: 5000 });
+  await pick();
+  if (await page.$('.answer-form .note')) throw new Error('選び直したのに、選び直しの案内が残る');
+  await page.type('input[aria-label="リンクの名前"]', '集計表');
+  await page.type('input[aria-label="リンクの URL"]', 'https://example.com/sheet');
+  await page.evaluate(() => [...document.querySelectorAll('.link-add button')].find((b) => b.textContent === 'リンクを添える').click());
+  await page.screenshot({ path: OUT + '/hr-answer.png' });
+  await page.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  await page.waitForSelector('.answer', { timeout: 30000 });
+  const files = await page.$$eval('.answer .file', (fs) => fs.map((f) => f.textContent));
+  if (!files.some((t) => t.includes('measure.txt'))) throw new Error('回答の添付が出ない：' + files.join(' / '));
+  // リンクの添付は、BE が回答の本文の末尾に書く（internal/backend/writes.go の AnswerHumanRequest）
+  if (!(await page.$eval('.answer .report', (e) => e.textContent)).includes('集計表：https://example.com/sheet')) throw new Error('リンクの添付が、回答の本文にない');
+  if (await page.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('回答したのに、書きかけが残る');
+  await page.screenshot({ path: OUT + '/hr-answered.png' });
+
+  step('ダッシュボードの件数を押すと、同じ数の一覧が開く（回答済みの依頼、要再検討。作業と同じ定義）');
+  const openCount = async (label) => {
+    await page.goto(BASE + `/r/${REPO}`, { waitUntil: 'networkidle0' });
+    await signedIn(page);
+    await page.waitForSelector('ul.counts a', { timeout: 20000 });
+    const n = await page.evaluate((l) => Number([...document.querySelectorAll('ul.counts a')].find((a) => a.querySelector('span').textContent === l).querySelector('b').textContent), label);
+    await page.evaluate((l) => [...document.querySelectorAll('ul.counts a')].find((a) => a.querySelector('span').textContent === l).click(), label);
+    return n;
+  };
+  const answered = await openCount('回答済みの依頼');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('work') === '1' && !document.querySelector('.list-pane .loading'), { timeout: 20000 });
+  const listed = await page.$$eval('ul.items a', (as) => as.length);
+  if (answered < 1 || listed !== answered) throw new Error(`回答済みの依頼：ダッシュボード ${answered}、一覧 ${listed}`);
+  const nr = await openCount('要再検討');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('f') === 'nr-work' && document.querySelector('.tree-head'), { timeout: 20000 });
+  const nrShown = await page.evaluate(() => Number(document.querySelector('.tree-head b')?.textContent ?? '0'));
+  if (nrShown !== nr) throw new Error(`要再検討：ダッシュボード ${nr}、ビュワー ${nrShown}`);
+  if (!(await page.$$eval('.chip.on', (cs) => cs.map((c) => c.textContent))).includes('要再検討（作業）')) throw new Error('作業としての絞り込みだと分からない');
+  await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.row', { timeout: 20000 });
+
+  step('期限が近いときに回答すると、先に authorize に行き、書きかけ（本文とリンク）が戻る。forbidden と not_open は言葉で示す');
+  const exp = await browser.newPage();
+  logErrors(exp);
+  await exp.setViewport({ width: 1280, height: 800 });
+  await exp.setRequestInterception(true);
+  let shortened = false, answerFake = [];
+  exp.on('request', async (r) => {
+    const u = new URL(r.url());
+    // 最初のトークンの交換だけ、寿命を 200 秒に縮める（残りが 5 分より少ない）
+    if (u.pathname === '/v1/oauth/token' && !shortened) {
+      shortened = true;
+      const res = await fetch(r.url(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: r.postData() });
+      const t = await res.json();
+      return r.respond({ status: res.status, contentType: 'application/json', body: JSON.stringify({ ...t, expires_in: 200 }) });
+    }
+    if (u.pathname.endsWith(`/human-requests/${HR2}/answer`) && answerFake.length) {
+      const [status, code] = answerFake.shift();
+      return r.respond({ status, contentType: 'application/json', body: JSON.stringify({ code, detail: '', status }) });
+    }
+    r.continue();
+  });
+  const ew = watch(exp);
+  await exp.goto(BASE + `/r/${REPO}/human-requests?id=${HR2}`, { waitUntil: 'networkidle0' });
+  await exp.waitForSelector('.answer-form textarea', { timeout: 30000 });
+  await exp.type('.answer-form textarea', '広告は続けない');
+  await exp.type('input[aria-label="リンクの名前"]', '議事録');
+  await exp.type('input[aria-label="リンクの URL"]', 'https://example.com/minutes');
+  await exp.evaluate(() => [...document.querySelectorAll('.link-add button')].find((b) => b.textContent === 'リンクを添える').click());
+  ew.reset();
+  await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  await exp.waitForFunction(() => document.querySelector('.answer-form textarea')?.value === '広告は続けない', { timeout: 30000 });
+  if (ew.states.size !== 1) throw new Error('期限が近いのに、authorize に行かない：' + ew.states.size);
+  if (!(await exp.$eval('ul.attached', (u) => u.textContent)).includes('議事録')) throw new Error('リンクの添付が戻らない');
+  answerFake = [[403, 'forbidden'], [409, 'not_open']];
+  await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  await exp.waitForFunction(() => document.querySelector('.form-error')?.textContent === '回答できるのは、利用者だけです。', { timeout: 10000 });
+  await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  await exp.waitForFunction(() => document.querySelector('.item-pane .note')?.textContent === 'この依頼は、もう回答されています。', { timeout: 10000 });
+  if (await exp.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('not_open のあとも、書きかけが残る');
+  await exp.close();
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });
@@ -415,6 +519,18 @@ try {
   if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('ダッシュボードが幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/dashboard-mobile.png' });
 
+  step('モバイルの人への依頼：一覧から選ぶと画面全体で示し、左上の「← 一覧」で戻る');
+  await mobile.evaluate(() => [...document.querySelectorAll('.bottom-nav a')].find((a) => a.textContent.includes('依頼')).click());
+  await mobile.waitForSelector('.list-filters', { timeout: 20000 });
+  await mobile.select('.list-filters label:nth-child(2) select', 'answered');
+  await mobile.waitForSelector('ul.items a', { timeout: 20000 });
+  await mobile.tap('ul.items a');
+  await mobile.waitForSelector('.item-pane .answer', { timeout: 20000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('人への依頼が幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/hr-mobile.png' });
+  await mobile.evaluate(() => [...document.querySelectorAll('.item-pane .back')][0].click());
+  await mobile.waitForSelector('ul.items a', { timeout: 10000 });
+
   step('モバイルで AR を重ねる：帯が出て、はみ出さない');
   await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });
   await mobile.waitForSelector('.banner.overlay', { timeout: 30000 });
@@ -424,9 +540,11 @@ try {
   await mobile.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await mobile.waitForSelector('.repo-list', { timeout: 20000 });
 
-  step('サインアウトすると、サインインの画面が出る');
+  step('サインアウトすると、サインインの画面が出る。回答の書きかけも消える');
+  await mobile.evaluate(() => sessionStorage.setItem('lf-draft:q:hrq_x', JSON.stringify({ body: 'x', fileNames: [], links: [] })));
   await mobile.click('button.link');
   await mobile.waitForSelector('.signin-box');
+  if (await mobile.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('サインアウトしても、書きかけが残る');
 
   step('organization にいない人は、「organization に入っていません」で止まる（authorize へは 1 回だけ）');
   const ctx = await browser.createBrowserContext();

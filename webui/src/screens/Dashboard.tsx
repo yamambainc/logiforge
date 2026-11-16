@@ -8,10 +8,10 @@ import { navigate } from '../router';
 // to は、件数を押したときに行く、その作業の一覧（docs/webui/dashboard.md）。ほかの画面ができたら、つなぐ
 const KINDS: { key: string; label: string; to?: (repo: string) => string }[] = [
   { key: 'undecided_leaf', label: '未決の葉', to: (r) => `/r/${r}/tree?f=leaf` },
-  { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr` },
+  { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr-work` },
   { key: 'review_waiting', label: 'レビュー待ち' },
   { key: 'fix_waiting', label: '修正待ち' },
-  { key: 'human_request_answered', label: '回答済みの依頼' },
+  { key: 'human_request_answered', label: '回答済みの依頼', to: (r) => `/r/${r}/human-requests?state=answered&work=1` },
   { key: 'citation_changed', label: '引用元が変化した検証結果' },
 ];
 const vc = (v: boolean | null) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
@@ -54,8 +54,8 @@ export function Dashboard({ repo }: { repo: string }) {
         <ul className="counts">
           {KINDS.map((k) => (
             <li key={k.key} className={counts[k.key] ? '' : 'zero'}>
-              {k.to && counts[k.key] ? (
-                <a href={k.to(repo)} onClick={(e) => { e.preventDefault(); navigate(k.to!(repo)); }}><span>{k.label}</span><b>{counts[k.key]}</b></a>
+              {k.to ? (
+                <a href={k.to(repo)} onClick={(e) => { e.preventDefault(); navigate(k.to!(repo)); }}><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></a>
               ) : <><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></>}
             </li>
           ))}

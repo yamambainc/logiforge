@@ -5,6 +5,7 @@ import { SignIn } from './screens/SignIn';
 import { useMobile } from './hooks';
 import { BottomNav, TopTabs } from './RepoNav';
 import { Dashboard } from './screens/Dashboard';
+import { HumanRequests } from './screens/HumanRequests';
 import { RepositoryList } from './screens/RepositoryList';
 import { TreeScreen } from './screens/TreeScreen';
 
@@ -26,6 +27,7 @@ export function App() {
       </header>
       {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} />
         : route.name === 'dashboard' ? <Dashboard key={route.repo} repo={route.repo} />
+        : route.name === 'human-requests' ? <HumanRequests key={route.repo} repo={route.repo} />
         : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
         <div className="empty-box"><div className="empty-title">この画面はありません</div><button className="btn" onClick={() => navigate('/')}>repository の一覧へ</button></div>
       )}

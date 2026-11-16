@@ -95,6 +95,16 @@ func TestWebUISignIn(t *testing.T) {
 	agent.commitPush("b4", "上")
 	arDev := agent.create("b4")
 	w.retarget("q", arDev.ID, "develop")
+	// 人への依頼（PVR）。ブラウザで、添付つきで回答する
+	var hr struct {
+		ID string `json:"id"`
+	}
+	var hr2 struct {
+		ID string `json:"id"`
+	}
+	// もう 1 つ（判断）。ブラウザで、期限が近いときの書きかけの往復と、forbidden・not_open の表示を確かめる
+	agent.must(&hr2, "human-request", "create", "--node", hA, "--kind", "decision", "--body", agent.file("dec.md", "広告を続けるか決めてほしい\n"))
+	agent.must(&hr, "human-request", "create", "--node", hB, "--kind", "pvr", "--body", agent.file("pvr.md", "# 手順\n\n1. 招待した人の継続率を測る\n2. 結果のファイルを添える\n"))
 	w.eventually("2 つの apply request を重ねて読める", 60*time.Second, func() bool {
 		s1, _ := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+arMain.ID, nil)
 		s2, b := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+arDev.ID, nil)
@@ -132,10 +142,30 @@ func TestWebUISignIn(t *testing.T) {
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
 	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
-		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "HR2="+hr2.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {
 		t.Fatalf("ブラウザの E2E が失敗した：%v（スクリーンショットは %s）", err, out)
+	}
+	// ブラウザでの回答が、API で読める（添付のファイルとリンク）
+	var got struct {
+		State  string `json:"state"`
+		Answer struct {
+			Body        string `json:"body"`
+			Attachments []struct {
+				Kind, Name, URI, SHA256 string
+			} `json:"attachments"`
+		} `json:"answer"`
+	}
+	_, hb := w.call("alice", "GET", "/repositories/q/human-requests/"+hr.ID, nil)
+	_ = json.Unmarshal(hb, &got)
+	// リンクの添付は、回答の本文の末尾に書く
+	if got.State != "answered" || !strings.Contains(got.Answer.Body, "下がらなかった") || !strings.Contains(got.Answer.Body, "集計表：https://example.com/sheet") || len(got.Answer.Attachments) != 1 {
+		t.Fatalf("ブラウザでの回答：%s", hb)
+	}
+	st, data := w.call("alice", "GET", "/repositories/q/human-requests/"+hr.ID+"/attachments/"+got.Answer.Attachments[0].SHA256, nil)
+	if st != 200 || string(data) != "rate,0.42\n" {
+		t.Fatalf("回答の添付：%d %q（%s）", st, data, hb)
 	}
 }

@@ -3,6 +3,8 @@
 // - アクセストークンはメモリだけに持つ。リフレッシュトークンは受け取らない。
 // - トークンがない・期限が来た・401（1 度は成功したあと）のときは、自動で authorize に行く。
 
+import { clearAllDrafts } from './files';
+
 export interface OAuthConfig {
   authorize_url: string;
   client_id: string;
@@ -127,13 +129,21 @@ function scheduleExpiry() {
   expiryTimer = setTimeout(() => { void reauthorize(); }, Math.max(0, state.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
 }
 
-async function reauthorize() {
+/** アクセストークンの残りの時間（ミリ秒）。サインインしていなければ 0 */
+export function remainingMs(): number {
+  return state.kind === 'signed-in' ? state.expiresAt - Date.now() : 0;
+}
+
+/** 今すぐ authorize に行き直す（回答を送る直前に、残りが少ないとき）。戻り先は今の URL */
+export async function reauthorize() {
   set({ kind: 'starting' });
   await signIn();
 }
 
 export function signOut() {
   clearTimeout(expiryTimer);
+  // 回答の書きかけも消す（同じタブで、ほかの人がサインインすることがあるため）
+  clearAllDrafts();
   sessionStorage.setItem(SIGNED_OUT, '1');
   set({ kind: 'signed-out', reason: 'signed-out' });
 }

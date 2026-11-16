@@ -21,10 +21,10 @@ export function useLocation(): URL {
 }
 
 /** repository の中の画面（design/webui/screens.md の「URL」） */
-export type RepoScreen = 'dashboard' | 'tree';
+export type RepoScreen = 'dashboard' | 'tree' | 'human-requests';
 export type Route = { name: 'repositories' } | { name: RepoScreen; repo: string } | { name: 'callback' } | { name: 'unknown' };
 
-const SCREENS: Record<string, RepoScreen> = { '': 'dashboard', tree: 'tree' };
+const SCREENS: Record<string, RepoScreen> = { '': 'dashboard', tree: 'tree', 'human-requests': 'human-requests' };
 
 export function match(path: string): Route {
   if (path === '/' || path === '') return { name: 'repositories' };

@@ -2,6 +2,7 @@
 // listNodes で分かる項目は、すぐに示す。getNode と getNodeHistory の応答が来たら、検証結果や履歴を示す。
 import { useEffect, useState } from 'react';
 import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type At, type HistoryEntry, type NodeDetail } from './api';
+import { saveBlob } from './files';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 
 interface Props {
@@ -202,12 +203,7 @@ function ArtifactItem({ repo, a }: { repo: string; a: Artifact }) {
   }
   const save = async () => {
     if (!a.sha256) return;
-    const b = await fetchArtifact(repo, a.sha256);
-    const url = URL.createObjectURL(new Blob([b], { type: 'application/octet-stream' }));
-    const link = document.createElement('a');
-    link.href = url; link.download = a.name;
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveBlob(await fetchArtifact(repo, a.sha256), a.name);
   };
   return (
     <div className="file-wrap">
