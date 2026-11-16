@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
@@ -101,7 +103,8 @@ func TestTargetNotMain(t *testing.T) {
 	if _, err := b.GetReviewMaterial(ctx, c, "q", "apr_2"); code(err) != CodeOverlayUnsupported {
 		t.Fatalf("レビューの材料：%v", err)
 	}
-	if _, err := b.GetTree(ctx, c, "q", At{ApplyRequest: "apr_2"}); code(err) != CodeOverlayUnsupported {
+	// 木の読みは、向き先のブランチに重ねる。向き先のブランチがまだ取り込まれていなければ、snapshot_pending。
+	if _, err := b.GetTree(ctx, c, "q", At{ApplyRequest: "apr_2"}); code(err) != CodeSnapshotPending {
 		t.Fatalf("反映したあとの木：%v", err)
 	}
 	w, err := b.ListWork(ctx, c, "q", WorkQuery{})
@@ -157,5 +160,61 @@ func TestReviewSnapshotPendingWritesNothing(t *testing.T) {
 	}
 	if got := len(f.forge.reviews["apr_2"].Items); got != before {
 		t.Fatalf("snapshot_pending なのに、レビューを記録した：%d → %d", before, got)
+	}
+}
+
+// 向き先が main でない apply request は、向き先のブランチの今の先頭に、衝突を判定せずに重ねる（design/backend/snapshot.md の「向き先に重ねる」）。
+// 積み上げた apply request（下の apply request と同じファイルを変える）でも衝突にせず、上の apply request の先頭の内容を出す。
+func TestReadAfterStackedApplyRequest(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	b, c := f.b, f.caller
+	bg := dH2 + "/background.md"
+	// 下：develop（main から）。上：b2（develop から）。どちらも H2 の背景情報を書く。
+	f.r.git("checkout", "--quiet", "-b", "develop", "main")
+	f.r.write(bg, []byte("下の背景\n"))
+	dev := f.r.commit("下\n\nLogiforge-Session-Id: s3")
+	f.r.git("checkout", "--quiet", "-b", "b2")
+	f.r.write(bg, []byte("上の背景\n"))
+	top := f.r.commit("上\n\nLogiforge-Session-Id: s4")
+	f.r.git("checkout", "--quiet", "main")
+	syncFixture(t, f)
+	f.forge.ars = append(f.forge.ars, ports.ApplyRequest{ID: "apr_3", Number: 3, Branch: "b2", Target: "develop", State: ports.StateOpen, FirstRevision: top, HeadRevision: top})
+	at := At{ApplyRequest: "apr_3"}
+
+	nodes, err := b.ListNodes(ctx, c, "q", at, "", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes.Commit != dev {
+		t.Fatalf("応答のコミットは、向き先のブランチの今の先頭：%s（develop は %s）", nodes.Commit, dev)
+	}
+	h2, err := b.GetNode(ctx, c, "q", H2, at)
+	if err != nil || h2.Node.(*Hypothesis).Background != "上の背景\n" {
+		t.Fatalf("上の apply request の内容が出ない：%+v %v", h2, err)
+	}
+	if _, err := b.GetTree(ctx, c, "q", at); err != nil {
+		t.Fatal(err)
+	}
+	// ブランチのコミットも、commit に指定して読める。
+	for sha, want := range map[string]string{dev: "下の背景\n", top: "上の背景\n"} {
+		n, err := b.GetNode(ctx, c, "q", H2, At{Commit: sha})
+		if err != nil || n.Commit != sha || n.Node.(*Hypothesis).Background != want {
+			t.Fatalf("ブランチのコミット %s：%+v %v", sha, n, err)
+		}
+	}
+	// レビューの材料は、向き先が main でなければ作らない。
+	if _, err := b.GetReviewMaterial(ctx, c, "q", "apr_3"); code(err) != CodeOverlayUnsupported {
+		t.Fatalf("レビューの材料：%v", err)
+	}
+	// 向き先のブランチが消えたら、not_found。
+	f.r.git("branch", "-D", "develop")
+	syncFixture(t, f)
+	if _, err := b.GetTree(ctx, c, "q", at); code(err) != CodeNotFound {
+		t.Fatalf("向き先のブランチが消えた：%v", err)
+	}
+	// 取り込まれていないコミットは、snapshot_pending。
+	if _, err := b.GetTree(ctx, c, "q", At{Commit: strings.Repeat("e", 40)}); code(err) != CodeSnapshotPending {
+		t.Fatalf("ないコミット：%v", err)
 	}
 }

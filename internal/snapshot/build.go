@@ -167,6 +167,27 @@ func Overlay(base tree.Files, d Diff) (head tree.Files, conflicts []string, err 
 	return head, conflicts, nil
 }
 
+// Apply は、base に差分 d を、衝突を判定せずに重ねる。差分が変えたパスは d のファイルを、ほかのパスは base のファイルを使う
+// （design/backend/snapshot.md の「向き先に重ねる」の、向き先が main でないとき。「ブランチのコミットのスナップショットツリー」でも使う）。
+func Apply(base tree.Files, d Diff) (tree.Files, error) {
+	head := make(tree.Files, len(base))
+	for p, f := range base {
+		head[p] = f
+	}
+	for _, e := range d.Entries {
+		if e.File == nil {
+			delete(head, e.Path)
+			continue
+		}
+		f, err := e.File.toTreeFile()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", e.Path, err)
+		}
+		head[e.Path] = f
+	}
+	return head, nil
+}
+
 // fileKind は、p がノード n のファイルなら、その種類を返す。そうでなければ空。
 func fileKind(n *Node, p string) FileKind {
 	if n == nil {

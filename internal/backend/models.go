@@ -98,6 +98,14 @@ type NodeHistoryEntry struct {
 	Reflected      bool      `json:"reflected"`
 }
 
+// MainCommit は、main のコミットである（listCommits）。
+type MainCommit struct {
+	Number         int       `json:"number"`
+	Commit         string    `json:"commit"`
+	CommittedAt    time.Time `json:"committed_at"`
+	ApplyRequestID *string   `json:"apply_request_id"`
+}
+
 // Page は、カーソルで分けた一覧のページである。
 type Page[T any] struct {
 	Items      []T     `json:"items"`

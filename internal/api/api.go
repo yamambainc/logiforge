@@ -67,6 +67,7 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("GET "+repo+"/tree/export", s.exportTree)
 	route("GET "+repo+"/nodes/{nodeId}", s.getNode)
 	route("GET "+repo+"/nodes/{nodeId}/history", s.getNodeHistory)
+	route("GET "+repo+"/commits", s.listCommits)
 	route("GET "+repo+"/apply-requests", s.listApplyRequests)
 	route("GET "+repo+"/apply-requests/{applyRequestId}", s.getApplyRequest)
 	route("GET "+repo+"/apply-requests/{applyRequestId}/review-material", s.getReviewMaterial)
@@ -239,6 +240,14 @@ func (s *server) getNodeHistory(ctx context.Context, c backend.Caller, r *http.R
 		return nil, err
 	}
 	return s.b.GetNodeHistory(ctx, c, r.PathValue("repository"), r.PathValue("nodeId"), r.URL.Query().Get("cursor"), limit)
+}
+
+func (s *server) listCommits(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	limit, err := queryInt(r, "limit", 0)
+	if err != nil {
+		return nil, err
+	}
+	return s.b.ListCommits(ctx, c, r.PathValue("repository"), r.URL.Query().Get("cursor"), limit)
 }
 
 func (s *server) listApplyRequests(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {

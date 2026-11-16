@@ -520,3 +520,52 @@ func (b *Backend) GetAnswerAttachment(ctx context.Context, c Caller, repo, id, s
 	}
 	return data, err
 }
+
+// ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「足す API」）。
+// カーソルは、次に読むコミットの number である。main の並びの索引とコミットの記録から引く。
+func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string, limit int) (Page[MainCommit], error) {
+	limit, err := CheckLimit(limit)
+	if err != nil {
+		return Page[MainCommit]{}, err
+	}
+	from, err := numberCursor(cursor)
+	if err != nil {
+		return Page[MainCommit]{}, err
+	}
+	if _, err := b.access(ctx, c, repo); err != nil {
+		return Page[MainCommit]{}, err
+	}
+	latest, err := b.mainAt(ctx, repo, "")
+	if err != nil {
+		return Page[MainCommit]{}, err
+	}
+	n := latest.main.Commit.Number
+	if from > n {
+		return Page[MainCommit]{}, fail(CodeValidationFailed, "カーソルが正しくない")
+	}
+	if from > 0 {
+		n = from
+	}
+	out := Page[MainCommit]{Items: []MainCommit{}}
+	for ; n >= 1; n-- {
+		if len(out.Items) == limit {
+			next := strconv.Itoa(n)
+			out.NextCursor = &next
+			break
+		}
+		sha, err := b.Snap.MainAt(ctx, repo, n)
+		if err != nil {
+			return Page[MainCommit]{}, err
+		}
+		cm, err := b.Snap.Commit(ctx, repo, sha)
+		if err != nil {
+			return Page[MainCommit]{}, err
+		}
+		e := MainCommit{Number: n, Commit: sha, CommittedAt: cm.CommittedAt}
+		if ar := trailerValue(cm.Trailers, "Logiforge-Apply-Request"); ar != "" {
+			e.ApplyRequestID = &ar
+		}
+		out.Items = append(out.Items, e)
+	}
+	return out, nil
+}

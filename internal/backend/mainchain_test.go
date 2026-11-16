@@ -119,3 +119,29 @@ func TestAnsweredRequestAfterNonApplyPush(t *testing.T) {
 		t.Fatal("回答のあとの反映があるのに、作業から外れない")
 	}
 }
+
+// main のコミットの一覧は、新しい順に、カーソル（次に読む number）で分けて返す。
+func TestListCommits(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	p, err := f.b.ListCommits(ctx, f.caller, "q", "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Items) != 1 || p.Items[0].Number != 2 || p.Items[0].Commit != f.c2 || p.Items[0].ApplyRequestID == nil || *p.Items[0].ApplyRequestID != "apr_1" {
+		t.Fatalf("1 ページ目：%+v", p.Items)
+	}
+	if p.NextCursor == nil || *p.NextCursor != "1" {
+		t.Fatalf("カーソル：%v", p.NextCursor)
+	}
+	p, err = f.b.ListCommits(ctx, f.caller, "q", *p.NextCursor, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Items) != 1 || p.Items[0].Commit != f.c1 || p.Items[0].ApplyRequestID != nil || p.NextCursor != nil {
+		t.Fatalf("2 ページ目：%+v %v", p.Items, p.NextCursor)
+	}
+	if _, err := f.b.ListCommits(ctx, f.caller, "q", "9", 1); code(err) != CodeValidationFailed {
+		t.Fatalf("先のカーソル：%v", err)
+	}
+}
