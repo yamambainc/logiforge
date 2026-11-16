@@ -3,6 +3,8 @@
 // - アクセストークンはメモリだけに持つ。リフレッシュトークンは受け取らない。
 // - トークンがない・期限が来た・401（1 度は成功したあと）のときは、自動で authorize に行く。
 
+import { clearAllDrafts } from './files';
+
 export interface OAuthConfig {
   authorize_url: string;
   client_id: string;
@@ -140,6 +142,8 @@ export async function reauthorize() {
 
 export function signOut() {
   clearTimeout(expiryTimer);
+  // 回答の書きかけも消す（同じタブで、ほかの人がサインインすることがあるため）
+  clearAllDrafts();
   sessionStorage.setItem(SIGNED_OUT, '1');
   set({ kind: 'signed-out', reason: 'signed-out' });
 }

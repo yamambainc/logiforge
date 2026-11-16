@@ -167,3 +167,9 @@ export const answerHumanRequest = (repo: string, id: string, body: string, attac
 export async function fetchAnswerAttachment(repo: string, id: string, sha256: string): Promise<Blob> {
   return (await send(`/repositories/${enc(repo)}/human-requests/${enc(id)}/attachments/${enc(sha256)}`)).blob();
 }
+
+/** 作業として残っているものの対象（listWork の kind で絞り、subject_id を集める）。ダッシュボードの件数と同じ数になる */
+export async function workSubjects(repo: string, kind: string): Promise<Set<string>> {
+  const items = await listAll<{ kind: string; subject_id: string }>(`/repositories/${enc(repo)}/work?kind=${enc(kind)}`);
+  return new Set(items.map((i) => i.subject_id));
+}

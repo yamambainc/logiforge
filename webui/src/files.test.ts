@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { base64Len, checkAttachments, MAX_FILE, toBase64 } from './files';
+import { base64Len, checkAttachments, isWebLink, MAX_FILE, toBase64 } from './files';
 
 // 回答の添付の大きさ（design/api/README.md の「アップロードの大きさ」：ファイルは 10 MiB まで、要求は 32 MiB まで）
 describe('回答の添付', () => {
@@ -22,5 +22,10 @@ describe('回答の添付', () => {
   it('リンクは http か https', () => {
     expect(checkAttachments('a', [], [{ name: 'l', uri: 'https://example.com' }])).toBeNull();
     expect(checkAttachments('a', [], [{ name: 'l', uri: 'javascript:alert(1)' }])).toMatch('http か https');
+    // URL として読み、protocol で確かめる（大文字や空白で、正規表現をすり抜けない）
+    expect(isWebLink('HTTPS://example.com/a')).toBe(true);
+    expect(isWebLink(' javascript:alert(1)')).toBe(false);
+    expect(isWebLink('https//example.com')).toBe(false);
+    expect(isWebLink(undefined)).toBe(false);
   });
 });

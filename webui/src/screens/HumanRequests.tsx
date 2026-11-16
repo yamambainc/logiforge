@@ -1,9 +1,9 @@
 // 人への依頼（docs/webui/human-requests.md、design/webui/screens.md の「人への依頼」）。
 // 一覧（種類と状態で絞り込む）と本文と回答。状態（種類、状態、選んだ依頼）は URL に持つ。
 import { useEffect, useState } from 'react';
-import { answerHumanRequest, fetchAnswerAttachment, getHumanRequest, listHumanRequests, Problem, type AttachmentInput, type HumanRequest } from '../api';
+import { answerHumanRequest, fetchAnswerAttachment, getHumanRequest, listHumanRequests, Problem, workSubjects, type AttachmentInput, type HumanRequest } from '../api';
 import { reauthorize, remainingMs } from '../auth';
-import { checkAttachments, clearDraft, loadDraft, saveBlob, saveDraft, toBase64 } from '../files';
+import { checkAttachments, clearDraft, HEAVY_ON_MOBILE, isWebLink, loadDraft, saveBlob, saveDraft, toBase64 } from '../files';
 import { useMobile } from '../hooks';
 import { navigate, useLocation } from '../router';
 
@@ -17,6 +17,8 @@ export function HumanRequests({ repo }: { repo: string }) {
   const kind = loc.searchParams.get('kind') ?? '';
   const state = loc.searchParams.get('state') ?? 'open';
   const id = loc.searchParams.get('id');
+  // 作業として残っているものだけ（ダッシュボードの「回答済みの依頼」の件数と同じもの。listWork の human_request_answered）
+  const work = loc.searchParams.get('work') === '1';
   const mobile = useMobile();
   const [items, setItems] = useState<HumanRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +27,11 @@ export function HumanRequests({ repo }: { repo: string }) {
   useEffect(() => {
     let live = true;
     setItems(null); setError(null);
-    listHumanRequests(repo, kind, state === 'all' ? '' : state)
-      .then((r) => live && setItems(r))
+    Promise.all([listHumanRequests(repo, kind, state === 'all' ? '' : state), work ? workSubjects(repo, 'human_request_answered') : Promise.resolve(null)])
+      .then(([r, w]) => live && setItems(w ? r.filter((h) => w.has(h.id)) : r))
       .catch((e) => { if (live && !(e instanceof Problem && e.status === 401)) setError(String(e)); });
     return () => { live = false; };
-  }, [repo, kind, state, reload]);
+  }, [repo, kind, state, work, reload]);
 
   // URL を変える。選んだ依頼は履歴に積み、絞り込みは置き換える
   const go = (p: Record<string, string | null>, push = false) => {
@@ -52,6 +54,7 @@ export function HumanRequests({ repo }: { repo: string }) {
             <option value="open">open</option><option value="answered">回答済み</option><option value="all">すべて</option>
           </select>
         </label>
+        <label className="check"><input type="checkbox" checked={work} onChange={(e) => go({ work: e.target.checked ? '1' : null, id: null })} /> 作業として残っているもの</label>
       </div>
       {error ? <p className="dim">一覧を読めませんでした：{error}</p> : !items ? <div className="loading">読み込み中…</div> : items.length === 0 ? <p className="dim pad">人への依頼はありません。</p> : (
         <ul className="items">
@@ -81,13 +84,15 @@ const firstLine = (s: string) => s.split('\n').find((l) => l.trim())?.replace(/^
 function RequestDetail({ repo, id, mobile, onBack, onAnswered }: { repo: string; id: string; mobile: boolean; onBack: () => void; onAnswered: () => void }) {
   const [h, setH] = useState<HumanRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [already, setAlready] = useState(false);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let live = true;
     getHumanRequest(repo, id).then((r) => live && setH(r)).catch((e) => {
       if (live && !(e instanceof Problem && e.status === 401)) setError(e instanceof Problem && e.code === 'not_found' ? 'この依頼はありません' : String(e));
     });
     return () => { live = false; };
-  }, [repo, id]);
+  }, [repo, id, tick]);
   const back = mobile && <button className="link back" onClick={onBack}>← 一覧</button>;
   if (error) return <section className="item-pane">{back}<p className="dim">{error}</p></section>;
   if (!h) return <section className="item-pane">{back}<div className="loading">読み込み中…</div></section>;
@@ -105,7 +110,8 @@ function RequestDetail({ repo, id, mobile, onBack, onAnswered }: { repo: string;
       <h3 className="sec">{h.kind === 'pvr' ? '検証手順' : '問い'}</h3>
       {/* 本文は Markdown を整形せず、文字列として示す（design/webui/security.md） */}
       <p className="prose report">{h.body}</p>
-      {h.answer ? <Answer repo={repo} h={h} /> : <AnswerForm repo={repo} h={h} onDone={(r) => { setH(r); onAnswered(); }} />}
+      {already && <p className="note" role="status">この依頼は、もう回答されています。</p>}
+      {h.answer ? <Answer repo={repo} h={h} /> : <AnswerForm repo={repo} h={h} onDone={(r) => { setH(r); onAnswered(); }} onAlready={() => { setAlready(true); setTick((x) => x + 1); onAnswered(); }} />}
     </section>
   );
 }
@@ -119,7 +125,7 @@ function Answer({ repo, h }: { repo: string; h: HumanRequest }) {
       {a.attachments.length > 0 && (
         <div className="files">
           {a.attachments.map((f) => f.kind === 'link'
-            ? <div key={f.name + f.uri} className="file">{f.uri && /^https?:\/\//.test(f.uri) ? <a href={f.uri} target="_blank" rel="noreferrer noopener">{f.name}</a> : <span>{f.name}</span>}<span className="dim">外部リンク</span></div>
+            ? <div key={f.name + f.uri} className="file">{isWebLink(f.uri) ? <a href={f.uri} target="_blank" rel="noreferrer noopener">{f.name}</a> : <span>{f.name}</span>}<span className="dim">外部リンク</span></div>
             : <button key={f.name + f.sha256} className="file" onClick={async () => f.sha256 && saveBlob(await fetchAnswerAttachment(repo, h.id, f.sha256), f.name)}><span>{f.name}</span><span className="dim">保存</span></button>)}
         </div>
       )}
@@ -132,7 +138,7 @@ const ANSWER_ERRORS: Record<string, string> = {
   too_large: '添付が大きすぎます。リンクで添えてください。',
 };
 
-function AnswerForm({ repo, h, onDone }: { repo: string; h: HumanRequest; onDone: (r: HumanRequest) => void }) {
+function AnswerForm({ repo, h, onDone, onAlready }: { repo: string; h: HumanRequest; onDone: (r: HumanRequest) => void; onAlready: () => void }) {
   // 書きかけ（トークンの期限で authorize に行き直しても失わない）
   const [draft] = useState(() => loadDraft(repo, h.id));
   const [body, setBody] = useState(draft?.body ?? '');
@@ -168,6 +174,8 @@ function AnswerForm({ repo, h, onDone }: { repo: string; h: HumanRequest; onDone
     } catch (err) {
       setBusy(false);
       if (err instanceof Problem && err.status === 401) return;
+      // ほかのタブや人が先に回答した。書きかけを消し、読み直して回答を示す
+      if (err instanceof Problem && err.code === 'not_open') { clearDraft(repo, h.id); onAlready(); return; }
       setError(err instanceof Problem ? ANSWER_ERRORS[err.code] ?? (err.detail || err.code) : String(err));
     }
   };
@@ -183,6 +191,9 @@ function AnswerForm({ repo, h, onDone }: { repo: string; h: HumanRequest; onDone
         <label className="btn file-pick">ファイルを添付<input type="file" multiple onChange={(e) => { const fs = [...(e.target.files ?? [])]; setFiles((x) => [...x, ...fs]); setLost((l) => l.filter((n) => !fs.some((f) => f.name === n))); e.target.value = ''; }} /></label>
         <span className="dim small">1 つ 10 MiB まで。大きなものはリンクで添える</span>
       </div>
+      {files.reduce((n, f) => n + f.size, 0) > HEAVY_ON_MOBILE && files.length > 1 && (
+        <p className="note small">ファイルの合計が大きいので、モバイルでは送るのに時間がかかることがあります。</p>
+      )}
       {(files.length > 0 || links.length > 0) && (
         <ul className="attached">
           {files.map((f, i) => <li key={'f' + i}><span>{f.name}</span><span className="dim">{fmtSize(f.size)}</span><button type="button" className="link" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>外す</button></li>)}

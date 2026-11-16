@@ -99,6 +99,11 @@ func TestWebUISignIn(t *testing.T) {
 	var hr struct {
 		ID string `json:"id"`
 	}
+	var hr2 struct {
+		ID string `json:"id"`
+	}
+	// もう 1 つ（判断）。ブラウザで、期限が近いときの書きかけの往復と、forbidden・not_open の表示を確かめる
+	agent.must(&hr2, "human-request", "create", "--node", hA, "--kind", "decision", "--body", agent.file("dec.md", "広告を続けるか決めてほしい\n"))
 	agent.must(&hr, "human-request", "create", "--node", hB, "--kind", "pvr", "--body", agent.file("pvr.md", "# 手順\n\n1. 招待した人の継続率を測る\n2. 結果のファイルを添える\n"))
 	w.eventually("2 つの apply request を重ねて読める", 60*time.Second, func() bool {
 		s1, _ := w.call("alice", "GET", "/repositories/q/tree/nodes?apply_request="+arMain.ID, nil)
@@ -137,7 +142,7 @@ func TestWebUISignIn(t *testing.T) {
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
 	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
-		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "HR2="+hr2.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {

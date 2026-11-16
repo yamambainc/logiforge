@@ -29,10 +29,19 @@ export function checkAttachments(body: string, files: { name: string; size: numb
   const big = files.find((f) => f.size > MAX_FILE);
   if (big) return `「${big.name}」は 10 MiB を超えています。大きなファイルは、置き場に置いてリンクで添えてください。`;
   if (requestSize(body, files, links) > MAX_REQUEST) return 'ファイルの合計が大きすぎます（1 回の回答は、base64 にして 32 MiB まで）。いくつかはリンクで添えてください。';
-  const bad = links.find((l) => !/^https?:\/\//.test(l.uri));
+  const bad = links.find((l) => !isWebLink(l.uri));
   if (bad) return `リンク「${bad.name}」は http か https の URL にしてください。`;
   return null;
 }
+
+/** http か https の URL か。添付のリンクを送る前と、示すときに使う（ほかの scheme はリンクにしない） */
+export function isWebLink(uri: string | undefined): boolean {
+  if (!uri) return false;
+  try { const u = new URL(uri); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
+}
+
+/** モバイルで重くなる目安（ファイルを base64 にして送るので、合計がこれを超えると、端末によっては時間がかかる） */
+export const HEAVY_ON_MOBILE = 8 * 1024 * 1024;
 
 export function toBase64(buf: ArrayBuffer): string {
   const b = new Uint8Array(buf);
@@ -55,3 +64,11 @@ export function loadDraft(repo: string, id: string): Draft | null {
   try { const v = sessionStorage.getItem(draftKey(repo, id)); return v ? (JSON.parse(v) as Draft) : null; } catch { return null; }
 }
 export const clearDraft = (repo: string, id: string) => sessionStorage.removeItem(draftKey(repo, id));
+
+/** 書きかけをすべて消す（サインアウトのとき） */
+export function clearAllDrafts() {
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const k = sessionStorage.key(i);
+    if (k?.startsWith('lf-draft:')) sessionStorage.removeItem(k);
+  }
+}
