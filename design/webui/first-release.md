@@ -11,7 +11,7 @@ WebUI の実装を、どこまでを最初の 1 件にするかを確かめる�
 ### 1. ビュワー
 
 - サインインと、トークンの持ち方、ファイルの開き方（[認証](auth.md)）。
-- `logiforge serve` から WebUI を配ること、応答のヘッダー、gzip と `ETag`（[配り方](stack.md#配り方)）。
+- `logiforge serve` から WebUI を配ること、応答のヘッダー、gzip（[配り方](stack.md#配り方)）。
 - repository を選ぶこと（[repository の一覧](../../docs/webui/repositories.md) のうち、一覧と選択）。
 - ビュワーの、次のもの（[スナップショットツリーのビュワー](snapshot-tree-viewer.md)）。
   - 行の仮想化と、折りたたみ

@@ -31,8 +31,5 @@ WebUI を作り始めるときと、イメージのビルドを変えるとき�
   - ハッシュ付きの JS と CSS は、`Cache-Control: public, max-age=31536000, immutable` を返す。
   - `index.html` は、`Cache-Control: no-cache` を返す。
   - なぜ：新しいイメージに替えたとき、利用者が古い画面を使い続けないようにするため。
-- `commit` を指定した `listNodes` と `getNode` の応答には、応答の本文のハッシュを `ETag` として付け、`Cache-Control: private, no-cache` を返す。`If-None-Match` が合えば `304` を返す。
-  - なぜ：過去の時点と、重ね表示の読み直し（[差分の重ね表示](overlay.md#差分の重ね表示)）で、同じコミットを何度も読むから。2 回目からは本文を送らずに済む。
-  - なぜ `immutable` にしないか：コミットを指定しても、ノードの審査中の apply request と open の人への依頼は、今のデータだから（[コミット](../api/README.md#コミット)）。
 - API の JSON の応答は、要求が `Accept-Encoding: gzip` を持てば、gzip で返す。
   - なぜ：ビュワーは、`listNodes` でスナップショットツリーのすべてのノードを読むから。ノード 4,000 個の試作のサンプルで、応答は約 1.5 MB、gzip で約 0.1 MB だった（[ノードの読み方](snapshot-tree-viewer.md#ノードの読み方)）。
