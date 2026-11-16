@@ -109,6 +109,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
+| `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
 
 ## 例：Kubernetes の Pod
@@ -196,6 +197,24 @@ spec:
     - 上限を超えると、Pod が作り直される。複製は使い捨てのキャッシュなので、作り直された Pod は、要求ごとに空から clone し直す。そのあいだ、初めての `ar create` が遅くなるだけで、壊れるものはない。
     - バックエンドは、起動のときに、`LOGIFORGE_GIT_CACHE_DIR` の下の古い複製（`workcopy-*`）を消す。そのため、`LOGIFORGE_GIT_CACHE_DIR` は、プロセスごとの場所にする。1 台のマシンで、コンテナに分けずにバックエンドを何台か動かすときは、それぞれに別の場所を渡す。
 - worker の `livenessProbe` は、`exec` で `logiforge worker-health` を動かす（[ヘルスチェック](#ヘルスチェック)）。
+
+## フォーマットバージョンを上げるとき
+
+スナップショットのフォーマットバージョンを上げると、新しい worker は、新しい接頭辞（`v<新しい版>/`）の下に、すべてのスナップショットを作り直す（[スナップショットの置き場](backend/ports/snapshot-store.md)）。次の順に入れ替える。
+
+1. 新しい版の worker を、古い版の worker と入れ替える。バックエンドは、古い版のまま動かしておく。
+   - 古い版のバックエンドは、古い接頭辞を読み続ける。古い接頭辞は、もう進まない。そのため、木を読むことはできるが、新しいコミットは読む側に出ない。
+   - 新しい版の worker が `keep/` に書くブランチのスナップショットは、古い版のバックエンドには読めない。
+   - そのため、入れ替えのあいだは、apply request の作成・レビュー・反映を止める。利用者とエージェントに、その時間を前もって知らせる。
+2. すべての repository について、新しい接頭辞の `latest` が、古い接頭辞の `latest` に追いつくのを待つ。
+3. バックエンドを、新しい版に入れ替える。
+4. 古い接頭辞は、消さずに残す。戻すときに使う。
+
+- 作り直しの時間は、repository ごとに、`main` のコミットの数 × 1 コミットの時間である（[費用と規模の見積もり](estimates.md)）。
+  - ノード 4,000 個、コミット 1,000 個の repository で約 8 分である。repository は並行して作るので、全体の時間は、いちばん大きい repository で決まる。ただし、CPU の数より多くは並ばない。
+  - 例：ノード 1,000 個、コミット 1,000 個の repository 30 個を、2 CPU で作ると、約 3 分 × 30 ÷ 2 ≈ 45 分である。
+- 置き場の容量は、作り直しのあいだ、古い接頭辞と新しい接頭辞の両方の分が要る。
+- フォーマットバージョンを 5 から 6 に上げるときも、この手順である（[中身](backend/snapshot.md#中身)）。
 
 ## ローカルと E2E：compose
 

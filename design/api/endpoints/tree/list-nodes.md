@@ -14,7 +14,7 @@
 - 各ノードの値と、葉・要再検討・inactive の状態を返す。
 - 各ノードを対象にした open の apply request と人への依頼を返す。
 - コミットを指定すると、その時点の木を返す。
-- open の apply request を指定すると、それを反映したあとの姿を返す（[向き先に重ねる](../../../backend/snapshot.md#向き先に重ねる)）。重ねられなければ、衝突したパスを返す。
+- open の apply request を指定すると、それを反映したあとの姿を返す（[向き先に重ねる](../../../backend/snapshot.md#向き先に重ねる)）。重ねられなければ、`overlay_conflict`（409）を返し、`detail` に衝突したパスを書く。向き先が `main` でなければ、`overlay_unsupported`（422）を返す。
 - 深さを指定すると、その段までを返す。
 
 ## 関係する要件

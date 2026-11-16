@@ -12,7 +12,6 @@ flowchart TB
     WEB["WebUI"]
   end
   subgraph LP["Logiforge のプロセス"]
-    direction LR
     subgraph BE["バックエンド"]
       API["Logiforge API"]
       RULE["ルール判定"]

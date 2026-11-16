@@ -24,6 +24,16 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、書き込み主体のコメントに置く（[記録のコメント](../adapters/pull-requests.md)）。
   - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。
 
+## 向き先
+
+- apply request の向き先は、pull request の base のブランチである。
+- バックエンドが作る pull request の向き先は、いつも `main` である。作成の API に、向き先を指定するものはない（[作成](#作成)）。
+  - ほかの apply request のブランチに積み上げたブランチも、`main` 向きの apply request になる。差分は、`main` との分かれた点からなので、下の apply request の変更も含む。
+- GitForge の画面などで、pull request の base を `main` 以外に変えることは、防げない。git と GitForge の仕組みの上で、できてしまうからである。
+  - そのような apply request も、作成・レビュー・反映の扱いは、ほかの apply request と同じ決まりのままとする。反映の前の検査は、今の `main` に対して行う（[反映の手順](merge.md)）。
+  - バックエンドは、提案を読むときに、向き先を GitForge から読む（[GitForge のポート](ports/gitforge.md)）。
+  - 反映したあとの木は、向き先が `main` のときだけ返す。`main` でなければ、`overlay_unsupported`（422）を返す（[向き先に重ねる](snapshot.md#向き先に重ねる)）。
+
 ## 先頭のコミット
 
 - apply request の先頭のコミットは、[worker](worker.md) が見たブランチの先頭のコミットである。SHA で指す。

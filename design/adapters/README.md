@@ -125,7 +125,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
   - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
   - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
 - 置き場の接続先と、書く鍵
-- 見回りの間隔（[見回り](../backend/worker.md#見回り)）
+- 見回りの間隔（[見回り](../backend/worker.md#見回り)）と、git の操作の時間の上限（[すること](../backend/worker.md#すること)）
 - clone を置く、永続するストレージのパス
 
 鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。

@@ -696,7 +696,7 @@ components:
         open の apply request の識別子。指定すると、その先頭のコミットの差分を、向き先の今の先頭（latest）のスナップショットツリーに重ねた、
         反映したあとの木を返す（../../design/backend/snapshot.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
         commit と同時には指定できない（validation_failed）。
-        重ねられなければ overlay_conflict を返す。先頭のコミットのスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
+        重ねられなければ overlay_conflict を返す。apply request の向き先が main でなければ、重ねずに overlay_unsupported を返す。先頭のコミットのスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
       schema: { type: string, pattern: '^apr_' }
     Cursor:
       name: cursor
@@ -796,15 +796,16 @@ components:
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
             | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした |
+            | overlay_unsupported | 422 | apply request の向き先が main でないので、反映したあとの木を作れない |
             | overlay_conflict | 409 | apply request の差分を、向き先の今の先頭に重ねられない。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
-            | unavailable | 503 | worker が止まっていて、ブランチを読めない。少し待って送り直す |
+            | unavailable | 503 | GitForge の git を読めない。少し待って送り直す |
             | snapshot_pending | 503 | 指定したコミットのスナップショットが、まだない（worker が取り込んでいない）。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。repository の登録をサーバの設定で行う構成だけで起きる |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
 
     Tree:
       type: object

@@ -14,7 +14,7 @@ WebUI のダッシュボードや、CLI で状況をつかむときの最初の�
 - 根の値（true、false、null）を返す。
 - 今の `main` のコミットを返す。
 - コミットを指定すると、その時点の概要を返す。
-- open の apply request を指定すると、それを反映したあとの姿を返す（[向き先に重ねる](../../../backend/snapshot.md#向き先に重ねる)）。重ねられなければ、衝突したパスを返す。
+- open の apply request を指定すると、それを反映したあとの姿を返す（[向き先に重ねる](../../../backend/snapshot.md#向き先に重ねる)）。重ねられなければ、`overlay_conflict`（409）を返し、`detail` に衝突したパスを書く。向き先が `main` でなければ、`overlay_unsupported`（422）を返す。
 
 ## 関係する要件
 
