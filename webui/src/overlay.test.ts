@@ -86,7 +86,9 @@ describe('差分の重ね表示の細部', () => {
     expect(f.around!.has('h0')).toBe(true); // s2 の親として
     expect(f.around!.has('s1')).toBe(true); // h1 の親として
     expect([...f.around!].sort()).toEqual(['h0', 'h1', 'h3', 'h4', 'h6', 's1', 's2', 's3', 's4']);
-    // URL の node があれば、それを選ぶ
-    expect(overlayFocus(ix, d.changes, 'h5').selected).toBe('h5');
+    // URL の node があれば、それを選び、そのまわりを収める
+    const g = overlayFocus(ix, d.changes, 'h5');
+    expect(g.selected).toBe('h5');
+    expect([...g.around!].sort()).toEqual(['h5', 'h6', 's4']);
   });
 });

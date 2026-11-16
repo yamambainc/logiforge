@@ -125,13 +125,15 @@ export function rowsToDraw(start: number, end: number, selIndex: number): number
 // 表示する行。include があれば、その集合のノードだけを（祖先を開いて）出す。
 export function visibleRows(ix: Index, expanded: Set<string>, include: Set<string> | null, showInactive: boolean, root = ix.rootId): Row[] {
   const rows: Row[] = [];
+  // 深さは、表示の根からの深さ（「ここから見る」では、表示の根が 0）
+  const base = ix.depth.get(root) ?? 0;
   const walk = (id: string) => {
     const n = ix.byId.get(id)!;
     if (!showInactive && n.inactive) return;
     if (include && !include.has(id)) return;
     const cs = ix.children.get(id) ?? [];
     const open = include ? true : expanded.has(id);
-    rows.push({ id, depth: ix.depth.get(id)!, hasChildren: cs.length > 0, open });
+    rows.push({ id, depth: ix.depth.get(id)! - base, hasChildren: cs.length > 0, open });
     if (open) for (const c of cs) walk(c);
   };
   if (root && ix.byId.has(root)) walk(root);

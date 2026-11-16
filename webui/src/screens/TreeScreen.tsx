@@ -4,10 +4,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listCommits, listOpenApplyRequests, Problem, type ApplyRequest, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
-import { initialFocus, openLevels, overlayFocus } from '../focus';
+import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
 import { GraphView } from '../GraphView';
 import { isMobileNow, useMobile } from '../hooks';
-import { changeOrder, filterNodes, visibleRows, type Filter } from '../model';
+import { ancestors, changeOrder, filterNodes, textOf, visibleRows, type Filter } from '../model';
 import { isBlocked, loadSource, sourceFromURL, sourceToURL, type Blocked, type Loaded, type Source } from '../source';
 import { TreePane } from '../TreePane';
 
@@ -21,6 +21,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'changed', label: 'この AR で変わる' },
 ];
 
+const short = (t: string, k = 16) => (t.length > k ? t.slice(0, k) + '…' : t);
 const sourceKey = (s: Source) => (s.kind === 'ar' ? 'ar:' + s.id : s.kind === 'commit' ? 'commit:' + s.commit : 'main');
 const fmtTime = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
 
@@ -39,6 +40,8 @@ export function TreeScreen({ repo }: { repo: string }) {
   const [commits, setCommits] = useState<MainCommit[]>([]);
   // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
   const [root, setRoot] = useState<string | null>(null);
+  const rootRef = useRef<string | null>(null);
+  rootRef.current = root;
   // URL の node が、スナップショットツリーになかった
   const [missing, setMissing] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -76,7 +79,8 @@ export function TreeScreen({ repo }: { repo: string }) {
       .then((r) => {
         if (!live) return;
         if (isBlocked(r)) { setBlocked(r); return; }
-        const f = r.changes ? overlayFocus(r.ix, r.changes, want) : initialFocus(r.ix, want);
+        const wantRoot = firstLoad.current ? params.get('root') : rootRef.current;
+        const f = r.changes ? overlayFocus(r.ix, r.changes, want, wantRoot) : initialFocus(r.ix, want, wantRoot);
         let exp = f.expanded;
         if (params.get('orient') === 'v') exp = openLevels(r.ix, isMobileNow() ? 3 : 4, exp);
         setExpanded(exp);
@@ -109,7 +113,8 @@ export function TreeScreen({ repo }: { repo: string }) {
     sourceToURL(source, q);
     if (view !== 'outline') q.set('view', view);
     if (vertical) q.set('orient', 'v');
-    if (selected && selected !== data.ix.rootId) q.set('node', selected);
+    if (root && root !== data.ix.rootId) q.set('root', root);
+    if (selected && selected !== (root ?? data.ix.rootId)) q.set('node', selected);
     if (settledQuery.trim()) q.set('q', settledQuery.trim());
     const s = q.toString();
     const next = location.pathname + (s ? '?' + s : '');
@@ -117,14 +122,18 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (pushNext.current) history.pushState(null, '', next);
     else history.replaceState(null, '', next);
     pushNext.current = false;
-  }, [data, source, view, vertical, selected, settledQuery]);
-  // 戻る・進むで、表示と向きを URL に合わせる
+  }, [data, source, root, view, vertical, selected, settledQuery]);
+  // 戻る・進むで、表示と向きと時点と表示の根を URL に合わせる（根は、読み込んだデータで確かめてから）
+  const popRoot = useRef<string | null>(null);
+  const [popTick, setPopTick] = useState(0);
   useEffect(() => {
     const onPop = () => {
       const q = new URLSearchParams(location.search);
       setViewRaw(q.get('view') === 'graph' ? 'graph' : 'outline');
       setVerticalRaw(q.get('orient') === 'v');
       setSourceRaw((cur) => { const s = sourceFromURL(q); return sourceKey(s) === sourceKey(cur) ? cur : s; });
+      popRoot.current = q.get('root');
+      setPopTick((t) => t + 1);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -132,14 +141,26 @@ export function TreeScreen({ repo }: { repo: string }) {
 
   const ix = data?.ix;
 
-  // 検索と絞り込みで、出すノードを決める（一致したノードと、その祖先）
-  const { include, matches } = useMemo(
-    () => (ix ? filterNodes(ix, query, filters, showInactive, data?.changes ?? null) : { include: null, matches: [] as string[] }),
-    [ix, query, filters, showInactive, data],
-  );
+  useEffect(() => {
+    if (!ix || popTick === 0) return;
+    const r = popRoot.current && ix.byId.has(popRoot.current) ? popRoot.current : ix.rootId;
+    if (r !== rootRef.current) { setRoot(r); setExpanded((e) => new Set(e).add(r)); }
+  }, [popTick, ix]);
+
+  // 検索と絞り込みで、出すノードを決める（一致したノードと、その祖先）。「ここから見る」では、表示の根の部分木の中だけ
+  const { include, matches } = useMemo(() => {
+    if (!ix) return { include: null, matches: [] as string[] };
+    const r = filterNodes(ix, query, filters, showInactive, data?.changes ?? null);
+    if (!root || root === ix.rootId || r.include === null) return r;
+    return { include: r.include, matches: r.matches.filter((id) => inSubtree(ix, id, root)) };
+  }, [ix, query, filters, showInactive, data, root]);
 
   const rows = useMemo(() => (ix && data ? visibleRows(ix, expanded, include, showInactive, root ?? ix.rootId) : []), [ix, data, root, expanded, include, showInactive]);
   const matchSet = useMemo(() => new Set(matches), [matches]);
+  // 検索の語や絞り込みを変えたら、まわりを外す
+  const filterKey = `${query}|${[...filters].join(',')}|${showInactive}`;
+  const firstFilterKey = useRef(filterKey);
+  useEffect(() => { if (filterKey !== firstFilterKey.current) setAround(null); }, [filterKey]);
   // 検索した語が変わったら、最初の一致を選ぶ
   useEffect(() => {
     if (query.trim() && matches.length && !(selected && matchSet.has(selected))) setSelected(matches[0]);
@@ -147,25 +168,32 @@ export function TreeScreen({ repo }: { repo: string }) {
   }, [query, matches]);
 
   // 利用者が選んだとき（モバイルでは詳細のボトムシートを開く）
-  const pick = useCallback((id: string) => { setSelected(id); if (isMobileNow()) setSheet(true); }, []);
+  // まわりを収めるのは、最初の 1 回だけ。利用者が選ぶ・開閉する・探すと、まわりを外す（graph-navigation.md の「まわりを収める」）
+  const pick = useCallback((id: string) => { setAround(null); setSelected(id); if (isMobileNow()) setSheet(true); }, []);
   const toggle = useCallback((id: string) => {
+    setAround(null);
     touched.current = true;
     setExpanded((e) => { const s = new Set(e); if (s.has(id)) s.delete(id); else s.add(id); return s; });
   }, []);
   const reveal = useCallback((id: string) => {
     if (!ix) return;
+    // 表示の根の外のノードなら、スナップショットツリーの根から示す
+    setAround(null);
+    // 履歴に積み、戻るで前の表示の根に戻れるようにする
+    if (rootRef.current && !inSubtree(ix, id, rootRef.current)) { pushNext.current = true; setRoot(ix.rootId); }
     setExpanded((e) => { const s = new Set(e); let p = ix.byId.get(id); while (p) { const par = p.node_type === 'hypothesis' ? p.parent_story_id : p.parent_hypothesis_id; if (!par) break; s.add(par); p = ix.byId.get(par); } return s; });
     setSelected(id);
   }, [ix]);
   // 「次の変更」「前の変更」（n、p）。変わるノードを行の並びでたどる（design/webui/graph-navigation.md）
-  // 絞り込み・検索・inactive を隠しているあいだは、今の行にある変化だけをたどる
+  // 絞り込み・検索・inactive を隠しているあいだは、今の行にある変化だけをたどる。「ここから見る」では、表示の根の部分木の中だけ
   const order = useMemo(() => {
     if (!ix || !data?.changes) return [];
     const all = changeOrder(ix, data.changes);
-    if (include === null && showInactive) return all;
-    const shown = new Set(rows.map((r) => r.id));
-    return all.filter((id) => shown.has(id));
-  }, [ix, data, include, showInactive, rows]);
+    if (include === null && showInactive && (!root || root === ix.rootId)) return all;
+    // 「ここから見る」では、表示の根の部分木の中だけ。隠しているあいだは、今の行にあるものだけ
+    const shown = include === null && showInactive ? null : new Set(rows.map((r) => r.id));
+    return all.filter((id) => (shown ? shown.has(id) : inSubtree(ix, id, root!)));
+  }, [ix, data, include, showInactive, rows, root]);
   const stepChange = useCallback((dir: 1 | -1) => {
     if (!order.length) return;
     const i = selectedRef.current ? order.indexOf(selectedRef.current) : -1;
@@ -187,6 +215,18 @@ export function TreeScreen({ repo }: { repo: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [stepChange]);
 
+  // ここから見る：あるノードを表示の根にし、その下だけを示す（履歴に積む）。子を開いて選ぶ
+  const scopeTo = useCallback((id: string) => {
+    if (!ix || id === rootRef.current) return;
+    pushNext.current = true;
+    touched.current = true;
+    setRoot(id);
+    // URL の root で開いたときと同じく、表示の根から 2 段を開く
+    setExpanded((e) => new Set([...e, ...initialFocus(ix, null, id).expanded]));
+    setSelected(id);
+    setAround(null);
+  }, [ix]);
+
   // 時点を変える（履歴に積む）
   const setSource = (s: Source) => { if (sourceKey(s) === key) return; pushNext.current = true; setSourceRaw(s); };
 
@@ -204,8 +244,8 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (v && !touched.current) setExpanded((e) => openLevels(ix, isMobileNow() ? 3 : 4, e));
   };
   const toggleFilter = (k: Filter) => setFilters((f) => { const g = new Set(f); if (g.has(k)) g.delete(k); else g.add(k); return g; });
-  // 消えるノードは、ノード数に数えない
-  const total = ix.nodes.length - (data.removed?.length ?? 0);
+  // 表示の根の部分木のノード数。消えるノードは数えない（buildIndex の skip）
+  const total = ix.stats.get(root ?? ix.rootId)?.total ?? ix.nodes.length;
   // 過去の時点の番号と時刻。選択肢の 50 個になければ、SHA だけを示す
   const pastInfo = data.past ? commits.find((c) => c.commit === data.past!.commit) : undefined;
   // 詳細を読む時点。消えるノードは、比べた向き先のコミットで読む（apply_request を付けると not_found になるため）
@@ -346,6 +386,21 @@ export function TreeScreen({ repo }: { repo: string }) {
           <button className="link" onClick={() => setSource({ kind: 'main' })}>今の main に戻る</button>
         </div>
       )}
+      {root && root !== ix.rootId && (
+        <nav className="scope" aria-label="表示の根">
+          <span className="dim">ここから見ています：</span>
+          {[...ancestors(ix, root), root].map((a, i, all) => (
+            <span key={a} className="scope-item">
+              {i > 0 && <span className="dim">›</span>}
+              {i === all.length - 1
+                ? <b title={textOf(ix.byId.get(a)!)}>{short(textOf(ix.byId.get(a)!))}</b>
+                : <button className="link" onClick={() => scopeTo(a)} title={textOf(ix.byId.get(a)!)}>{short(textOf(ix.byId.get(a)!))}</button>}
+            </span>
+          ))}
+          <span className="spacer" />
+          <button className="link" onClick={() => scopeTo(ix.rootId)}>全体を見る</button>
+        </nav>
+      )}
       <main className="body">
         {view === 'graph' ? (
           <GraphView
@@ -358,11 +413,11 @@ export function TreeScreen({ repo }: { repo: string }) {
             changes={data.changes}
             filtered={include !== null}
             mobile={mobile}
-            focus={around}
+            focus={include === null ? around : null}
             searching={query.trim() !== ''}
             fitPending={settledQuery !== query}
             vertical={vertical}
-            fitKey={`${key}|${vertical ? 'v' : 'h'}|${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
+            fitKey={`${key}|${root ?? ''}|${vertical ? 'v' : 'h'}|${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
             head={head}
           />
         ) : (
@@ -379,7 +434,7 @@ export function TreeScreen({ repo }: { repo: string }) {
             filtered={include !== null}
             onExpandAll={() => userSetExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}
             onCollapseAll={() => userSetExpanded(new Set([root ?? ix.rootId]))}
-            summary={{ total, rootValue: ix.byId.get(ix.rootId)!.value }}
+            summary={{ total, rootValue: ix.byId.get(root ?? ix.rootId)!.value }}
           />
         )}
         {(!mobile || sheet) && (
@@ -393,6 +448,7 @@ export function TreeScreen({ repo }: { repo: string }) {
             mobile={mobile}
             onClose={() => setSheet(false)}
             onReveal={reveal}
+            onScope={selected && selected !== (root ?? ix.rootId) && ix.children.has(selected) ? () => scopeTo(selected) : undefined}
           />
         )}
       </main>

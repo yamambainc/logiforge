@@ -45,3 +45,29 @@ describe('重ねたときの最初の表示', () => {
     expect(overlayFocus(ix, new Map([['h2', { kind: 'added' as const }]]), 's1').selected).toBe('s1');
   });
 });
+
+describe('ここから見る、node= のまわり', () => {
+  // h0 ─ s1 ─ h1 ─ s2 ─ h2
+  //         └ h3   └ s4
+  const iy = buildIndex([n('h0', null, 'hypothesis'), n('s1', 'h0', 'story'), n('h1', 's1', 'hypothesis'), n('s2', 'h1', 'story'), n('h2', 's2', 'hypothesis'), n('s4', 'h1', 'story'), n('h3', 's1', 'hypothesis')]);
+  it('URL の node なら、まわり（親・兄弟・自分・1 段下）を示し、自分も開く', async () => {
+    const { neighborhood } = await import('./focus');
+    const f = initialFocus(iy, 'h1');
+    expect([...f.around!].sort()).toEqual([...neighborhood(iy, 'h1')].sort());
+    expect([...f.around!].sort()).toEqual(['h1', 'h3', 's1', 's2', 's4']);
+    expect(f.expanded.has('h1')).toBe(true);
+  });
+  it('URL の root から 2 段を開き、root を選ぶ', () => {
+    const f = initialFocus(iy, null, 'h1');
+    expect(f.root).toBe('h1');
+    expect(f.selected).toBe('h1');
+    expect([...f.expanded].sort()).toEqual(['h1', 's2', 's4']);
+  });
+  it('node が root の部分木の外なら、スナップショットツリーの根から示す', () => {
+    expect(initialFocus(iy, 'h3', 'h1').root).toBe('h0');
+    expect(initialFocus(iy, 'h2', 'h1').root).toBe('h1');
+  });
+  it('知らない root は無視する', () => {
+    expect(initialFocus(iy, null, 'h-nothing').root).toBe('h0');
+  });
+});
