@@ -27,6 +27,9 @@ describe('最初の表示', () => {
   it('縦では、画面の高さに入る段まで開く', () => {
     expect([...openLevels(ix, 4, new Set())].sort()).toEqual(['h0', 'h1', 's1']);
   });
+  it('縦で開く段は、表示の根から数える（ここから見る）', () => {
+    expect([...openLevels(ix, 4, new Set(), 'h1')].sort()).toEqual(['h1', 'h2', 's2']);
+  });
 });
 
 describe('重ねたときの最初の表示', () => {
