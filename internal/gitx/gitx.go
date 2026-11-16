@@ -34,6 +34,9 @@ type Repo struct {
 	Timeout time.Duration
 }
 
+// waitDelay は、git を止めたあと、出力のパイプが閉じるのを待つ時間の上限である。
+const waitDelay = 5 * time.Second
+
 // ErrTimeout は、git の操作が、時間の上限を超えたことを表す。
 var ErrTimeout = errors.New("gitx: 時間の上限を超えた")
 
@@ -73,6 +76,9 @@ func (r *Repo) command(ctx context.Context, args ...string) (*exec.Cmd, context.
 	}
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", r.Dir}, args...)...)
 	cmd.Env = append(append(cmd.Environ(), isolatedEnv...), r.Env...)
+	// 止めたあと、子のプロセスがパイプを持ったまま残っても、待ちを打ち切る。
+	cmd.WaitDelay = waitDelay
+	killGroup(cmd)
 	return cmd, ctx, cancel
 }
 

@@ -77,6 +77,15 @@ func (u *user) create(branch string) applyRequest {
 			u.w.t.Fatalf("check と ar create の操作が違う：%+v %+v", c.Operations, ar.Operations)
 		}
 	}
+	// 作成の直後に読むと、worker がまだブランチを取り込んでいなければ、レビューの材料は snapshot_pending になる。
+	// 取り込んでいれば、操作の一覧が返る（design/api/writes.md の「書いた直後の読み」）。どちらかであることを確かめる。
+	if code, out := u.cli("", "ar", "material", ar.ID, "--repo", "q", "--json"); code == 0 {
+		if !strings.Contains(out, `"operations"`) {
+			u.w.t.Fatalf("作成の直後のレビューの材料に、操作の一覧がない：%s", out)
+		}
+	} else if !strings.Contains(out, "snapshot_pending") {
+		u.w.t.Fatalf("作成の直後のレビューの材料：%d %s", code, out)
+	}
 	// バックエンドは worker を起こさない。先頭のコミットのスナップショットは、worker が次の見回りで作る（design/api/writes.md）。
 	// そのあとのレビューと作業の一覧が、それを読めるように待つ。
 	u.w.eventually("worker が "+branch+" の先頭を取り込む", 30*time.Second, func() bool { return u.headReady(ar.ID, 1) })

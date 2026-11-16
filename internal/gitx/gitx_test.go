@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -258,9 +259,41 @@ func TestChangedFilesManyPaths(t *testing.T) {
 }
 
 // git の操作が時間の上限を超えたら、ErrTimeout を包んだ誤りを返す。
+// 応答しない HTTP のリモートでも、子のプロセス（git-remote-http）ごと止めて、上限のあとに戻る。
 func TestTimeout(t *testing.T) {
-	r := &Repo{Dir: t.TempDir(), Timeout: time.Nanosecond}
-	if _, err := r.LsRemote(context.Background(), t.TempDir()); !errors.Is(err, ErrTimeout) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	conns := make(chan net.Conn, 16)
+	defer func() {
+		ln.Close()
+		for {
+			select {
+			case c := <-conns:
+				c.Close()
+			default:
+				return
+			}
+		}
+	}()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conns <- c // 読みも書きもしない
+		}
+	}()
+	r := &Repo{Dir: t.TempDir(), Timeout: time.Second, Env: []string{"GIT_ALLOW_PROTOCOL=http"}}
+	start := time.Now()
+	_, err = r.LsRemote(context.Background(), "http://"+ln.Addr().String()+"/x.git")
+	if !errors.Is(err, ErrTimeout) {
 		t.Fatalf("got %v", err)
+	}
+	if d := time.Since(start); d > time.Second+waitDelay+2*time.Second {
+		t.Fatalf("上限のあと、戻るまでに %v かかった", d)
 	}
 }

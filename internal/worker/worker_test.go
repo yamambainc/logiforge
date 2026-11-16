@@ -187,7 +187,7 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	syncRepo(t, w)
 	after, _ := st.Get(ctx, store.CommitKey("q", m2))
 	if !bytes.Equal(before, after) {
-		t.Fatal("2 回目の巡回で、スナップショットが変わった")
+		t.Fatal("2 回目の見回りで、スナップショットが変わった")
 	}
 
 	// ブランチを消すと、履歴に消えたことを足す。
@@ -274,7 +274,7 @@ func TestBranchHistory(t *testing.T) {
 	}
 }
 
-// fetch のあと、「消えた」を書く前に止まっても、次の巡回で、消えたことを記録する。
+// fetch のあと、「消えた」を書く前に止まっても、次の見回りで、消えたことを記録する。
 func TestDeletedBranchSurvivesStop(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
@@ -415,7 +415,7 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 	}
 }
 
-// 取り込みが途中で止まっても、次の巡回で、latest の次のコミットから続ける。
+// 取り込みが途中で止まっても、次の見回りで、latest の次のコミットから続ける。
 func TestResumeFromLatest(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)

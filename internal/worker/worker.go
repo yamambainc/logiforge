@@ -43,6 +43,8 @@ type Config struct {
 	Interval time.Duration
 	// GitTimeout は、git の操作 1 回の時間の上限。0 なら 10 分。
 	GitTimeout time.Duration
+	// ListInterval は、repository の一覧を GitForge から読み直す間隔。0 なら 1 分。
+	ListInterval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
 	Now         func() time.Time
@@ -51,6 +53,12 @@ type Config struct {
 
 // DefaultInterval は、見回りの間隔の既定である。
 const DefaultInterval = time.Second
+
+// DefaultListInterval は、repository の一覧を読み直す間隔の既定である。一覧を読むのは GitForge の API なので、見回りごとには読まない。
+const DefaultListInterval = time.Minute
+
+// listTimeout は、repository の一覧を読む時間の上限である。
+const listTimeout = 30 * time.Second
 
 // DefaultGitTimeout は、git の操作 1 回の時間の上限の既定である。大きな repository の初めての clone でも終わるようにする。
 const DefaultGitTimeout = 10 * time.Minute
@@ -68,8 +76,10 @@ type Worker struct {
 	moved map[string]bool
 	// hasLatest は、latest があるとわかった repository である。repositories を書くのに使う。
 	hasLatest map[string]bool
-	// written は、最後に書いた repositories である。変わったときだけ書く。
-	written string
+	// written は、最後に書いた repositories である。変わったときだけ書く。書いていなければ nil。
+	written *string
+	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
+	repos []ports.Repository
 }
 
 // New は、worker を作る。
@@ -79,6 +89,9 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	}
 	if cfg.GitTimeout == 0 {
 		cfg.GitTimeout = DefaultGitTimeout
+	}
+	if cfg.ListInterval == 0 {
+		cfg.ListInterval = DefaultListInterval
 	}
 	if cfg.MaxFileSize == 0 {
 		cfg.MaxFileSize = tree.MaxArtifactSize
@@ -125,10 +138,16 @@ func (w *Worker) tryLock(repo string) func() {
 // 前の回の処理が終わっていない repository は、その回は飛ばす。repository の処理は待たない。
 // そのため、1 つの repository の長い取り込みが、ほかの repository の見回りとハートビートを遅らせない。
 func (w *Worker) Run(ctx context.Context) error {
-	t := time.NewTicker(w.cfg.Interval)
-	defer t.Stop()
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	// repository の一覧は、別の goroutine で、間隔ごとに読み直す。GitForge が止まっても、見回りとハートビートを止めないため。
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w.listLoop(ctx)
+	}()
+	t := time.NewTicker(w.cfg.Interval)
+	defer t.Stop()
 	for {
 		w.tick(ctx, &wg)
 		select {
@@ -144,11 +163,9 @@ func (w *Worker) tick(ctx context.Context, wg *sync.WaitGroup) {
 	if err := WriteHeartbeat(w.cfg.Dir, w.cfg.Now()); err != nil {
 		w.cfg.Log.Error("ハートビートを書けない", "err", err)
 	}
-	repos, err := w.src.ListRepositories(ctx)
-	if err != nil {
-		w.cfg.Log.Error("repository の一覧を読めない", "err", err)
-		return
-	}
+	w.mu.Lock()
+	repos := w.repos
+	w.mu.Unlock()
 	for _, r := range repos {
 		unlock := w.tryLock(r.Name)
 		if unlock == nil {
@@ -164,7 +181,36 @@ func (w *Worker) tick(ctx context.Context, wg *sync.WaitGroup) {
 	w.writeRepositories(ctx, repos)
 }
 
-// SyncAll は、すべての repository を処理し終えるまで待ってから、repositories を書く。テストと、起動の直後に使う。
+// listLoop は、repository の一覧を、すぐに 1 回と、そのあと ListInterval ごとに読み直す。読むたびに、時間の上限を付ける。
+// 読めなければ、前に読めた一覧を使い続ける。
+func (w *Worker) listLoop(ctx context.Context) {
+	t := time.NewTicker(w.cfg.ListInterval)
+	defer t.Stop()
+	for {
+		w.refreshRepos(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+func (w *Worker) refreshRepos(ctx context.Context) {
+	lctx, cancel := context.WithTimeout(ctx, listTimeout)
+	defer cancel()
+	repos, err := w.src.ListRepositories(lctx)
+	if err != nil {
+		w.cfg.Log.Error("repository の一覧を読めない。前に読めた一覧を使う", "err", err)
+		return
+	}
+	w.mu.Lock()
+	w.repos = repos
+	w.mu.Unlock()
+}
+
+// SyncAll は、repository の一覧を読み、すべての repository を処理し終えるまで待ってから、repositories を書く。
+// テストだけが使う。Run は、これを呼ばない（見回りでは、repository の処理を待たない）。
 func (w *Worker) SyncAll(ctx context.Context) {
 	repos, err := w.src.ListRepositories(ctx)
 	if err != nil {
@@ -212,7 +258,7 @@ func (w *Worker) writeRepositories(ctx context.Context, repos []ports.Repository
 	sort.Strings(names)
 	key := strings.Join(names, "\n")
 	w.mu.Lock()
-	same := w.written == key && names != nil
+	same := w.written != nil && *w.written == key
 	w.mu.Unlock()
 	if same {
 		return
@@ -222,7 +268,7 @@ func (w *Worker) writeRepositories(ctx context.Context, repos []ports.Repository
 		return
 	}
 	w.mu.Lock()
-	w.written = key
+	w.written = &key
 	w.mu.Unlock()
 }
 
@@ -236,7 +282,7 @@ func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
 }
 
-// Sync は、1 つの repository を巡回する（design/backend/worker.md の「すること」）。何度動かしても、結果は同じになる。
+// Sync は、1 つの repository を見回りする（design/backend/worker.md の「すること」）。何度動かしても、結果は同じになる。
 // repository のロックを取るまで待つ。
 func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	defer w.lock(r.Name)()

@@ -30,7 +30,7 @@ type Config struct {
 	WriterToken string
 	// WorkerLogin は、worker の読むだけのユーザーのログイン名。API の主体としては受け付けない。
 	WorkerLogin string
-	// HTTP は、使う HTTP のクライアント。nil なら http.DefaultClient。
+	// HTTP は、使う HTTP のクライアント。nil なら、時間の上限（30 秒）を付けたクライアント。
 	HTTP *http.Client
 	// MergeWait は、merge できるかを Forgejo が確かめ終わるまで待つ時間の上限。0 なら 15 秒。
 	MergeWait time.Duration
@@ -60,8 +60,11 @@ func (c *client) http() *http.Client {
 	if c.cfg.HTTP != nil {
 		return c.cfg.HTTP
 	}
-	return http.DefaultClient
+	return defaultHTTP
 }
+
+// defaultHTTP は、既定の HTTP のクライアントである。Forgejo が応答しないときに、呼ぶ側が止まったままにならないよう、時間の上限を付ける。
+var defaultHTTP = &http.Client{Timeout: 30 * time.Second}
 
 // do は、token で API を呼び、応答の JSON を out に読む。
 func (c *client) do(ctx context.Context, token, method, path string, in, out any) error {

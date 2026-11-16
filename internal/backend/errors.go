@@ -50,10 +50,8 @@ func AsError(err error) *Error {
 		return &Error{Code: CodeNotFound, Detail: "対象がない"}
 	case errors.Is(err, ports.ErrUnauthenticated):
 		return &Error{Code: CodeUnauthenticated, Detail: "トークンがない、正しくない、または Logiforge の主体でない"}
-	case errors.Is(err, ports.ErrSnapshotPending):
-		return &Error{Code: CodeSnapshotPending, Detail: "worker が、main の取り込みを続けている。少し待って送り直す"}
 	case errors.Is(err, ports.ErrUnavailable):
-		return &Error{Code: CodeUnavailable, Detail: "worker に頼めない。少し待って送り直す"}
+		return &Error{Code: CodeUnavailable, Detail: "GitForge の git を読めない。少し待って送り直す"}
 	}
 	return nil
 }
