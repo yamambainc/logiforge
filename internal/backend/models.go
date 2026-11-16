@@ -3,6 +3,7 @@ package backend
 import (
 	"time"
 
+	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
 )
 
@@ -161,6 +162,20 @@ type Review struct {
 	ReviewerSessionID string `json:"reviewer_session_id"`
 	PromptRevision    string `json:"prompt_revision,omitempty"`
 	Valid             bool   `json:"valid"`
+	// Reviewer は、レビューを書いた主体（GitForge の利用者の名前）。CreatedAt は、書いた時刻。GitForge から読めなければ空と null
+	Reviewer  string     `json:"reviewer"`
+	CreatedAt *time.Time `json:"created_at"`
+}
+
+// reviewOf は、GitForge のレビューを、API の応答の形にする。
+func reviewOf(r ports.Review, valid bool) Review {
+	out := Review{ID: r.ID, Kind: string(r.Kind), Commit: r.Revision, Body: r.Body, ReviewerSessionID: r.Session,
+		PromptRevision: r.PromptRevision, Valid: valid, Reviewer: r.Reviewer}
+	if !r.CreatedAt.IsZero() {
+		t := r.CreatedAt.UTC()
+		out.CreatedAt = &t
+	}
+	return out
 }
 
 // MergeFailure は、反映の失敗である。

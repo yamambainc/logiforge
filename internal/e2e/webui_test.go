@@ -15,7 +15,10 @@ import (
 // スナップショットツリーのビュワー（アウトライン、図、詳細のパネル、検索）までを通す。
 // LOGIFORGE_E2E_CHROME（Chrome のパス）と、ビルドした webui/dist/index.html がなければ飛ばす。
 // ブラウザの操作は webui/e2e/run.mjs（puppeteer-core）が行う。スクリーンショットは LOGIFORGE_E2E_OUT に書く。
-func TestWebUISignIn(t *testing.T) {
+// setupWebUI は、WebUI の E2E の用意をする。Chrome と webui/dist がなければ飛ばす。
+// Forgejo に、サインインに使う OAuth2 のアプリケーション（confidential client）を、admin で登録する。
+func setupWebUI(t *testing.T) (*world, string) {
+	t.Helper()
 	chrome := os.Getenv("LOGIFORGE_E2E_CHROME")
 	if chrome == "" {
 		t.Skip("LOGIFORGE_E2E_CHROME がない")
@@ -24,7 +27,6 @@ func TestWebUISignIn(t *testing.T) {
 		t.Skip("webui/dist がない（webui/ で npm run build）")
 	}
 	w := setupWith(t, func(w *world, serveURL string) []string {
-		// WebUI のサインインに使う OAuth2 のアプリケーション（confidential client）を、admin で登録する
 		var app struct {
 			ClientID     string `json:"client_id"`
 			ClientSecret string `json:"client_secret"`
@@ -35,6 +37,24 @@ func TestWebUISignIn(t *testing.T) {
 		return []string{"LOGIFORGE_OAUTH_CLIENT_ID=" + app.ClientID, "LOGIFORGE_OAUTH_CLIENT_SECRET=" + app.ClientSecret,
 			"LOGIFORGE_OAUTH_REDIRECT_URI=" + serveURL + "/oauth/callback"}
 	})
+	return w, chrome
+}
+
+// runBrowser は、webui/ で node の script を動かす。env は、足す環境変数。
+func runBrowser(t *testing.T, script string, env ...string) {
+	t.Helper()
+	cmd := exec.Command("node", script)
+	cmd.Dir = filepath.Join("..", "..", "webui")
+	cmd.Env = append(os.Environ(), env...)
+	b, err := cmd.CombinedOutput()
+	t.Logf("%s:\n%s", script, b)
+	if err != nil {
+		t.Fatalf("ブラウザの E2E（%s）が失敗した：%v", script, err)
+	}
+}
+
+func TestWebUISignIn(t *testing.T) {
+	w, chrome := setupWebUI(t)
 	// 利用者が repository を作り、スナップショットツリーが出るまで待つ
 	if st, b := w.call("alice", "POST", "/repositories", map[string]any{"name": "q", "statement": "新しい導線で、継続率が上がる"}); st != 201 {
 		t.Fatalf("repository の作成：%d %s", st, b)
@@ -139,15 +159,8 @@ func TestWebUISignIn(t *testing.T) {
 		out = t.TempDir()
 	}
 	login := w.login("alice")
-	cmd := exec.Command("node", "e2e/run.mjs")
-	cmd.Dir = filepath.Join("..", "..", "webui")
-	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
+	runBrowser(t, "e2e/run.mjs", "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
 		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "HR2="+hr2.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
-	b, err = cmd.CombinedOutput()
-	t.Logf("run.mjs:\n%s", b)
-	if err != nil {
-		t.Fatalf("ブラウザの E2E が失敗した：%v（スクリーンショットは %s）", err, out)
-	}
 	// ブラウザでの回答が、API で読める（添付のファイルとリンク）
 	var got struct {
 		State  string `json:"state"`

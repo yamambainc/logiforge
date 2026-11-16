@@ -554,3 +554,26 @@ func (b *Backend) GetCommitForTest(ctx context.Context, repo, sha string) ([]sna
 	c, err := b.Snap.Commit(ctx, repo, sha)
 	return c.Trailers, err
 }
+
+// レビューは、だれが（reviewer）と、いつ（created_at）を返す。並びは、GitForge から読んだ順（書いた順）のまま。
+func TestReviewAuthorAndTime(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	t1 := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	f.forge.reviews["apr_2"] = ports.Reviews{Items: []ports.Review{
+		{ID: "rev_1", Kind: ports.ReviewComment, Revision: f.head, Body: "質問", Reviewer: "bob", CreatedAt: t1},
+		{ID: "rev_2", Kind: ports.ReviewComment, Revision: f.head, Body: "答え", Reviewer: "agent", CreatedAt: t1.Add(time.Minute)},
+		{ID: "rev_3", Kind: ports.ReviewComment, Revision: f.head, Body: "時刻なし"},
+	}}
+	ar, err := f.b.GetApplyRequest(ctx, f.caller, "q", "apr_2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := ar.Reviews
+	if len(rs) != 3 || rs[0].Reviewer != "bob" || !rs[0].CreatedAt.Equal(t1) || rs[1].Reviewer != "agent" || !rs[1].CreatedAt.After(*rs[0].CreatedAt) {
+		t.Fatalf("レビュー：%+v", rs)
+	}
+	if rs[2].CreatedAt != nil {
+		t.Fatalf("時刻が読めないときは null：%+v", rs[2])
+	}
+}

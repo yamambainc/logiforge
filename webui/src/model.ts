@@ -237,8 +237,8 @@ const vLabel = (v: TruthValue) => (v === true ? '真' : v === false ? '偽' : '�
 
 export { vLabel };
 
-export type Filter = 'true' | 'false' | 'null' | 'leaf' | 'nr' | 'nr-work' | 'ar' | 'hr' | 'changed';
-export const FILTER_KEYS: Filter[] = ['true', 'false', 'null', 'leaf', 'nr', 'nr-work', 'ar', 'hr', 'changed'];
+export type Filter = 'true' | 'false' | 'null' | 'leaf' | 'nr' | 'nr-work' | 'cited' | 'ar' | 'hr' | 'changed';
+export const FILTER_KEYS: Filter[] = ['true', 'false', 'null', 'leaf', 'nr', 'nr-work', 'cited', 'ar', 'hr', 'changed'];
 
 /** 作業の対象になるノードか（internal/backend/work.go と同じ）：active で、open の AR が対象にしておらず（claimed）、open の人への依頼もない（waitingHuman） */
 const workable = (n: Node) => !n.inactive && n.open_apply_request_ids.length === 0 && n.open_human_request_ids.length === 0;
@@ -246,7 +246,8 @@ const workable = (n: Node) => !n.inactive && n.open_apply_request_ids.length ===
 /** 検索と絞り込みで、出すノードを決める（design/webui/snapshot-tree-viewer.md の「検索と絞り込み」）。
  * 検索は主文・タイトル・識別子の部分一致（大文字と小文字を区別しない）。値どうしは「または」、ほかとは「かつ」。
  * 検索も絞り込みもなければ include は null（すべて）。あれば、一致したノード（matches）と、その祖先（include）。 */
-export function filterNodes(ix: Index, query: string, filters: Set<Filter>, showInactive: boolean, changes: Map<string, Change> | null = null): { include: Set<string> | null; matches: string[] } {
+/** cited は、作業の「引用元が変化した検証結果」を持つ仮説（listWork の node_id）。ビュワーが読んで渡す */
+export function filterNodes(ix: Index, query: string, filters: Set<Filter>, showInactive: boolean, changes: Map<string, Change> | null = null, cited: Set<string> | null = null): { include: Set<string> | null; matches: string[] } {
   const q = query.trim().toLowerCase();
   if (q === '' && filters.size === 0) return { include: null, matches: [] };
   const valueF = (['true', 'false', 'null'] as const).filter((k) => filters.has(k));
@@ -260,6 +261,7 @@ export function filterNodes(ix: Index, query: string, filters: Set<Filter>, show
     if (filters.has('leaf') && !(n.node_type === 'hypothesis' && n.leaf && n.value === null && !n.valid_verdict_id && workable(n))) continue;
     if (filters.has('nr-work') && !(n.node_type === 'hypothesis' && n.needs_reconsideration && workable(n))) continue;
     if (filters.has('nr') && !(n.node_type === 'hypothesis' && n.needs_reconsideration)) continue;
+    if (filters.has('cited') && !cited?.has(n.id)) continue;
     if (filters.has('ar') && n.open_apply_request_ids.length === 0) continue;
     if (filters.has('hr') && n.open_human_request_ids.length === 0) continue;
     if (filters.has('changed') && !changes?.has(n.id)) continue;

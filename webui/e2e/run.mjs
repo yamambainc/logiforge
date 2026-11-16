@@ -76,7 +76,7 @@ try {
   await page.goto(BASE + '/r/made', { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('ul.counts a', { timeout: 30000 });
-  const leafCount = await page.evaluate(() => Number([...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).querySelector('b').textContent));
+  const leafCount = await page.evaluate(() => parseInt([...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).querySelector('b').textContent, 10));
   if (leafCount !== 1) throw new Error('作ったばかりの repository の未決の葉：' + leafCount);
   await page.evaluate(() => [...document.querySelectorAll('ul.counts a')].find((a) => a.textContent.includes('未決の葉')).click());
   await page.waitForFunction(() => new URL(location.href).searchParams.get('f') === 'leaf' && document.querySelector('.tree-head b'), { timeout: 30000 });
@@ -344,7 +344,7 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'ダッシュボード').click());
   await page.waitForFunction((r) => location.pathname === `/r/${r}`, { timeout: 5000 }, REPO);
   await page.waitForSelector('table.judge', { timeout: 20000 });
-  const counts = await page.$$eval('ul.counts li', (ls) => Object.fromEntries(ls.map((l) => [l.querySelector('span').textContent, Number(l.querySelector('b').textContent)])));
+  const counts = await page.$$eval('ul.counts li', (ls) => Object.fromEntries(ls.map((l) => [l.querySelector('span').textContent, parseInt(l.querySelector('b').textContent, 10)])));
   // 未決の葉は、open の AR が対象にしているので数えない（listWork の include_claimed）。レビュー待ちは、AR_MAIN
   if (counts['未決の葉'] !== 0 || !(counts['レビュー待ち'] >= 1)) throw new Error('着手できる作業の件数：' + JSON.stringify(counts));
   await page.screenshot({ path: OUT + '/dashboard.png' });
@@ -387,7 +387,7 @@ try {
     await page.goto(BASE + `/r/${REPO}`, { waitUntil: 'networkidle0' });
     await signedIn(page);
     await page.waitForSelector('ul.counts a', { timeout: 20000 });
-    const n = await page.evaluate((l) => Number([...document.querySelectorAll('ul.counts a')].find((a) => a.querySelector('span').textContent === l).querySelector('b').textContent), label);
+    const n = await page.evaluate((l) => parseInt([...document.querySelectorAll('ul.counts a')].find((a) => a.querySelector('span').textContent === l).querySelector('b').textContent, 10), label);
     await page.evaluate((l) => [...document.querySelectorAll('ul.counts a')].find((a) => a.querySelector('span').textContent === l).click(), label);
     return n;
   };
@@ -400,6 +400,17 @@ try {
   const nrShown = await page.evaluate(() => Number(document.querySelector('.tree-head b')?.textContent ?? '0'));
   if (nrShown !== nr) throw new Error(`要再検討：ダッシュボード ${nr}、ビュワー ${nrShown}`);
   if (!(await page.$$eval('.chip.on', (cs) => cs.map((c) => c.textContent))).includes('要再検討（作業）')) throw new Error('作業としての絞り込みだと分からない');
+  for (const [label, kind] of [['レビュー待ち', 'review_waiting'], ['修正待ち', 'fix_waiting']]) {
+    const n = await openCount(label);
+    await page.waitForFunction((k) => new URL(location.href).searchParams.get('work') === k && !document.querySelector('.list-pane .loading'), { timeout: 20000 }, kind);
+    const m = await page.$$eval('ul.items a', (as) => as.length);
+    if (m !== n) throw new Error(`${label}：ダッシュボード ${n}、一覧 ${m}`);
+  }
+  const cited = await openCount('引用元が変化した検証結果');
+  // 引用元の変化は、検証結果の数（作業の件数）で比べる。帯に、検証結果の数と仮説の数の両方を出す
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('f') === 'cited' && document.querySelector('.cited-items'), { timeout: 20000 });
+  const citedShown = await page.$eval('.cited-items', (b) => Number(b.textContent));
+  if (citedShown !== cited) throw new Error(`引用元が変化：ダッシュボード ${cited}、ビュワー ${citedShown}`);
   await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('.row', { timeout: 20000 });
@@ -444,6 +455,38 @@ try {
   await exp.waitForFunction(() => document.querySelector('.item-pane .note')?.textContent === 'この依頼は、もう回答されています。', { timeout: 10000 });
   if (await exp.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('not_open のあとも、書きかけが残る');
   await exp.close();
+
+  step('apply request と履歴：open の AR の差分と先頭のコミット。「反映したあとの姿を見る」で重ねたビュワーへ');
+  await page.goto(BASE + `/r/${REPO}/apply-requests`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('ul.items a', { timeout: 20000 });
+  await page.evaluate((id) => [...document.querySelectorAll('ul.items a')].find((a) => a.getAttribute('href') === `?id=${id}`).click(), AR_MAIN);
+  await page.waitForFunction(() => document.querySelector('ul.ops')?.textContent.includes('検証結果を出す（偽）'), { timeout: 20000 });
+  if ((await page.$$('ol.commits li')).length < 1) throw new Error('先頭のコミットが出ない');
+  await page.screenshot({ path: OUT + '/ar-open.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.item-pane .actions a')].find((a) => a.textContent === '反映したあとの姿を見る').click());
+  await page.waitForSelector('.banner.overlay', { timeout: 30000 });
+
+  step('反映済みの AR は、approve のレビューと「反映した時点を見る」');
+  await page.goto(BASE + `/r/${REPO}/apply-requests?state=merged`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('ul.items a', { timeout: 20000 });
+  await page.click('ul.items a');
+  await page.waitForFunction(() => document.querySelector('ol.reviews')?.textContent.includes('approve'), { timeout: 20000 });
+  await page.screenshot({ path: OUT + '/ar-merged.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.item-pane .actions a')].find((a) => a.textContent === '反映した時点を見る').click());
+  await page.waitForSelector('.banner.past', { timeout: 30000 });
+
+  step('main の履歴：コミットを押すと、その時点のビュワー');
+  await page.goto(BASE + `/r/${REPO}/apply-requests?view=commits`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('ul.items a', { timeout: 20000 });
+  await page.screenshot({ path: OUT + '/ar-commits.png' });
+  await page.evaluate(() => [...document.querySelectorAll('ul.items a')].at(-1).click());
+  await page.waitForSelector('.banner.past', { timeout: 30000 });
+  await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.row', { timeout: 20000 });
 
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
@@ -530,6 +573,15 @@ try {
   await mobile.screenshot({ path: OUT + '/hr-mobile.png' });
   await mobile.evaluate(() => [...document.querySelectorAll('.item-pane .back')][0].click());
   await mobile.waitForSelector('ul.items a', { timeout: 10000 });
+
+  step('モバイルの apply request と履歴：下のタブで移り、選ぶと画面全体で示す');
+  await mobile.evaluate(() => [...document.querySelectorAll('.bottom-nav a')].find((a) => a.textContent.includes('AR')).click());
+  await mobile.waitForSelector('ul.items a', { timeout: 20000 });
+  await mobile.tap('ul.items a');
+  await mobile.waitForSelector('ul.ops, .item-pane .dim', { timeout: 20000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('apply request が幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/ar-mobile.png' });
+  await mobile.evaluate(() => document.querySelector('.item-pane .back').click());
 
   step('モバイルで AR を重ねる：帯が出て、はみ出さない');
   await mobile.goto(BASE + `/r/${REPO}/tree?apply_request=${AR_MAIN}`, { waitUntil: 'networkidle0' });

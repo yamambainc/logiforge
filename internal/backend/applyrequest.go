@@ -121,8 +121,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		m.MergeFailures = append(m.MergeFailures, MergeFailure{Commit: f.Revision, Reason: f.Reason, Detail: f.Detail})
 	}
 	for _, r := range reviews.Items {
-		m.Reviews = append(m.Reviews, Review{ID: r.ID, Kind: string(r.Kind), Commit: r.Revision,
-			Body: r.Body, ReviewerSessionID: r.Session, PromptRevision: r.PromptRevision, Valid: r.Revision == d.current.Commit})
+		m.Reviews = append(m.Reviews, reviewOf(r, r.Revision == d.current.Commit))
 	}
 	if reviews.ChainBroken {
 		m.Warnings = append(m.Warnings, "レビューの鎖が切れている。反映できない。close して、同じブランチから作り直す")
