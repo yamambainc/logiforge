@@ -411,3 +411,7 @@ table.changes .before { color: var(--sub); text-decoration: line-through; }
   .sources { width: 100%; order: 3; }
   .pick { flex: 1; max-width: none; }
 }
+/* ここから見る（design/webui/snapshot-tree-viewer.md の「ここから見る」） */
+.scope { display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13px; flex-wrap: wrap; }
+.scope-item { display: inline-flex; align-items: center; gap: 6px; }
+.scope-btn { margin: 4px 0 8px; font-size: 13px; padding: 4px 10px; }

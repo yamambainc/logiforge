@@ -201,6 +201,41 @@ try {
   await page.waitForFunction(() => !document.querySelector('.banner') && !new URL(location.href).searchParams.get('commit'), { timeout: 30000 });
   await page.waitForSelector('.row', { timeout: 10000 });
 
+  step('ここから見る：ストーリーを根にして、その下だけを示す。パンくずで上へ戻る。戻るでも戻る');
+  await page.evaluate(() => [...document.querySelectorAll('.row')].find((r) => r.querySelector('.text').textContent === '招待の導線').click());
+  await page.waitForSelector('.scope-btn', { timeout: 10000 });
+  await page.click('.scope-btn');
+  await page.waitForSelector('.scope', { timeout: 5000 });
+  if (!new URL(page.url()).searchParams.get('root')) throw new Error('URL に root が入らない');
+  const scoped = await rowTexts(page);
+  if (scoped[0] !== '招待の導線' || scoped.some((t) => t.includes('新しい導線') || t === '広告の導線')) throw new Error('ここから見るで、根の部分木の外が出る：' + scoped.join(' / '));
+  if (!(await page.$eval('.tree-head .dim', (e) => e.textContent)).startsWith('3 ノード')) throw new Error('ここから見るのノード数が、部分木の数でない');
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/scope.png' });
+  await page.goBack();
+  await page.waitForFunction(() => !document.querySelector('.scope') && !new URL(location.href).searchParams.get('root'), { timeout: 5000 });
+  await page.goForward();
+  await page.waitForSelector('.scope', { timeout: 5000 });
+  await page.evaluate(() => [...document.querySelectorAll('.scope button')].find((b) => b.textContent === '全体を見る').click());
+  await page.waitForFunction(() => !document.querySelector('.scope'), { timeout: 5000 });
+
+  step('node= で図を開くと、そのノードのまわり（親・兄弟）を最初に示す');
+  await page.goto(BASE + `/r/${REPO}/tree?view=graph&node=${NODE_A}`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.gnode.sel', { timeout: 20000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const seen = await page.evaluate(() => {
+    const g = document.querySelector('.graph').getBoundingClientRect();
+    const inView = (el) => { const b = el.getBoundingClientRect(); return b.left >= g.left && b.right <= g.right && b.top >= g.top && b.bottom <= g.bottom; };
+    return [...document.querySelectorAll('.gnode')].filter(inView).map((e) => e.textContent);
+  });
+  if (!seen.some((t) => t.includes('成果物までの時間が半分')) || !seen.some((t) => t.includes('継続率も')) || !seen.some((t) => t.includes('招待の導線'))) throw new Error('まわりが画面にない：' + seen.join(' / '));
+  await detailLoaded(page);
+  await page.screenshot({ path: OUT + '/node-around.png' });
+  await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
+  await signedIn(page);
+  await page.waitForSelector('.row', { timeout: 20000 });
+
   step('検索すると、一致したノードと祖先だけが出る');
   await page.type('.search input', '継続率も');
   await page.waitForFunction(() => document.querySelector('.search .count')?.textContent === '1 / 1', { timeout: 5000 });

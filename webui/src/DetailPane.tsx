@@ -9,6 +9,7 @@ interface Props {
   at?: At; // getNode の時点（過去の時点、重ねた姿、消えるノードは比べた向き先）
   change?: Change | null; // この AR での変化
   unchecked?: boolean; // 重ねた AR の向き先が main でない
+  onScope?: () => void; // ここから見る（子のあるノードで、表示の根でないとき）
 }
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
@@ -16,7 +17,7 @@ const DETAIL_DELAY_MS = 150;
 const DETAIL_TIMEOUT_MS = 20_000;
 const IMAGE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change, unchecked }: Props) {
+export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change, unchecked, onScope }: Props) {
   const n = id ? ix.byId.get(id) : undefined;
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
@@ -75,6 +76,7 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
         <span className={`val big ${vc(n.value)}`}>{vLabel(n.value)}</span>
       </div>
       <h2 className="d-title">{textOf(n)}</h2>
+      {onScope && <button className="btn scope-btn" onClick={() => { onScope(); if (mobile) onClose(); }}>ここから見る</button>}
       <div className="d-tags">
         {n.inactive && <span className="tag t-inactive">inactive</span>}
         {isH && n.needs_reconsideration && <span className="tag t-nr">要再検討</span>}
