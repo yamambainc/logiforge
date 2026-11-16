@@ -70,6 +70,9 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<'outline' | 'graph' | '3d'>((['graph', '3d'].includes(params.get('view') ?? '') ? params.get('view') : 'outline') as 'outline' | 'graph' | '3d');
   const [retry3d, setRetry3d] = useState(0);
+  // 利用者が開いたノードを変えたか（変えたあとは、縦にしても段を開かない）
+  const touched = useRef(false);
+  const userSetExpanded = (e: Set<string>) => { touched.current = true; setExpanded(e); };
   const [vertical, setVerticalRaw] = useState(params.get('orient') === 'v');
   // 縦にしたら、画面の高さに入る段まで開く（デスクトップ 4 段、モバイル 3 段）
   const openLevels = useCallback((ixx: Index) => {
@@ -172,7 +175,7 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, matches]);
 
-  const toggle = useCallback((id: string) => setExpanded((e) => { const s = new Set(e); if (s.has(id)) s.delete(id); else s.add(id); return s; }), []);
+  const toggle = useCallback((id: string) => (touched.current = true, setExpanded((e) => { const s = new Set(e); if (s.has(id)) s.delete(id); else s.add(id); return s; })), []);
   const reveal = useCallback((id: string) => {
     if (!ix) return;
     setExpanded((e) => { const s = new Set(e); for (const a of ancestors(ix, id)) s.add(a); return s; });
@@ -195,7 +198,7 @@ export function App() {
   }, []);
 
   if (!main || !ix) return <div className="loading">読み込み中…</div>;
-  const setVertical = (v: boolean) => { setVerticalRaw(v); if (v) openLevels(ix); };
+  const setVertical = (v: boolean) => { setVerticalRaw(v); if (v && !touched.current) openLevels(ix); };
 
   const total = ix.nodes.length;
   const graphHead = (
@@ -212,8 +215,8 @@ export function App() {
                   </span>}
                   {include === null && (
                     <>
-                      <button className="link" onClick={() => setExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
-                      <button className="link" onClick={() => setExpanded(new Set([ix.rootId]))}>閉じる</button>
+                      <button className="link" onClick={() => userSetExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
+                      <button className="link" onClick={() => userSetExpanded(new Set([ix.rootId]))}>閉じる</button>
                     </>
                   )}
                 </div>
@@ -406,8 +409,8 @@ export function App() {
             matches={matchSet}
             changes={changes}
             filtered={include !== null}
-            onExpandAll={() => setExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}
-            onCollapseAll={() => setExpanded(new Set([ix.rootId]))}
+            onExpandAll={() => userSetExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}
+            onCollapseAll={() => userSetExpanded(new Set([ix.rootId]))}
             summary={{ total, rootValue: root.value }}
           />
           )
