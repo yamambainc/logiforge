@@ -137,3 +137,25 @@ func TestTargetNotMain(t *testing.T) {
 		t.Fatalf("approve し直し：%+v %v", res.Value.ApplyRequest, err)
 	}
 }
+
+// レビューで snapshot_pending を返すときは、GitForge にレビューを記録していない（design/api/writes.md）。
+// そのため、CLI が送り直しても、二重に記録しない。
+func TestReviewSnapshotPendingWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	// worker が取り込んでいない、新しい先頭のコミットを push する。
+	f.r.git("checkout", "--quiet", "b")
+	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("足した\n"))
+	head := f.r.commit("版 2\n\nLogiforge-Session-Id: s2")
+	f.forge.ar("apr_2").HeadRevision = head
+	before := len(f.forge.reviews["apr_2"].Items)
+	for _, kind := range []string{"comment", "approve"} {
+		_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: kind, Commit: head, Session: "s9", PromptRevision: "p"})
+		if code(err) != CodeSnapshotPending {
+			t.Fatalf("%s：%v", kind, err)
+		}
+	}
+	if got := len(f.forge.reviews["apr_2"].Items); got != before {
+		t.Fatalf("snapshot_pending なのに、レビューを記録した：%d → %d", before, got)
+	}
+}
