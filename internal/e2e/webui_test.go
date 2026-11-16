@@ -61,6 +61,10 @@ func TestWebUISignIn(t *testing.T) {
 		t.Fatalf("WebUI の CSP がない：%v", res.Header)
 	}
 
+	// organization に入っていない Forgejo のユーザー（サインインはできるが、Logiforge の主体ではない）
+	outsider := w.org + "outsider"
+	w.forgejoCall(w.admin, "POST", "/admin/users", map[string]any{"username": outsider, "email": outsider + "@example.com", "password": "pw-" + outsider + "-12345", "must_change_password": false}, nil, 201)
+
 	out := os.Getenv("LOGIFORGE_E2E_OUT")
 	if out == "" {
 		out = t.TempDir()
@@ -68,7 +72,8 @@ func TestWebUISignIn(t *testing.T) {
 	login := w.login("alice")
 	cmd := exec.Command("node", "e2e/run.mjs")
 	cmd.Dir = filepath.Join("..", "..", "webui")
-	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=webui")
+	cmd.Env = append(os.Environ(), "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=webui",
+		"OUTSIDER_LOGIN="+outsider, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	b, err = cmd.CombinedOutput()
 	t.Logf("run.mjs:\n%s", b)
 	if err != nil {

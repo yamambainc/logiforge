@@ -15,13 +15,16 @@ export type AuthState =
   | { kind: 'signed-in'; token: string; expiresAt: number }
   | { kind: 'signed-out'; reason: SignedOutReason };
 
-export type SignedOutReason = 'signed-out' | 'denied' | 'state-mismatch' | 'exchange-failed' | 'not-member' | 'not-configured';
+export type SignedOutReason = 'signed-out' | 'denied' | 'state-mismatch' | 'exchange-failed' | 'unavailable' | 'not-member' | 'not-configured';
 
 const PENDING = 'lf-oauth:'; // + state → { verifier, returnTo }
 const SIGNED_OUT = 'lf-signed-out';
 
 let state: AuthState = { kind: 'starting' };
 let verified = false; // このアクセストークンで、API が 1 度は成功したか
+let retryTo: string | null = null; // サインインの画面のボタンで戻る先（コールバックで分かった、もとの URL）
+// 期限のどれだけ前に authorize に行くか（送っている途中の要求が 401 にならないように）
+export const EXPIRY_MARGIN_MS = 60_000;
 const listeners = new Set<() => void>();
 
 export const getAuth = () => state;
@@ -86,6 +89,8 @@ export async function signIn(returnTo = location.pathname + location.search): Pr
 /** 起動したとき。コールバックなら交換し、トークンがなければ authorize に行く。 */
 export async function start(): Promise<void> {
   if (location.pathname === '/oauth/callback') { await callback(); return; }
+  // authorize に行ったまま戻らなかったときの、使われずに残ったものを消す
+  clearPending();
   if (sessionStorage.getItem(SIGNED_OUT)) { set({ kind: 'signed-out', reason: 'signed-out' }); return; }
   await signIn();
 }
@@ -96,15 +101,17 @@ async function callback(): Promise<void> {
   // 交換の前に、URL から code と state を消す（履歴や画面の共有に残さない）
   history.replaceState(null, '', '/oauth/callback');
   const pending = st ? sessionStorage.getItem(PENDING + st) : null;
-  if (st) sessionStorage.removeItem(PENDING + st);
+  clearPending();
+  const parsed = pending ? (JSON.parse(pending) as { verifier: string; returnTo: string }) : null;
+  retryTo = parsed ? safeReturnTo(parsed.returnTo) : null;
   // 自動で行き直さない（行き来が止まらなくなるため）
   if (error) { set({ kind: 'signed-out', reason: 'denied' }); return; }
-  if (!code || !pending) { set({ kind: 'signed-out', reason: 'state-mismatch' }); return; }
-  const { verifier, returnTo } = JSON.parse(pending) as { verifier: string; returnTo: string };
+  if (!code || !parsed) { set({ kind: 'signed-out', reason: 'state-mismatch' }); return; }
+  const { verifier, returnTo } = parsed;
   const r = await fetch('/v1/oauth/token', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, code_verifier: verifier }),
   });
-  if (!r.ok) { set({ kind: 'signed-out', reason: 'exchange-failed' }); return; }
+  if (!r.ok) { set({ kind: 'signed-out', reason: r.status === 503 ? 'unavailable' : 'exchange-failed' }); return; }
   const t = (await r.json()) as { access_token: string; expires_in: number };
   verified = false;
   history.replaceState(null, '', safeReturnTo(returnTo));
@@ -117,7 +124,7 @@ function scheduleExpiry() {
   clearTimeout(expiryTimer);
   if (state.kind !== 'signed-in') return;
   // 期限が来たら、サインインの画面を出さずに authorize に行き、今の URL に戻る
-  expiryTimer = setTimeout(() => { void reauthorize(); }, Math.max(0, state.expiresAt - Date.now()));
+  expiryTimer = setTimeout(() => { void reauthorize(); }, Math.max(0, state.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
 }
 
 async function reauthorize() {
@@ -140,6 +147,19 @@ export function onUnauthorized() {
   if (verified) { void reauthorize(); return; }
   clearTimeout(expiryTimer);
   set({ kind: 'signed-out', reason: 'not-member' });
+}
+
+function clearPending() {
+  for (let i = sessionStorage.length - 1; i >= 0; i--) {
+    const k = sessionStorage.key(i);
+    if (k?.startsWith(PENDING)) sessionStorage.removeItem(k);
+  }
+}
+
+/** サインインの画面のボタンで戻る先。コールバックで分かったもとの URL、なければ今の URL。 */
+export function retryTarget(): string {
+  if (retryTo) return retryTo;
+  return location.pathname === '/oauth/callback' ? '/' : safeReturnTo(location.pathname + location.search);
 }
 
 export function forgejoOrigin(): string | null {

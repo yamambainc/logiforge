@@ -1,10 +1,11 @@
-import { forgejoOrigin, signIn, type SignedOutReason } from '../auth';
+import { forgejoOrigin, retryTarget, signIn, type SignedOutReason } from '../auth';
 
 const MESSAGES: Record<SignedOutReason, string> = {
   'signed-out': 'サインアウトしました。',
   denied: 'Forgejo で、サインインが許可されませんでした。',
   'state-mismatch': 'サインインの確かめに失敗しました。もう一度サインインしてください。',
   'exchange-failed': 'サインインのコードを交換できませんでした。もう一度サインインしてください。',
+  unavailable: 'Forgejo につながりませんでした。しばらくしてから、もう一度サインインしてください。',
   'not-member': 'Logiforge の organization に入っていません。管理者に、organization に入れてもらってください。',
   'not-configured': 'このサーバでは、WebUI のサインインが設定されていません（LOGIFORGE_OAUTH_*）。',
 };
@@ -18,7 +19,7 @@ export function SignIn({ reason }: { reason: SignedOutReason }) {
         <div className="brand big">Logiforge</div>
         <p className="signin-msg">{MESSAGES[reason]}</p>
         {reason !== 'not-configured' && (
-          <button className="btn primary" onClick={() => void signIn('/')}>Forgejo でサインイン</button>
+          <button className="btn primary" onClick={() => void signIn(retryTarget())}>Forgejo でサインイン</button>
         )}
         {reason === 'signed-out' && forgejo && (
           <p className="dim small">

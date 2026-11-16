@@ -17,7 +17,9 @@ import (
 // OAuth は、WebUI のサインインの中継の設定である（design/webui/oauth-relay.md）。
 // BE は、Forgejo の OAuth2 の認可コードを、client secret を足してアクセストークンに交換する。状態は持たない。
 type OAuth struct {
-	ForgejoURL   string // Forgejo の URL。authorize とトークンのエンドポイントは、ここから作る
+	ForgejoURL string // BE から Forgejo への URL。トークンのエンドポイントは、ここから作る
+	// PublicURL は、ブラウザから Forgejo への URL。authorize の URL は、ここから作る。空なら ForgejoURL を使う。
+	PublicURL    string
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string // Forgejo に登録した redirect_uri。完全に一致させる
@@ -25,18 +27,25 @@ type OAuth struct {
 	Client *http.Client
 }
 
-// OAuthScope は、WebUI が求めるスコープである。BE は、利用者のトークンで主体と repository を読めるかを確かめるだけなので、読むだけでよい（design/webui/auth.md）。
-const OAuthScope = "read:user read:organization read:repository"
+// OAuthScope は、WebUI が求めるスコープである。BE は、利用者のトークンで主体を確かめるだけなので、これだけでよい（design/webui/auth.md）。
+const OAuthScope = "read:user read:organization"
 
 // oauthBodyLimit は、交換の要求の本文の上限である（開いたままの代理にしないため）。
 const oauthBodyLimit = 4 << 10
 
 func (o *OAuth) base() string { return strings.TrimRight(o.ForgejoURL, "/") }
 
+func (o *OAuth) public() string {
+	if o.PublicURL != "" {
+		return strings.TrimRight(o.PublicURL, "/")
+	}
+	return o.base()
+}
+
 // config は、GET /v1/oauth/config である。authorize の URL など、WebUI がサインインを始めるのに要るものを返す。
 func (o *OAuth) config(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
-		"authorize_url": o.base() + "/login/oauth/authorize",
+		"authorize_url": o.public() + "/login/oauth/authorize",
 		"client_id":     o.ClientID,
 		"redirect_uri":  o.RedirectURI,
 		"scope":         OAuthScope,
@@ -71,7 +80,12 @@ func (o *OAuth) token(w http.ResponseWriter, r *http.Request) {
 	out, err := o.exchange(r.Context(), form)
 	if err != nil {
 		// code やトークンは、ログにもエラーにも書かない。
-		writeProblem(w, &backend.Error{Code: backend.CodeUnauthenticated, Detail: "サインインのコードを交換できなかった"})
+		if errors.Is(err, errExchange) {
+			writeProblem(w, &backend.Error{Code: backend.CodeUnauthenticated, Detail: "サインインのコードを交換できなかった"})
+			return
+		}
+		// Forgejo につながらない、または 5xx。少し待って送り直す
+		writeProblem(w, &backend.Error{Code: backend.CodeUnavailable, Detail: "Forgejo につながらない"})
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -83,7 +97,10 @@ type oauthToken struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-var errExchange = errors.New("交換を拒まれた")
+var (
+	errExchange    = errors.New("交換を拒まれた")
+	errUnavailable = errors.New("Forgejo が 5xx を返した")
+)
 
 func (o *OAuth) exchange(ctx context.Context, form url.Values) (oauthToken, error) {
 	client := o.Client
@@ -101,6 +118,9 @@ func (o *OAuth) exchange(ctx context.Context, form url.Values) (oauthToken, erro
 		return oauthToken{}, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode >= 500 {
+		return oauthToken{}, errUnavailable
+	}
 	if res.StatusCode != http.StatusOK {
 		return oauthToken{}, errExchange
 	}

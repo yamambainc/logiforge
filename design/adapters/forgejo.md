@@ -94,3 +94,5 @@ Forgejo を使う構成では、[認証](../backend/ports/authentication.md) の
   - `client`：それ以外の、organization の人とエージェント
   - organization に属さない主体は、`unauthenticated` で受け付けない。
 - すべての主体が、organization のすべての repository を読める。
+  - そのため、repository を読めるかの確かめ（[認証](../backend/ports/authentication.md)）では、主体のトークンで Forgejo を呼ばない。主体が organization にいることは、主体を確かめるときに確かめている。
+  - なぜ：利用者のトークンに `read:repository` を求めずに済むから（[サインインのスコープ](../webui/auth.md#スコープ)）。

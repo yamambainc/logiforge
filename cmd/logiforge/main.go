@@ -224,7 +224,7 @@ func oauthConfig(forgejoURL string) (*api.OAuth, error) {
 	if err := envs(map[string]*string{names[0]: &id, names[1]: &secret, names[2]: &redirect}); err != nil {
 		return nil, fmt.Errorf("WebUI のサインインには、%s の 3 つが要る：%w", strings.Join(names, "、"), err)
 	}
-	return &api.OAuth{ForgejoURL: forgejoURL, ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
+	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
 }
 
 // keyring は、記録の MAC の鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=鍵,…」で、最初のものを書くときに使う。
@@ -257,6 +257,7 @@ func keyring(v string) (pullreq.Keyring, error) {
 //	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
 //	LOGIFORGE_OAUTH_CLIENT_ID、LOGIFORGE_OAUTH_CLIENT_SECRET、LOGIFORGE_OAUTH_REDIRECT_URI
 //	                           WebUI のサインイン（Forgejo の OAuth2）。3 つともなければ、サインインの中継を動かさない
+//	LOGIFORGE_FORGEJO_PUBLIC_URL  ブラウザから Forgejo への URL（authorize に使う）。既定は LOGIFORGE_FORGEJO_URL
 func runServe(ctx context.Context) error {
 	var storeDir, url, org, team, writer, writerToken, workerLogin, workerToken, keys string
 	if err := envs(map[string]*string{

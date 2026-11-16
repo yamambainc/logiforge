@@ -21,11 +21,10 @@ BE が主体を確かめる方法は、[認証](../backend/ports/authentication.
 
 ## スコープ
 
-- スコープは、`read:user`、`read:organization`、`read:repository` にする。どれも読むだけである。
-  - なぜ：BE は、利用者のトークンで、主体を確かめ（`GET /user`、`GET /user/teams`）、repository を読めるかを確かめる（`GET /repos/{owner}/{repo}`。[認証](../backend/ports/authentication.md)）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
-  - `read:repository` がないと、repository を読めるかの確かめが `403` になり、repository の一覧が空になる（実装の E2E で確かめた）。
-  - `read:repository` を足しても、盗まれたときに増えるものは小さい。同じトークンで、Logiforge の API からスナップショットツリーをすでに読めるからである。
-  - Forgejo 17 で、このスコープのトークンでは、書き込み（`POST /user/repos` など）が `403` になることを確かめた。
+- スコープは、`read:user` と `read:organization` だけにする。
+  - なぜ：BE は、利用者のトークンを、主体を確かめるのにだけ使う（`GET /user`、`GET /user/teams`）。repository を読めるかは、主体が organization にいることで決まり、利用者のトークンで Forgejo を呼ばない（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
+  - なぜ `read:repository` を求めないか：そのスコープは、利用者が Forgejo で読めるすべての repository（個人の private や、ほかの organization のもの）の中身まで読めるからである。盗まれたときに読まれる範囲を、Logiforge の外に広げない。
+  - Forgejo 17 で、このスコープのトークンで `GET /user` と `GET /user/teams` が通り、書き込みと repository の読みは `403` になることを確かめた。
 
 ## サインインの流れ
 

@@ -221,6 +221,6 @@ type Principal struct {
 type Authenticator interface {
 	// Authenticate は、トークンの主体を返す。Logiforge の主体でなければ ErrUnauthenticated を返す。
 	Authenticate(ctx context.Context, token string) (Principal, error)
-	// CanRead は、主体が repository を読めるかを返す。
+	// CanRead は、Authenticate を通った主体が、repository を読めるかを返す。
 	CanRead(ctx context.Context, token, repo string) (bool, error)
 }

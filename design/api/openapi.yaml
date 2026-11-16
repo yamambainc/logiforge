@@ -53,7 +53,7 @@ paths:
                   authorize_url: { type: string, format: uri }
                   client_id: { type: string }
                   redirect_uri: { type: string, format: uri }
-                  scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization read:repository）' }
+                  scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization）' }
   /oauth/token:
     post:
       tags: [oauth]

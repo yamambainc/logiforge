@@ -96,6 +96,26 @@ func TestOAuthTokenRelay(t *testing.T) {
 	}
 }
 
+func TestOAuthPublicURL(t *testing.T) {
+	h := serverWith(&OAuth{ForgejoURL: "http://forgejo:3000", PublicURL: "https://forge.example", ClientID: "c", ClientSecret: "s", RedirectURI: "r"}, nil)
+	rec := do(h, "GET", "/v1/oauth/config", "", "")
+	if !strings.Contains(rec.Body.String(), `"authorize_url":"https://forge.example/login/oauth/authorize"`) {
+		t.Fatalf("authorize の URL はブラウザ向けの URL から作る：%s", rec.Body)
+	}
+}
+
+func TestOAuthTokenUnavailable(t *testing.T) {
+	fj, _ := fakeForgejo(t, 502)
+	h := serverWith(&OAuth{ForgejoURL: fj.URL, ClientID: "c", ClientSecret: "s", RedirectURI: "r"}, nil)
+	if rec := do(h, "POST", "/v1/oauth/token", "application/json", `{"code":"c","code_verifier":"v"}`); rec.Code != 503 {
+		t.Fatalf("Forgejo の 5xx は 503：%d", rec.Code)
+	}
+	fj.Close()
+	if rec := do(h, "POST", "/v1/oauth/token", "application/json", `{"code":"c","code_verifier":"v"}`); rec.Code != 503 {
+		t.Fatalf("Forgejo につながらなければ 503：%d", rec.Code)
+	}
+}
+
 func TestOAuthTokenRejects(t *testing.T) {
 	fj, got := fakeForgejo(t, 400)
 	h := serverWith(&OAuth{ForgejoURL: fj.URL, ClientID: "cid", ClientSecret: "sec", RedirectURI: "r"}, nil)
@@ -178,6 +198,17 @@ func TestGzip(t *testing.T) {
 	// API の JSON（ここでは 404 の problem+json）も gzip にする
 	if rec := do(h, "GET", "/v1/nothing", "", "", "Accept-Encoding", "gzip"); rec.Header().Get("Content-Encoding") != "gzip" {
 		t.Fatalf("API の JSON を gzip にしていない：%v", rec.Header())
+	}
+}
+
+func TestGzipSkipsNoBody(t *testing.T) {
+	h := withGzip(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	rec := do(h, "GET", "/", "", "", "Accept-Encoding", "gzip")
+	if rec.Header().Get("Content-Encoding") != "" || rec.Body.Len() != 0 {
+		t.Fatalf("304 に gzip を付けた：%v %d", rec.Header(), rec.Body.Len())
 	}
 }
 

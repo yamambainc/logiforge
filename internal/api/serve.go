@@ -152,6 +152,10 @@ func (g *gzipWriter) decide() {
 }
 
 func (g *gzipWriter) WriteHeader(status int) {
+	// 本文を持てない応答（1xx、204、304）は、gzip にしない
+	if status < 200 || status == http.StatusNoContent || status == http.StatusNotModified {
+		g.decided = true
+	}
 	g.decide()
 	g.ResponseWriter.WriteHeader(status)
 }
