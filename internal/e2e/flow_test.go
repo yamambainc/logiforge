@@ -77,6 +77,9 @@ func (u *user) create(branch string) applyRequest {
 			u.w.t.Fatalf("check と ar create の操作が違う：%+v %+v", c.Operations, ar.Operations)
 		}
 	}
+	// バックエンドは worker を起こさない。先頭のコミットのスナップショットは、worker が次の見回りで作る（design/api/writes.md）。
+	// そのあとのレビューと作業の一覧が、それを読めるように待つ。
+	u.w.eventually("worker が "+branch+" の先頭を取り込む", 30*time.Second, func() bool { return u.headReady(ar.ID, 1) })
 	return ar
 }
 

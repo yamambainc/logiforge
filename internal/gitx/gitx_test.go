@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
 	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
@@ -253,5 +254,13 @@ func TestChangedFilesManyPaths(t *testing.T) {
 	}
 	if f := files["tree/d0001/a-long-file-name-to-make-the-argument-list-long.md"]; string(f.Content) != "x" || f.Size != 1 {
 		t.Fatalf("file: %+v", f)
+	}
+}
+
+// git の操作が時間の上限を超えたら、ErrTimeout を包んだ誤りを返す。
+func TestTimeout(t *testing.T) {
+	r := &Repo{Dir: t.TempDir(), Timeout: time.Nanosecond}
+	if _, err := r.LsRemote(context.Background(), t.TempDir()); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("got %v", err)
 	}
 }

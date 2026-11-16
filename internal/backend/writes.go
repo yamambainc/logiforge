@@ -61,9 +61,9 @@ func (b *Backend) requestID(prefix, repo string, c Caller, key string) (string, 
 	return ids.FromKey(prefix, repo, c.Principal.Login, key), nil
 }
 
-// waitLatest は、worker を起こし、done が真になるまで、上限つきで待つ。上限を過ぎたら false を返す。
+// waitLatest は、done が真になるまで、上限つきで待つ。上限を過ぎたら false を返す。
+// worker は起こさない。worker が見回りで git を見て、latest を進める（design/api/writes.md の「書いた直後の読み」）。
 func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest string) bool) bool {
-	b.Worker.Wake(ctx, repo)
 	timeout := b.WaitTimeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
@@ -286,8 +286,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return out, err
 	}
-	// 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker に、ブランチを取り込ませる。
-	b.Worker.Wake(ctx, repo)
+	// 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker は、次の見回りでブランチを取り込む。
 	v, err := b.GetApplyRequest(ctx, c, repo, id)
 	if err == nil && len(v.Operations) == 0 {
 		// worker が、まだブランチのスナップショットを作っていない。操作の一覧は、いま検査した結果から返す。

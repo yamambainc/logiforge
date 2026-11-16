@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -107,7 +108,18 @@ func TestE2EEdges(t *testing.T) {
 			Commit string `json:"commit"`
 		}
 		agent.must(&before, "tree", "view")
+		// 動いている worker のハートビートは新しい。worker-health は 0 で終わる。
+		health := func() error {
+			cmd := exec.Command(bin, "worker-health")
+			cmd.Env = append(os.Environ(), w.workerEnv...)
+			return cmd.Run()
+		}
+		if err := health(); err != nil {
+			t.Fatalf("動いている worker の worker-health：%v", err)
+		}
 		w.stopWorker()
+		// 止まると、見回りの間隔（1 秒）の 10 倍のあとに、0 以外で終わる。
+		w.eventually("worker-health が止まったことを返す", 30*time.Second, func() bool { return health() != nil })
 		agent.session = "s-a4"
 		agent.branch("s")
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("s.md", "止まっている間\n"))

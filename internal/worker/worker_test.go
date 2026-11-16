@@ -3,11 +3,8 @@ package worker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -170,15 +167,9 @@ func TestSyncMainAndOverlap(t *testing.T) {
 	if got, _ := store.GetMainIndex(ctx, st, "q", 2); got != m1 {
 		t.Fatalf("main の並びの索引 2：%s", got)
 	}
-	if err := w.BuildTree(ctx, "q", m1); err != nil {
-		t.Fatal(err)
-	}
 	s1m, err := store.GetMain(ctx, st, "q", m1)
 	if err != nil || s1m.SnapshotTree.Nodes["h-3333333333"].LastChanged.Number != 2 {
 		t.Fatalf("m1 のスナップショットツリー：%+v %v", s1m, err)
-	}
-	if err := w.BuildTree(ctx, "q", strings.Repeat("b", 40)); !errors.Is(err, ports.ErrNotFound) {
-		t.Fatalf("記録のないコミット：%v", err)
 	}
 	s2m, err := store.GetMain(ctx, st, "q", m2)
 	if err != nil {
@@ -254,58 +245,16 @@ func TestOverlapUnchecked(t *testing.T) {
 	}
 }
 
-func TestBranchHistoryAndInternalAPI(t *testing.T) {
+func TestBranchHistory(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
 	r.git("checkout", "--quiet", "-b", "feature/a")
 	r.write(h2+"/background.md", []byte("一\n"))
 	v1 := r.commit("v1")
 	w, st := newWorker(t, r)
-	srv := httptest.NewServer(w.Handler("secret"))
-	defer srv.Close()
-
-	post := func(key, path string, body any) *http.Response {
-		b, _ := json.Marshal(body)
-		req, _ := http.NewRequest("POST", srv.URL+path, bytes.NewReader(b))
-		if key != "" {
-			req.Header.Set("Authorization", "Bearer "+key)
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return res
-	}
-	// ヘルスチェックは、鍵なしで 200 を返す。
-	if res, err := http.Get(srv.URL + PathHealthz); err != nil || res.StatusCode != 200 {
-		t.Fatalf("healthz: %v %v", res, err)
-	}
-	// 巡回も取り込みも、間隔の数倍のあいだ進まなければ、503 を返す。
-	w.progress.Store(time.Now().Add(-stallFactor*w.cfg.Interval - time.Second).UnixNano())
-	if res, err := http.Get(srv.URL + PathHealthz); err != nil || res.StatusCode != 503 {
-		t.Fatalf("止まっているのに healthz が 503 でない：%v %v", res, err)
-	}
-	w.touch()
-	if res := post("", PathWake, WakeRequest{"q"}); res.StatusCode != 401 {
-		t.Fatalf("鍵がないのに受け付けた：%d", res.StatusCode)
-	}
-	mainSHA := r.git("rev-parse", "main")
-	if res := post("wrong", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 401 {
-		t.Fatalf("鍵が違うのに受け付けた：%d", res.StatusCode)
-	}
-	// 巡回の前は、記録がないので、見つからない。
-	if res := post("secret", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 404 {
-		t.Fatalf("記録のないコミット：%d", res.StatusCode)
-	}
 	syncRepo(t, w)
 	if _, err := store.GetBranch(ctx, st, "q", v1); err != nil {
 		t.Fatal(err)
-	}
-	if res := post("secret", PathBuildTree, BuildTreeRequest{"q", mainSHA}); res.StatusCode != 204 {
-		t.Fatalf("build-tree: %d", res.StatusCode)
-	}
-	if res := post("secret", PathWake, WakeRequest{"q"}); res.StatusCode != 202 {
-		t.Fatalf("wake: %d", res.StatusCode)
 	}
 
 	// 先頭が変わるたびに、履歴に足す。同じ先頭に戻っても足す（A → B → A）。
@@ -525,5 +474,54 @@ func TestResumeFromLatest(t *testing.T) {
 	}
 	if c, _ := store.GetCommit(ctx, st, "q", before); !contains(rules(c.Warnings), tree.RuleOutsideTree) {
 		t.Fatalf("README.md を足したコミットの警告：%v", c.Warnings)
+	}
+}
+
+// Run は、見回りの間隔ごとにハートビートを書き、repository の処理を待たずに次の見回りを始める。
+// 前の回の処理が終わっていない repository は、その回は飛ばす。
+func TestRunHeartbeatAndSkipBusy(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	st := &store.Dir{Root: t.TempDir()}
+	dir := t.TempDir()
+	w := New(Config{Dir: dir, Interval: 10 * time.Millisecond}, source{r.dir}, st)
+	// repository の処理を、ロックを持ったまま止めておく（長い取り込みの代わり）。
+	unlock := w.tryLock("q")
+	if unlock == nil {
+		t.Fatal("ロックを取れない")
+	}
+	rctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { _ = w.Run(rctx); close(done) }()
+	time.Sleep(100 * time.Millisecond)
+	// 処理中の repository は飛ばすが、ハートビートは書き続ける。
+	if err := CheckHeartbeat(dir, 10*time.Millisecond, time.Now()); err != nil {
+		t.Fatalf("ハートビート：%v", err)
+	}
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != "" {
+		t.Fatalf("ロック中なのに取り込んだ：%s", latest)
+	}
+	unlock()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if latest, _ := store.GetLatest(ctx, st, "q"); latest == r.git("rev-parse", "main") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("ロックを放したあとも、取り込まない")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if names, _ := store.GetRepositories(ctx, st); len(names) != 1 || names[0] != "q" {
+		t.Fatalf("repositories: %v", names)
+	}
+	cancel()
+	<-done
+	// 止まったあと、間隔の 10 倍がたてば、古いとみなす。
+	if err := CheckHeartbeat(dir, 10*time.Millisecond, time.Now().Add(time.Second)); err == nil {
+		t.Fatal("古いハートビートを、新しいとみなした")
+	}
+	if err := CheckHeartbeat(t.TempDir(), time.Second, time.Now()); err == nil {
+		t.Fatal("ハートビートがないのに、新しいとみなした")
 	}
 }

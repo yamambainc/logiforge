@@ -10,11 +10,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/yamambainc/hypothesis-verification-harness/internal/gitx"
@@ -36,21 +35,28 @@ type Source interface {
 
 // Config は、worker の設定である。
 type Config struct {
-	// Dir は、repository ごとの clone を置く、永続するディレクトリ。
+	// Dir は、repository ごとの clone を置く、永続するディレクトリ。ハートビートのファイルも置く。
 	Dir string
 	// GitEnv は、git に渡す環境変数（読むだけの資格情報の credential helper など）。
 	GitEnv []string
-	// Interval は、巡回の間隔。0 なら 1 分。
+	// Interval は、見回りの間隔。0 なら 1 秒（design/backend/worker.md の「見回り」）。
 	Interval time.Duration
+	// GitTimeout は、git の操作 1 回の時間の上限。0 なら 10 分。
+	GitTimeout time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
-	// BuildTreeWait は、「木を作る」で、作り終えるのを待つ時間の上限。0 なら 60 秒。過ぎたら、裏で続けたまま返す。
-	BuildTreeWait time.Duration
-	Now           func() time.Time
-	Log           *slog.Logger
+	Now         func() time.Time
+	Log         *slog.Logger
 }
 
-// Worker は、worker である。repository ごとに、1 つずつ順に処理する。
+// DefaultInterval は、見回りの間隔の既定である。
+const DefaultInterval = time.Second
+
+// DefaultGitTimeout は、git の操作 1 回の時間の上限の既定である。大きな repository の初めての clone でも終わるようにする。
+const DefaultGitTimeout = 10 * time.Minute
+
+// Worker は、worker である。repository ごとに、1 つずつ順に処理する。repository が違えば、並行して処理する。
+// どのポートでも待ち受けない。見回りで git を読み、置き場に書くだけである。
 type Worker struct {
 	cfg   Config
 	src   Source
@@ -58,33 +64,21 @@ type Worker struct {
 
 	mu    sync.Mutex
 	locks map[string]chan struct{} // repository ごとのロック（容量 1。入れたら取った、抜いたら放した）
-	wake  chan string
 	// moved は、古いフォーマットバージョンの下のブランチのスナップショットを、版の外に移し終えた repository である。プロセスごとに 1 度だけ移す。
 	moved map[string]bool
-	// progress は、最後に巡回を始めたか、main のコミットを 1 つ取り込んだ時刻（UnixNano）である。ヘルスチェックに使う。
-	progress atomic.Int64
-}
-
-// stallFactor は、巡回の間隔の何倍のあいだ進まなければ、止まっているとみなすかである。
-const stallFactor = 5
-
-// touch は、進んだことを記録する。
-func (w *Worker) touch() { w.progress.Store(time.Now().UnixNano()) }
-
-// Healthy は、worker が止まっていないかを返す。最後に巡回を始めたか、取り込みが進んでから、
-// 間隔の stallFactor 倍より長くたっていれば、止まっているとみなす。
-// 取り込みが進んだ時刻も見るのは、初めての取り込みが長く、次の巡回を始められないあいだも、止まっているとみなさないためである。
-func (w *Worker) Healthy() bool {
-	return time.Since(time.Unix(0, w.progress.Load())) <= stallFactor*w.cfg.Interval
+	// hasLatest は、latest があるとわかった repository である。repositories を書くのに使う。
+	hasLatest map[string]bool
+	// written は、最後に書いた repositories である。変わったときだけ書く。
+	written string
 }
 
 // New は、worker を作る。
 func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Interval == 0 {
-		cfg.Interval = time.Minute
+		cfg.Interval = DefaultInterval
 	}
-	if cfg.BuildTreeWait == 0 {
-		cfg.BuildTreeWait = 60 * time.Second
+	if cfg.GitTimeout == 0 {
+		cfg.GitTimeout = DefaultGitTimeout
 	}
 	if cfg.MaxFileSize == 0 {
 		cfg.MaxFileSize = tree.MaxArtifactSize
@@ -95,9 +89,7 @@ func New(cfg Config, src Source, st store.Writer) *Worker {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	w := &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, moved: map[string]bool{}, wake: make(chan string, 64)}
-	w.touch()
-	return w
+	return &Worker{cfg: cfg, src: src, store: st, locks: map[string]chan struct{}{}, moved: map[string]bool{}, hasLatest: map[string]bool{}}
 }
 
 func (w *Worker) repoLock(repo string) chan struct{} {
@@ -118,59 +110,62 @@ func (w *Worker) lock(repo string) func() {
 	return func() { <-l }
 }
 
-// tryLock は、repository のロックを、deadline までに取れれば、放す関数を返す。取れなければ nil を返す。
-func (w *Worker) tryLock(repo string, deadline time.Time) func() {
+// tryLock は、repository のロックがすぐに取れれば、放す関数を返す。取れなければ nil を返す。
+func (w *Worker) tryLock(repo string) func() {
 	l := w.repoLock(repo)
 	select {
 	case l <- struct{}{}:
 		return func() { <-l }
 	default:
-	}
-	t := time.NewTimer(time.Until(deadline))
-	defer t.Stop()
-	select {
-	case l <- struct{}{}:
-		return func() { <-l }
-	case <-t.C:
 		return nil
 	}
 }
 
-// Wake は、repository の巡回を、すぐに始めさせる。待たずに返る。
-func (w *Worker) Wake(repo string) {
-	select {
-	case w.wake <- repo:
-	default:
-	}
-}
-
-// Run は、間隔ごとと、起こされたときに巡回する。ctx が終わるまで返らない。
+// Run は、見回りの間隔ごとに、すべての repository の見回りを始める。ctx が終わるまで返らない（design/backend/worker.md の「見回り」）。
+// 前の回の処理が終わっていない repository は、その回は飛ばす。repository の処理は待たない。
+// そのため、1 つの repository の長い取り込みが、ほかの repository の見回りとハートビートを遅らせない。
 func (w *Worker) Run(ctx context.Context) error {
 	t := time.NewTicker(w.cfg.Interval)
 	defer t.Stop()
-	w.SyncAll(ctx)
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for {
+		w.tick(ctx, &wg)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-t.C:
-			w.SyncAll(ctx)
-		case name := <-w.wake:
-			ref, err := w.src.GitForgeRef(ctx, name)
-			if err != nil {
-				w.cfg.Log.Error("gitforge_ref を求められない", "repository", name, "err", err)
-				continue
-			}
-			if err := w.syncIfFree(ctx, ports.Repository{Name: name, GitForgeRef: ref}); err != nil {
-				w.cfg.Log.Error("巡回に失敗した", "repository", name, "err", err)
-			}
 		}
 	}
 }
 
-// SyncAll は、すべての repository を巡回し、repositories を書き直す。repository が違えば、並行して処理する。
+// tick は、1 回の見回りを始める。ハートビートを書き、repository ごとの処理を、待たずに始める。
+func (w *Worker) tick(ctx context.Context, wg *sync.WaitGroup) {
+	if err := WriteHeartbeat(w.cfg.Dir, w.cfg.Now()); err != nil {
+		w.cfg.Log.Error("ハートビートを書けない", "err", err)
+	}
+	repos, err := w.src.ListRepositories(ctx)
+	if err != nil {
+		w.cfg.Log.Error("repository の一覧を読めない", "err", err)
+		return
+	}
+	for _, r := range repos {
+		unlock := w.tryLock(r.Name)
+		if unlock == nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer unlock()
+			w.syncLogged(ctx, r)
+		}()
+	}
+	w.writeRepositories(ctx, repos)
+}
+
+// SyncAll は、すべての repository を処理し終えるまで待ってから、repositories を書く。テストと、起動の直後に使う。
 func (w *Worker) SyncAll(ctx context.Context) {
-	w.touch()
 	repos, err := w.src.ListRepositories(ctx)
 	if err != nil {
 		w.cfg.Log.Error("repository の一覧を読めない", "err", err)
@@ -181,22 +176,54 @@ func (w *Worker) SyncAll(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := w.syncIfFree(ctx, r); err != nil {
-				w.cfg.Log.Error("巡回に失敗した", "repository", r.Name, "err", err)
-			}
+			defer w.lock(r.Name)()
+			w.syncLogged(ctx, r)
 		}()
 	}
 	wg.Wait()
+	w.writeRepositories(ctx, repos)
+}
+
+// syncLogged は、repository を処理し、誤りを repository の名前をつけてログに書く。運用は、このログで、latest が進まないことに気づく。
+func (w *Worker) syncLogged(ctx context.Context, r ports.Repository) {
+	if err := w.syncLocked(ctx, r); err != nil {
+		w.cfg.Log.Error("見回りに失敗した", "repository", r.Name, "err", err, "timeout", errors.Is(err, gitx.ErrTimeout))
+	}
+}
+
+// writeRepositories は、latest がある repository の名前の一覧を、変わったときだけ、置き場の repositories に書く。
+func (w *Worker) writeRepositories(ctx context.Context, repos []ports.Repository) {
 	var names []string
 	for _, r := range repos {
-		if latest, err := store.GetLatest(ctx, w.store, r.Name); err == nil && latest != "" {
-			names = append(names, r.Name)
+		w.mu.Lock()
+		ok := w.hasLatest[r.Name]
+		w.mu.Unlock()
+		if !ok {
+			latest, err := store.GetLatest(ctx, w.store, r.Name)
+			if err != nil || latest == "" {
+				continue
+			}
+			w.mu.Lock()
+			w.hasLatest[r.Name] = true
+			w.mu.Unlock()
 		}
+		names = append(names, r.Name)
 	}
 	sort.Strings(names)
+	key := strings.Join(names, "\n")
+	w.mu.Lock()
+	same := w.written == key && names != nil
+	w.mu.Unlock()
+	if same {
+		return
+	}
 	if err := store.PutRepositories(ctx, w.store, names); err != nil {
 		w.cfg.Log.Error("repositories を書けない", "err", err)
+		return
 	}
+	w.mu.Lock()
+	w.written = key
+	w.mu.Unlock()
 }
 
 func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
@@ -206,24 +233,13 @@ func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 			return nil, err
 		}
 	}
-	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv}, nil
+	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
 }
 
 // Sync は、1 つの repository を巡回する（design/backend/worker.md の「すること」）。何度動かしても、結果は同じになる。
 // repository のロックを取るまで待つ。
 func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	defer w.lock(r.Name)()
-	return w.syncLocked(ctx, r)
-}
-
-// syncIfFree は、repository のロックがすぐに取れるときだけ巡回する。取れなければ（「木を作る」の裏の作業などが
-// 動いている）、その回は飛ばす。次の巡回で追いつく。1 つの repository の長い取り込みが、ほかの repository の巡回を遅らせないため。
-func (w *Worker) syncIfFree(ctx context.Context, r ports.Repository) error {
-	unlock := w.tryLock(r.Name, time.Now())
-	if unlock == nil {
-		return nil
-	}
-	defer unlock()
 	return w.syncLocked(ctx, r)
 }
 
@@ -413,7 +429,6 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 			return err
 		}
 		latest = sha
-		w.touch()
 	}
 	// main が、取り込み終えたコミットまで短く書き換えられたときは、取り込むコミットがない。latest だけを戻す。
 	if rewritten && start == len(chain) {
@@ -574,28 +589,4 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 		}
 	}
 	return nil
-}
-
-// ErrSnapshotPending は、「木を作る」が、時間の上限までに終わらなかったことを表す。
-// 作るのは、裏で続ける。少し待って、もう一度頼めばよい。
-var ErrSnapshotPending = errors.New("worker: 木を作るのが、まだ終わらない")
-
-var shaPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
-
-// BuildTree は、main のコミット sha のスナップショットツリーがあるかを確かめる（worker の内部 API の「木を作る」）。
-// main のすべてのコミットにスナップショットツリーを作るので、作るものはない。あれば nil、記録はあるがまだなければ ErrSnapshotPending、
-// 記録もなければ ports.ErrNotFound を返す。
-func (w *Worker) BuildTree(ctx context.Context, repoName, sha string) error {
-	if !shaPattern.MatchString(sha) {
-		return ports.ErrNotFound
-	}
-	if ok, err := store.HasSnapshotTree(ctx, w.store, repoName, sha); err != nil || ok {
-		return err
-	}
-	if _, err := store.GetCommit(ctx, w.store, repoName, sha); errors.Is(err, store.ErrNotFound) {
-		return ports.ErrNotFound
-	} else if err != nil {
-		return err
-	}
-	return ErrSnapshotPending
 }
