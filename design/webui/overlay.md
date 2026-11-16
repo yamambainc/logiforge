@@ -36,12 +36,15 @@ open の apply request を選ぶと、ビュワーは、それを向き先の今
 - 上の帯に、apply request の説明、識別子、ブランチ、向き先、比べた向き先のコミット、追加・変化・消えるノードの件数を示す。
 - 向き先が `main` でなければ、上の帯を黄にし、「`main` 向きではないので、検査していません」と示す（[反映したあとの木](../../docs/webui/history.md#反映したあとの木)）。
   - 詳細のパネルの「この AR での変化」にも、同じ注意を示す。
+  - 向き先が `main` でないときは、衝突を判定しない（[向き先に重ねる](../backend/snapshot.md#向き先に重ねる)）。本当の衝突は、GitForge の画面で分かる。
+- 向き先が `main` でないとき、`getNode` を `apply_request` を付けて呼ぶと、1 回に約 1 秒かかる。向き先の木を作る分と、重ねる分である。
+  - そのため、ノードを押したら、`listNodes` の応答で分かる項目（主文やタイトル、値、札、この AR での変化）を先に示し、`getNode` の応答が来たら、検証結果や履歴などの残りを示す。
 
 `listNodes` が次のエラーを返したら、スナップショットツリーのかわりに、理由を示す。
 
 | code | 示すもの |
 |---|---|
-| `overlay_conflict` | 向き先の今の先頭に重ねられないことと、`detail` の衝突したパス |
+| `overlay_conflict` | 今の `main` に重ねられないことと、`detail` の衝突したパス。向き先が `main` のときだけ返る |
 | `not_found` | 向き先のブランチが消えたこと（apply request がなくなったときも同じ） |
 | `snapshot_pending` | 「取り込み中」と示し、読み直す（[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)） |
 | `not_open` | apply request が open でなくなったこと。apply request と履歴の画面へのリンク |
