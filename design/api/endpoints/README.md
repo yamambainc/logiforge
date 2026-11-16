@@ -18,6 +18,10 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 - [作業の終わりを判定する](tree/completion.md) → `GET /repositories/{repository}/tree/completion`
 - [木を書き出す](tree/export.md) → `GET /repositories/{repository}/tree/export`
 
+## main のコミット
+
+- [main のコミットの一覧を読む](commit/list.md) → `GET /repositories/{repository}/commits`
+
 ## ノード
 
 - [ノードの詳細を読む](node/get.md) → `GET /repositories/{repository}/nodes/{nodeId}`

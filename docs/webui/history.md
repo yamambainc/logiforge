@@ -28,7 +28,8 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - 差分
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
   - レビュー
-  - コメント
+  - コメントは、GitForge の pull request へのリンクで示す。
+    - なぜ：レビューでないコメントは、反映の条件に関わらず、GitForge の画面で読み書きできるから。
 - WebUI からは、apply request を審査しない（[反映の条件](../apply-request/review.md)）。
 
 ## 反映したあとの木

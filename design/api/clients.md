@@ -19,9 +19,11 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 
 ## WebUI
 
+画面ごとの API の使い方は、[WebUI の設計](../webui/screens.md) に書く。
+
 | 画面 | 要件 | API |
 |---|---|---|
-| [repository の一覧](../../docs/webui/repositories.md) | repository を一覧し、選ぶ | [repository の一覧を読む](endpoints/repository/list.md) |
+| [repository の一覧](../../docs/webui/repositories.md) | repository を、根の主文と根の値と一緒に一覧し、選ぶ | [repository の一覧を読む](endpoints/repository/list.md)（`root_statement`、`root_value`） |
 | repository の一覧 | repository を作る（根の主文を含む） | [repository を作る](endpoints/repository/create.md) |
 | [木のビューア](../../docs/webui/tree-viewer.md) | 木とバッジを表示する | [木のノードを読む](endpoints/tree/list-nodes.md) |
 | 木のビューア | ノードの詳細 | [ノードの詳細を読む](endpoints/node/get.md)、[検証結果を読む](endpoints/verdict/get.md)、[artifact のファイルを読む](endpoints/artifact/get.md) |
@@ -29,7 +31,8 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | [人への依頼](../../docs/webui/human-requests.md) | 種類と状態で絞り込む | [人への依頼の一覧を読む](endpoints/human-request/list.md) |
 | 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)（ファイルは回答に含める） |
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
-| apply request と履歴 | 過去の時点の木 | [木のノードを読む](endpoints/tree/list-nodes.md) |
+| apply request と履歴 | コメント | [詳細を読む](endpoints/apply-request/get.md) の `url`（GitForge の pull request へのリンク） |
+| apply request と履歴 | 過去の時点の木 | [main のコミットの一覧を読む](endpoints/commit/list.md)、[木のノードを読む](endpoints/tree/list-nodes.md)（`commit` を指定する） |
 | apply request と履歴 | 反映したあとの木 | [木のノードを読む](endpoints/tree/list-nodes.md)、[ノードの詳細を読む](endpoints/node/get.md)（どちらも `apply_request` を指定する） |
 | [ダッシュボード](../../docs/webui/dashboard.md) | 根の値と、作業の終わりの判定 | [作業の終わりを判定する](endpoints/tree/completion.md) |
 | ダッシュボード | 種類ごとの着手できる作業の件数 | [着手できる作業を読む](endpoints/work/list.md) |

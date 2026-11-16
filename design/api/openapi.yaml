@@ -191,6 +191,34 @@ paths:
               schema: { type: string }
         '4XX': { $ref: '#/components/responses/Problem' }
 
+  /repositories/{repository}/commits:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    get:
+      tags: [history]
+      operationId: listCommits
+      summary: main のコミットの一覧（新しい順）
+      description: |
+        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot.md の「コミットの記録から引くもの」）。
+        カーソルは、次に読むコミットの number である。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: main のコミットの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MainCommit' }
+                  next_cursor: { $ref: '#/components/schemas/NextCursor' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories/{repository}/nodes/{nodeId}:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
@@ -752,7 +780,22 @@ components:
           type: string
           description: 木の git リポジトリの URL。CLI は、ここから clone し、ブランチを push する
         root_hypothesis_id: { type: string, pattern: '^h-' }
+        root_statement:
+          type: [string, 'null']
+          description: 根の仮説の主文（今の main）。スナップショットツリーがまだなければ null
         root_value: { $ref: '#/components/schemas/TruthValue' }
+    MainCommit:
+      type: object
+      required: [number, commit, committed_at, apply_request_id]
+      properties:
+        number:
+          type: integer
+          description: main のコミットの番号。最初のコミットを 1 とする
+        commit: { $ref: '#/components/schemas/Commit' }
+        committed_at: { type: string, format: date-time }
+        apply_request_id:
+          type: [string, 'null']
+          description: 反映した apply request。反映によらないコミットでは null
     Commit:
       type: string
       minLength: 1
@@ -1065,9 +1108,13 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, url, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
+        url:
+          type: string
+          format: uri
+          description: GitForge の pull request を、ブラウザで開く URL。WebUI は、レビューでないコメントをここで示す
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
