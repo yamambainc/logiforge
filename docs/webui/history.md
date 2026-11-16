@@ -27,7 +27,7 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 - 選んだ apply request について、次のものを示す。
   - 差分
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
-  - レビュー。議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。
+  - レビュー。議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。だれが、いつ書いたかも示す。
 - WebUI からは、apply request を審査しない（[反映の条件](../apply-request/review.md)）。
 
 ## 反映したあとの木

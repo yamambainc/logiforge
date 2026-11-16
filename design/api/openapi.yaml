@@ -1242,6 +1242,13 @@ components:
         valid:
           type: boolean
           description: ブランチの今の先頭のコミットに対するレビューなら真
+        reviewer:
+          type: string
+          description: レビューを書いた主体（GitForge の利用者の名前）。議論で、だれが書いたかを示すのに使う
+        created_at:
+          type: [string, 'null']
+          format: date-time
+          description: レビューを書いた時刻（GitForge のコメントの時刻）。読めなければ null。reviews は、この順に並ぶ
     MergeFailure:
       type: object
       required: [commit, reason, detail]

@@ -55,8 +55,8 @@ export function Dashboard({ repo }: { repo: string }) {
           {KINDS.map((k) => (
             <li key={k.key} className={counts[k.key] ? '' : 'zero'}>
               {k.to ? (
-                <a href={k.to(repo)} onClick={(e) => { e.preventDefault(); navigate(k.to!(repo)); }}><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></a>
-              ) : <><span>{k.label}</span><b>{counts[k.key] ?? 0}</b></>}
+                <a href={k.to(repo)} onClick={(e) => { e.preventDefault(); navigate(k.to!(repo)); }}><span>{k.label}</span><b>{counts[k.key] ?? 0}<small> 件</small></b></a>
+              ) : <><span>{k.label}</span><b>{counts[k.key] ?? 0}<small> 件</small></b></>}
             </li>
           ))}
         </ul>

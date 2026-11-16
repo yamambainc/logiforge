@@ -180,12 +180,13 @@ export function TreeScreen({ repo }: { repo: string }) {
   }, [popTick, ix]);
 
   // 「引用元が変化（作業）」で絞るときは、作業の一覧から、その仮説を読む（ダッシュボードの件数と同じもの）
-  const [cited, setCited] = useState<Set<string> | null>(null);
+  const [citedWork, setCitedWork] = useState<{ nodes: Set<string>; items: number } | null>(null);
+  const cited = citedWork?.nodes ?? null;
   const wantCited = filters.has('cited');
   useEffect(() => {
-    if (!wantCited) { setCited(null); return; }
+    if (!wantCited) { setCitedWork(null); return; }
     let live = true;
-    workNodes(repo, 'citation_changed').then((s) => live && setCited(s)).catch(() => live && setCited(new Set()));
+    workNodes(repo, 'citation_changed').then((s) => live && setCitedWork(s)).catch(() => live && setCitedWork({ nodes: new Set(), items: 0 }));
     return () => { live = false; };
   }, [repo, wantCited]);
 
@@ -275,6 +276,8 @@ export function TreeScreen({ repo }: { repo: string }) {
   if (error === 'not-found') return <Empty title="この repository はありません" />;
   if (error === 'pending-timeout') return <Empty title="スナップショットツリーが出ません" body="worker が止まっている可能性があります。" retry />;
   if (error) return <Empty title="スナップショットツリーを読めませんでした" body={error} retry />;
+  // 引用元の変化の作業を読み終えるまでは、一致の数が決まらないので示さない（0 と見誤らないように）
+  if (wantCited && !citedWork) return <div className="loading">作業の一覧を読み込み中…</div>;
   if (blocked) return <BlockedView b={blocked} onBack={() => setSource({ kind: 'main' })} />;
   if (!data || !ix) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
 
@@ -393,6 +396,11 @@ export function TreeScreen({ repo }: { repo: string }) {
         )}
       </div>
 
+      {wantCited && citedWork && (
+        <div className="notice" role="status">
+          <span>引用元が変化した検証結果 <b className="cited-items">{citedWork.items}</b> 件（仮説 {citedWork.nodes.size} 個）を示しています。作業として残っているものです。</span>
+        </div>
+      )}
       {missing && (
         <div className="notice" role="status">
           <span>このノードはありません（<span className="mono">{missing}</span>）。根を示しています。</span>

@@ -1,5 +1,11 @@
 // apply request の差分とレビューの言葉（docs/webui/history.md）
-import type { ApplyRequest, Operation } from './api';
+import type { ApplyRequest, Operation, Review } from './api';
+
+/** レビュー（議論を含む）を、書いた時刻の順に並べる。時刻が読めないものは、もとの順のまま最後に置く */
+export function byTime(rs: Review[]): Review[] {
+  const t = (r: Review) => (r.created_at ? Date.parse(r.created_at) : Infinity);
+  return rs.map((r, i) => ({ r, i })).sort((a, b) => t(a.r) - t(b.r) || a.i - b.i).map((x) => x.r);
+}
 
 /** 操作を、1 行の言葉にする。対象は識別子で示す */
 export function opLabel(op: Operation): { what: string; target: string } {

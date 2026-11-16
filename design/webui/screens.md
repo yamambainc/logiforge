@@ -49,7 +49,9 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
-  - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、時刻の順に示す。
+  - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、`created_at` の順に示し、書いた人（`reviewer`）と時刻を添える。
+  - 差分の `verdict.submit` は、レポートを折りたたみで、文字列のまま示す。
+- 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
 - 反映したあとの姿：ビュワーを `?apply_request=` で開く（[差分の重ね表示](overlay.md#差分の重ね表示)）。
 - 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[足す API](#足す-api)）。
   - 画面の「main の履歴」で、新しい 50 個ずつ示し、「もっと読む」で続きを読む。
@@ -58,6 +60,8 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 作業としての絞り込み（`work=review_waiting`、`work=fix_waiting`）は、`listWork` のその種類の `subject_id` に入る apply request だけを示す。ダッシュボードの件数から、この絞り込みで開く。
 - URL は `/r/{repository}/apply-requests?view=&state=&id=&work=`（`view` は、apply request か `commits`）。
 - ダッシュボードの「引用元が変化した検証結果」は、ビュワーを `f=cited` で開く。`listWork` の `citation_changed` の `node_id`（検証結果を持つ仮説）だけを示す。
+  - 件数の単位は検証結果である。1 つの仮説が、引用元の変わった検証結果を 2 つ持つこともあるので、ビュワーの帯には「検証結果 N 件（仮説 M 個）」と両方を示す。
+- ダッシュボードの件数には、単位（件）を添える。
 
 ### [ダッシュボード](../../docs/webui/dashboard.md)
 

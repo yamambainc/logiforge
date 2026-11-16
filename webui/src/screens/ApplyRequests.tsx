@@ -2,8 +2,8 @@
 // apply request の一覧と詳細（差分、先頭のコミット、レビュー）と、main のコミットの一覧（過去の時点）。
 // 状態（見るもの、状態、選んだ apply request、作業の絞り込み）は URL に持つ。WebUI からは審査しない。
 import { useEffect, useState } from 'react';
-import { getApplyRequest, listApplyRequests, listCommits, Problem, workSubjects, type ApplyRequest, type MainCommit } from '../api';
-import { arTitle, AWAITING, FAILURE, opLabel, REVIEW, STATE } from '../ar';
+import { getApplyRequest, listApplyRequestsPage, listCommits, Problem, workSubjects, type ApplyRequest, type MainCommit } from '../api';
+import { arTitle, AWAITING, byTime, FAILURE, opLabel, REVIEW, STATE } from '../ar';
 import { useMobile } from '../hooks';
 import { navigate, useLocation } from '../router';
 
@@ -44,14 +44,26 @@ export function ApplyRequests({ repo }: { repo: string }) {
 
 function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React.ReactNode; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void }) {
   const [items, setItems] = useState<ApplyRequest[] | null>(null);
+  const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fail = (e: unknown) => { if (!(e instanceof Problem && e.status === 401)) setError(String(e)); };
+  // 50 個ずつ読み、「もっと読む」で続きを読む
+  const more = (cursor: string | null, live = () => true) => listApplyRequestsPage(repo, state === 'all' ? '' : state, cursor)
+    .then((p) => { if (!live()) return; setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
+    .catch((e) => live() && fail(e));
   useEffect(() => {
-    let live = true;
-    setItems(null); setError(null);
-    Promise.all([listApplyRequests(repo, work || state === 'all' ? (work ? 'open' : '') : state), work ? workSubjects(repo, work) : Promise.resolve(null)])
-      .then(([r, w]) => live && setItems(w ? r.filter((a) => w.has(a.id)) : r))
-      .catch((e) => { if (live && !(e instanceof Problem && e.status === 401)) setError(String(e)); });
-    return () => { live = false; };
+    let alive = true;
+    const live = () => alive;
+    setItems(null); setNext(null); setError(null);
+    if (work) {
+      // 作業としての絞り込み：作業の対象の apply request だけを、1 つずつ読む（数は件数と同じで、多くない）
+      workSubjects(repo, work)
+        .then((ids) => Promise.all([...ids].map((i) => getApplyRequest(repo, i))))
+        .then((r) => live() && setItems(r))
+        .catch((e) => live() && fail(e));
+    } else void more(null, live);
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, state, work]);
   return (
     <section className="list-pane" aria-label="apply request の一覧">
@@ -80,6 +92,7 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
           ))}
         </ul>
       )}
+      {items && next && <button className="btn more" onClick={() => void more(next)}>もっと読む</button>}
     </section>
   );
 }
@@ -120,7 +133,17 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
       <h3 className="sec">差分</h3>
       {(a.operations ?? []).length === 0 ? <p className="dim">差分の操作はありません。</p> : (
         <ul className="ops">
-          {a.operations!.map((op) => { const l = opLabel(op); return <li key={op.position}><span>{l.what}</span><a className="mono" href={tree(`node=${l.target}`)} onClick={open(tree(`node=${l.target}`))}>{l.target}</a></li>; })}
+          {a.operations!.map((op) => {
+            const l = opLabel(op);
+            return (
+              <li key={op.position}>
+                <span>{l.what}</span>
+                <a className="mono" href={tree(`node=${l.target}`)} onClick={open(tree(`node=${l.target}`))}>{l.target}</a>
+                {/* 検証結果のレポートは、折りたたみで、文字列のまま示す（design/webui/security.md） */}
+                {op.kind === 'verdict.submit' && <details className="op-report"><summary>レポート</summary><p className="prose report">{op.report_body}</p></details>}
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -134,9 +157,9 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
       <h3 className="sec">レビュー</h3>
       {(a.reviews ?? []).length === 0 ? <p className="dim">レビューはまだありません。</p> : (
         <ol className="reviews">
-          {a.reviews!.map((r) => (
+          {byTime(a.reviews!).map((r) => (
             <li key={r.id} className={r.valid ? '' : 'stale'}>
-              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span><span className="mono dim">{r.reviewer_session_id}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
+              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.reviewer_session_id}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
               {/* 本文は Markdown を整形せず、文字列として示す（design/webui/security.md） */}
               {r.body && <p className="prose report">{r.body}</p>}
             </li>

@@ -107,8 +107,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 		return out, err
 	}
 	ar.Warnings = append(ar.Warnings, warnings...)
-	out.Value = ReviewResult{ApplyRequest: ar, Review: Review{ID: r.ID, Kind: string(kind), Commit: rev,
-		Body: r.Body, ReviewerSessionID: r.Session, PromptRevision: r.PromptRevision, Valid: true}}
+	out.Value = ReviewResult{ApplyRequest: ar, Review: reviewOf(r, true)}
 	return out, nil
 }
 
@@ -130,8 +129,7 @@ func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, se
 	if err != nil {
 		return ReviewResult{}, false, err
 	}
-	return ReviewResult{ApplyRequest: model, Review: Review{ID: last.ID, Kind: string(last.Kind),
-		Commit: last.Revision, Body: last.Body, ReviewerSessionID: last.Session, PromptRevision: last.PromptRevision}}, true, nil
+	return ReviewResult{ApplyRequest: model, Review: reviewOf(*last, false)}, true, nil
 }
 
 // lastDecisive は、決めるレビュー（approve か request_changes）の最後のものを返す。revision が空でなければ、そのコミットへのものだけを見る。
