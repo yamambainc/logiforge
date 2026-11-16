@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { rowPositions, rowsToDraw, textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
+import { changeLabel, rowPositions, rowsToDraw, textOf, vLabel, type Change, type Index, type Row, type Stats, type TruthValue } from './model';
 
 const OVERSCAN = 12;
 
@@ -135,7 +135,7 @@ const TreeRow = memo(function TreeRow({ top, pos, row, ix, selected, match, dimm
   const vc = v === true ? 'v-true' : v === false ? 'v-false' : 'v-null';
   const isH = n.node_type === 'hypothesis';
   const st = ix.stats.get(n.id)!;
-  const valueChange = change?.kind === 'changed' ? change.fields.find((f) => f.name === '値') : undefined;
+  const label = change ? changeLabel(change) : null;
   return (
     <div
       className={`row ${selected ? 'sel' : ''} ${n.inactive ? 'inactive' : ''} ${dimmed ? 'ctx' : ''} ${change ? 'chg-' + change.kind : ''} ${isH ? '' : 'story'}`}
@@ -164,8 +164,7 @@ const TreeRow = memo(function TreeRow({ top, pos, row, ix, selected, match, dimm
       </span>
       {change?.kind === 'added' && <span className="tag t-added">追加</span>}
       {change?.kind === 'removed' && <span className="tag t-removed">消える</span>}
-      {valueChange && <span className="tag t-changed">{valueChange.before} → {valueChange.after}</span>}
-      {change?.kind === 'changed' && !valueChange && <span className="tag t-changed">変化</span>}
+      {label && <span className="tag t-changed">{label}</span>}
       {isH && n.needs_reconsideration && <span className="tag t-nr">要再検討</span>}
       {n.open_apply_request_ids.length > 0 && <span className="tag t-ar">AR{n.open_apply_request_ids.length > 1 ? ` ${n.open_apply_request_ids.length}` : ''}</span>}
       {n.open_human_request_ids.length > 0 && <span className="tag t-hr">依頼</span>}

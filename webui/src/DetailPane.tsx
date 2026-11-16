@@ -1,17 +1,22 @@
 // 詳細のパネル（design/webui/snapshot-tree-viewer.md の「詳細のパネル」、docs/webui/tree-viewer.md の「ノードの詳細」）。
 // listNodes で分かる項目は、すぐに示す。getNode と getNodeHistory の応答が来たら、検証結果や履歴を示す。
 import { useEffect, useState } from 'react';
-import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type HistoryEntry, type NodeDetail } from './api';
-import { ancestors, textOf, vLabel, type Index, type Node, type TruthValue } from './model';
+import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type At, type HistoryEntry, type NodeDetail } from './api';
+import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 
-interface Props { repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void }
+interface Props {
+  repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void;
+  at?: At; // getNode の時点（過去の時点、重ねた姿、消えるノードは比べた向き先）
+  change?: Change | null; // この AR での変化
+  unchecked?: boolean; // 重ねた AR の向き先が main でない
+}
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
 const DETAIL_DELAY_MS = 150;
 const DETAIL_TIMEOUT_MS = 20_000;
 const IMAGE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
+export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change, unchecked }: Props) {
   const n = id ? ix.byId.get(id) : undefined;
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
@@ -26,12 +31,12 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
       const { signal, done } = abortAfter(ctrl.signal, DETAIL_TIMEOUT_MS);
       const live = () => !ctrl.signal.aborted;
       Promise.allSettled([
-        getNode(repo, id, signal).then((d) => live() && setDetail(d)).catch(() => live() && setFailed(true)),
+        getNode(repo, id, signal, at).then((d) => live() && setDetail(d)).catch(() => live() && setFailed(true)),
         getNodeHistory(repo, id, signal).then((h) => live() && setHistory(h.items)).catch(() => live() && setHistory([])),
       ]).then(done);
     }, DETAIL_DELAY_MS);
     return () => { clearTimeout(t); ctrl.abort(); };
-  }, [repo, id]);
+  }, [repo, id, at?.commit, at?.apply_request]);
 
   if (!n) return <aside className={`detail empty ${mobile ? 'sheet' : ''}`}><p className="dim">ノードを選ぶと、ここに詳細が出ます。</p></aside>;
 
@@ -76,6 +81,23 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose }: Props) {
         {n.open_apply_request_ids.map((a) => <span key={a} className="tag t-ar">審査中 {a}</span>)}
         {n.open_human_request_ids.map((h) => <span key={h} className="tag t-hr">依頼 {h}</span>)}
       </div>
+
+      {change && (
+        <Section title="この AR での変化">
+          {unchecked && <p className="note">main 向きではないので、検査していません。</p>}
+          {change.kind === 'added' && <p><span className="tag t-added">追加</span> 反映すると加わります。</p>}
+          {change.kind === 'removed' && <p><span className="tag t-removed">消える</span> 反映すると、このノード{kids.length ? 'と子孫' : ''}が消えます。</p>}
+          {change.kind === 'changed' && (
+            <table className="changes">
+              <tbody>
+                {change.fields.map((f) => (
+                  <tr key={f.name}><th>{f.name}</th><td className="before">{f.before}</td><td>→</td><td className="after">{f.after}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+      )}
 
       {isH ? (
         n.background ? <Section title="背景情報"><p className="prose">{n.background}</p></Section> : null

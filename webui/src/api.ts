@@ -63,8 +63,17 @@ export interface NodeDetail { commit: string; node: Node; children: Node[]; verd
 export interface HistoryEntry { commit: string; committed_at: string; apply_request_id: string | null; session_ids: string[]; reflected: boolean }
 
 const enc = encodeURIComponent;
-export const listNodes = (repo: string) => call<NodeList>(`/repositories/${enc(repo)}/tree/nodes`);
-export const getNode = (repo: string, id: string, signal?: AbortSignal) => call<NodeDetail>(`/repositories/${enc(repo)}/nodes/${enc(id)}`, { signal });
+/** 木を読む時点。どちらもなければ今の main。commit は main かブランチのコミット、apply_request は反映したあとの姿。 */
+export interface At { commit?: string; apply_request?: string }
+const atQuery = (at: At = {}) => {
+  const q = new URLSearchParams();
+  if (at.commit) q.set('commit', at.commit);
+  if (at.apply_request) q.set('apply_request', at.apply_request);
+  const s = q.toString();
+  return s ? '?' + s : '';
+};
+export const listNodes = (repo: string, at?: At) => call<NodeList>(`/repositories/${enc(repo)}/tree/nodes${atQuery(at)}`);
+export const getNode = (repo: string, id: string, signal?: AbortSignal, at?: At) => call<NodeDetail>(`/repositories/${enc(repo)}/nodes/${enc(id)}${atQuery(at)}`, { signal });
 export const getNodeHistory = (repo: string, id: string, signal?: AbortSignal) =>
   call<{ items: HistoryEntry[]; next_cursor: string | null }>(`/repositories/${enc(repo)}/nodes/${enc(id)}/history?limit=20`, { signal });
 
@@ -109,3 +118,13 @@ export function abortAfter(parent: AbortSignal, ms: number): { signal: AbortSign
   else parent.addEventListener('abort', stop, { once: true });
   return { signal: ctrl.signal, done: () => { clearTimeout(t); parent.removeEventListener('abort', stop); } };
 }
+
+// --- apply request と、main のコミット（design/webui/overlay.md） ---
+
+export interface ApplyRequest { id: string; state: string; branch: string; target: string; description?: string; head_commit: string }
+export const listOpenApplyRequests = (repo: string) => listAll<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests?state=open`);
+export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}`);
+
+export interface MainCommit { number: number; commit: string; committed_at: string; apply_request_id: string | null }
+export const listCommits = (repo: string, cursor?: string | null) =>
+  call<{ items: MainCommit[]; next_cursor: string | null }>(`/repositories/${enc(repo)}/commits?limit=50${cursor ? '&cursor=' + enc(cursor) : ''}`);

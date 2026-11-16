@@ -43,7 +43,8 @@ export interface Index {
   rootId: string;
 }
 
-export function buildIndex(nodes: Node[]): Index {
+/** skip のノード（反映すると消えるノード）は、部分木のノード数と葉の値の内訳に数えない。 */
+export function buildIndex(nodes: Node[], skip: Set<string> | null = null): Index {
   const byId = new Map<string, Node>();
   const children = new Map<string, string[]>();
   const depth = new Map<string, number>();
@@ -67,14 +68,14 @@ export function buildIndex(nodes: Node[]): Index {
   const stats = new Map<string, Stats>();
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
-    const s: Stats = { t: 0, f: 0, u: 0, total: 1 };
+    const s: Stats = { t: 0, f: 0, u: 0, total: skip?.has(n.id) ? 0 : 1 };
     const cs = children.get(n.id);
     if (cs) {
       for (const c of cs) {
         const x = stats.get(c)!;
         s.t += x.t; s.f += x.f; s.u += x.u; s.total += x.total;
       }
-    } else if (n.node_type === 'hypothesis' && !n.inactive) {
+    } else if (n.node_type === 'hypothesis' && !n.inactive && !skip?.has(n.id)) {
       if (n.value === true) s.t++;
       else if (n.value === false) s.f++;
       else s.u++;
@@ -149,18 +150,97 @@ export function withAncestors(ix: Index, ids: Iterable<string>): Set<string> {
 }
 
 // 差分の重ね表示（2 段目）で使う、ノードの変化の印
-export type Change = { kind: 'added' } | { kind: 'removed' } | { kind: 'changed'; fields: { name: string; before: string; after: string }[] };
+/** 変化。changed の direct は、値と要再検討のほかの項目が変わったか。値か要再検討だけなら、伝播だけの変化（direct が false） */
+export type Change = { kind: 'added' } | { kind: 'removed' } | { kind: 'changed'; direct: boolean; fields: { name: string; before: string; after: string }[] };
+
+/** 直接の変化か（追加、消える、値と要再検討のほかの項目の変化）。最初に選ぶノード、まわり、n と p は、これだけを使う */
+export const isDirect = (c: Change) => c.kind !== 'changed' || c.direct;
+
+/** 行と図の札。値が変われば「前 → 後」、要再検討だけなら「→ 要再検討」、ほかは「変化」 */
+export function changeLabel(c: Change): string | null {
+  if (c.kind !== 'changed') return null;
+  const v = c.fields.find((f) => f.name === '値');
+  if (v) return `${v.before} → ${v.after}`;
+  const nr = c.fields.find((f) => f.name === '要再検討');
+  if (nr && c.fields.length === 1) return nr.after === 'はい' ? '→ 要再検討' : '要再検討 → なし';
+  return '変化';
+}
+
+const yesNo = (b: boolean) => (b ? 'はい' : 'いいえ');
+
+/** 比べる相手（before）と、反映したあと（after）のノードを、識別子で突き合わせる（design/webui/overlay.md）。
+ * 値は計算したあとのものを比べるので、伝播で値が変わる祖先も「変化」になる。 */
+export function diff(before: Index, after: Index): { changes: Map<string, Change>; removed: string[] } {
+  const changes = new Map<string, Change>();
+  for (const n of after.nodes) {
+    const b = before.byId.get(n.id);
+    if (!b) { changes.set(n.id, { kind: 'added' }); continue; }
+    const fields: { name: string; before: string; after: string }[] = [];
+    if (b.value !== n.value) fields.push({ name: '値', before: vLabel(b.value), after: vLabel(n.value) });
+    if (textOf(b) !== textOf(n)) fields.push({ name: n.node_type === 'hypothesis' ? '主文' : 'タイトル', before: textOf(b), after: textOf(n) });
+    if (b.inactive !== n.inactive) fields.push({ name: 'inactive', before: yesNo(b.inactive), after: yesNo(n.inactive) });
+    if (b.node_type === 'hypothesis' && n.node_type === 'hypothesis') {
+      if (b.needs_reconsideration !== n.needs_reconsideration) fields.push({ name: '要再検討', before: yesNo(b.needs_reconsideration), after: yesNo(n.needs_reconsideration) });
+      if ((b.background ?? '') !== (n.background ?? '')) fields.push({ name: '背景情報', before: b.background ? 'あり' : 'なし', after: n.background ? '書き換え・追記あり' : 'なし' });
+      if (b.valid_verdict_id !== n.valid_verdict_id) fields.push({ name: '有効な検証結果', before: b.valid_verdict_id ?? 'なし', after: n.valid_verdict_id ?? 'なし' });
+    }
+    if (b.node_type === 'story' && n.node_type === 'story' && b.summary !== n.summary) fields.push({ name: '概要', before: b.summary, after: n.summary });
+    if (fields.length) changes.set(n.id, { kind: 'changed', direct: fields.some((f) => f.name !== '値' && f.name !== '要再検討'), fields });
+  }
+  const removed = before.nodes.filter((n) => !after.byId.has(n.id)).map((n) => n.id);
+  for (const id of removed) changes.set(id, { kind: 'removed' });
+  return { changes, removed };
+}
+
+/** 反映すると消えるノードを、比べた相手での親と兄弟の並びの位置に差し込んだノードの一覧を返す。消える部分木は、子孫ごと残す。 */
+export function withRemoved(after: Index, before: Index, removed: string[]): Node[] {
+  if (removed.length === 0) return after.nodes;
+  const gone = new Set(removed);
+  const kids = new Map<string, string[]>();
+  for (const [p, cs] of after.children) kids.set(p, [...cs]);
+  for (const id of removed) {
+    const p = parentOf(before.byId.get(id)!);
+    if (!p) continue;
+    // 消える部分木の中は、比べた相手の並びのまま
+    if (gone.has(p)) { kids.set(p, [...(before.children.get(p) ?? [])]); continue; }
+    const list = kids.get(p) ?? [];
+    let at = 0;
+    for (const sib of before.children.get(p) ?? []) {
+      if (sib === id) break;
+      const i = list.indexOf(sib);
+      if (i >= 0) at = i + 1;
+    }
+    list.splice(at, 0, id);
+    kids.set(p, list);
+  }
+  // buildIndex は深さ優先の並びを前提にするので、深さ優先で並べ直す
+  const out: Node[] = [];
+  const walk = (id: string) => {
+    out.push(after.byId.get(id) ?? before.byId.get(id)!);
+    for (const c of kids.get(id) ?? []) walk(c);
+  };
+  walk(after.rootId);
+  return out;
+}
+
+/** 直接に変わるノードを、行の並び（深さ優先）で返す。「次の変更」「前の変更」で使う。伝播だけで変わる祖先は、たどらない。 */
+export function changeOrder(ix: Index, changes: Map<string, Change>): string[] {
+  const out: string[] = [];
+  const walk = (id: string) => { const c = changes.get(id); if (c && isDirect(c)) out.push(id); for (const k of ix.children.get(id) ?? []) walk(k); };
+  walk(ix.rootId);
+  return out;
+}
 
 const vLabel = (v: TruthValue) => (v === true ? '真' : v === false ? '偽' : '未決');
 
 export { vLabel };
 
-export type Filter = 'true' | 'false' | 'null' | 'nr' | 'ar' | 'hr';
+export type Filter = 'true' | 'false' | 'null' | 'nr' | 'ar' | 'hr' | 'changed';
 
 /** 検索と絞り込みで、出すノードを決める（design/webui/snapshot-tree-viewer.md の「検索と絞り込み」）。
  * 検索は主文・タイトル・識別子の部分一致（大文字と小文字を区別しない）。値どうしは「または」、ほかとは「かつ」。
  * 検索も絞り込みもなければ include は null（すべて）。あれば、一致したノード（matches）と、その祖先（include）。 */
-export function filterNodes(ix: Index, query: string, filters: Set<Filter>, showInactive: boolean): { include: Set<string> | null; matches: string[] } {
+export function filterNodes(ix: Index, query: string, filters: Set<Filter>, showInactive: boolean, changes: Map<string, Change> | null = null): { include: Set<string> | null; matches: string[] } {
   const q = query.trim().toLowerCase();
   if (q === '' && filters.size === 0) return { include: null, matches: [] };
   const valueF = (['true', 'false', 'null'] as const).filter((k) => filters.has(k));
@@ -172,6 +252,7 @@ export function filterNodes(ix: Index, query: string, filters: Set<Filter>, show
     if (filters.has('nr') && !(n.node_type === 'hypothesis' && n.needs_reconsideration)) continue;
     if (filters.has('ar') && n.open_apply_request_ids.length === 0) continue;
     if (filters.has('hr') && n.open_human_request_ids.length === 0) continue;
+    if (filters.has('changed') && !changes?.has(n.id)) continue;
     m.push(n.id);
   }
   return { include: withAncestors(ix, m), matches: m };

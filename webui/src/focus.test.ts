@@ -28,3 +28,20 @@ describe('最初の表示', () => {
     expect([...openLevels(ix, 4, new Set())].sort()).toEqual(['h0', 'h1', 's1']);
   });
 });
+
+describe('重ねたときの最初の表示', () => {
+  it('変わるノードの祖先を開き、最初に変わるノードを選び、そのまわりを収める', async () => {
+    const { buildIndex } = await import('./model');
+    const { overlayFocus } = await import('./focus');
+    const n = (id: string, p: string | null, t: 'hypothesis' | 'story') => (t === 'hypothesis'
+      ? { node_type: 'hypothesis', id, parent_story_id: p, statement: id, value: null, leaf: true, needs_reconsideration: false, inactive: false, open_apply_request_ids: [], open_human_request_ids: [] }
+      : { node_type: 'story', id, parent_hypothesis_id: p, title: id, summary: '', state: 'active', value: null, inactive: false, open_apply_request_ids: [], open_human_request_ids: [] });
+    // h0 ─ s1 ─ h1 ─ s2 ─ h2（変わる）
+    const ix = buildIndex([n('h0', null, 'hypothesis'), n('s1', 'h0', 'story'), n('h1', 's1', 'hypothesis'), n('s2', 'h1', 'story'), n('h2', 's2', 'hypothesis')] as never);
+    const f = overlayFocus(ix, new Map([['h2', { kind: 'added' as const }]]), null);
+    expect(f.selected).toBe('h2');
+    expect([...f.expanded]).toEqual(expect.arrayContaining(['h0', 's1', 'h1', 's2']));
+    expect([...f.around!].sort()).toEqual(['h2', 's2']);
+    expect(overlayFocus(ix, new Map([['h2', { kind: 'added' as const }]]), 's1').selected).toBe('s1');
+  });
+});
