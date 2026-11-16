@@ -31,7 +31,6 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | [人への依頼](../../docs/webui/human-requests.md) | 種類と状態で絞り込む | [人への依頼の一覧を読む](endpoints/human-request/list.md) |
 | 人への依頼 | 回答し、ファイルを添付する | [人への依頼に回答する](endpoints/human-request/answer.md)（ファイルは回答に含める） |
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
-| apply request と履歴 | コメント | [詳細を読む](endpoints/apply-request/get.md) の `url`（GitForge の pull request へのリンク） |
 | apply request と履歴 | 過去の時点の木 | [main のコミットの一覧を読む](endpoints/commit/list.md)、[木のノードを読む](endpoints/tree/list-nodes.md)（`commit` を指定する） |
 | apply request と履歴 | 反映したあとの木 | [木のノードを読む](endpoints/tree/list-nodes.md)、[ノードの詳細を読む](endpoints/node/get.md)（どちらも `apply_request` を指定する） |
 | [ダッシュボード](../../docs/webui/dashboard.md) | 根の値と、作業の終わりの判定 | [作業の終わりを判定する](endpoints/tree/completion.md) |

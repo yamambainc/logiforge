@@ -795,7 +795,7 @@ components:
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。反映によらないコミットでは null
+          description: 反映した apply request。コミットの記録の trailer Logiforge-Apply-Request: の値。反映によらないコミットでは null
     Commit:
       type: string
       minLength: 1
@@ -1108,13 +1108,9 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, url, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
-        url:
-          type: string
-          format: uri
-          description: GitForge の pull request を、ブラウザで開く URL。WebUI は、レビューでないコメントをここで示す
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ

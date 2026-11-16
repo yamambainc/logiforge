@@ -8,7 +8,7 @@ WebUI を使うのは利用者である。利用者ができることは、[役�
 - [repository の一覧](repositories.md)：repository を選ぶ。repository を作る。
 - [木のビューア](tree-viewer.md)：木と、各ノードの詳細を見る。
 - [人への依頼](human-requests.md)：選んだ repository の人への依頼を一覧し、回答する。
-- [apply request と履歴](history.md)：apply request の差分と議論と、反映したあとの木を見る。過去の時点の木を見る。
+- [apply request と履歴](history.md)：apply request の差分とレビューと、反映したあとの木を見る。過去の時点の木を見る。
 - [ダッシュボード](dashboard.md)：作業の状況を見る。
 
 ## 共通の決まり

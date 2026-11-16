@@ -4,8 +4,15 @@ WebUI の実装を、どこまでを最初の 1 件にするかを確かめる�
 
 ## 最初に作るもの
 
-- 5 つの画面のすべて（[画面と API](screens.md)）。
-- サインインと、トークンの持ち方（[認証](auth.md)）。
+最初の実装は 1 件にし、PR を次の 3 段に積み上げる。
+
+- なぜ 3 段か：1 つの PR が大きいと、レビューしにくいから。段ごとに、動くものを確かめられる。
+
+### 1. ビュワー
+
+- サインインと、トークンの持ち方、ファイルの開き方（[認証](auth.md)）。
+- `logiforge serve` から WebUI を配ること、応答のヘッダー、gzip と `ETag`（[配り方](stack.md#配り方)）。
+- repository を選ぶこと（[repository の一覧](../../docs/webui/repositories.md) のうち、一覧と選択）。
 - ビュワーの、次のもの（[スナップショットツリーのビュワー](snapshot-tree-viewer.md)）。
   - 行の仮想化と、折りたたみ
   - 閉じた部分木の件数と、値の内訳の横棒
@@ -13,9 +20,17 @@ WebUI の実装を、どこまでを最初の 1 件にするかを確かめる�
   - 検索と絞り込み
   - 詳細のパネル
   - キーボードの操作
-  - 差分の重ね表示と、過去の時点（[差分の重ね表示と過去の時点](overlay.md)）
-- API に足す 3 つ（[足す API](screens.md#足す-api)）と、gzip の応答（[配り方](stack.md#配り方)）。
-- `logiforge serve` から WebUI を配ること（[配り方](stack.md#配り方)）。
+  - 取り込み中の読み直し
+- `Repository` の `root_statement`（[足す API](screens.md#足す-api)）。
+
+### 2. 重ね表示と過去の時点
+
+- 差分の重ね表示と、過去の時点（[差分の重ね表示と過去の時点](overlay.md)）。
+- `listCommits`（[足す API](screens.md#足す-api)）。
+
+### 3. 残りの 4 画面
+
+- repository の作成、人への依頼、apply request と履歴、ダッシュボード（[画面と API](screens.md)）。
 
 ## 後に回すもの
 

@@ -20,7 +20,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 ### [repository の一覧](../../docs/webui/repositories.md)
 
 - 一覧：`listRepositories`。根の主文は、`Repository` の `root_statement` を使う（[足す API](#足す-api)）。
-- 作成：`createRepository`。応答の `Logiforge-Pending-Commit` があれば、スナップショットツリーが出るまで、ビュワーで「取り込み中」と示す（[書いた直後の読み](../api/writes.md)）。
+- 作成：`createRepository`。応答の `Logiforge-Pending-Commit` があれば、スナップショットツリーが出るまで、ビュワーで「取り込み中」と示す（[書いた直後の読み](../api/writes.md)、[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
 
 ### [スナップショットツリーのビュワー](../../docs/webui/tree-viewer.md)
 
@@ -40,7 +40,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
-  - 会話（レビューでないコメント）は、`ApplyRequest` の `url` で、GitForge の pull request へのリンクとして示す（[足す API](#足す-api)）。
+  - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、時刻の順に示す。
 - 反映したあとの姿：ビュワーを `?apply_request=` で開く（[差分の重ね表示](overlay.md#差分の重ね表示)）。
 - 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[足す API](#足す-api)）。
 
@@ -52,14 +52,13 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 ## 足す API
 
-WebUI のために、次の 3 つを API に足す。どれも、BE がすでに持つものを返すだけである。
+WebUI のために、次の 2 つを API に足す。どれも、BE がすでに持つものを返すだけである。
 
 | 足すもの | 返すもの | 使う画面 | 元 |
 |---|---|---|---|
 | `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの記録（[スナップショット](../backend/snapshot.md)） |
 | `Repository` の `root_statement` | 根の仮説の主文 | repository の一覧 | 今の `main` のスナップショットツリー |
-| `ApplyRequest` の `url` | GitForge の pull request の、ブラウザで開く URL | apply request と履歴 | GitForge アダプタ |
 
+- `listCommits` の `apply_request_id` は、コミットの記録の trailer `Logiforge-Apply-Request:` の値である（[main のコミットと記録](../files/revisions.md)）。ない（反映によらないコミット）なら null である。
 - `listCommits` のページングは、ほかの一覧と同じくカーソルで分ける。カーソルは、次に読むコミットの `number` である（[ページング](../api/README.md#ページング)）。
 - なぜ `root_statement` を足すか：足さないと、一覧の行ごとに `getNode` を呼ぶことになるから。
-- なぜ会話を API で返さないか：レビューでないコメントは Logiforge の決まりに関わらず、GitForge の画面で読み書きできるから。
