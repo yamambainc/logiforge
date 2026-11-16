@@ -46,7 +46,7 @@ sequenceDiagram
 - WebUI は、次のとき、サインインの画面を出さずに、そのまま authorize に行く。許可済みなら、押す操作なしに、今の URL に戻る。
   - メモリにアクセストークンがないとき（新しいタブ、リロード、共有されたリンク）
   - アクセストークンの期限が来たとき
-  - API が `unauthenticated`（401）を返したとき
+  - API が `unauthenticated`（401）を返したとき。ただし、そのアクセストークンで、API が 1 度は成功したあとに限る（下を見る）
 - `state`、`code_verifier`、戻り先の URL は、`sessionStorage` に置き、戻ってきたら消す。
   - なぜ `sessionStorage` でよいか：トークンではなく、1 回のサインインのあいだだけ使う値だから。戻り先の URL を `state` に結び付けて持つので、共有されたリンクの画面に戻れる。
 - 戻ってきたら、交換の前に、`history.replaceState` で URL から `code` と `state` を消す。
@@ -56,6 +56,9 @@ sequenceDiagram
   - Forgejo が `error` を付けて戻した（利用者が拒んだときなど）。
   - BE の交換が `unauthenticated` を返した。
   - なぜ：自動で行き直すと、行き来が止まらなくなるから。
+- 交換の直後、そのアクセストークンでまだ API が 1 度も成功していないあいだに `unauthenticated`（401）が返ったら、authorize に行き直さない。サインインの画面に「Logiforge の organization に入っていません」と示す。
+  - なぜ：Forgejo の認可は、organization に入っていない人でも通る。BE は、organization に属さない主体を `unauthenticated` で受け付けない（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。行き直すと、交換と 401 が止まらずに繰り返される。
+- 主体が `user` でないとき（利用者の team に入っていない人）は、サインインはできるが、repository の作成と、人への依頼への回答で `forbidden`（403）になる。そのときは、利用者の team に入っていないことを示す。
 - `redirect_uri` は、`https://<WebUI のホスト>/oauth/callback` で、Forgejo には完全に一致する形で登録する。
 - Forgejo にまだログインしていなければ、Forgejo のログインの画面が出る。初めてのときだけ、Forgejo の同意の画面が出る。
 

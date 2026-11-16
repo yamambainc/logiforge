@@ -23,7 +23,6 @@ BE は、WebUI のサインインのために、次の 2 つを足す。どち�
 
 ## ほかの決まり
 
-
 - Forgejo が交換を拒んだら（code が正しくない、使い済み、PKCE が合わない）、BE は `unauthenticated`（401）を返す。
 - BE は、受け取った code とトークンをログに書かない。
 - 詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig` と `exchangeOAuthCode` に書く。
