@@ -10,7 +10,7 @@ WebUI の応答のヘッダーと、利用者やエージェントが書いた�
   - `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`
   - `Referrer-Policy: no-referrer`
 - `logiforge serve` は、WebUI と API のすべての応答に `X-Content-Type-Options: nosniff` を付ける。
-- ビルドした `index.html` に、インラインの `<script>` と `<style>` がないことを、CI で確かめる。
+- ビルドした出力（`index.html` と、3D の部分を含むすべての JS と CSS）に、インラインの `<script>` と `<style>` がないことを、CI で確かめる。
   - なぜ：CSP の `script-src` と `style-src` を `'self'` だけにしておくため。
 - `default-src 'self'` は、`connect-src` と `img-src` の外のオリジンも防ぐ。そのため、注入されたスクリプトがあっても、`fetch` や画像でトークンを外へ送ることはできない。ただし、ページの移動（`location.href` や `window.open` で外の URL を開く）は止めない（[受け入れた危険](auth.md#受け入れた危険)）。
 - スナップショットツリーの文字（主文、背景情報、レポート）は、文字列として表示する。HTML として差し込まない（React の `dangerouslySetInnerHTML` を使わない）。
