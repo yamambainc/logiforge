@@ -55,7 +55,9 @@ export function overlayFocus(ix: Index, changes: Map<string, Change>, node: stri
     const p = parentOf(ix.byId.get(id)!);
     if (p) around.add(p);
   }
-  if (!(node && ix.byId.has(node))) f.selected = order[0];
+  // URL の node があれば、それを選び、そのまわりを収める
+  if (f.around) return f;
+  f.selected = order[0];
   return { ...f, around };
 }
 

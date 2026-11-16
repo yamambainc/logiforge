@@ -157,6 +157,10 @@ export function TreeScreen({ repo }: { repo: string }) {
 
   const rows = useMemo(() => (ix && data ? visibleRows(ix, expanded, include, showInactive, root ?? ix.rootId) : []), [ix, data, root, expanded, include, showInactive]);
   const matchSet = useMemo(() => new Set(matches), [matches]);
+  // 検索の語や絞り込みを変えたら、まわりを外す
+  const filterKey = `${query}|${[...filters].join(',')}|${showInactive}`;
+  const firstFilterKey = useRef(filterKey);
+  useEffect(() => { if (filterKey !== firstFilterKey.current) setAround(null); }, [filterKey]);
   // 検索した語が変わったら、最初の一致を選ぶ
   useEffect(() => {
     if (query.trim() && matches.length && !(selected && matchSet.has(selected))) setSelected(matches[0]);
@@ -164,15 +168,19 @@ export function TreeScreen({ repo }: { repo: string }) {
   }, [query, matches]);
 
   // 利用者が選んだとき（モバイルでは詳細のボトムシートを開く）
-  const pick = useCallback((id: string) => { setSelected(id); if (isMobileNow()) setSheet(true); }, []);
+  // まわりを収めるのは、最初の 1 回だけ。利用者が選ぶ・開閉する・探すと、まわりを外す（graph-navigation.md の「まわりを収める」）
+  const pick = useCallback((id: string) => { setAround(null); setSelected(id); if (isMobileNow()) setSheet(true); }, []);
   const toggle = useCallback((id: string) => {
+    setAround(null);
     touched.current = true;
     setExpanded((e) => { const s = new Set(e); if (s.has(id)) s.delete(id); else s.add(id); return s; });
   }, []);
   const reveal = useCallback((id: string) => {
     if (!ix) return;
     // 表示の根の外のノードなら、スナップショットツリーの根から示す
-    if (rootRef.current && !inSubtree(ix, id, rootRef.current)) setRoot(ix.rootId);
+    setAround(null);
+    // 履歴に積み、戻るで前の表示の根に戻れるようにする
+    if (rootRef.current && !inSubtree(ix, id, rootRef.current)) { pushNext.current = true; setRoot(ix.rootId); }
     setExpanded((e) => { const s = new Set(e); let p = ix.byId.get(id); while (p) { const par = p.node_type === 'hypothesis' ? p.parent_story_id : p.parent_hypothesis_id; if (!par) break; s.add(par); p = ix.byId.get(par); } return s; });
     setSelected(id);
   }, [ix]);
@@ -213,7 +221,8 @@ export function TreeScreen({ repo }: { repo: string }) {
     pushNext.current = true;
     touched.current = true;
     setRoot(id);
-    setExpanded((e) => new Set(e).add(id));
+    // URL の root で開いたときと同じく、表示の根から 2 段を開く
+    setExpanded((e) => new Set([...e, ...initialFocus(ix, null, id).expanded]));
     setSelected(id);
     setAround(null);
   }, [ix]);
