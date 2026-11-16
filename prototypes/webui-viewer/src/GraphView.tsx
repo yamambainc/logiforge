@@ -17,6 +17,7 @@ interface Props {
   searching: boolean;
   fitKey: string; // 検索と絞り込み。変わったら収め直す
   fitPending: boolean; // 検索の入力の途中（収め直しを待っている）
+  vertical: boolean; // 上から下（縦）。false なら左から右（横）
 }
 
 interface Placed { id: string; x: number; y: number; parent: string | null; row: Row }
@@ -27,7 +28,11 @@ const MAX_K = 2.5;
 const LOD_K = 0.45; // これより小さいと文字を省く
 
 export function GraphView(p: Props) {
-  const size = p.mobile ? { w: 212, h: 70, col: 260, row: 82 } : { w: 264, h: 72, col: 324, row: 86 };
+  // col は深さの間隔、row は葉の間隔
+  const V = p.vertical;
+  const size = V
+    ? (p.mobile ? { w: 168, h: 70, col: 118, row: 182 } : { w: 208, h: 72, col: 128, row: 224 })
+    : (p.mobile ? { w: 212, h: 70, col: 260, row: 82 } : { w: 264, h: 72, col: 324, row: 86 });
 
   // レイアウト：rows（深さ優先）から、見えている親子を作り、葉に順に縦の位置を割り当てる
   const layout = useMemo(() => {
@@ -53,13 +58,15 @@ export function GraphView(p: Props) {
         const ys = cs.map(place);
         y = (ys[0] + ys[ys.length - 1]) / 2;
       }
-      pos.set(id, { id, x: r.depth * size.col, y, parent: parent.get(id) ?? null, row: r });
+      // 横：深さが x、葉の順が y。縦：深さが y、葉の順が x
+      pos.set(id, V ? { id, x: y, y: r.depth * size.col, parent: parent.get(id) ?? null, row: r } : { id, x: r.depth * size.col, y, parent: parent.get(id) ?? null, row: r });
       return y;
     };
     if (p.rows.length) place(p.rows[0].id);
     const maxDepth = p.rows.reduce((m, r) => Math.max(m, r.depth), 0);
-    return { pos, width: maxDepth * size.col + size.w, height: Math.max(slot - 1, 0) * size.row + size.h };
-  }, [p.rows, size.col, size.row, size.w, size.h]);
+    const across = Math.max(slot - 1, 0) * size.row, along = maxDepth * size.col;
+    return V ? { pos, width: across + size.w, height: along + size.h } : { pos, width: along + size.w, height: across + size.h };
+  }, [p.rows, V, size.col, size.row, size.w, size.h]);
 
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -100,6 +107,13 @@ export function GraphView(p: Props) {
   // モバイルは、根と 1 段目だけを収め、縮めるのは 70% まで
   const frame = useCallback((lower: number): View => {
     const pad = 16;
+    if (V) {
+      // 縦：根を上に寄せ、開いている部分が収まるまで縮める。横に収まらなければ、根を横の真ん中に置く
+      const k = Math.max(p.mobile && lower === LOD_K ? 0.7 : lower, Math.min(1, (box.w - pad * 2) / layout.width, (box.h - pad * 2) / layout.height));
+      const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
+      const x = k * layout.width <= box.w - pad * 2 ? (box.w - k * layout.width) / 2 : box.w / 2 - k * ((root?.x ?? 0) + size.w / 2);
+      return { k, x, y: pad };
+    }
     if (p.mobile && lower === LOD_K) {
       const k = Math.max(0.7, Math.min(1, (box.w - pad * 2) / (size.col + size.w)));
       const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
@@ -109,7 +123,7 @@ export function GraphView(p: Props) {
     const root = p.rows.length ? layout.pos.get(p.rows[0].id) : undefined;
     const y = k * layout.height <= box.h - pad * 2 ? (box.h - k * layout.height) / 2 : box.h / 2 - k * ((root?.y ?? 0) + size.h / 2);
     return { k, x: pad, y };
-  }, [box, layout, p.rows, p.mobile, size.h, size.col, size.w]);
+  }, [box, layout, p.rows, p.mobile, V, size.h, size.col, size.w]);
   const fit = useCallback(() => animateTo(frame(MIN_K)), [animateTo, frame]);
 
   // 最初の表示：収める（下限 45%）。選んだノードへのフォーカスは効かせない
@@ -222,10 +236,11 @@ export function GraphView(p: Props) {
     const x0 = (-x - margin) / k, x1 = (box.w - x + margin) / k;
     const y0 = (-y - margin) / k, y1 = (box.h - y + margin) / k;
     for (const n of layout.pos.values()) {
-      if (n.x + size.w < x0 || n.x > x1) continue;
       const par = n.parent ? layout.pos.get(n.parent)! : null;
-      const lo = Math.min(n.y, par ? par.y : n.y), hi = Math.max(n.y, par ? par.y : n.y);
-      if (hi + size.h < y0 || lo > y1) continue;
+      // ノードと、親からの線を含む範囲が、画面に入るか
+      const lx = Math.min(n.x, par ? par.x : n.x), hx = Math.max(n.x, par ? par.x : n.x);
+      const ly = Math.min(n.y, par ? par.y : n.y), hy = Math.max(n.y, par ? par.y : n.y);
+      if (hx + size.w < x0 || lx > x1 || hy + size.h < y0 || ly > y1) continue;
       out.push(n);
     }
     return out;
@@ -264,7 +279,7 @@ export function GraphView(p: Props) {
       >
         <svg width={box.w} height={box.h} role="tree" aria-label="スナップショットツリーの図">
           <g transform={`translate(${x},${y}) scale(${k})`}>
-            {vis.map((n) => n.parent && <Edge key={'e' + n.id} n={n} par={layout.pos.get(n.parent)!} w={size.w} h={size.h} change={p.changes?.get(n.id) ?? null} />)}
+            {vis.map((n) => n.parent && <Edge key={'e' + n.id} n={n} par={layout.pos.get(n.parent)!} w={size.w} h={size.h} vertical={V} change={p.changes?.get(n.id) ?? null} />)}
             {vis.map((n) => (
               <NodeCard
                 key={n.id}
@@ -280,6 +295,7 @@ export function GraphView(p: Props) {
                 onSelect={click(() => p.onSelect(n.id))}
                 onToggle={click(() => { if (!p.filtered) p.onToggle(n.id); })}
                 filtered={p.filtered}
+                vertical={V}
               />
             ))}
           </g>
@@ -300,7 +316,13 @@ export function GraphView(p: Props) {
   );
 }
 
-function Edge({ n, par, w, h, change }: { n: Placed; par: Placed; w: number; h: number; change: Change | null }) {
+function Edge({ n, par, w, h, vertical, change }: { n: Placed; par: Placed; w: number; h: number; vertical: boolean; change: Change | null }) {
+  if (vertical) {
+    const x1 = par.x + w / 2, y1 = par.y + h + 10;
+    const x2 = n.x + w / 2, y2 = n.y;
+    const my = (y1 + y2) / 2;
+    return <path className={`edge ${change ? 'e-' + change.kind : ''}`} d={`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`} />;
+  }
   const x1 = par.x + w + 10, y1 = par.y + h / 2;
   const x2 = n.x, y2 = n.y + h / 2;
   const mx = (x1 + x2) / 2;
@@ -309,7 +331,7 @@ function Edge({ n, par, w, h, change }: { n: Placed; par: Placed; w: number; h: 
 
 const NodeCard = memo(function NodeCard(props: {
   n: Placed; ix: Index; w: number; h: number; selected: boolean; match: boolean; dim: boolean; change: Change | null; lod: boolean;
-  onSelect: () => void; onToggle: () => void; filtered: boolean;
+  onSelect: () => void; onToggle: () => void; filtered: boolean; vertical: boolean;
 }) {
   const { n, ix, w, h, selected, match, dim, change, lod } = props;
   const node = ix.byId.get(n.id)!;
@@ -358,7 +380,7 @@ const NodeCard = memo(function NodeCard(props: {
       </g>
       {!lod && n.row.hasChildren && !n.row.open && <Collapsed s={st} x={w - 52} y={h - 15} />}
       {n.row.hasChildren && !props.filtered && (
-        <g className="toggle" transform={`translate(${w + 10},${h / 2})`} onClick={props.onToggle}>
+        <g className="toggle" transform={props.vertical ? `translate(${w / 2},${h + 10})` : `translate(${w + 10},${h / 2})`} onClick={props.onToggle}>
           <circle r={11} />
           <path d={n.row.open ? 'M-4.5,0 H4.5' : 'M-4.5,0 H4.5 M0,-4.5 V4.5'} />
           <circle className="hit" r={20} />

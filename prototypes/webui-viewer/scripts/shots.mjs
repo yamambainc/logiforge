@@ -21,17 +21,28 @@ const shots = [
   ['22-mobile-detail', '?n=100&open=3&pick=verdict&sheet=1', M],
   ['23-mobile-overlay', '?n=4000&ar=apr_7k2m9q4x&f=changed', M],
   ['24-mobile-filter-sheet', '?n=4000&fsheet=1&f=nr', M],
+  ['14-graph-v-n4000', '?n=4000&view=graph&orient=v&open=2'],
+  ['15-graph-v-n100', '?n=100&view=graph&orient=v&open=3&pick=verdict'],
+  ['25-mobile-graph-v', '?n=4000&view=graph&orient=v&open=2', M],
+  ['30-3d-overview', '?n=4000&view=3d&open=3'],
+  ['31-3d-all-open', '?n=4000&view=3d&open=99'],
+  ['32-3d-near', '?n=4000&view=3d&open=4', null, 'window.__3d.dolly(0.38)'],
+  ['33-3d-selected', '?n=100&view=3d&open=4&pick=verdict'],
+  ['34-3d-overlay', '?n=4000&view=3d&ar=apr_7k2m9q4x', null, 'window.__3d.dolly(0.6)'],
+  ['35-3d-mobile', '?n=4000&view=3d&open=3', M],
+  ['36-3d-mobile-selected', '?n=100&view=3d&open=4&pick=verdict&sheet=1', M],
 ];
 const browser = await puppeteer.launch({ args: ['--no-sandbox'], headless: 'shell', executablePath: process.env.CHROME });
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2 });
 const D = { width: 1440, height: 900, deviceScaleFactor: 2 };
-for (const [name, q, vp] of shots) {
+for (const [name, q, vp, act] of shots) {
   await page.setViewport(vp ?? D);
   const t0 = Date.now();
   await page.goto(base + q, { waitUntil: 'networkidle0' });
-  await page.waitForSelector('.row, .empty-box, .gnode');
-  await new Promise((r) => setTimeout(r, 400));
+  await page.waitForSelector('.row, .empty-box, .gnode, .three canvas');
+  await new Promise((r) => setTimeout(r, q.includes('3d') ? 1500 : 400));
+  if (act) { await page.evaluate(act); await new Promise((r) => setTimeout(r, 1200)); }
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log(name, Date.now() - t0, 'ms');
 }

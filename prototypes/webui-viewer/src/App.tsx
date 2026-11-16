@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listApplyRequests, listNodes, listNodesAt, Problem, type ApplyRequestSummary } from './api';
 import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, withRemoved, type Index, type Change } from './model';
 import { TreePane } from './TreePane';
 import { DetailPane } from './DetailPane';
 import { GraphView } from './GraphView';
+// 3D は、開いたときだけ読み込む（three.js を最初の読み込みに含めない）
+const Viewer3D = lazy(() => import('./Viewer3D'));
 
 function useMobile() {
   const q = '(max-width: 767px)';
@@ -48,7 +50,8 @@ export function App() {
   const [filters, setFilters] = useState<Set<Filter>>(new Set((params.get('f') ?? '').split(',').filter(Boolean) as Filter[]));
   const [showInactive, setShowInactive] = useState(params.get('inactive') !== '0');
   const searchRef = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<'outline' | 'graph'>(params.get('view') === 'graph' ? 'graph' : 'outline');
+  const [view, setView] = useState<'outline' | 'graph' | '3d'>((['graph', '3d'].includes(params.get('view') ?? '') ? params.get('view') : 'outline') as 'outline' | 'graph' | '3d');
+  const [vertical, setVertical] = useState(params.get('orient') === 'v');
   const mobile = useMobile();
   const [sheet, setSheet] = useState(params.get('sheet') === '1');
   // 検索の語は、入力が止まって 300 ms たってから図を収め直す
@@ -168,8 +171,30 @@ export function App() {
 
   if (!main || !ix) return <div className="loading">読み込み中…</div>;
 
-  const toggleFilter = (k: Filter) => setFilters((f) => { const g = new Set(f); if (g.has(k)) g.delete(k); else g.add(k); return g; });
   const total = ix.nodes.length;
+  const graphHead = (
+                <div className="tree-head">
+                  <span className="dim">
+                    {total.toLocaleString()} ノード
+                    {include !== null && <> · 一致 <b>{matchSet.size.toLocaleString()}</b></>}
+                    {' '}· {rows.length.toLocaleString()} 個を表示
+                  </span>
+                  <span className="spacer" />
+                  {view === 'graph' && <span className="seg mini" role="group" aria-label="図の向き">
+                    <button className={!vertical ? 'on' : ''} onClick={() => setVertical(false)} title="左から右">横</button>
+                    <button className={vertical ? 'on' : ''} onClick={() => setVertical(true)} title="上から下">縦</button>
+                  </span>}
+                  {include === null && (
+                    <>
+                      <button className="link" onClick={() => setExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
+                      <button className="link" onClick={() => setExpanded(new Set([ix.rootId]))}>閉じる</button>
+                    </>
+                  )}
+                </div>
+  );
+
+
+  const toggleFilter = (k: Filter) => setFilters((f) => { const g = new Set(f); if (g.has(k)) g.delete(k); else g.add(k); return g; });
   const root = ix.byId.get(ix.rootId)!;
   const openArs = ars.filter((a) => a.state === 'open');
   const blocked = overlay.state === 'unsupported' || overlay.state === 'conflict';
@@ -197,11 +222,15 @@ export function App() {
         <div className="seg mode" role="tablist" aria-label="表示">
           <button className={view === 'outline' ? 'on' : ''} onClick={() => setView('outline')}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3.5h12M5 8h9M8 12.5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-            アウトライン
+            <span className="full">アウトライン</span><span className="short">一覧</span>
           </button>
           <button className={view === 'graph' ? 'on' : ''} onClick={() => setView('graph')}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><rect x="1" y="6" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="2" width="4" height="4" rx="1" fill="currentColor" /><rect x="11" y="10" width="4" height="4" rx="1" fill="currentColor" /><path d="M5 8h3M8 4v8M8 4h3M8 12h3" stroke="currentColor" strokeWidth="1.3" fill="none" /></svg>
             図
+          </button>
+          <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M8 1.5l5.6 3.2v6.6L8 14.5l-5.6-3.2V4.7z M8 1.5v6.5m0 0l5.6-3.3M8 8L2.4 4.7M8 8v6.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
+            3D
           </button>
         </div>
         <div className="view">
@@ -300,7 +329,25 @@ export function App() {
             )}
           </section>
         ) : (
-          view === 'graph' ? (
+          view === '3d' ? (
+            <Suspense fallback={<section className="graph-pane"><div className="loading">3D を読み込み中…</div></section>}>
+              <Viewer3D
+                ix={ix}
+                rows={rows}
+                selected={selected}
+                onSelect={pick}
+                onToggle={toggle}
+                matches={matchSet}
+                changes={changes}
+                filtered={include !== null}
+                searching={query.trim() !== ''}
+                mobile={mobile}
+                head={graphHead}
+                fitKey={`${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
+                onFallback={() => setView('graph')}
+              />
+            </Suspense>
+          ) : view === 'graph' ? (
             <GraphView
               ix={ix}
               rows={rows}
@@ -313,23 +360,9 @@ export function App() {
               mobile={mobile}
               searching={query.trim() !== ''}
               fitPending={settledQuery !== query}
-              fitKey={`${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
-              head={
-                <div className="tree-head">
-                  <span className="dim">
-                    {total.toLocaleString()} ノード
-                    {include !== null && <> · 一致 <b>{matchSet.size.toLocaleString()}</b></>}
-                    {' '}· {rows.length.toLocaleString()} 個を描画対象
-                  </span>
-                  <span className="spacer" />
-                  {include === null && (
-                    <>
-                      <button className="link" onClick={() => setExpanded(new Set(ix.nodes.filter((n) => ix.children.has(n.id)).map((n) => n.id)))}>すべて開く</button>
-                      <button className="link" onClick={() => setExpanded(new Set([ix.rootId]))}>閉じる</button>
-                    </>
-                  )}
-                </div>
-              }
+              vertical={vertical}
+              fitKey={`${vertical ? 'v' : 'h'}|${settledQuery.trim()}|${[...filters].sort().join(',')}|${showInactive}`}
+              head={graphHead}
             />
           ) : (
           <TreePane
