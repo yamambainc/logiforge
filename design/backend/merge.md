@@ -8,6 +8,7 @@ apply request を main に反映するとき、バックエンドが何を確か
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
 1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
+   - pull request の向き先が `main` である（[向き先](apply-request.md#向き先)）。違えば、反映の失敗の理由を `target_not_main` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
    - 先頭のコミット（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。
@@ -19,11 +20,13 @@ apply request を main に反映するとき、バックエンドが何を確か
    - 待ち始めに読んだ `main` の先頭が、`main` の並びに入り、その番号が `latest` の番号以下になったら、待つのをやめる（[コミットの記録から引くもの](snapshot.md#コミットの記録から引くもの)）。そのあとに `main` がさらに進んでもよい。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
-   - 先頭のコミットの差分を、今の `main` に重ねる（[向き先に重ねる](snapshot.md#向き先に重ねる)）。重ねられなければ、`conflict`。
+   - 先頭のコミットの差分を、今の `main` に重ねる（重ね方は [向き先に重ねる](snapshot.md#向き先に重ねる)）。重ねられなければ、`conflict`。
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して呼ぶ。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
+   - 手順 1 から手順 4 のあいだに、pull request の向き先が変えられると、GitForge は、`main` でないブランチに merge する。このすき間は、ふさがない（下の「検査と merge のすき間」と同じ考え方）。
+   - かわりに、反映された apply request の向き先が `main` でなければ、バックエンドは、その apply request を読むたびに、警告（`merged_off_main`）を付ける。向き先は GitForge から読むので、記録は要らない。
 6. 手順 1〜4 で反映できなければ、失敗の理由を GitForge に記録する。apply request は open のまま残る。
 
 - reviewer の主体が、pull request を作った主体と同じなら、反映はするが、レビューの応答と apply request に警告を付ける。
@@ -64,7 +67,8 @@ apply request を main に反映するとき、バックエンドが何を確か
 - apply request は、open のまま残る。
 - opener は、ブランチを直して push する。新しい先頭のコミットになる。
   - それまでの approve は、新しい先頭のコミットには効かない（[反映の条件](../../docs/apply-request/review.md)）。
-- 修正待ちになるのは、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）のときだけである。`snapshot_pending` のあとは、reviewer が `approve` し直す（[計算](README.md)）。
+- 修正待ちになるのは、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`、`target_not_main`）のときだけである。
+  - `target_not_main` の直し方は、pull request の向き先を `main` に戻すことである。`snapshot_pending` のあとは、reviewer が `approve` し直す（[計算](README.md)）。
 
 ## レビューの鎖が切れたとき
 

@@ -76,7 +76,7 @@
   - apply request と人への依頼の作業は、[ブランチの履歴](snapshot.md) と、GitForge から読んだ提案、レビュー、人への依頼から計算する。
   - open の apply request の対象ノードは、先頭のコミットの差分のファイルのパスを含む、今のスナップショットツリーのいちばん近いノードである（新しいストーリーは親の仮説、`inactivated.md` はそのストーリー、検証結果と背景情報はその仮説になる）。先頭のコミットのスナップショットがなければ、対象ノードはないものとする。
   - レビュー待ちと修正待ちは、先頭のコミットへの最後の決めるレビュー（`approve` か `request_changes`）と、先頭のコミットの反映の失敗で決める。
-    - 修正待ち：`request_changes` か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗がある。
+    - 修正待ち：`request_changes` か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`、`target_not_main`）での反映の失敗がある。
     - レビュー待ち：決めるレビューがないか、`approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗した（`approve` し直しを待つ）。
     - [着手できる作業](../../docs/work/README.md) の「反映に失敗して `open` に戻った」は、opener が直すべき失敗のことである。
   - 回答済みの人への依頼は、次のどちらかで作業から外す。

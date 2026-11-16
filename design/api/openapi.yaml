@@ -1109,7 +1109,7 @@ components:
         closed_by_session_id: { type: [string, 'null'] }
         warnings:
           type: array
-          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった（../../design/backend/merge.md）
+          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった。反映された pull request の向き先が main でなかった（merged_off_main）（../../design/backend/merge.md）
           items: { type: string }
         merged_commit:
           type: [string, 'null']
@@ -1143,8 +1143,8 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
+          enum: [stale_target, invariant_violation, conflict, target_not_main, snapshot_pending]
+          description: conflict は git の衝突。target_not_main は、pull request の向き先が main でないこと（向き先を main に戻せば直る）。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
         detail: { type: string }
     ReviewMaterial:
       type: object
