@@ -5,6 +5,10 @@ API ごとの概要を引くときに使う。
 
 API を呼ぶのは、CLI と WebUI だけである。エージェント、外の仕組み、人は、CLI か WebUI を通して API を使う（[レイヤー構成](../../architecture.md)）。
 
+## サインイン（WebUI）
+
+- WebUI のサインインの中継（[サインイン](../../webui/auth.md)）→ `GET /oauth/config`、`POST /oauth/token`、`POST /oauth/refresh`
+
 ## repository
 
 - [repository の一覧を読む](repository/list.md) → `GET /repositories`

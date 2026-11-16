@@ -1,68 +1,86 @@
-# 認証
+# サインイン
 
 WebUI のサインインと、トークンの扱いを実装するときに読む。
 BE が主体を確かめる方法は、[認証](../backend/ports/authentication.md) と [Forgejo アダプタの認証](../adapters/forgejo.md#認証) に書く。
+スクリプトの注入への備えは、[スクリプトの注入への備えと、ファイルの開き方](security.md) に書く。
 
-## トークンの受け取り方
+## 方式
 
-Forgejo を使う構成では、利用者は、Forgejo で作ったアクセストークンを、WebUI のサインインの画面に貼る。
+- Forgejo の OAuth2（認可コードと PKCE）でサインインする。トークンを貼る形は作らない。
+- Forgejo には、WebUI を confidential client（client secret を持つクライアント）として登録する。
+- トークンの交換と更新は、BE が中継する（下の「BE の中継」）。client secret は、BE の設定に置く。
+- なぜ confidential client か：Forgejo 17 で確かめたところ、許可済みの利用者が authorize に来たとき、confidential client では同意の画面を出さずにすぐ戻るが、public client（client secret なし）では毎回同意の画面を出す。トークンをメモリだけに持つので、新しいタブ、リロード、共有されたリンクのたびに authorize に行く。そのたびに同意の画面で押させないためである。
+- なぜ BE が中継するか：
+  - client secret を、ブラウザに渡さずに済むから。
+  - WebUI と BE は同じオリジンなので、Forgejo の CORS と、CSP の `connect-src` を広げずに済むから。Forgejo の CORS の設定は、Forgejo の API 全体に効く。
+- GitHub を使う構成のサインインは、[GitHub アダプタ](../adapters/github.md#認証) と一緒に作る。この WebUI の範囲ではない。
 
-- サインインの画面では、WebUI のためだけに、読むだけのトークンを新しく作るように示す。
-  - なぜ：CLI のトークン（`write:repository` を持つ）を貼られると、盗まれたときの被害が大きくなるから。
-- トークンの範囲は、`read:user` と `read:organization` だけでよい。
-  - なぜ：BE は、利用者のトークンを主体を確かめるのにだけ使い（`GET /user`、`GET /user/teams`）、GitForge への書き込みは書き込み主体が行うから（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
-  - サインインの画面には、Forgejo のトークンの作成画面へのリンクと、選ぶ範囲を示す。
-- 貼ったトークンで `GET /v1/repositories` を呼び、成功したらサインインできたとみなす。
-  - `unauthenticated` なら、トークンが正しくないか、organization の主体でないと示す。
-  - 主体が `user` でないとき（`client` のトークン）は、repository の作成と回答で `forbidden` になる。そのときに、利用者の team に入っていないことを示す。
-- トークンは、使い終わったら消せるように、WebUI のためだけのものを作るよう示す。
-  - Forgejo のアクセストークンには、期限を付けられない（Forgejo 17 で確かめた。作るときに期限を渡しても、無視される）。そのため、サインインの画面では、端末をなくしたときや使い終わったときに、Forgejo でトークンを消すように示す。
-  - 期限を付けられる GitForge では、期限付きで作るように示す。
-- なぜ OAuth のログインにしないか：Forgejo に OAuth のアプリケーションを登録し、トークンの交換と更新を WebUI に作る必要があるから。トークンを貼る手間は、端末ごとに 1 回なので、今はその手間に見合わない。
-  - 端末ごとの 1 回の手間が問題になったら、Forgejo の OAuth（PKCE）を足す。
-- GitHub を使う構成のサインイン（GitHub App のユーザー認可）は、[GitHub アダプタ](../adapters/github.md#認証) と一緒に作る。この WebUI の範囲ではない。
+## スコープ
+
+- スコープは、`read:user` と `read:organization` だけにする。
+  - なぜ：BE は、利用者のトークンを、主体を確かめるのにだけ使う（`GET /user`、`GET /user/teams`）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
+  - Forgejo 17 で、このスコープのトークンで `GET /user` と `GET /user/teams` が通り、書き込みと repository の読みは `403` になることを確かめた。BE の認証は、今のままでよい。
+
+## サインインの流れ
+
+```mermaid
+sequenceDiagram
+  participant B as ブラウザ（WebUI）
+  participant BE as BE
+  participant F as Forgejo
+  B->>B: state、code_verifier、戻り先の URL を sessionStorage に置く
+  B->>F: authorize（client_id、redirect_uri、scope、state、code_challenge）
+  F-->>B: redirect_uri に code と state を付けて戻す（許可済みなら同意の画面なし）
+  B->>B: state を照らし合わせ、sessionStorage から消す
+  B->>BE: POST /v1/oauth/token（code、code_verifier）
+  BE->>F: トークンのエンドポイント（client_id、client_secret、code、code_verifier、redirect_uri）
+  F-->>BE: アクセストークン、リフレッシュトークン
+  BE-->>B: そのまま返す（保持しない）
+  B->>B: トークンをメモリに置き、戻り先の URL を開く
+```
+
+- WebUI は、メモリにトークンがないとき（新しいタブ、リロード、共有されたリンク）、自動で authorize に行く。
+- `state`、`code_verifier`、戻り先の URL は、`sessionStorage` に置き、戻ってきたら消す。
+  - なぜ `sessionStorage` でよいか：トークンではなく、1 回のサインインのあいだだけ使う値だから。戻り先の URL を `state` に結び付けて持つので、共有されたリンクの画面に戻れる。
+- `redirect_uri` は、`https://<WebUI のホスト>/oauth/callback` で、Forgejo には完全に一致する形で登録する。
+- Forgejo にまだログインしていなければ、Forgejo のログインの画面が出る。ログインすると、同じ流れで戻る。
+- 初めてのときだけ、Forgejo の同意の画面が出る。
+
+モバイルで、共有されたリンクを開いたときは、次のとおりになる。
+
+- そのブラウザで Forgejo にログインしていて、許可済みなら、Forgejo へ行って、押す操作なしに、リンクの画面に戻る。
+  - Forgejo の中の時間は約 3 ms だった（Forgejo 17）。あとは、画面の行き来 2 回と、BE への 1 回の要求である。実機の時間は、実装で確かめる（[最初に作る範囲](first-release.md)）。
+- チャットのアプリの中のブラウザは、ふだんのブラウザと cookie が別である。初めて開いたときは、Forgejo のログインの画面が出る。
 
 ## トークンの持ち方
 
-- トークンは、ブラウザの `localStorage` に置く。
-  - 端末（ブラウザ）ごとに 1 回貼れば、サインアウトするまで残る。タブやリンクを開き直しても、貼り直さない。
-  - なぜ `localStorage` か：スマートフォンでも使うから（[モバイルの表示](mobile.md)）。`sessionStorage` はタブごとなので、共有されたリンクを開くたびに、トークンを作って貼り直すことになる。
-  - 受け入れた危険：スクリプトの注入（XSS）で盗まれると、利用者がトークンを消すまで使われる。Forgejo のトークンには期限を付けられないので、消すまでの期間に上限はない。
-  - 危険を抑えるために、次のことをする。
-    - トークンの範囲を、読むだけ（`read:user`、`read:organization`）にする（上の「トークンの受け取り方」）。盗まれても、GitForge には書き込めず、GitForge から private な repository の中身も読めない（`read:repository` がないため）。ただし、Logiforge の API は、その利用者として使える（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
-    - 厳しい CSP で、スクリプトの注入を防ぐ（下の「スクリプトの注入への備え」）。
-    - サインアウトと、`unauthenticated`（401）で、トークンを消す。
-  - なぜ cookie にしないか：BE は、要求ごとに `Authorization` ヘッダーでトークンを受け取る（[API の認証](../api/README.md#認証)）。cookie にすると、BE に CSRF の対策が要るから。
-- API を呼ぶたびに、`Authorization: Bearer <トークン>` を付ける。
-- `unauthenticated`（401）が返ったら、トークンを消し、サインインの画面に戻す。
-- サインアウトは、トークンを消すだけである。トークンを無効にするのは、利用者が Forgejo で行う。
+- アクセストークンとリフレッシュトークンは、メモリ（JavaScript の変数）だけに持つ。`localStorage`、`sessionStorage`、cookie には保存しない。
+- 寿命は、Forgejo 17 で、アクセストークンが 1 時間、リフレッシュトークンが約 30 日だった。
+  - アクセストークンが切れる前に、`POST /v1/oauth/refresh` で更新する。リフレッシュトークンは 1 回使うと無効になるので、返った新しいものに置き換える。
+- API を呼ぶたびに、`Authorization: Bearer <アクセストークン>` を付ける。
+- サインアウトしたときと、`unauthenticated`（401）が返ったときは、メモリのトークンを消し、サインインの画面に戻す。
+  - サインインの画面には、「Forgejo でサインイン」のボタンだけを置く。サインアウトしたあとに、すぐ自動で authorize に行かないようにするため。
+  - Forgejo のログインは残る。Forgejo からもログアウトするためのリンクを、サインインの画面に置く。
 
-## スクリプトの注入への備え
+## 受け入れた危険
 
-トークンをブラウザに置くので、スクリプトの注入（XSS）を防ぐことが、トークンを守ることになる。
+- スクリプトが注入されると、そのページが開いているあいだ、メモリのトークンは読まれ、Logiforge の API がその利用者として使われうる（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
+- CSP の `default-src 'self'` は、外のオリジンへの通信を防ぐので、トークンを外へ送ることも防ぐ（[スクリプトの注入への備え](security.md)）。
+- それでも外へ渡ったときに使える期間は、アクセストークンが 1 時間まで、リフレッシュトークンが約 30 日までである。リフレッシュトークンは 1 回使うと無効になるので、利用者と盗んだ側の両方が使えば、片方が失敗する。
+- トークンを保存しないので、ページを閉じたあとに端末から盗まれることはない。
 
-- `logiforge serve` は、WebUI の応答に次のヘッダーを付ける。
-  - `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`
-  - `Referrer-Policy: no-referrer`
-- `logiforge serve` は、WebUI と API のすべての応答に `X-Content-Type-Options: nosniff` を付ける。
-- ビルドした `index.html` に、インラインの `<script>` と `<style>` がないことを、CI で確かめる。
-  - なぜ：CSP の `script-src` と `style-src` を `'self'` だけにしておくため。
-- スナップショットツリーの文字（主文、背景情報、レポート）は、文字列として表示する。HTML として差し込まない（React の `dangerouslySetInnerHTML` を使わない）。
-- 検証結果のレポートは、Markdown を整形しない。改行だけを保つ。
-  - なぜ：整形には、HTML の無害化のライブラリが要るから。読む利用者にとって、整形の価値は小さい。
-- artifact の `link` は、`https:` と `http:` のときだけ、リンクにする。ほかは文字列として示す。
+## BE の中継
 
-## ファイルの開き方
+BE は、次の 3 つを足す。どれも認証を求めず、状態を持たない。
 
-artifact（`getArtifact`）と回答の添付（`getAnswerAttachment`）は、利用者やエージェントが置いた任意のファイルである。WebUI と同じオリジンから返るので、開き方を絞る。
+| 要求 | すること |
+|---|---|
+| `GET /v1/oauth/config` | authorize の URL、`client_id`、`redirect_uri`、スコープを返す |
+| `POST /v1/oauth/token` | `code` と `code_verifier` を受け取り、client secret を足して Forgejo で交換し、応答をそのまま返す |
+| `POST /v1/oauth/refresh` | リフレッシュトークンを受け取り、client secret を足して Forgejo で更新し、応答をそのまま返す |
 
-- WebUI は、ファイルを `Authorization` を付けて読み、`application/octet-stream` の blob にして、`download` 属性のリンクで保存させる。タブや iframe では開かない。
-- その場で示すのは、次のものだけである。
-  - png、jpeg、gif、webp の画像。`<img>` で示す。
-  - テキスト。文字列として示す。
-- SVG は、画像としても示さない。保存させるだけである。
-  - なぜ：SVG はスクリプトを含められるから。
-- BE は、この 2 つの API の応答に、次のヘッダーを付ける。
-  - `Content-Disposition: attachment`
-  - `Content-Security-Policy: sandbox`
-  - なぜ：URL を直接開かれても、WebUI と同じオリジンの文書として動かないようにするため。
+- Forgejo が交換や更新を拒んだら（コードやリフレッシュトークンが正しくない、使い済み）、BE は `unauthenticated`（401）を返す。WebUI は、サインインの画面に戻す。
+- BE は、受け取ったトークンをログに書かない。
+- 詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig`、`exchangeOAuthCode`、`refreshOAuthToken` に書く。
+- `client_id`、client secret、`redirect_uri` は、環境変数で渡す（[環境変数と秘密](../deploy.md#環境変数と秘密)）。
+- OAuth2 のアプリケーションは、管理者が Forgejo で登録する（confidential client）。

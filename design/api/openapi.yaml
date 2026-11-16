@@ -30,8 +30,78 @@ tags:
     description: 人への依頼（PVR と判断の依頼）
   - name: history
     description: 履歴とエクスポート
+  - name: oauth
+    description: WebUI のサインイン（Forgejo の OAuth2 の中継）
 
 paths:
+  /oauth/config:
+    get:
+      tags: [oauth]
+      operationId: getOAuthConfig
+      summary: WebUI のサインインに使う OAuth2 の設定
+      description: 認証を求めない。設計は ../../design/webui/auth.md に従う。
+      security: []
+      responses:
+        '200':
+          description: authorize の URL など
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorize_url, client_id, redirect_uri, scope]
+                properties:
+                  authorize_url: { type: string, format: uri }
+                  client_id: { type: string }
+                  redirect_uri: { type: string, format: uri }
+                  scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization）' }
+  /oauth/token:
+    post:
+      tags: [oauth]
+      operationId: exchangeOAuthCode
+      summary: 認可コードをトークンに交換する（BE が client secret を足して Forgejo に中継する）
+      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, code_verifier]
+              properties:
+                code: { type: string }
+                code_verifier: { type: string }
+      responses:
+        '200':
+          description: Forgejo の応答
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthToken' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /oauth/refresh:
+    post:
+      tags: [oauth]
+      operationId: refreshOAuthToken
+      summary: リフレッシュトークンでアクセストークンを更新する（BE が client secret を足して Forgejo に中継する）
+      description: 認証を求めない。リフレッシュトークンは 1 回使うと無効になるので、返った新しいものに置き換える。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Forgejo の応答
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthToken' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories:
     get:
       tags: [repository]
@@ -770,6 +840,14 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
 
   schemas:
+    OAuthToken:
+      type: object
+      required: [access_token, token_type, expires_in, refresh_token]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string }
+        expires_in: { type: integer, description: アクセストークンの寿命（秒） }
+        refresh_token: { type: string }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'

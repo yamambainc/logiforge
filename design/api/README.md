@@ -21,6 +21,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md) に書く。
 - トークンの発行方法は、この API の範囲外である（[目的と範囲](../../docs/concepts/README.md)）。
 - ヘルスチェックの `GET /healthz` だけは、`/v1` の外に置き、認証を求めない（[ヘルスチェック](../deploy.md#ヘルスチェック)）。
+- WebUI のサインインの中継（`/v1/oauth/` の下の 3 つ）も、認証を求めない。サインインの前に呼ぶからである（[サインイン](../webui/auth.md)）。
 
 ## repository
 
