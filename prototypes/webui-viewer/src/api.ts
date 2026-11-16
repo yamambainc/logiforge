@@ -23,7 +23,6 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function listNodes(n: number, applyRequest?: ApplyRequestSummary): Promise<{ commit: string; number?: number; nodes: Node[] }> {
   if (applyRequest) {
-    if (applyRequest.target !== 'main') throw new Problem('overlay_unsupported', '');
     if (applyRequest.conflict) throw new Problem('overlay_conflict', applyRequest.conflict.join('\n'));
     const r = await fetch(`${base(n)}/overlay-${applyRequest.id}.json`);
     return r.json();
@@ -35,6 +34,12 @@ export async function listNodes(n: number, applyRequest?: ApplyRequestSummary): 
   const body = JSON.parse(text);
   (window as unknown as { __lf: Record<string, number> }).__lf = { parse: performance.now() - t, bytes: text.length };
   return body;
+}
+
+// commit を指定した listNodes（試作では、向き先のブランチの先頭だけを置いている）
+export async function listNodesAt(n: number, commit: string): Promise<{ commit: string; nodes: Node[] }> {
+  const r = await fetch(`${base(n)}/commit-${commit}.json`);
+  return r.json();
 }
 
 export async function listApplyRequests(n: number): Promise<ApplyRequestSummary[]> {

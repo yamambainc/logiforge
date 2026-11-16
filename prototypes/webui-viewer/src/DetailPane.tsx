@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { getNodeExtra, type NodeDetailExtra } from './api';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 
-interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void }
+interface Props { ix: Index; id: string | null; change: Change | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void; unchecked: boolean }
 
 const vc = (v: TruthValue) => (v === true ? 'v-true' : v === false ? 'v-false' : 'v-null');
 
-export function DetailPane({ ix, id, change, onReveal, mobile, onClose }: Props) {
+export function DetailPane({ ix, id, change, onReveal, mobile, onClose, unchecked }: Props) {
   const n = id ? ix.byId.get(id) : undefined;
   const [extra, setExtra] = useState<NodeDetailExtra | null>(null);
   useEffect(() => {
@@ -59,6 +59,7 @@ export function DetailPane({ ix, id, change, onReveal, mobile, onClose }: Props)
 
       {change && (
         <Section title="この AR での変化" tone="chg">
+          {unchecked && <p className="note warn-note">main 向きではないので、検査していません。値が決まりに沿っているかは確かめていません。</p>}
           {change.kind === 'added' ? (
             <p>この AR で加わるノードです。</p>
           ) : change.kind === 'removed' ? (

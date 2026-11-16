@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listApplyRequests, listNodes, Problem, type ApplyRequestSummary } from './api';
+import { listApplyRequests, listNodes, listNodesAt, Problem, type ApplyRequestSummary } from './api';
 import { buildIndex, diff, textOf, visibleRows, withAncestors, ancestors, withRemoved, type Index, type Change } from './model';
 import { TreePane } from './TreePane';
 import { DetailPane } from './DetailPane';
@@ -94,10 +94,12 @@ export function App() {
     setOverlay({ state: 'loading', ar });
     try {
       const r = await listNodes(N, ar);
-      // 比べる相手は、重ねた向き先のコミット（r.commit）の main。手元の main と違えば読み直す（試作では同じ）
+      // 比べる相手は、重ねた向き先のコミット（r.commit）の木。手元の main と違えば読み直す（向き先が main でないときは、いつも読み直す）
+      // 試作では、main 向きなら手元の main と同じコミットに重ねている
+      const before = ar.target === 'main' ? base : buildIndex((await listNodesAt(N, r.commit)).nodes);
       const after = buildIndex(r.nodes);
-      const d = diff(base, after);
-      const ix = d.removed.length ? buildIndex(withRemoved(after, base, d.removed)) : after;
+      const d = diff(before, after);
+      const ix = d.removed.length ? buildIndex(withRemoved(after, before, d.removed)) : after;
       for (const id of d.removed) d.changes.set(id, { kind: 'removed' });
       setOverlay({ state: 'ok', ar, ix, changes: d.changes, removed: d.removed, base: r.commit });
       // 変わるノードの祖先を開く
@@ -259,10 +261,16 @@ export function App() {
       </div>
 
       {overlay.state === 'ok' && (
-        <div className="banner overlay">
+        <div className={`banner overlay ${overlay.ar.target !== 'main' ? 'unchecked' : ''}`}>
+          {overlay.ar.target !== 'main' && (
+            <span className="warn">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M8 1.8l6.6 12H1.4z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M8 6.2v3.6M8 11.6v.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+              main 向きではないので、検査していません
+            </span>
+          )}
           <span className="banner-title">反映したあとの姿</span>
           <span>{overlay.ar.description}</span>
-          <span className="mono dim">{overlay.ar.id} · {overlay.ar.branch} → main · 比べた main {overlay.base.slice(0, 7)}</span>
+          <span className="mono dim">{overlay.ar.id} · {overlay.ar.branch} → {overlay.ar.target} · 比べた {overlay.ar.target === 'main' ? 'main' : '向き先'} {overlay.base.slice(0, 7)}</span>
           <span className="spacer" />
           <span className="pill added">追加 {[...overlay.changes.values()].filter((c) => c.kind === 'added').length}</span>
           <span className="pill changed">変化 {[...overlay.changes.values()].filter((c) => c.kind === 'changed').length}</span>
@@ -345,6 +353,7 @@ export function App() {
           onClose={() => setSheet(false)}
           id={selected}
           change={selected && changes ? changes.get(selected) ?? null : null}
+          unchecked={overlay.state === 'ok' && overlay.ar.target !== 'main'}
           onReveal={(id) => { reveal(id); }}
         />}
       </main>

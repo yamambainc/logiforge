@@ -320,3 +320,12 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
   .body { grid-template-columns: minmax(0, 1fr) 360px; }
   .search { width: 240px; }
 }
+
+/* main 向きでない AR（検査していない） */
+.banner.overlay.unchecked { background: #fff8e6; border-bottom-color: #f2dfae; }
+.banner.overlay.unchecked .banner-title { color: #8a5a00; }
+.warn { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: #8a4b00; background: #ffeec2; border: 1px solid #f2d48a; border-radius: 6px; padding: 2px 8px; }
+.warn-note { background: #fff4d6; color: #7a4f00; margin: 0 0 8px; }
+.banner { flex-wrap: wrap; row-gap: 6px; }
+.banner .pill, .banner .link, .banner-title, .warn { white-space: nowrap; }
+.banner.unchecked .warn { margin-right: 4px; }

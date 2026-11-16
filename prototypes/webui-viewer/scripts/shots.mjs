@@ -10,7 +10,7 @@ const shots = [
   ['04-n4000-filter-nr', '?n=4000&f=nr'],
   ['05-n4000-overlay', '?n=4000&ar=apr_7k2m9q4x'],
   ['06-n4000-overlay-changed', '?n=4000&ar=apr_7k2m9q4x&f=changed'],
-  ['07-not-main', '?n=100&ar=apr_3t8v1n6c'],
+  ['07-not-main', '?n=4000&ar=apr_3t8v1n6c&f=changed'],
   ['08-conflict', '?n=100&ar=apr_9d4h2w7e'],
   ['10-graph-n100', '?n=100&view=graph&open=3&pick=verdict'],
   ['11-graph-n4000', '?n=4000&view=graph&open=3'],

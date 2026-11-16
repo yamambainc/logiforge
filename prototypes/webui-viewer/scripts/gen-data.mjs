@@ -199,13 +199,26 @@ function gen(N, seed) {
   for (const k of Object.keys(overlayClaims)) overlayClaims[k].ar = overlayClaims[k].ar.filter((a) => a !== apr1);
   const overlay = toNodes(t, overlayClaims);
 
+  // apply request 2（向き先は apply request 1 のブランチ）：招待の仮説 2 つに検証結果を出し、ストーリーを 1 つ足す
+  const targetHead = 'c41e9a07d2';
+  const targetTree = overlay; // 向き先のブランチの今の先頭（apply request 1 の先頭）の木
+  t.hyps.get(ns.hyps[0]).verdict = true;
+  t.hyps.get(ns.hyps[2]).verdict = false;
+  const ns2 = { id: id(r, 's'), parent: ns.hyps[1], title: '招待した側の行動を見る', summary: '招待した人が、その後も使い続けているかを、操作の記録から数える。', hyps: [], state: 'active', reason: null };
+  t.stories.set(ns2.id, ns2); t.hyps.get(ns.hyps[1]).stories.push(ns2.id);
+  for (const st of ['招待した人の 30 日継続率が、招待しない人と比べて下がらない', '招待した人の操作の回数が、招待の前と比べて減らない']) {
+    const h = { id: id(r, 'h'), parent: ns2.id, statement: st, background: '', stories: [], depth: parentForStory.depth + 3, verdict: null };
+    t.hyps.set(h.id, h); ns2.hyps.push(h.id);
+  }
+  const overlay2 = toNodes(t, overlayClaims);
+
   const ars = [
     { id: apr1, state: 'open', branch: 'opener/invite-story', target: 'main', head_commit: 'c41e9a07d2', awaiting: 'review', description: '招待の導線のストーリーを足し、重複したストーリーを消す',
       operations: [
         { position: 0, kind: 'story.create', story_id: ns.id, parent_hypothesis_id: parentForStory.id, title: ns.title },
         { position: 1, kind: 'verdict.submit', verdict_id: 'v-' + target.id.slice(2), hypothesis_id: target.id, value: true },
       ] },
-    { id: apr2, state: 'open', branch: 'opener/retry-notify', target: 'opener/invite-story', head_commit: '8b02f6e1aa', awaiting: null, description: '通知の再実験（別の apply request のブランチに向けたもの）', operations: [] },
+    { id: apr2, state: 'open', branch: 'opener/invite-verdicts', target: 'opener/invite-story', head_commit: '8b02f6e1aa', awaiting: null, description: '招待の仮説を検証する（招待の導線の AR に積み上げ）', operations: [] },
     { id: apr3, state: 'open', branch: 'opener/redo-funnel', target: 'main', head_commit: '5f7c3d90be', awaiting: 'fix', description: 'ファネルの分け方をやり直す',
       operations: [{ position: 0, kind: 'verdict.submit', hypothesis_id: c3.id, value: false }],
       conflict: [`hypotheses/${c3.id}/verdicts/v-${c3.id.slice(2)}.md`] },
@@ -215,6 +228,8 @@ function gen(N, seed) {
   const commit = { 100: '3fa9c1e07b', 4000: 'a1b2c3d4e5' }[N] || 'deadbeef00';
   writeFileSync(`${dir}/main.json`, JSON.stringify({ commit, number: N === 100 ? 48 : 1412, nodes: main }));
   writeFileSync(`${dir}/overlay-${apr1}.json`, JSON.stringify({ commit, nodes: overlay }));
+  writeFileSync(`${dir}/commit-${targetHead}.json`, JSON.stringify({ commit: targetHead, nodes: targetTree }));
+  writeFileSync(`${dir}/overlay-${apr2}.json`, JSON.stringify({ commit: targetHead, nodes: overlay2 }));
   writeFileSync(`${dir}/apply-requests.json`, JSON.stringify({ items: ars, next_cursor: null }));
   console.log(N, 'main', main.length, 'overlay', overlay.length);
 }

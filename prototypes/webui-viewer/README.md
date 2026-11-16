@@ -18,7 +18,7 @@ URL の引数で、開く状態を決められる。
 | `node` | 選ぶノードの識別子 |
 | `q` | 検索の語 |
 | `f` | 絞り込み（`true,false,null,nr,ar,hr,changed` をカンマで） |
-| `ar` | 重ねる apply request（`apr_7k2m9q4x` は main 向き、`apr_3t8v1n6c` は main 向きでない、`apr_9d4h2w7e` は衝突） |
+| `ar` | 重ねる apply request（`apr_7k2m9q4x` は main 向き、`apr_3t8v1n6c` は main 向きでない（`apr_7k2m9q4x` のブランチに積み上げ）、`apr_9d4h2w7e` は衝突） |
 | `open` | 開いておく段数 |
 | `view` | `graph` で図、なければアウトライン |
 | `sheet` | `1` で、モバイルの詳細のボトムシートを開いておく |
