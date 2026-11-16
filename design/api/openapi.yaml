@@ -426,7 +426,7 @@ paths:
         - $ref: '#/components/parameters/ApplyRequestId'
       responses:
         '200':
-          description: 先頭のコミットの差分に対するレビューの材料。説明欄は含めない
+          description: 先頭のコミットの差分に対するレビューの材料。説明欄は含めない。apply request の向き先が main でなければ overlay_unsupported
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewMaterial' }
@@ -796,7 +796,7 @@ components:
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
             | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした |
-            | overlay_unsupported | 422 | apply request の向き先が main でないので、反映したあとの木を作れない |
+            | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料と、反映したあとの木を返せない |
             | overlay_conflict | 409 | apply request の差分を、向き先の今の先頭に重ねられない。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
@@ -1062,12 +1062,17 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
+        target:
+          type: string
+          description: >-
+            向き先（pull request の base のブランチ）。Logiforge が作るものは main。
+            main でなければ、Logiforge は検査も反映もしない。operations は空で、作業の一覧に出ない（../../design/backend/apply-request.md の「向き先」）
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         head_commit:
           $ref: '#/components/schemas/Commit'
@@ -1109,7 +1114,7 @@ components:
         closed_by_session_id: { type: [string, 'null'] }
         warnings:
           type: array
-          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった。反映された pull request の向き先が main でなかった（merged_off_main）（../../design/backend/merge.md）
+          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった。向き先が main でないので、approve しても Logiforge は反映しない（../../design/backend/merge.md）
           items: { type: string }
         merged_commit:
           type: [string, 'null']
@@ -1143,8 +1148,8 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, target_not_main, snapshot_pending]
-          description: conflict は git の衝突。target_not_main は、pull request の向き先が main でないこと（向き先を main に戻せば直る）。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
         detail: { type: string }
     ReviewMaterial:
       type: object
