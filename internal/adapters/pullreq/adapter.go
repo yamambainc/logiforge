@@ -400,15 +400,25 @@ func (a *Adapter) withLog(ctx context.Context, repo string, number int) ([]Comme
 	return MergeComments(logged, cur), nil
 }
 
-// MergeComments は、控えのコメントと今のコメントを合わせる。同じ id は、控えのものを使う。id の順に並べる。
+// MergeComments は、控えのコメントと今のコメントを合わせる。同じ id は、本文だけ控えのもの（worker が最初に見た中身）を使い、
+// 添付などの GitForge の側の情報は、今のものを使う（控えは、本文しか持たないから）。id の順に並べる。
 func MergeComments(logged, cur []Comment) []Comment {
+	now := map[int64]Comment{}
+	for _, c := range cur {
+		now[c.ID] = c
+	}
 	seen := map[int64]bool{}
 	out := make([]Comment, 0, len(logged)+len(cur))
 	for _, c := range logged {
-		if !seen[c.ID] {
-			seen[c.ID] = true
-			out = append(out, c)
+		if seen[c.ID] {
+			continue
 		}
+		seen[c.ID] = true
+		if x, ok := now[c.ID]; ok {
+			x.Body = c.Body
+			c = x
+		}
+		out = append(out, c)
 	}
 	for _, c := range cur {
 		if !seen[c.ID] {

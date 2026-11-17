@@ -422,6 +422,16 @@ func TestReviewsWithLog(t *testing.T) {
 	}
 }
 
+// 控えと今のコメントを合わせるとき、本文は控えのもの、添付は今のものを使う。
+func TestMergeCommentsKeepsAttachments(t *testing.T) {
+	logged := []Comment{{ID: 2, Body: "控え"}, {ID: 1, Body: "消された"}}
+	cur := []Comment{{ID: 2, Body: "書き換えた", Attachments: map[string]string{"a.txt": "9"}}, {ID: 3, Body: "新しい"}}
+	got := MergeComments(logged, cur)
+	if len(got) != 3 || got[0].Body != "消された" || got[1].Body != "控え" || got[1].Attachments["a.txt"] != "9" || got[2].Body != "新しい" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 type memLog map[int][]Comment
 
 func (l memLog) Comments(_ context.Context, _ string, n int) ([]Comment, error) { return l[n], nil }
