@@ -22,11 +22,11 @@ func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth) {
 type repos struct{ *client }
 
 func (r repos) w(ctx context.Context, method, path string, in, out any) error {
-	return r.do(ctx, r.cfg.WriterToken, method, path, in, out)
+	return r.do(ctx, ports.TokenFrom(ctx), method, path, in, out)
 }
 
 func (r repos) ListRepositories(ctx context.Context) ([]ports.Repository, error) {
-	return r.list(ctx, r.cfg.WriterToken)
+	return r.list(ctx, ports.TokenFrom(ctx))
 }
 
 func (r repos) list(ctx context.Context, token string) ([]ports.Repository, error) {
@@ -114,7 +114,8 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	if err := r.w(ctx, http.MethodGet, rp+"/branch_protections/main", nil, nil); statusOf(err) == http.StatusNotFound {
 		body := map[string]any{
 			"rule_name": "main", "enable_push": false,
-			"enable_merge_whitelist": true, "merge_whitelist_usernames": []string{r.cfg.Writer},
+			// merge できる人は絞らない。reviewer が merge する（design/adapters/forgejo.md の「repository の用意」）。
+			"enable_merge_whitelist":   false,
 			"block_on_outdated_branch": false,
 		}
 		if err := r.w(ctx, http.MethodPost, rp+"/branch_protections", body, nil); err != nil {
@@ -142,8 +143,8 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 		}
 		return ports.Principal{}, err
 	}
-	// 書き込み主体と worker のユーザーは、Logiforge の API の主体ではない。
-	if u.Login == a.c.cfg.Writer || (a.c.cfg.WorkerLogin != "" && u.Login == a.c.cfg.WorkerLogin) {
+	// worker のユーザーは、Logiforge の API の主体ではない。
+	if a.c.cfg.WorkerLogin != "" && u.Login == a.c.cfg.WorkerLogin {
 		return ports.Principal{}, ports.ErrUnauthenticated
 	}
 	type teamJSON struct {

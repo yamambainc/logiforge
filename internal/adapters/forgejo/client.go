@@ -25,9 +25,6 @@ type Config struct {
 	Org string
 	// UserTeam は、主体の種類を user とみなす team の名前（例：logiforge-users）。
 	UserTeam string
-	// Writer と WriterToken は、書き込み主体のログイン名とトークン。
-	Writer      string
-	WriterToken string
 	// WorkerLogin は、worker の読むだけのユーザーのログイン名。API の主体としては受け付けない。
 	WorkerLogin string
 	// HTTP は、使う HTTP のクライアント。nil なら、時間の上限（30 秒）を付けたクライアント。

@@ -47,6 +47,10 @@ type Config struct {
 	ListInterval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
+	// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify.md）。nil なら決めない（trailer で決める）。
+	Verifier Verifier
+	// Records は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。nil なら足さない。
+	Records RecordLog
 	Now         func() time.Time
 	Log         *slog.Logger
 }
@@ -78,7 +82,7 @@ type Worker struct {
 	hasLatest map[string]bool
 	// written は、最後に書いた repositories である。変わったときだけ書く。書いていなければ nil。
 	written *string
-	// firstSeen は、反映の記録があるのに、merge した pull request がまだ見つからないコミットを、worker が初めて見た時刻である。
+	// firstSeen は、merge した pull request がまだ見つからないコミットを、worker が初めて見た時刻である。
 	// コミットの時刻は push する人が決められるので、待つ時間は、これから数える。プロセスごとに持つ（止まれば、待ち直すだけである）。
 	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
@@ -328,6 +332,12 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	if err := w.markDeleted(ctx, r.Name, heads); err != nil {
 		return err
 	}
+	// 記録の控えは、main より先に足す。反映かの判定に使うから。
+	if w.cfg.Records != nil {
+		if err := w.cfg.Records.Sync(ctx, r.GitForgeRef); err != nil {
+			return fmt.Errorf("記録の控え: %w", err)
+		}
+	}
 	if mainSHA, ok := heads["main"]; ok {
 		if err := w.syncMain(ctx, g, r, mainSHA); err != nil {
 			return fmt.Errorf("main: %w", err)
@@ -465,28 +475,27 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			paths[j] = ch.Path
 		}
 		info := workcopy.CommitInfo(c)
-		if info.Authorized, err = w.authorized(ctx, r, sha, i == 0, info); err != nil {
-			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
-			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
-		}
-		rec := x.Record(info, paths)
 		if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
 		}
+		v, err := w.authorized(ctx, g, r, sha, c.Parents, i == 0, info, files, br)
+		if err != nil {
+			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
+			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
+		}
+		if v != nil {
+			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
+		}
+		rec := x.Record(info, paths)
 		if br == nil && info.Authorized != nil && !*info.Authorized {
 			last := latest
 			if i > 0 {
 				last = chain[i-1]
 			}
 			br = &store.Broken{LastGood: last, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}
-		} else if br != nil && info.Authorized != nil && *info.Authorized {
-			healed, err := w.healed(ctx, g, repo, br, rec, files)
-			if err != nil {
-				return err
-			}
-			if healed {
-				br = nil
-			}
+		} else if br != nil && v != nil && v.Authorized && v.Kind != "" {
+			// 直すための apply request の反映で、直す条件は、反映かの判定で確かめた（design/backend/broken.md の「直すための apply request」）。
+			br = nil
 		}
 		if err := w.putArtifacts(ctx, repo, files, paths); err != nil {
 			return err
@@ -538,36 +547,63 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	return nil
 }
 
-// MergeChecker は、main のコミットが、書き込み主体が merge した pull request の merge のコミットかを、GitForge の API で確かめる
-// （design/backend/broken.md の「反映かの判定」）。worker の Source が実装していれば使う。
-type MergeChecker interface {
-	MergedByWriter(ctx context.Context, gitForgeRef, sha string) (bool, error)
+// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify.md）。
+// parents はコミットの親（最初の親が 1 つ前の main のコミット）、files はそのコミットの木、broken は 1 つ前の main までの壊れていることの記録である。
+type Verifier interface {
+	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
 }
 
-// authorized は、main のコミットが反映によるものかを決める。Source が MergeChecker でなければ nil（trailer で決める）。
+// RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。
+type RecordLog interface {
+	Sync(ctx context.Context, gitForgeRef string) error
+}
+
+// authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
 // 根のコミットは、Logiforge-Init: があれば反映によるものとする（repository はバックエンドが作るので、根を先に置ける人がいない）。
-func (w *Worker) authorized(ctx context.Context, r ports.Repository, sha string, root bool, info snapshot.CommitInfo) (*bool, error) {
-	mc, ok := w.src.(MergeChecker)
-	if !ok {
+func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, root bool, info snapshot.CommitInfo, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
+	if w.cfg.Verifier == nil {
 		return nil, nil
 	}
-	var a bool
 	if root {
-		for _, t := range info.Trailers {
-			if t.Key == snapshot.TrailerInit {
-				a = true
-			}
+		v := ports.MergeVerdict{Authorized: hasTrailer(info, snapshot.TrailerInit)}
+		if !v.Authorized {
+			v.Detail = "根のコミットに Logiforge-Init: がない"
 		}
-		return &a, nil
+		return &v, nil
 	}
-	a, err := mc.MergedByWriter(ctx, r.GitForgeRef, sha)
+	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, files, br)
 	if err != nil {
 		return nil, err
 	}
+	// 先頭のコミットのスナップショットがなければ（ブランチを取り込む前に merge された）、作ってから決め直す。
+	// 先頭のコミットは、fetch した refs/pull/*/head にある。
+	if v.MissingHead != "" {
+		ok, err := g.HasCommit(ctx, v.MissingHead)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			v = ports.MergeVerdict{Pending: true, Detail: "pull request の先頭のコミット " + v.MissingHead + " が手元にない"}
+		} else {
+			base, err := g.MergeBase(ctx, parents[0], v.MissingHead)
+			if err != nil {
+				return nil, err
+			}
+			if err := w.buildBranch(ctx, g, r.Name, base, v.MissingHead); err != nil {
+				return nil, err
+			}
+			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, files, br); err != nil {
+				return nil, err
+			}
+			if v.MissingHead != "" {
+				return nil, fmt.Errorf("先頭のコミット %s のスナップショットを作ったのに、読めない", v.MissingHead)
+			}
+		}
+	}
 	// GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがある（Forgejo で確かめた）。
-	// 反映の記録（Logiforge-Apply-Request:）のあるコミットは、worker が初めて見てから待つ時間のあいだ、反映によらないと決めずに、やり直す。
+	// worker が初めて見てから待つ時間のあいだは、反映によらないと決めずに、やり直す。
 	// コミットの時刻は使わない。push する人が、未来の時刻にして、待ちを終わらせないようにできるから。
-	if !a && hasTrailer(info, snapshot.TrailerApplyRequest) {
+	if v.Pending {
 		now := w.cfg.Now()
 		w.mu.Lock()
 		if w.firstSeen == nil {
@@ -584,10 +620,14 @@ func (w *Worker) authorized(ctx context.Context, r ports.Repository, sha string,
 		}
 		w.mu.Unlock()
 		if waiting {
-			return nil, fmt.Errorf("merge のコミット %s から、まだ pull request を引けない。次の見回りでやり直す", sha)
+			return nil, fmt.Errorf("%s。次の見回りでやり直す", v.Detail)
 		}
+		v = ports.MergeVerdict{Detail: v.Detail}
 	}
-	return &a, nil
+	w.mu.Lock()
+	delete(w.firstSeen, sha)
+	w.mu.Unlock()
+	return &v, nil
 }
 
 func hasTrailer(info snapshot.CommitInfo, key string) bool {
@@ -599,9 +639,9 @@ func hasTrailer(info snapshot.CommitInfo, key string) bool {
 	return false
 }
 
-// mergeLookupGrace は、反映の記録のあるコミットを、反映によらないと決めるまで待つ時間である。
+// mergeLookupGrace は、merge した pull request の見つからないコミットを、反映によらないと決めるまで待つ時間である。
 // なぜ 60 秒か：GitForge が merge のコミットと pull request を結びつけるまでの遅れ（数秒）より十分長く、
-// trailer を偽ったコミットで、壊れた状態になるのを、長くは遅らせないため。
+// 反映によらないコミットで、壊れた状態になるのを、長くは遅らせないため。
 const mergeLookupGrace = 60 * time.Second
 
 // putBroken は、壊れていることの記録を、変わったときだけ書く。
@@ -619,39 +659,6 @@ func (w *Worker) putBroken(ctx context.Context, repo string, br *store.Broken) e
 		w.cfg.Log.Info("repository が直った", "repository", repo)
 	}
 	return store.PutBroken(ctx, w.store, repo, br)
-}
-
-// healed は、壊れた repository で、反映によるコミット rec が直すための apply request の反映で、直したかを返す
-// （design/backend/broken.md の「直すための apply request」）。files は、rec のコミットの木である。
-//   - revert：木の全体が、最後に正しかった時点の木と同じである。
-//   - accept：squash のコミットの親が、apply request のブランチを作った時点の main の先頭（先頭のコミットの親）である。
-func (w *Worker) healed(ctx context.Context, g *gitx.Repo, repo string, br *store.Broken, rec snapshot.Commit, files tree.Files) (bool, error) {
-	switch snapshot.HasTrailer(rec, snapshot.TrailerRepair) {
-	case snapshot.RepairRevert:
-		m, err := store.GetMain(ctx, w.store, repo, br.LastGood)
-		if err != nil {
-			return false, fmt.Errorf("最後に正しかった時点 %s のスナップショットツリー: %w", br.LastGood, err)
-		}
-		good, err := m.SnapshotTree.Files()
-		if err != nil {
-			return false, err
-		}
-		return tree.SameFiles(files, good), nil
-	case snapshot.RepairAccept:
-		head := snapshot.VersionCommit(rec)
-		if head == "" || rec.Parent == nil {
-			return false, nil
-		}
-		if ok, err := g.HasCommit(ctx, head); err != nil || !ok {
-			return false, err
-		}
-		c, err := g.ReadCommit(ctx, head)
-		if err != nil {
-			return false, err
-		}
-		return len(c.Parents) > 0 && c.Parents[0] == *rec.Parent, nil
-	}
-	return false, nil
 }
 
 // RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。

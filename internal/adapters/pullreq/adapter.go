@@ -23,10 +23,19 @@ type Repos interface {
 }
 
 // Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は gitforge_ref である。
+// GitForge には、ctx の主体のトークン（ports.WithToken）で読み書きする。
 type Adapter struct {
 	Repos
 	API  API
 	Keys Keyring
+	// Log は、worker の記録の控えである（design/backend/verify.md の「記録の控え」）。nil なら読まない。
+	// 読む記録は、GitForge のコメントと控えを合わせたものである。GitForge から消された記録も、控えにあれば数える。
+	Log RecordLog
+}
+
+// RecordLog は、worker が見た記録のコメントの控えを読む。
+type RecordLog interface {
+	Comments(ctx context.Context, gitForgeRef string, number int) ([]Comment, error)
 }
 
 var _ ports.GitForge = (*Adapter)(nil)
@@ -39,14 +48,18 @@ type parsed struct {
 	Comment Comment
 }
 
-// records は、書き込み主体のコメントのうち、その場所に置かれた正しい記録を返す。
-// MAC が合わないもの（編集された、ほかの場所から写された、など）は数えず、警告にする。
+// records は、コメントのうち、その場所に置かれた、署名の合う記録を返す。だれが書いたかは見ない。
+// 署名が合わないもの（編集された、ほかの場所から写された、など）は数えず、警告にする。
 func (a *Adapter) records(repoID string, comments []Comment) (recs []parsed, warnings []string) {
+	return Records(a.Keys, repoID, comments)
+}
+
+// Records は、コメントのうち、その場所に置かれた、署名の合う記録を、コメントの id の順に返す。worker も使う。
+func Records(keys Keyring, repoID string, comments []Comment) (recs []parsed, warnings []string) {
+	comments = slices.Clone(comments)
+	sort.SliceStable(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
 	for _, c := range comments {
-		if c.Author != a.API.WriterLogin() {
-			continue
-		}
-		r, err := a.Keys.Parse(c.Body, Scope{RepoID: repoID, Number: c.IssueNumber})
+		r, err := keys.Parse(c.Body, Scope{RepoID: repoID, Number: c.IssueNumber})
 		switch {
 		case errors.Is(err, ErrNoRecord):
 		case err != nil:
@@ -132,7 +145,7 @@ func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest,
 }
 
 func (a *Adapter) readPull(ctx context.Context, repo string, p Pull) (ports.ApplyRequest, bool, error) {
-	comments, err := a.API.ListComments(ctx, repo, p.Number)
+	comments, err := a.withLog(ctx, repo, p.Number)
 	if err != nil {
 		return ports.ApplyRequest{}, false, err
 	}
@@ -151,7 +164,7 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 	}
 	var pull *Pull
 	for i, p := range pulls {
-		if p.Author != a.API.WriterLogin() || p.State != "open" || p.Merged || p.Head != n.Branch {
+		if p.State != "open" || p.Merged || p.Head != n.Branch {
 			continue
 		}
 		ar, ok, err := a.readPull(ctx, repo, p)
@@ -201,7 +214,7 @@ func (a *Adapter) findPull(ctx context.Context, repo, id string) (ports.ApplyReq
 		return ports.ApplyRequest{}, err
 	}
 	for _, p := range pulls {
-		if p.Author == a.API.WriterLogin() && strings.Contains(p.Title, id) {
+		if strings.Contains(p.Title, id) {
 			ar, ok, err := a.readPull(ctx, repo, p)
 			if err != nil {
 				return ports.ApplyRequest{}, err
@@ -221,6 +234,24 @@ func (a *Adapter) findPull(ctx context.Context, repo, id string) (ports.ApplyReq
 		}
 	}
 	return ports.ApplyRequest{}, ports.ErrNotFound
+}
+
+func (a *Adapter) MergedApplyRequest(ctx context.Context, repo, sha string) (ports.ApplyRequest, error) {
+	p, ok, err := a.API.MergedPull(ctx, repo, sha)
+	if err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	if !ok {
+		return ports.ApplyRequest{}, ports.ErrNotFound
+	}
+	ar, found, err := a.readPull(ctx, repo, p)
+	if err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	if !found {
+		return ports.ApplyRequest{Number: p.Number, Branch: p.Head, Target: p.Base, HeadRevision: p.HeadSHA, State: ports.StateMerged, MergedRevision: p.MergeCommit}, nil
+	}
+	return ar, nil
 }
 
 func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
@@ -248,9 +279,6 @@ func (a *Adapter) listApplyRequests(ctx context.Context, repo string, pulls []Pu
 	var out []ports.ApplyRequest
 	seen := map[string]bool{}
 	for _, p := range pulls {
-		if p.Author != a.API.WriterLogin() {
-			continue
-		}
 		recs, warnings := a.records(repoID, by[p.Number])
 		ar, ok := applyRequest(p, recs, warnings)
 		if !ok || seen[ar.ID] {
@@ -309,22 +337,17 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f por
 // noPrevious は、最初のレビューの Logiforge-Previous-Review: の値である。
 const noPrevious = "-"
 
-// AddReview は、レビューを記録する。直前のレビューの識別子を Logiforge-Previous-Review: に書き、レビューを鎖にする。
+// AddReview は、レビューを、pull request の記録のコメントとして書く（design/adapters/pull-requests.md の「レビューの書き方」）。
+// 直前のレビューの識別子を Logiforge-Previous-Review: に書き、レビューを鎖にする。
 func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r ports.Review) error {
 	ar, err := a.findPull(ctx, repo, applyRequestID)
 	if err != nil {
 		return err
 	}
-	repoID, err := a.API.RepoID(ctx, repo)
+	got, err := a.ListReviews(ctx, repo, applyRequestID)
 	if err != nil {
 		return err
 	}
-	at := Scope{RepoID: repoID, Number: ar.Number}
-	prs, err := a.API.ListReviews(ctx, repo, ar.Number)
-	if err != nil {
-		return err
-	}
-	got := reviews(a.API.WriterLogin(), a.Keys, at, applyRequestID, prs)
 	if got.ChainBroken {
 		return fmt.Errorf("pullreq: レビューの鎖が切れているので、レビューを足さない：%v", got.Warnings)
 	}
@@ -332,15 +355,12 @@ func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r 
 	if n := len(got.Items); n > 0 {
 		previous = got.Items[n-1].ID
 	}
-	text, err := a.Keys.Format(Record{Body: r.Body, Trailers: []Trailer{
+	_, err = a.comment(ctx, repo, ar.Number, Record{Body: r.Body, Trailers: []Trailer{
 		{KeyRecord, RecordReview}, {KeyApplyRequest, applyRequestID}, {KeyReviewID, r.ID}, {KeyPreviousReview, previous},
 		{KeyReviewKind, string(r.Kind)}, {KeyReviewRevision, r.Revision}, {KeyPrincipal, r.Reviewer}, {KeySession, r.Session},
 		{KeyPromptRevision, r.PromptRevision},
-	}}, at)
-	if err != nil {
-		return err
-	}
-	return a.API.CreateReview(ctx, repo, ar.Number, r.Revision, text)
+	}})
+	return err
 }
 
 func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) (ports.Reviews, error) {
@@ -352,40 +372,79 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 	if err != nil {
 		return ports.Reviews{}, err
 	}
-	prs, err := a.API.ListReviews(ctx, repo, ar.Number)
+	comments, err := a.withLog(ctx, repo, ar.Number)
 	if err != nil {
 		return ports.Reviews{}, err
 	}
-	return reviews(a.API.WriterLogin(), a.Keys, Scope{RepoID: repoID, Number: ar.Number}, applyRequestID, prs), nil
+	return Reviews(a.Keys, Scope{RepoID: repoID, Number: ar.Number}, applyRequestID, comments), nil
 }
 
-// reviews は、書き込み主体のレビューを、記録した順に読む。
-//   - その提案の、MAC の合うレビューの記録だけを数える。
-//   - 書き込み主体のレビューに、数えないものがあれば、鎖が切れたとする。書き込み主体は、レビューを記録としてしか書かないので、
-//     記録の形でないもの、種類が review でないもの、MAC が合わないもの、提案の識別子やコミットが違うもの、識別子が重なるものは、
-//     どれも書き換えられたものである。
+// withLog は、pull request か issue のコメントに、worker の控えのコメントを合わせて返す（design/backend/verify.md の「記録の控え」）。
+// 同じコメントの id が両方にあれば、控えのもの（worker が最初に見た中身）を使う。GitForge から消されたものも、控えにあれば返す。
+func (a *Adapter) withLog(ctx context.Context, repo string, number int) ([]Comment, error) {
+	cur, err := a.API.ListComments(ctx, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if a.Log == nil {
+		return cur, nil
+	}
+	logged, err := a.Log.Comments(ctx, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return MergeComments(logged, cur), nil
+}
+
+// MergeComments は、控えのコメントと今のコメントを合わせる。同じ id は、控えのものを使う。id の順に並べる。
+func MergeComments(logged, cur []Comment) []Comment {
+	seen := map[int64]bool{}
+	out := make([]Comment, 0, len(logged)+len(cur))
+	for _, c := range logged {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			out = append(out, c)
+		}
+	}
+	for _, c := range cur {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			out = append(out, c)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// reviewMark は、レビューの記録の目印である。これを含むのに署名が合わないコメントは、書き換えられたレビューとみなす。
+const reviewMark = KeyRecord + ": " + RecordReview
+
+// Reviews は、pull request のコメントから、その提案のレビューを、コメントの id の順に読む。worker も使う。
+//   - 署名の合う、その提案のレビューの記録だけを数える。だれが書いたかは見ない。
+//   - レビューの記録の目印があるのに数えないもの（署名が合わない、提案の識別子が違う、識別子が重なる）があれば、鎖が切れたとする。
 //   - 各レビューの Logiforge-Previous-Review: が、それより前に数えたレビューのどれか（最初は `-`）でなければ、鎖が切れたとする。
 //     同時に 2 つのレビューが同じ直前のレビューを指すのは、正しい。鎖が見つけるのは、途中のレビューが丸ごと消されたことである。
 //
-// 鎖が切れていれば、バックエンドは反映しない。後のレビュー（request_changes など）を壊したり消したりして、前の approve に戻すことを防ぐため。
-func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview) ports.Reviews {
+// 鎖が切れていれば、バックエンドは反映しない。
+func Reviews(keys Keyring, at Scope, id string, comments []Comment) ports.Reviews {
 	var out ports.Reviews
 	seen := map[string]bool{noPrevious: true}
-	for i, pr := range prs {
-		if pr.Author != writer {
+	comments = slices.Clone(comments)
+	sort.SliceStable(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
+	for _, c := range comments {
+		if !strings.Contains(c.Body, reviewMark) {
 			continue
 		}
 		broken := func(why string) {
 			out.ChainBroken = true
-			out.Warnings = append(out.Warnings, fmt.Sprintf("レビュー %d：%s", i+1, why))
+			out.Warnings = append(out.Warnings, fmt.Sprintf("コメント %d：%s", c.ID, why))
 		}
-		r, err := keys.Parse(pr.Body, at)
+		r, err := keys.Parse(c.Body, at)
 		if err != nil {
 			broken(err.Error())
 			continue
 		}
 		if r.Get(KeyRecord) != RecordReview {
-			broken("種類が review でない記録")
 			continue
 		}
 		if r.Get(KeyApplyRequest) != id {
@@ -393,10 +452,6 @@ func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview)
 			continue
 		}
 		rev, rid := r.Get(KeyReviewRevision), r.Get(KeyReviewID)
-		if pr.CommitSHA != "" && pr.CommitSHA != rev {
-			broken("commit_id と記録のコミットが違う")
-			continue
-		}
 		if rid == noPrevious || seen[rid] {
 			broken("識別子が重なっている")
 			continue
@@ -407,7 +462,7 @@ func reviews(writer string, keys Keyring, at Scope, id string, prs []PullReview)
 		seen[rid] = true
 		out.Items = append(out.Items, ports.Review{
 			ID: rid, Kind: ports.ReviewKind(r.Get(KeyReviewKind)), Body: r.Body, Revision: rev,
-			Reviewer: r.Get(KeyPrincipal), Session: r.Get(KeySession), PromptRevision: r.Get(KeyPromptRevision), CreatedAt: pr.CreatedAt,
+			Reviewer: r.Get(KeyPrincipal), Session: r.Get(KeySession), PromptRevision: r.Get(KeyPromptRevision), CreatedAt: c.CreatedAt,
 		})
 	}
 	return out
@@ -499,7 +554,7 @@ type foundIssue struct {
 }
 
 func (a *Adapter) readIssue(ctx context.Context, repo string, is Issue) (foundIssue, error) {
-	comments, err := a.API.ListComments(ctx, repo, is.Number)
+	comments, err := a.withLog(ctx, repo, is.Number)
 	if err != nil {
 		return foundIssue{}, err
 	}
@@ -517,7 +572,7 @@ func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, e
 		return foundIssue{}, err
 	}
 	for _, is := range issues {
-		if is.Author == a.API.WriterLogin() && strings.Contains(is.Title, id) {
+		if strings.Contains(is.Title, id) {
 			f, err := a.readIssue(ctx, repo, is)
 			if err != nil {
 				return foundIssue{}, err
@@ -537,9 +592,6 @@ func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, e
 	}
 	by := byIssue(comments)
 	for _, is := range issues {
-		if is.Author != a.API.WriterLogin() {
-			continue
-		}
 		recs, warnings := a.records(repoID, by[is.Number])
 		if hr, answer, ok := humanRequest(is, recs, warnings); ok && hr.ID == id {
 			return foundIssue{hr, is, answer, true}, nil
@@ -570,9 +622,6 @@ func (a *Adapter) ListHumanRequests(ctx context.Context, repo string) ([]ports.H
 	var out []ports.HumanRequest
 	seen := map[string]bool{}
 	for _, is := range issues {
-		if is.Author != a.API.WriterLogin() {
-			continue
-		}
 		recs, warnings := a.records(repoID, by[is.Number])
 		if hr, _, ok := humanRequest(is, recs, warnings); ok && !seen[hr.ID] {
 			seen[hr.ID] = true

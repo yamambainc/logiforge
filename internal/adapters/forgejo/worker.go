@@ -2,10 +2,11 @@ package forgejo
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 
 	"github.com/yamambainc/logiforge/internal/ports"
 )
@@ -19,7 +20,6 @@ type WorkerSource struct {
 
 // NewWorkerSource は、worker のための WorkerSource を作る。cfg の書き込み主体のトークンは使わない。
 func NewWorkerSource(cfg Config, login, token string) *WorkerSource {
-	cfg.WriterToken = ""
 	return &WorkerSource{c: &client{cfg: cfg}, Login: login, Token: token}
 }
 
@@ -51,26 +51,33 @@ func (s *WorkerSource) GitEnv() []string {
 	}
 }
 
-// MergedByWriter は、sha が、書き込み主体が merge した pull request の merge のコミットかを返す（design/backend/broken.md の「反映かの判定」）。
-// GET /repos/{owner}/{repo}/commits/{sha}/pull は、そのコミットを merge した pull request を返し、なければ 404 を返す。
-func (s *WorkerSource) MergedByWriter(ctx context.Context, gitForgeRef, sha string) (bool, error) {
-	if s.c.cfg.Writer == "" {
-		return false, errors.New("forgejo: 書き込み主体のログイン名（LOGIFORGE_WRITER）がない")
-	}
+// RepoID は、記録の署名の場所に使う、repository の id を返す。
+func (s *WorkerSource) RepoID(ctx context.Context, gitForgeRef string) (string, error) {
+	return api{s.c}.RepoID(ports.WithToken(ctx, s.Token), gitForgeRef)
+}
+
+// CommentsSince は、repository のコメントのうち、since のあとに作られたか変わったものを返す（記録の控え。design/backend/verify.md）。
+func (s *WorkerSource) CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error) {
 	rp, err := repoPath(gitForgeRef)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	var p struct {
-		Merged         bool   `json:"merged"`
-		MergeCommitSHA string `json:"merge_commit_sha"`
-		MergedBy       *user  `json:"merged_by"`
+	path := rp + "/issues/comments"
+	if !since.IsZero() {
+		path += "?since=" + url.QueryEscape(since.UTC().Format(time.RFC3339))
 	}
-	if err := s.c.do(ctx, s.Token, http.MethodGet, rp+"/commits/"+url.PathEscape(sha)+"/pull", nil, &p); err != nil {
-		if statusOf(err) == http.StatusNotFound {
-			return false, nil
-		}
-		return false, err
+	cs, err := list[commentJSON](ctx, s.c, s.Token, path)
+	if err != nil {
+		return nil, err
 	}
-	return p.Merged && p.MergeCommitSHA == sha && p.MergedBy != nil && strings.EqualFold(p.MergedBy.Login, s.c.cfg.Writer), nil
+	out := make([]pullreq.Comment, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.comment())
+	}
+	return out, nil
+}
+
+// Comments は、pull request か issue のコメントを返す（反映かの判定で、今の GitForge の記録を読む）。
+func (s *WorkerSource) Comments(ctx context.Context, gitForgeRef string, number int) ([]pullreq.Comment, error) {
+	return api{s.c}.ListComments(ports.WithToken(ctx, s.Token), gitForgeRef, number)
 }

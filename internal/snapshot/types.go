@@ -37,6 +37,10 @@ type CommitInfo struct {
 	// Authorized は、反映によるコミットか（design/backend/broken.md の「反映かの判定」）。worker が GitForge の API で決める。
 	// nil なら、決めていない。そのときは、trailer（Logiforge-Apply-Request: と Logiforge-Init:）で決める。
 	Authorized *bool
+	// ApplyRequest は、反映かの判定で見つけた、反映した apply request の識別子である。空なら、trailer（Logiforge-Apply-Request:）を使う。
+	ApplyRequest string
+	// AuthorizationDetail は、反映によるものでないときの、満たさなかった条件である。警告に書く。
+	AuthorizationDetail string
 }
 
 // Commit は、コミットの記録である（数 KB）。

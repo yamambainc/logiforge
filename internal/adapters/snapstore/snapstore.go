@@ -5,7 +5,10 @@ package snapstore
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/store"
@@ -73,4 +76,101 @@ func (a *Adapter) Artifact(ctx context.Context, repo, sha256 string) ([]byte, er
 
 func (a *Adapter) Broken(ctx context.Context, repo string) (*store.Broken, error) {
 	return store.GetBroken(ctx, a.Store, repo)
+}
+
+// RecordLog は、worker の記録の控えを、pullreq.Adapter に読ませる（design/backend/verify.md の「記録の控え」）。
+type RecordLog struct{ Store store.Reader }
+
+func (l RecordLog) Comments(ctx context.Context, gitForgeRef string, number int) ([]pullreq.Comment, error) {
+	logged, err := store.GetRecords(ctx, l.Store, gitForgeRef, number)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pullreq.Comment, 0, len(logged))
+	for _, c := range logged {
+		out = append(out, pullreq.Comment{ID: c.ID, IssueNumber: c.Issue, Body: c.Body, CreatedAt: c.CreatedAt})
+	}
+	return out, nil
+}
+
+// CommentSource は、GitForge の repository のコメントを読む（worker の読むだけのトークンで）。
+type CommentSource interface {
+	RepoID(ctx context.Context, gitForgeRef string) (string, error)
+	// CommentsSince は、repository のコメントのうち、since のあとに作られたか変わったものを返す。since がゼロならすべて。
+	CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error)
+}
+
+// LogSyncer は、記録の控えに、GitForge の新しい記録のうち署名の合うものを足す（design/backend/verify.md の「記録の控え」）。
+// worker が、見回りのたびに呼ぶ。
+type LogSyncer struct {
+	Source CommentSource
+	Keys   pullreq.Keyring
+	Store  store.Writer
+	Log    *slog.Logger
+}
+
+// sinceSlack は、前に読んだ位置から戻って読む時間である。GitForge の時刻は秒の単位なので、同じ秒に変わったコメントを読み落とさないため。
+const sinceSlack = time.Second
+
+func (s LogSyncer) Sync(ctx context.Context, gitForgeRef string) error {
+	cursor, err := store.GetRecordsCursor(ctx, s.Store, gitForgeRef)
+	if err != nil {
+		return err
+	}
+	since := cursor
+	if !since.IsZero() {
+		since = since.Add(-sinceSlack)
+	}
+	cs, err := s.Source.CommentsSince(ctx, gitForgeRef, since)
+	if err != nil {
+		return err
+	}
+	if len(cs) == 0 {
+		return nil
+	}
+	repoID, err := s.Source.RepoID(ctx, gitForgeRef)
+	if err != nil {
+		return err
+	}
+	recs, _ := pullreq.Records(s.Keys, repoID, cs)
+	byIssue := map[int][]store.LoggedComment{}
+	var issues []int
+	for _, r := range recs {
+		c := r.Comment
+		if _, ok := byIssue[c.IssueNumber]; !ok {
+			issues = append(issues, c.IssueNumber)
+		}
+		byIssue[c.IssueNumber] = append(byIssue[c.IssueNumber], store.LoggedComment{ID: c.ID, Issue: c.IssueNumber, Body: c.Body, CreatedAt: c.CreatedAt})
+	}
+	for _, n := range issues {
+		changed, err := store.AppendRecords(ctx, s.Store, gitForgeRef, n, byIssue[n])
+		if err != nil {
+			return err
+		}
+		for _, c := range changed {
+			// 署名の合う、中身の違う記録は、同じ id では起きないはずである（署名の合う記録を、ほかの署名の合う記録に書き換えた）。最初のものを残す。
+			s.logger().Warn("記録の控えと、中身の違う記録がある。控えのものを使う", "gitforge_ref", gitForgeRef, "number", n, "comment", c.ID)
+		}
+	}
+	next := cursor
+	for _, c := range cs {
+		t := c.UpdatedAt
+		if t.IsZero() {
+			t = c.CreatedAt
+		}
+		if t.After(next) {
+			next = t
+		}
+	}
+	if next.Equal(cursor) {
+		return nil
+	}
+	return store.PutRecordsCursor(ctx, s.Store, gitForgeRef, next)
+}
+
+func (s LogSyncer) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
 }

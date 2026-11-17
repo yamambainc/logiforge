@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/yamambainc/logiforge/internal/backend"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // statuses は、エラーの種類と HTTP の status の対応である（1 対 1）。
@@ -118,7 +119,8 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 		c, err := s.b.Authenticate(r.Context(), strings.TrimSpace(token))
 		if err == nil {
 			var out any
-			out, err = h(r.Context(), c, r)
+			// GitForge には、要求を送った主体のトークンで読み書きする（design/adapters/pull-requests.md）。
+			out, err = h(ports.WithToken(r.Context(), strings.TrimSpace(token)), c, r)
 			if err == nil {
 				// 壊れた repository の木を読む応答には、最後に正しかった時点のコミットを付ける（design/backend/broken.md）。
 				if name := r.PathValue("repository"); name != "" && r.Method == http.MethodGet && readsTree(r.Pattern) {
