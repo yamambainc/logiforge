@@ -20,7 +20,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
   - Forgejo：`POST /repos/{owner}/{repo}/contents` で、ディレクトリのファイルを 1 つのコミットにまとめて置く。
   - なぜ pull request にしないか：用意のコミットは、元の apply request がないので、反映かの判定の「apply request の反映のコミット」にならないから。署名で、用意のコミットと決める（下の「反映かの判定」）。
 - 用意のコミットのメッセージに、`Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。`Logiforge-Apply-Request:` は付けない。
-  - 署名は、バックエンドが、repository の識別子、ディレクトリのパス、加えたファイルのパスと sha256（移したときは、`Logiforge-Migrated-From:` の値も。[別リポジトリ方式から移す](migrate.md)）に対して作る。
+  - 署名の形は、[反映かの判定](../backend/verify.md) の「用意のコミットの署名」の、種類 `init-directory` である。ディレクトリのパスと、移したときは `Logiforge-Migrated-From:` の値も含める（[別リポジトリ方式から移す](migrate.md)）。
   - なぜ 1 つ前のコミットを含めないか：ディレクトリの repository では、1 つ前のコミットはコードのコミットで、Forgejo の contents API では、置く前に決められないから。署名を使い回せないことは、版の 1 番であること（そのディレクトリを変えた前のコミットがないこと）で守る。
 - 用意のコミットは、そのディレクトリの版の 1 番である。
   - そのディレクトリを変えた、前のコミットがあってはいけない。あれば、用意を断る（`repository_exists`）。
@@ -39,7 +39,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 次のどちらかなら、反映によるものである。
 
-- 用意のコミット：版の 1 番で、`Logiforge-Init:` と `Logiforge-Init-Signature:` があり、署名が合い、C の変更がそのディレクトリにファイルを加えることだけである。
+- 用意のコミット：版の 1 番で、`Logiforge-Init:` と `Logiforge-Init-Signature:` があり、種類 `init-directory` の署名が合い、C の変更がそのディレクトリにファイルを加えることだけである。
 - apply request の反映のコミット：[反映かの判定](../backend/verify.md) の「apply request の反映のコミット」の 1〜6 を、次のように読み替えて満たす。
   - 3：控えの `apply_request` の記録の `Logiforge-Repository:` が、この repository である。
   - 5：P の木のディレクトリの中に、H の差分を重ね、重ねた木のディレクトリの中が、C の木のディレクトリの中と同じである。
@@ -69,7 +69,6 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
   - なぜ repository ごとか：守る設定がないと、コードだけの force push はふつうに起きるから。ディレクトリの版を消さない書き換えで、壊れた状態にしない。
 - 壊れた状態は、git リポジトリ全体の repository と同じく、repository ごとに 1 か所、置き場の `keep/<repository>/broken` に持つ（[壊れた repository](../backend/broken.md) の「壊れている状態」）。
   - 書き換えのあとに版が増えなくても、この記録だけで示せる。
-  - なぜ全部か：書き換えで、どのディレクトリの版が消えたかは、書き換えの前の並びと比べないとわからないから。
 
 ## worker
 

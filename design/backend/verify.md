@@ -22,10 +22,28 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 - C が根のコミットで、trailer `Logiforge-Init:` がある。
   - なぜ位置で決めてよいか：repository はバックエンドが作るので、根を先に置ける人がいないから。
-- C が根の次のコミットで、trailer `Logiforge-Init-Signature:` の署名が合う。
-  - 署名は、repository の識別子、P の SHA、C で加わったファイルのパスと sha256 に対して作る。
+- C が根の次のコミットで、trailer `Logiforge-Init-Signature:` の、種類 `init-second` の署名が合う（下の「用意のコミットの署名」）。
   - C の差分が、署名に書いたファイルを加えることだけであることも確かめる。
   - なぜ：GitHub の空のリポジトリには、ファイルを 1 つずつしか置けないので、背景情報を 2 つ目のコミットで置くから（[GitHub アダプタ](../adapters/github.md)）。
+- ディレクトリの repository では、用意のコミットは、そのディレクトリの版の 1 番で、種類 `init-directory` の署名が合うものである（[ディレクトリ方式の履歴](../directory/history.md) の「用意のコミット」）。
+
+### 用意のコミットの署名
+
+用意のコミットの trailer `Logiforge-Init-Signature:` は、どの種類でも、1 つの形で作り、確かめる。
+
+- 値は、`<鍵の ID>:<署名>` である。署名は、バックエンドが記録と同じ秘密鍵（Ed25519）で作り、worker は公開鍵で確かめる。
+- 署名する中身は、次のものを順に並べたものである。
+
+| 欄 | 中身 |
+|---|---|
+| 種類 | `init-second`（GitHub で、根の次に背景情報を置くコミット）か `init-directory`（ディレクトリの repository の用意のコミット） |
+| repository の識別子 | 記録の署名の場所と同じもの（Forgejo の id、GitHub の node_id） |
+| ディレクトリ | ディレクトリの repository のパス。git リポジトリ全体の repository では空 |
+| 1 つ前のコミット | `init-second` では P の SHA。`init-directory` では空（[ディレクトリ方式の履歴](../directory/history.md) の「用意のコミット」） |
+| 移した元 | `Logiforge-Migrated-From:` の値。移したときだけ。ほかは空 |
+| ファイル | C で加わったファイルの、パスと sha256（パスの順） |
+
+- なぜ種類を含めるか：ある種類の署名を、ほかの種類の用意のコミットに使い回せないようにするため。
 
 ### apply request の反映のコミット
 
