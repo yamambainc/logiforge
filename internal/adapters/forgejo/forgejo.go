@@ -15,11 +15,15 @@ import (
 // New は、Forgejo の GitForge アダプタと認証のアダプタを作る。
 func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth) {
 	c := &client{cfg: cfg}
-	return &pullreq.Adapter{Repos: repos{c}, API: api{c}, Keys: keys}, &Auth{c}
+	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}, Keys: keys}, &Auth{c}
 }
 
 // repos は、organization の repository の列挙と用意である。
-type repos struct{ *client }
+type repos struct {
+	*client
+	// keys は、用意のコミットの署名に使う。
+	keys pullreq.Keyring
+}
 
 func (r repos) w(ctx context.Context, method, path string, in, out any) error {
 	return r.do(ctx, ports.TokenFrom(ctx), method, path, in, out)
@@ -100,6 +104,14 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	mainExisted := true
 	if err := r.w(ctx, http.MethodGet, rp+"/branches/main", nil, nil); statusOf(err) == http.StatusNotFound {
 		mainExisted = false
+		// 根のコミットにも、署名を付ける。worker は、それで用意のコミットと決める（design/backend/verify.md）。
+		repoID, err := api{r.client}.RepoID(ctx, gitForgeRef)
+		if err != nil {
+			return err
+		}
+		if message, err = r.keys.InitMessage(message, pullreq.InitScope{Kind: ports.InitRoot, RepoID: repoID}, files); err != nil {
+			return err
+		}
 		var ops []map[string]string
 		for _, f := range files {
 			ops = append(ops, map[string]string{"operation": "create", "path": f.Path, "content": base64.StdEncoding.EncodeToString(f.Content)})

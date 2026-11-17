@@ -16,10 +16,14 @@ var (
 	ErrHeadMoved     = errors.New("pull request の head が、指定した SHA でない")
 	ErrConflict      = errors.New("git の衝突で merge できない")
 	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
-	ErrMergeForbidden   = errors.New("この主体には、merge の権限がない")
-	ErrAlreadyAnswered  = errors.New("すでに回答がある")
-	ErrUnauthenticated  = errors.New("この主体は、Logiforge の主体でない")
+	ErrMergeForbidden  = errors.New("この主体には、merge の権限がない")
+	ErrAlreadyAnswered = errors.New("すでに回答がある")
+	ErrUnauthenticated = errors.New("この主体は、Logiforge の主体でない")
+	// ErrNotRegistered は、repository の名前が、サーバの設定に登録されていないことを表す（GitHub を使う構成）。
+	ErrNotRegistered    = errors.New("repository の名前が、サーバの設定に登録されていない")
 	ErrAttachmentTamper = errors.New("添付の sha256 が、記録と合わない")
+	// ErrAttachmentsUnsupported は、回答の添付をファイルで受け付けない GitForge であることを表す（添付はリンクだけ）。
+	ErrAttachmentsUnsupported = errors.New("この GitForge は、回答の添付をファイルで受け付けない")
 )
 
 // Repository は、repository の名前と、GitForge の側の参照の組である。
@@ -233,6 +237,14 @@ type Authenticator interface {
 	// CanRead は、Authenticate を通った主体が、repository を読めるかを返す。
 	CanRead(ctx context.Context, token, repo string) (bool, error)
 }
+
+// 用意のコミットの種類（design/backend/verify.md の「用意のコミットの署名」）。
+const (
+	// InitRoot は、根のコミットである。
+	InitRoot = "init-root"
+	// InitSecond は、GitHub で、根の次に背景情報を置くコミットである。
+	InitSecond = "init-second"
+)
 
 // tokenKey は、GitForge を呼ぶ主体のトークンを、ctx で渡す鍵である。
 type tokenKey struct{}

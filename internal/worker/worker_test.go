@@ -93,7 +93,7 @@ func setupRemote(t *testing.T) *remote {
 	r.write(s1+"/story.md", tree.MarshalStory(tree.StoryContent{ID: "s-1111111111", Title: "t", Summary: "s"}))
 	r.write(h1+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-3333333333", Statement: "子1"}))
 	r.write(h2+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-4444444444", Statement: "子2"}))
-	r.commit("用意\n\nLogiforge-Init: 1")
+	r.commit("用意\n\nLogiforge-Init: 1\nLogiforge-Init-Signature: ok")
 	return r
 }
 

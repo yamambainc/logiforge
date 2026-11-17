@@ -87,6 +87,20 @@ func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest 
 
 // ---- repository の作成 ----
 
+// initCommit は、コミットが repository の用意で置いたコミット（trailer `Logiforge-Init:` を持つ）かを返す。
+// 用意のコミットは、GitForge によって 1 つか 2 つである（design/adapters/github.md）。
+func initCommit(c snapshot.Commit) bool {
+	if c.Number > snapshot.MaxInitCommits {
+		return false
+	}
+	for _, t := range c.Trailers {
+		if t.Key == snapshot.TrailerInit {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateRepository は、repository を用意する（design/backend/README.md の「repository の用意」）。user だけが使える。
 // 途中で失敗したら、同じ要求をもう一度送れば、続きから終わらせられる。
 func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statement, background string) (Written[Repository], error) {
@@ -101,6 +115,9 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 		return out, fail(CodeValidationFailed, "根の主文は 1 字以上 %d 字以下", tree.MaxStatementChars)
 	}
 	ref, err := b.Forge.GitForgeRef(ctx, name)
+	if errors.Is(err, ports.ErrNotRegistered) {
+		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない。管理者が GitHub の repository を作って登録する", name)
+	}
 	if err != nil {
 		return out, err
 	}
@@ -113,7 +130,12 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 	err = b.Forge.SetupRepository(ctx, ref, files, "repository を用意した\n\nLogiforge-Init: 1")
 	if errors.Is(err, ports.ErrMainExists) {
 		// 送り直しか、2 つの用意が同時に走ったか、別の repository か。main のスナップショットで判定する。
-		if !b.waitLatest(ctx, name, func(l string) bool { return l != "" }) {
+		// アダプタが、止まっていた用意の続きを置いたかもしれないので、今の main の先頭が読む側に出るまで待つ。
+		head, err := b.Forge.MainHead(ctx, ref)
+		if err != nil {
+			return out, err
+		}
+		if !b.waitLatest(ctx, name, func(l string) bool { return l == head }) {
 			return out, fail(CodeSnapshotPending, "main がすでにあるが、そのスナップショットがまだない。少し待って送り直す")
 		}
 		v, err := b.currentMain(ctx, name)
@@ -121,7 +143,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 			return out, err
 		}
 		r := v.tree.Root()
-		if v.main.Commit.Number != 1 || r == nil || r.Statement != statement || r.Background != background || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
+		if !initCommit(v.main.Commit) || r == nil || r.Statement != statement || r.Background != background || len(r.Stories) > 0 || len(r.Verdicts) > 0 {
 			return out, fail(CodeRepositoryExists, "同じ名前の repository がすでにある")
 		}
 	} else if err != nil {
@@ -507,6 +529,9 @@ func (b *Backend) AnswerHumanRequest(ctx context.Context, c Caller, repo, id, bo
 		return HumanRequest{}, err
 	}
 	err = b.Forge.Answer(ctx, ref, id, body, c.Principal.Login, atts)
+	if errors.Is(err, ports.ErrAttachmentsUnsupported) {
+		return HumanRequest{}, fail(CodeValidationFailed, "この構成では、回答の添付はリンクだけである（kind: link）")
+	}
 	if errors.Is(err, ports.ErrAlreadyAnswered) {
 		return HumanRequest{}, fail(CodeNotOpen, "人への依頼 %s には、すでに回答がある", id)
 	}

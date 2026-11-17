@@ -36,7 +36,7 @@
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
 - worker とバックエンドが git を読む資格情報は、同じ、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
   - credential helper は、GitForge の URL にだけ設定する。ほかの URL に、トークンを渡さないため。
-  - GitHub：contents の read だけを持つ、worker のための GitHub App
+  - GitHub：Contents、Issues、Pull requests の Read だけを持つ、fine-grained personal access token。public のリポジトリだけなら、なくてもよい（[GitHub アダプタ](github.md) の「アカウントとトークン」）
   - Forgejo：`read:repository`、`read:organization`、`read:issue` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 
 ## 制約

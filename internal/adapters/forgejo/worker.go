@@ -25,7 +25,7 @@ func NewWorkerSource(cfg Config, login, token string) *WorkerSource {
 
 // ListRepositories は、organization の repository を列挙する。
 func (s *WorkerSource) ListRepositories(ctx context.Context) ([]ports.Repository, error) {
-	return repos{s.c}.list(ctx, s.Token)
+	return repos{client: s.c}.list(ctx, s.Token)
 }
 
 // GitForgeRef は、名前から gitforge_ref（<organization>/<名前>）を求める。Forgejo に問い合わせない。

@@ -18,6 +18,10 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"
 
+// TrailerInitSignature は、repository の用意の 2 つ目のコミット（GitHub で背景情報を置く）の署名の trailer である
+// （design/backend/verify.md の「repository の用意のコミット」）。
+const TrailerInitSignature = "Logiforge-Init-Signature"
+
 // TrailerRepair は、直すための apply request の反映のコミットの trailer である。値は RepairRevert か RepairAccept（design/backend/broken.md）。
 const TrailerRepair = "Logiforge-Repair"
 
@@ -26,6 +30,10 @@ const (
 	RepairRevert = "revert"
 	RepairAccept = "accept"
 )
+
+// MaxInitCommits は、用意のコミットの数の上限である（根の仮説と、背景情報）。根のコミットから続く、この数までのコミットだけを、
+// 用意のコミットとして扱う。それより後の Logiforge-Init: は、反映の記録のないコミットとして警告する。
+const MaxInitCommits = 2
 
 // BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。

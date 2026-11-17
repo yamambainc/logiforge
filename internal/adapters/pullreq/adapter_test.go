@@ -22,6 +22,8 @@ type fake struct {
 	files    map[string][]byte
 	// failUpload は、添付を上げるのを失敗させる回数である。
 	failUpload int
+	// noAttachments は、添付を持てない GitForge にする。
+	noAttachments bool
 }
 
 func newFake() *fake {
@@ -132,6 +134,7 @@ func (f *fake) CloseIssue(_ context.Context, _ string, n int) error {
 	f.issues[n].State = "closed"
 	return nil
 }
+func (f *fake) AttachmentsSupported() bool { return !f.noAttachments }
 func (f *fake) UploadAttachment(_ context.Context, _ string, id int64, name string, content []byte) (string, error) {
 	if f.failUpload > 0 {
 		f.failUpload--
@@ -473,5 +476,52 @@ func TestAnswerResumes(t *testing.T) {
 	}
 	if _, err := a.ReadAttachment(ctx, repo, "hrq_1", hr.Answer.Attachments[1].SHA256); !errors.Is(err, ports.ErrAttachmentTamper) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// 添付を持てない GitForge では、ファイルの添付を、記録を書く前に断る。添付のない回答は受け付ける。
+func TestAnswerWithoutAttachmentSupport(t *testing.T) {
+	ctx := context.Background()
+	a, f := newAdapter()
+	f.noAttachments = true
+	if _, err := a.CreateHumanRequest(ctx, repo, ports.NewHumanRequest{ID: "hrq_1", Kind: ports.HumanRequestPVR, Body: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	n := len(f.comments)
+	err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", []ports.NewAttachment{{Name: "a.jpg", Content: []byte("A")}})
+	if !errors.Is(err, ports.ErrAttachmentsUnsupported) {
+		t.Fatalf("got %v", err)
+	}
+	if len(f.comments) != n {
+		t.Fatal("断ったのに記録を書いた")
+	}
+	if err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 用意のコミットの署名は、種類と欄ごとに違う。ある種類の署名を、ほかの種類や、欄をずらしたものに使い回せない。
+func TestInitSignature(t *testing.T) {
+	files := []InitFile{{Path: "tree/h-a/hypothesis.md", SHA256: "aa"}}
+	root := InitScope{Kind: ports.InitRoot, RepoID: "r1"}
+	sig, err := ring.SignInit(root, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := ring.VerifyOnly()
+	if pub.VerifyInit(root, files, sig) != nil {
+		t.Fatal("合うはずの署名が合わない")
+	}
+	for name, other := range map[string]InitScope{
+		"種類":         {Kind: ports.InitSecond, RepoID: "r1"},
+		"repository": {Kind: ports.InitRoot, RepoID: "r2"},
+		"欄のずれ":       {Kind: ports.InitRoot, RepoID: "", Directory: "r1"},
+	} {
+		if pub.VerifyInit(other, files, sig) == nil {
+			t.Errorf("%s が違うのに合った", name)
+		}
+	}
+	if pub.VerifyInit(root, []InitFile{{Path: "tree/h-a/hypothesis.md", SHA256: "ab"}}, sig) == nil {
+		t.Error("中身が違うのに合った")
 	}
 }

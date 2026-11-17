@@ -663,6 +663,10 @@ func attachmentKeys(names, shas []string) []string {
 // Answer は、回答を記録する。記録を書いたあとに添付を上げ、issue を閉じる。
 // 途中で止まったときは、同じ本文・回答者・添付で呼び直せば、足りない添付を上げて閉じる。中身が違えば ErrAlreadyAnswered を返す。
 func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string, files []ports.NewAttachment) error {
+	// 添付を持てない GitForge では、記録を書く前に断る。書いたあとでは、上げられない添付を持つ記録が残るから。
+	if len(files) > 0 && !a.API.AttachmentsSupported() {
+		return ports.ErrAttachmentsUnsupported
+	}
 	f, err := a.findIssue(ctx, repo, id)
 	if err != nil {
 		return err

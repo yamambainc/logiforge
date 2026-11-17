@@ -45,7 +45,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の管理者になる。
 
 1. `POST /orgs/{org}/repos` で、repository を作る。`auto_init` は付けない。
-2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。
+2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
 3. `POST /repos/{owner}/{repo}/branch_protections` で、`main` を守る。
    - 最初のコミットのあとに作る。なぜ：`main` への push を禁じたあとでは、最初のコミットを置けないから。
 

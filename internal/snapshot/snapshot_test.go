@@ -161,8 +161,17 @@ func TestInitTrailerIsNotWarned(t *testing.T) {
 	f2.put(dH2+"/background.md", []byte("x\n"))
 	ci := info(rev(2), "")
 	ci.Trailers = []Trailer{{Key: TrailerInit, Value: "1"}}
-	if m2 := mustMain(t, f2, ci, m1); len(m2.Commit.Warnings) != 0 {
+	m2 := mustMain(t, f2, ci, m1)
+	if len(m2.Commit.Warnings) != 0 {
 		t.Fatalf("warnings: %v", m2.Commit.Warnings)
+	}
+	// 用意の並びのあと（3 番目より後）の Logiforge-Init: は、反映の記録のないコミットとして警告する。
+	f3 := f2.clone()
+	f3.put(dH2+"/background.md", []byte("y\n"))
+	ci3 := info(rev(3), "")
+	ci3.Trailers = []Trailer{{Key: TrailerInit, Value: "1"}}
+	if m3 := mustMain(t, f3, ci3, m2); !hasRule(m3.Commit.Warnings, RuleNoApplyRequest) {
+		t.Fatalf("3 番目の Logiforge-Init: を警告しない: %v", m3.Commit.Warnings)
 	}
 }
 

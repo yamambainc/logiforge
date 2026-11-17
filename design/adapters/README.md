@@ -125,7 +125,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
 
 - 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
 - git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
-  - GitHub を使う構成：Contents と Pull requests の Read だけを持つ、fine-grained personal access token
+  - GitHub を使う構成：Contents、Issues、Pull requests の Read だけを持つ、fine-grained personal access token。public のリポジトリだけなら、なくてもよい
   - Forgejo を使う構成：`read:repository`、`read:organization`、`read:issue` だけを持つ、worker のためのユーザーのトークン
 - 記録の署名の公開鍵。反映かの判定で、記録を確かめるのに使う（[反映かの判定](../backend/verify.md)）
 - 置き場の接続先と、書く鍵

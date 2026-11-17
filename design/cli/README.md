@@ -42,6 +42,10 @@ sequenceDiagram
   - このトークンは、利用者が Forgejo で書けるすべての repository に書ける。範囲は広いが、受け入れる。なぜ：Forgejo のスコープは repository ごとに絞れないから。
     - 範囲を絞りたいときは、Logiforge のためだけの Forgejo のユーザーを作り、そのトークンを使う。
   - このスコープで push と API が通ることは、動く Forgejo ではまだ確かめていない。
+- GitHub を使う構成では、CLI の主体は `client` になる（[GitHub アダプタ](../adapters/github.md) の「認証」）。
+  - エージェント（機械用アカウント）には、fine-grained personal access token を使う。Repository access は、登録した repository だけにし、権限は Contents、Issues、Pull requests の Read and write と、Metadata の Read にする。
+    - なぜ Issues と Pull requests も書くか：バックエンドが、主体のトークンで、pull request、記録のコメント、レビューを書き、reviewer のトークンで merge するから（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+  - 人は、gh のトークン（`gh auth token`）でよい。スコープ `repo` は、その人が書けるすべてのリポジトリに及ぶ。人が自分の gh でふだん使っているトークンと同じ範囲なので、受け入れる。
 - トークンの置き場所は、次の順に探す。
   1. 環境変数 `LOGIFORGE_TOKEN`
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`
