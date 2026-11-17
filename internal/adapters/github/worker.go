@@ -50,7 +50,7 @@ func (s *WorkerSource) GitForgeRef(_ context.Context, name string) (string, erro
 
 // GitURL は、git で読む URL を返す。資格情報は、URL に入れず、GitEnv の credential helper で渡す。
 func (s *WorkerSource) GitURL(gitForgeRef string) string {
-	return s.cfg.webURL() + "/" + gitForgeRef + ".git"
+	return s.cfg.webURL() + "/" + gitRef(gitForgeRef) + ".git"
 }
 
 // GitEnv は、git に資格情報を渡す環境変数を返す。トークンは、コマンドの引数や設定ファイルに書かず、

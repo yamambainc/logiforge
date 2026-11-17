@@ -41,7 +41,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 - 用意のコミット：版の 1 番で、`Logiforge-Init:` と `Logiforge-Init-Signature:` があり、種類 `init-directory` の署名が合い、C の変更がそのディレクトリにファイルを加えることだけである。
 - apply request の反映のコミット：[反映かの判定](../backend/verify.md) の「apply request の反映のコミット」の 1〜6 を、次のように読み替えて満たす。
-  - 3：控えの `apply_request` の記録の `Logiforge-Repository:` が、この repository である。
+  - 3：控えの `apply_request` の記録の `Logiforge-Repository:` が、この repository のディレクトリのパスである。
   - 5：P の木のディレクトリの中に、H の差分を重ね、重ねた木のディレクトリの中が、C の木のディレクトリの中と同じである。
   - 6：差分の検査に、差分がディレクトリの中だけであること（`outside_directory`）を含める。
 
@@ -72,8 +72,10 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 ## worker
 
-- worker は、git リポジトリごとに 1 つの clone を持つ。その git リポジトリに登録したディレクトリの repository を、1 回の見回りでまとめて処理する。
-- `main` の新しいコミットごとに、`git diff-tree` の変わったパスで、どのディレクトリを変えたかを決める。変えたディレクトリの repository にだけ、版を足す。
+- worker は、git リポジトリ全体の repository と同じく、repository ごとに 1 つの clone を持ち、repository ごとに見回る。同じ git リポジトリのディレクトリの repository が 2 つあれば、clone も 2 つになる。
+  - なぜ git リポジトリごとにまとめないか：repository ごとのロックと見回りを、そのまま使えるから。clone が増えるのは、ディレクトリの repository の数だけで、ディスクのほかの費用は変わらない。まとめるのは、clone の大きさが問題になってからにする。
+- `main` の新しいコミットごとに、`git diff-tree` の変わったパスで、そのディレクトリを変えたかを決める。変えたコミットだけを、版にする。
+  - 版の差分とファイルは、パスからディレクトリを除いて、ディレクトリを根として扱う。そのため、スナップショットツリー、差分の検査、重ねる計算は、git リポジトリ全体の repository と同じものを使う。
 - repository ごとに、置き場に `scanned` を置く。worker が読み終えた、git の `main` の先頭の SHA である。
   - `latest` は、今までどおり、いちばん新しい版の SHA である。
   - バックエンドは、GitForge の `main` に worker が追いついたかを、`scanned` で決める（[main の守り](main.md) の「反映の順番」）。
@@ -81,6 +83,8 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 - 新しい版の `parent` が今の `latest` であるときだけ、`latest` を書く（[latest](../backend/snapshot.md#latest) と同じ。比べる相手が、git の親でなく 1 つ前の版になるだけである）。
 - ブランチのスナップショットは、base からの差分がそのディレクトリの中のファイルを変えるブランチにだけ作る。
   - なぜ：コードのブランチを、すべての repository のブランチの履歴に入れないため。
+  - スナップショットの base は、その時点の版（base までにディレクトリを変えた、いちばん新しい `main` のコミット）にする。なぜ：本当の base がコードのコミットだと、スナップショットツリーがないから。ディレクトリの中身は、どちらも同じである。
+  - ディレクトリの外で変わったパスも、スナップショットに持つ。バックエンドは、それで `outside_directory` を決める。
 
 ## 引用
 

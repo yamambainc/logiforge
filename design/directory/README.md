@@ -17,7 +17,9 @@
 - 管理者が、サーバの設定に、repository の名前と「git リポジトリとディレクトリのパス」の組を登録する（例：`cache-strategy=acme/myapp:logiforge/cache-strategy`）。
   - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのときは、worker が見つけて、壊れた状態にする。
     - なぜ用意のあとか：用意のコミットは、利用者のトークンで `main` に直接置くから（[履歴](history.md) の「用意のコミット」）。
-  - 設定の形は、構成の設定と同じく環境変数に置く（[動かし方](../deploy.md)）。
+  - 設定の形は、構成の設定と同じく環境変数に置く（[動かし方](../deploy.md)）。Forgejo は `LOGIFORGE_DIRECTORIES`、GitHub は `LOGIFORGE_GITHUB_REPOSITORIES` に、`名前=owner/name:パス` で書く。
+  - gitforge_ref は、`owner/name:パス` である。GitForge の API と git には、`owner/name` の部分を使う。
+  - Forgejo では、ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）を、git リポジトリ全体の repository としては数えない。
   - なぜ Logiforge の側か：プロジェクトのリポジトリに設定のファイルを置くと、コードの PR でディレクトリを足したり外したりでき、apply request を通らずに repository の範囲が変わるから。
 - 登録したディレクトリは、ほかの登録したディレクトリの中にも外にも重ならない。
   - なぜ：1 つのファイルが、2 つの repository のものになるのを防ぐため。
@@ -32,9 +34,10 @@
 - apply request は、今までどおり、署名の合う `apply_request` の記録のコメントがある pull request だけである（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。だれのトークンで作ったかは問わない。
   - 記録のない PR は、ディレクトリを変えていても、apply request ではない。Logiforge は反映しない。人が merge すれば、反映によらないコミットになる（[履歴](history.md) の「反映かの判定」）。
   - コードだけの PR は、Logiforge は読まない。
-- 記録のコメントに、trailer `Logiforge-Repository:`（repository の名前）を足す。署名に含める。
+- 記録のコメントに、trailer `Logiforge-Repository:`（ディレクトリのパス。例：`logiforge/cache-strategy`）を足す。署名に含める。
+  - なぜ名前でなくパスか：名前は Logiforge の設定の呼び名で、変えられるから。パスは、git リポジトリの中のディレクトリそのもので、同じ git リポジトリの中では重ならない。
   - なぜ：1 つの git リポジトリに repository が複数あるので、どの repository の apply request かを、書き換えられない形で決めるため。
-  - 名前が、問い合わせた repository と違う記録は、数えない。
+  - パスが、問い合わせた repository と違う記録は、数えない。git リポジトリ全体の repository は、`Logiforge-Repository:` のない記録だけを数える。
 - apply request の差分（base から先頭のコミットまで）は、そのディレクトリの中だけにする。
   - ディレクトリの外も変える差分は、作成と反映の検査で拒む（[差分の検査](../backend/checks.md) の規則 `outside_directory`）。
   - なぜ：Logiforge の反映で、コードを変えないため。コードの変更は、プロジェクトの PR とレビューに任せる。

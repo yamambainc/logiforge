@@ -5,6 +5,8 @@ package ports
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -28,8 +30,19 @@ var (
 
 // Repository は、repository の名前と、GitForge の側の参照の組である。
 type Repository struct {
-	Name        string
+	Name string
+	// GitForgeRef は、GitForge の側の参照である（例：owner/name）。ディレクトリの repository では、
+	// git リポジトリの参照とディレクトリのパスを : でつなぐ（例：owner/name:logiforge/cache-strategy。design/directory/README.md）。
 	GitForgeRef string
+}
+
+// Directory は、ディレクトリの repository のパスを返す。git リポジトリ全体の repository では空。
+func (r Repository) Directory() string { _, d := SplitRef(r.GitForgeRef); return d }
+
+// SplitRef は、gitforge_ref を、git リポジトリの参照と、ディレクトリのパスに分ける。ディレクトリのない参照では、パスは空。
+func SplitRef(ref string) (git, dir string) {
+	git, dir, _ = strings.Cut(ref, ":")
+	return git, dir
 }
 
 // File は、repository を用意するときに、最初のコミットに入れるファイルである。
@@ -244,6 +257,8 @@ const (
 	InitRoot = "init-root"
 	// InitSecond は、GitHub で、根の次に背景情報を置くコミットである。
 	InitSecond = "init-second"
+	// InitDirectory は、ディレクトリの repository の用意のコミットである。
+	InitDirectory = "init-directory"
 )
 
 // tokenKey は、GitForge を呼ぶ主体のトークンを、ctx で渡す鍵である。
@@ -274,4 +289,54 @@ type MergeVerdict struct {
 	Kind         string
 	// Detail は、反映によるものでないときの、満たさなかった条件である。
 	Detail string
+}
+
+// CheckDirectories は、ディレクトリの repository の登録を確かめる（design/directory/README.md の「登録」）。
+//   - パスは、/ で区切った相対のパスで、空の部分、`.`、`..` を含まない。
+//   - 同じ git リポジトリの、ほかの登録したディレクトリの中にも外にも重ならない。
+//   - 名前は重ならない。
+func CheckDirectories(rs []Repository) error {
+	names := map[string]bool{}
+	byGit := map[string][]string{}
+	for _, r := range rs {
+		if r.Name == "" || names[r.Name] {
+			return fmt.Errorf("repository の名前が空か、重なっている: %q", r.Name)
+		}
+		names[r.Name] = true
+		git, dir := SplitRef(r.GitForgeRef)
+		if dir == "" {
+			continue
+		}
+		for _, part := range strings.Split(dir, "/") {
+			if part == "" || part == "." || part == ".." {
+				return fmt.Errorf("ディレクトリのパスが正しくない: %q", dir)
+			}
+		}
+		for _, other := range byGit[git] {
+			if other == dir || strings.HasPrefix(dir, other+"/") || strings.HasPrefix(other, dir+"/") {
+				return fmt.Errorf("ディレクトリ %q と %q が、同じ git リポジトリ %s の中で重なる", other, dir, git)
+			}
+		}
+		byGit[git] = append(byGit[git], dir)
+	}
+	return nil
+}
+
+// ParseDirectories は、「名前=owner/name:パス,…」の形の登録を読む（ディレクトリの repository）。
+func ParseDirectories(v string) ([]Repository, error) {
+	var out []Repository
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name, ref, ok := strings.Cut(part, "=")
+		git, dir := SplitRef(ref)
+		owner, repo, ok2 := strings.Cut(git, "/")
+		if !ok || !ok2 || owner == "" || repo == "" || strings.Contains(repo, "/") || dir == "" {
+			return nil, fmt.Errorf("ディレクトリの repository は 名前=owner/name:パス の形で書く: %q", part)
+		}
+		out = append(out, Repository{Name: name, GitForgeRef: ref})
+	}
+	return out, CheckDirectories(out)
 }

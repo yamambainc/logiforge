@@ -168,7 +168,7 @@ type verifier struct {
 }
 
 // VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify.md の「用意のコミットの署名」）。
-func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, signature string, added map[string]string) (bool, error) {
+func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error) {
 	id, err := v.ids.RepoID(ctx, r.GitForgeRef)
 	if err != nil {
 		return false, err
@@ -177,11 +177,11 @@ func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, pare
 	for p, sum := range added {
 		files = append(files, pullreq.InitFile{Path: p, SHA256: sum})
 	}
-	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Parent: parent}, files, signature) == nil, nil
+	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Directory: r.Directory(), Parent: parent, MigratedFrom: migratedFrom}, files, signature) == nil, nil
 }
 
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
-	return v.b.VerifyMerge(ports.WithToken(ctx, v.token), r.Name, r.GitForgeRef, sha, parents, files, broken)
+func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+	return v.b.VerifyMerge(ports.WithToken(ctx, v.token), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
 }
 
 // workerHealth は、worker のハートビートを確かめる（`logiforge worker-health`）。worker と同じ環境変数を読む。

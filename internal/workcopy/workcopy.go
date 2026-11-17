@@ -29,12 +29,30 @@ func CommitInfo(c gitx.Commit) snapshot.CommitInfo {
 
 // BranchSnapshot は、base から head への差分のスナップショットを作る。読むのは、変わったファイルだけである。
 // files は、head での、加わったか変わったファイルである（artifact の中身を置くのに使う）。
+//
+// ディレクトリの repository（g.Prefix がある）では、base を、その時点の版（base までにディレクトリを変えた、いちばん新しいコミット）に
+// 引いて、スナップショットの base にする。版のほかのコミットには、スナップショットツリーがないからである。ディレクトリの中身は、
+// base とその版で同じなので、差分は変わらない（design/directory/history.md の「版」）。
 func BranchSnapshot(ctx context.Context, g *gitx.Repo, base, head string, maxSize int64) (*snapshot.Branch, tree.Files, error) {
+	label := base
+	if g.Prefix != "" {
+		v, err := g.LastChange(ctx, base)
+		if err != nil {
+			return nil, nil, err
+		}
+		if v != "" {
+			label = v
+		}
+	}
 	c, err := g.ReadCommit(ctx, head)
 	if err != nil {
 		return nil, nil, err
 	}
-	changes, files, err := g.ChangedFiles(ctx, base, head, maxSize)
+	changes, outside, err := g.DiffAll(ctx, base, head)
+	if err != nil {
+		return nil, nil, err
+	}
+	files, err := g.ApplyChanges(ctx, nil, changes, maxSize)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,7 +67,11 @@ func BranchSnapshot(ctx context.Context, g *gitx.Repo, base, head string, maxSiz
 		}
 		deltas = append(deltas, d)
 	}
-	b, err := snapshot.BuildBranch(base, deltas, files, CommitInfo(c))
+	// 差分は、本当の base から読む（ディレクトリの外の変化を、base と版のあいだのコードのコミットと混ぜないため）。
+	b, err := snapshot.BuildBranch(label, deltas, files, CommitInfo(c))
+	if b != nil {
+		b.Outside = outside
+	}
 	return b, files, err
 }
 
@@ -109,7 +131,8 @@ func (c *Cache) lock(repo string) func() {
 }
 
 // repo は、repository の複製を返す。なければ作る（空の bare リポジトリ。最初の fetch が clone の代わりになる）。
-func (c *Cache) repo(ctx context.Context, name string) (*gitx.Repo, error) {
+// ディレクトリの repository では、ディレクトリの中だけを読む（gitx.Repo.Prefix）。
+func (c *Cache) repo(ctx context.Context, name, gitForgeRef string) (*gitx.Repo, error) {
 	dir := filepath.Join(c.Dir, name+".git")
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 		if _, err := gitx.Init(ctx, dir); err != nil {
@@ -118,7 +141,8 @@ func (c *Cache) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	return &gitx.Repo{Dir: dir, Env: c.Env}, nil
+	_, prefix := ports.SplitRef(gitForgeRef)
+	return &gitx.Repo{Dir: dir, Env: c.Env, Prefix: prefix}, nil
 }
 
 // ReadBranch は、main とブランチを fetch し、ブランチの先頭と main の分かれた点（base）を求め、
@@ -128,7 +152,7 @@ func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string
 		return nil, ports.ErrNotFound
 	}
 	defer c.lock(repo)()
-	g, err := c.repo(ctx, repo)
+	g, err := c.repo(ctx, repo, gitForgeRef)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +182,7 @@ func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string
 // 置き場に base の木がないときに、バックエンドが base の木を読むのに使う。
 func (c *Cache) ReadFiles(ctx context.Context, repo, gitForgeRef, sha string) (tree.Files, error) {
 	defer c.lock(repo)()
-	g, err := c.repo(ctx, repo)
+	g, err := c.repo(ctx, repo, gitForgeRef)
 	if err != nil {
 		return nil, err
 	}
@@ -171,4 +195,26 @@ func validBranch(b string) bool {
 		return false
 	}
 	return !strings.ContainsAny(b, ":*?[\\^~ \t\n")
+}
+
+// ReachedMain は、ディレクトリの repository で、worker が読み終えた main の先頭 scanned が、head と同じか、head より先かを返す。
+// main を fetch して、git で確かめる（design/directory/main.md の「反映の順番」）。
+func (c *Cache) ReachedMain(ctx context.Context, repo, gitForgeRef, head, scanned string) (bool, error) {
+	if head == scanned {
+		return true, nil
+	}
+	defer c.lock(repo)()
+	g, err := c.repo(ctx, repo, gitForgeRef)
+	if err != nil {
+		return false, err
+	}
+	if err := g.FetchBranches(ctx, c.URL(gitForgeRef), "main"); err != nil {
+		return false, fmt.Errorf("%w: git fetch: %v", ports.ErrUnavailable, err)
+	}
+	for _, sha := range []string{head, scanned} {
+		if ok, err := g.HasCommit(ctx, sha); err != nil || !ok {
+			return false, err
+		}
+	}
+	return g.IsAncestor(ctx, head, scanned)
 }

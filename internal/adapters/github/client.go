@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // DefaultAPIURL と DefaultWebURL は、github.com の REST の URL と、画面と git の URL である。
@@ -32,6 +34,15 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string { return fmt.Sprintf("github: %d %s", e.Status, e.Message) }
+
+// errMessage は、GitHub の誤りの応答の message を返す。
+func errMessage(err error) string {
+	var e *apiError
+	if errors.As(err, &e) {
+		return e.Message
+	}
+	return ""
+}
 
 // limited は、制限に当たった誤りかを返す。
 func limited(err error) bool {
@@ -214,9 +225,14 @@ func list[T any](ctx context.Context, c *client, token, path string) ([]T, error
 
 // repoPath は、gitforge_ref（owner/name）から、API のパスを作る。
 func repoPath(ref string) (string, error) {
+	// ディレクトリの repository の参照（owner/name:パス）では、git リポジトリの参照だけを使う。
+	ref, _ = ports.SplitRef(ref)
 	owner, name, ok := strings.Cut(ref, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return "", fmt.Errorf("github: gitforge_ref の形が正しくない: %q", ref)
 	}
 	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
 }
+
+// gitRef は、gitforge_ref の、git リポジトリの参照（ディレクトリのパスを除いたもの）である。
+func gitRef(ref string) string { g, _ := ports.SplitRef(ref); return g }

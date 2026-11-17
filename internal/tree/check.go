@@ -17,8 +17,10 @@ const (
 	RuleNotRegularFile Rule = "not_regular_file"
 	RuleTooLarge       Rule = "too_large"
 	RuleOutsideTree    Rule = "outside_tree"
-	RuleArtifactName   Rule = "artifact_name"
-	RuleDuplicateID    Rule = "duplicate_id"
+	// RuleOutsideDirectory は、ディレクトリの repository で、ディレクトリの外の変化である（design/directory/README.md）。
+	RuleOutsideDirectory Rule = "outside_directory"
+	RuleArtifactName     Rule = "artifact_name"
+	RuleDuplicateID      Rule = "duplicate_id"
 )
 
 // 木の形の規則（head の木で確かめること）。

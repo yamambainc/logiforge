@@ -79,7 +79,7 @@ func (u *user) create(branch string) applyRequest {
 	}
 	// 作成の直後に読むと、worker がまだブランチを取り込んでいなければ、レビューの材料は snapshot_pending になる。
 	// 取り込んでいれば、操作の一覧が返る（design/api/writes.md の「書いた直後の読み」）。どちらかであることを確かめる。
-	if code, out := u.cli("", "ar", "material", ar.ID, "--repo", "q", "--json"); code == 0 {
+	if code, out := u.cli("", "ar", "material", ar.ID, "--repo", u.repoName(), "--json"); code == 0 {
 		if !strings.Contains(out, `"operations"`) {
 			u.w.t.Fatalf("作成の直後のレビューの材料に、操作の一覧がない：%s", out)
 		}
@@ -103,7 +103,7 @@ func (u *user) headCommits(id string) []struct {
 			Base   string `json:"base_commit"`
 		} `json:"head_commits"`
 	}
-	u.must(&ar, "ar", "view", id, "--repo", "q")
+	u.must(&ar, "ar", "view", id, "--repo", u.repoName())
 	return ar.HeadCommits
 }
 
@@ -120,7 +120,7 @@ func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 	if len(hs) < n {
 		u.w.t.Fatalf("%s に、%d 番目の先頭のコミットがない：%+v", id, n, hs)
 	}
-	args := []string{"ar", "review", id, "--" + kind, "--commit", hs[n-1].Commit, "--repo", "q", "--json"}
+	args := []string{"ar", "review", id, "--" + kind, "--commit", hs[n-1].Commit, "--repo", u.repoName(), "--json"}
 	if kind == "approve" {
 		args = append(args, "--prompt-revision", "prompt-1")
 	}

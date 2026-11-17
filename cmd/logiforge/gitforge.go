@@ -79,7 +79,9 @@ func splitList(v string) []string {
 //
 // GitHub（design/adapters/github.md）：
 //
-//	LOGIFORGE_GITHUB_REPOSITORIES  repository の名前と owner/name の組（名前=owner/name,…）
+//	LOGIFORGE_GITHUB_REPOSITORIES  repository の名前と owner/name の組（名前=owner/name,…）。ディレクトリの repository は 名前=owner/name:パス
+//
+// Forgejo のディレクトリの repository は、LOGIFORGE_DIRECTORIES（名前=owner/name:パス,…）に書く。
 //	LOGIFORGE_GITHUB_READ_TOKEN    読むだけのトークン（Contents、Issues、Pull requests の Read）。public のリポジトリだけなら、なくてもよい
 //	LOGIFORGE_GITHUB_API_URL、LOGIFORGE_GITHUB_URL  REST の URL と、画面と git の URL（既定は github.com）
 //	バックエンド：LOGIFORGE_USER_LOGINS、LOGIFORGE_USER_TEAM（user とみなすアカウント名と team（org/slug）。「,」で並べる）、
@@ -100,8 +102,13 @@ func setupForge(keys pullreq.Keyring, serve bool) (forgeSetup, error) {
 	if err := envs(need); err != nil {
 		return forgeSetup{}, err
 	}
-	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, WorkerLogin: login}, keys)
-	reader := forgejo.NewWorkerSource(forgejo.Config{URL: url, Org: org}, login, token)
+	// ディレクトリの repository（LOGIFORGE_DIRECTORIES=名前=owner/name:パス,…。design/directory/README.md の「登録」）。
+	dirs, err := ports.ParseDirectories(os.Getenv("LOGIFORGE_DIRECTORIES"))
+	if err != nil {
+		return forgeSetup{}, fmt.Errorf("LOGIFORGE_DIRECTORIES: %w", err)
+	}
+	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, WorkerLogin: login, Directories: dirs}, keys)
+	reader := forgejo.NewWorkerSource(forgejo.Config{URL: url, Org: org, Directories: dirs}, login, token)
 	return forgeSetup{forge: forge, auth: auth, reader: reader, readToken: token, webURL: url, kind: gitforgeForgejo}, nil
 }
 

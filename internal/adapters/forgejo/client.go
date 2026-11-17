@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // Config は、Forgejo アダプタの設定である（design/adapters/README.md の「設定と秘密情報」）。
@@ -31,6 +33,9 @@ type Config struct {
 	HTTP *http.Client
 	// MergeWait は、merge できるかを Forgejo が確かめ終わるまで待つ時間の上限。0 なら 15 秒。
 	MergeWait time.Duration
+	// Directories は、ディレクトリの repository の登録（名前と owner/name:パス）である（design/directory/README.md の「登録」）。
+	// ディレクトリを置く git リポジトリは、git リポジトリ全体の repository としては数えない。
+	Directories []ports.Repository
 }
 
 // apiError は、Forgejo の API の誤りの応答である。
@@ -208,9 +213,14 @@ func (c *client) download(ctx context.Context, token, rawURL string) ([]byte, er
 
 // repoPath は、gitforge_ref（owner/name）から、API のパスを作る。
 func repoPath(ref string) (string, error) {
+	// ディレクトリの repository の参照（owner/name:パス）では、git リポジトリの参照だけを使う。
+	ref, _ = ports.SplitRef(ref)
 	owner, name, ok := strings.Cut(ref, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return "", fmt.Errorf("forgejo: gitforge_ref の形が正しくない: %q", ref)
 	}
 	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
 }
+
+// gitRef は、gitforge_ref の、git リポジトリの参照（ディレクトリのパスを除いたもの）である。
+func gitRef(ref string) string { g, _ := ports.SplitRef(ref); return g }

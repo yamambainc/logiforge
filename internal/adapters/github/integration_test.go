@@ -86,11 +86,11 @@ type verifier struct {
 	keys pullreq.Keyring
 }
 
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
-	return v.b.VerifyMerge(v.src.Context(ctx), r.Name, r.GitForgeRef, sha, parents, files, broken)
+func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+	return v.b.VerifyMerge(v.src.Context(ctx), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
 }
 
-func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, sig string, added map[string]string) (bool, error) {
+func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, sig string, added map[string]string) (bool, error) {
 	id, err := v.src.RepoID(ctx, r.GitForgeRef)
 	if err != nil {
 		return false, err
@@ -99,7 +99,7 @@ func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, pare
 	for p, s := range added {
 		fs = append(fs, pullreq.InitFile{Path: p, SHA256: s})
 	}
-	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Parent: parent}, fs, sig) == nil, nil
+	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Directory: r.Directory(), Parent: parent, MigratedFrom: migratedFrom}, fs, sig) == nil, nil
 }
 
 // worker は、読むだけのトークン（なければトークンなし）で、repository を取り込む worker と、その置き場を作る。
@@ -230,7 +230,12 @@ func (l *live) verdict(v verifier, st *store.Dir, dir, sha string) ports.MergeVe
 		l.t.Fatal(err)
 	}
 	parents := strings.Fields(l.must(dir, "rev-list", "--parents", "-n", "1", sha))[1:]
-	got, err := v.VerifyMerge(context.Background(), ports.Repository{Name: "q", GitForgeRef: l.repo}, sha, parents, files, nil)
+	// 1 つ前の版は、コミットの記録の parent である（ディレクトリの repository では、git の親とは限らない）。
+	c, err := store.GetCommit(context.Background(), st, "q", sha)
+	if err != nil || c.Parent == nil {
+		l.t.Fatalf("%s のコミットの記録：%v", sha, err)
+	}
+	got, err := v.VerifyMerge(context.Background(), ports.Repository{Name: "q", GitForgeRef: l.repo}, sha, parents, *c.Parent, files, nil)
 	if err != nil {
 		l.t.Fatal(err)
 	}
