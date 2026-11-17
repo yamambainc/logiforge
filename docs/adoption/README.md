@@ -13,7 +13,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 置き方：ディレクトリ方式
 
-- ディレクトリ方式の決まりは、[ディレクトリ方式](../../design/directory/README.md) に書く。別リポジトリ方式から移すことは、まだ使えない（[issue #51](https://github.com/yamambainc/logiforge/issues/51)）。
+- ディレクトリ方式の決まりは、[ディレクトリ方式](../../design/directory/README.md) に書く。
 - ディレクトリ方式は、GitHub と Forgejo のどちらの構成でも使える。`main` を守る設定は勧めるが、なくても使える。守る設定がないときは、反映によらない変更を Logiforge があとから見つける（[main の守り](../../design/directory/main.md)）。
 - それまでは、別リポジトリ方式で始める（[導入](separate-repository.md)）。コードは、検証結果から SHA 付きで引用する。
 - 別リポジトリ方式の repository は、あとでディレクトリ方式に移せる（[別リポジトリ方式から移す](../../design/directory/migrate.md)）。
