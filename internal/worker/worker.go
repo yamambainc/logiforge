@@ -78,6 +78,9 @@ type Worker struct {
 	hasLatest map[string]bool
 	// written は、最後に書いた repositories である。変わったときだけ書く。書いていなければ nil。
 	written *string
+	// firstSeen は、反映の記録があるのに、merge した pull request がまだ見つからないコミットを、worker が初めて見た時刻である。
+	// コミットの時刻は push する人が決められるので、待つ時間は、これから数える。プロセスごとに持つ（止まれば、待ち直すだけである）。
+	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
 	repos []ports.Repository
 }
@@ -562,15 +565,38 @@ func (w *Worker) authorized(ctx context.Context, r ports.Repository, sha string,
 		return nil, err
 	}
 	// GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがある（Forgejo で確かめた）。
-	// 反映の記録（Logiforge-Apply-Request:）のある新しいコミットは、待つ時間のあいだ、反映によらないと決めずに、やり直す。
-	if !a && w.cfg.Now().Sub(info.CommittedAt) < mergeLookupGrace {
-		for _, t := range info.Trailers {
-			if t.Key == snapshot.TrailerApplyRequest {
-				return nil, fmt.Errorf("merge のコミット %s から、まだ pull request を引けない。次の見回りでやり直す", sha)
-			}
+	// 反映の記録（Logiforge-Apply-Request:）のあるコミットは、worker が初めて見てから待つ時間のあいだ、反映によらないと決めずに、やり直す。
+	// コミットの時刻は使わない。push する人が、未来の時刻にして、待ちを終わらせないようにできるから。
+	if !a && hasTrailer(info, snapshot.TrailerApplyRequest) {
+		now := w.cfg.Now()
+		w.mu.Lock()
+		if w.firstSeen == nil {
+			w.firstSeen = map[string]time.Time{}
+		}
+		seen, ok := w.firstSeen[sha]
+		if !ok {
+			seen = now
+			w.firstSeen[sha] = now
+		}
+		waiting := now.Sub(seen) < mergeLookupGrace
+		if !waiting {
+			delete(w.firstSeen, sha)
+		}
+		w.mu.Unlock()
+		if waiting {
+			return nil, fmt.Errorf("merge のコミット %s から、まだ pull request を引けない。次の見回りでやり直す", sha)
 		}
 	}
 	return &a, nil
+}
+
+func hasTrailer(info snapshot.CommitInfo, key string) bool {
+	for _, t := range info.Trailers {
+		if t.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 // mergeLookupGrace は、反映の記録のあるコミットを、反映によらないと決めるまで待つ時間である。

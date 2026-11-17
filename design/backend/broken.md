@@ -27,7 +27,9 @@ worker は、`main` の新しいコミットごとに、反映によるものか
   - Forgejo：worker のユーザーのトークンの `read:repository` で読める。
 - API が答えないときは、そのコミットを取り込まずに、次の見回りでやり直す。`latest` は進めない。
   - なぜ：判定できないコミットを、正しいとも壊れているとも記録しないため。
-- 反映の記録（`Logiforge-Apply-Request:`）のあるコミットで、merge した pull request が見つからないときは、コミットの時刻から 60 秒までは、反映によらないと決めずにやり直す。
+- 反映の記録（`Logiforge-Apply-Request:`）のあるコミットで、merge した pull request が見つからないときは、worker がそのコミットを初めて見てから 60 秒までは、反映によらないと決めずにやり直す。
+  - コミットの時刻は使わない。なぜ：push する人が未来の時刻にして、待ちを終わらせないようにできるから。
+  - 初めて見た時刻は、worker のプロセスの中だけに持つ。worker が止まれば、待ち直すだけである。
   - なぜ：GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがあるから（Forgejo 17 で確かめた）。
   - なぜ 60 秒か：その遅れ（数秒）より十分長く、trailer を偽ったコミットで壊れた状態になるのを、長くは遅らせないため。
 - Forgejo 17 で、`GET /commits/{sha}/pull` が、squash merge のコミットから pull request（`merged_by`、`merge_commit_sha`）を返し、直接の push のコミットでは 404 を返すことを確かめた。
@@ -68,7 +70,7 @@ worker は、`main` の新しいコミットごとに、反映によるものか
 | 種類 | 先頭のコミット | 反映の前に確かめること |
 |---|---|---|
 | `repair.revert` | `main` から分けたブランチで、木の全体を `last_good` のコミットのものに戻したコミット。CLI の `repair revert` が作る | 先頭の木の全体が、`last_good` のコミットの木と同じである。差分の検査（[差分の検査](checks.md)）は行わない |
-| `repair.accept` | `main` から分けたブランチで、認めた記録（壊れた最初のコミット、`last_good`、`main` の先頭、セッション）の artifact を 1 つ加えるコミット。CLI の `repair accept` が作る | 差分が、その artifact を 1 つ加えるだけである。ブランチが、今の `main` の先頭から分かれている。認めるのは、そこまでの変更である。今の `main` の木に、`tree/` と `artifacts/` の外のファイルがあれば断る |
+| `repair.accept` | `main` から分けたブランチで、認めた記録（壊れた最初のコミット、`last_good`、`main` の先頭、セッション）の artifact を 1 つ加えるコミット。CLI の `repair accept` が作る | 差分が、その artifact を 1 つ加えるだけである。その artifact は、差分の検査の artifact の規則（名前が中身の sha256、大きさの上限）を満たす。ブランチが、今の `main` の先頭から分かれている。認めるのは、そこまでの変更である。今の `main` の木に、`tree/` と `artifacts/` の外のファイルがあれば断る |
 
 - `repair revert` は、戻す木を、git でなく API（`getRepairFiles`）から読む。`last_good` のコミットのファイルを、スナップショットツリーと artifact の置き場から返す。
   - なぜ：書き換えのあと、`last_good` のコミットは GitForge にないことがあるから。

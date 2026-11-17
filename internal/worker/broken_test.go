@@ -31,10 +31,15 @@ func TestBrokenAndRevert(t *testing.T) {
 	r := setupRemote(t)
 	src := &checkedSource{source: source{r.dir}, merged: map[string]bool{}}
 	st := &store.Dir{Root: t.TempDir()}
-	// merge の直後の待ち（mergeLookupGrace）を過ぎた時刻にする。
-	w := New(Config{Dir: t.TempDir(), Now: func() time.Time { return time.Now().Add(time.Hour) }}, src, st)
+	// 時計は、読むたびに merge の直後の待ち（mergeLookupGrace）より進める。trailer を偽ったコミットは、初めて見た見回りではやり直しになり、
+	// 次の見回りで決まる。
+	clock := time.Now()
+	w := New(Config{Dir: t.TempDir(), Now: func() time.Time { clock = clock.Add(2 * mergeLookupGrace); return clock }}, src, st)
 	sync := func() {
 		t.Helper()
+		if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err == nil {
+			return
+		}
 		if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err != nil {
 			t.Fatal(err)
 		}
@@ -140,6 +145,7 @@ func TestBrokenCheckUnavailable(t *testing.T) {
 }
 
 // merge の直後、GitForge が merge のコミットから pull request を引けないうちは、反映の記録のあるコミットを、反映によらないと決めない。
+// 待つ時間は、worker が初めて見た時刻から数える。コミットの時刻（未来にもできる）は使わない。
 func TestBrokenWaitsForMergeLookup(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
@@ -147,18 +153,38 @@ func TestBrokenWaitsForMergeLookup(t *testing.T) {
 	st := &store.Dir{Root: t.TempDir()}
 	now := time.Now()
 	w := New(Config{Dir: t.TempDir(), Now: func() time.Time { return now }}, src, st)
+	sync := func() error { return w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}) }
+	if err := sync(); err != nil {
+		t.Fatal(err)
+	}
 	r.git("checkout", "--quiet", "-b", "a1")
 	r.write(h1+"/background.md", []byte("背景\n"))
 	r.commit("背景")
 	c := r.squash("a1", "apr_1")
-	if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err == nil {
+	if err := sync(); err == nil {
 		t.Fatal("引けないうちに、決めた")
 	}
 	src.merged[c] = true
-	if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err != nil {
+	if err := sync(); err != nil {
 		t.Fatal(err)
 	}
 	if br, _ := store.GetBroken(ctx, st, "q"); br != nil {
 		t.Fatalf("壊れた：%+v", br)
+	}
+
+	// コミットの時刻を未来にした、trailer を偽ったコミット。初めて見てから待つ時間を過ぎれば、壊れた状態にする。
+	r.write(h2+"/background.md", []byte("偽\n"))
+	r.git("add", "-A")
+	cmd := []string{"-c", "user.name=t", "commit", "--quiet", "-m", "偽\n\nLogiforge-Apply-Request: apr_x", "--date", "2099-01-01T00:00:00Z"}
+	r.git(cmd...)
+	if err := sync(); err == nil {
+		t.Fatal("初めて見たときに、決めた")
+	}
+	now = now.Add(mergeLookupGrace + time.Second)
+	if err := sync(); err != nil {
+		t.Fatal(err)
+	}
+	if br, _ := store.GetBroken(ctx, st, "q"); br == nil {
+		t.Fatal("未来の時刻のコミットで、待ちが終わらない")
 	}
 }

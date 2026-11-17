@@ -64,9 +64,16 @@ func (b *Backend) repairProblem(ctx context.Context, repo, kind string, br *snap
 		}
 	case KindRepairAccept:
 		// 先頭のコミットは、認めた記録の artifact を 1 つ加えるだけにする。空のコミットの pull request は、Forgejo で squash merge できないから。
-		if len(br.Diff.Entries) != 1 || br.Diff.Entries[0].BaseSHA != "" || br.Diff.Entries[0].File == nil ||
-			!strings.HasPrefix(br.Diff.Entries[0].Path, "artifacts/sha256/") {
+		if len(br.Diff.Entries) != 1 || br.Diff.Entries[0].BaseSHA != "" || br.Diff.Entries[0].File == nil {
 			return "認める apply request の先頭のコミットは、認めた記録の artifact を 1 つ加えるだけにする（logiforge repair accept が作る）", nil
+		}
+		// その 1 つにも、差分の検査の artifact の規則（名前が中身の sha256、大きさの上限）を当てる。
+		e := br.Diff.Entries[0]
+		if e.File.SHA256 == "" || e.Path != tree.ArtifactPath(e.File.SHA256) {
+			return fmt.Sprintf("認めた記録 %s の名前が、中身の sha256 でない", e.Path), nil
+		}
+		if e.File.Size > tree.MaxArtifactSize {
+			return fmt.Sprintf("認めた記録 %s が、大きさの上限を超える", e.Path), nil
 		}
 		if br.Diff.Base != current.revision() {
 			return fmt.Sprintf("ブランチが、今の main の先頭 %s から分かれていない。今の main から作り直す", current.revision()), nil
