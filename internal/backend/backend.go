@@ -87,6 +87,8 @@ type view struct {
 
 // mainAt は、revision の main のスナップショットを読む。revision が空なら、latest を読む。
 // スナップショットがなければ snapshot_pending にする。まだ作られていないのか、git にもないのかは、区別しない。
+// revision が空なら、木を読む API の今の main である。repository が壊れていれば、最後に正しかった時点のコミットである
+// （design/backend/broken.md の「バックエンド」）。書く操作の検査は、currentMain で、本当の今の main を読む。
 func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, error) {
 	if revision == "" {
 		latest, err := b.Snap.Latest(ctx, repo)
@@ -94,6 +96,13 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 			return nil, err
 		}
 		revision = latest
+		br, err := b.Snap.Broken(ctx, repo)
+		if err != nil {
+			return nil, err
+		}
+		if br != nil {
+			revision = br.LastGood
+		}
 	}
 	m, err := b.Snap.Main(ctx, repo, revision)
 	// main のすべてのコミットにスナップショットツリーを作るので、ないのは worker が追いついていないか、git にもないときである。
@@ -108,6 +117,16 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 		return nil, err
 	}
 	return &view{repo: repo, main: m, tree: tree.Build(files), files: files}, nil
+}
+
+// currentMain は、本当の今の main（latest）の view を返す。壊れていても、最後に正しかった時点に戻さない。
+// 反映の検査と、apply request の作成の検査と、レビューの材料に使う。
+func (b *Backend) currentMain(ctx context.Context, repo string) (*view, error) {
+	latest, err := b.Snap.Latest(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	return b.mainAt(ctx, repo, latest)
 }
 
 func (v *view) revision() string { return v.main.Commit.Revision }

@@ -17,6 +17,28 @@ type Repository struct {
 	// RootStatement は、根の仮説の主文（今の main）。スナップショットツリーがまだなければ null（WebUI の repository の一覧のため）。
 	RootStatement *string `json:"root_statement"`
 	RootValue     *bool   `json:"root_value"`
+	// Broken は、壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。
+	Broken *BrokenState `json:"broken"`
+}
+
+// BrokenState は、壊れた repository の状態である。
+type BrokenState struct {
+	FirstCommit    string `json:"first_commit"`
+	LastGoodCommit string `json:"last_good_commit"`
+	Reason         string `json:"reason"`
+}
+
+// RepairFile は、最後に正しかった時点のファイルである（getRepairFiles）。
+type RepairFile struct {
+	Path          string `json:"path"`
+	Mode          string `json:"mode"`
+	ContentBase64 string `json:"content_base64"`
+}
+
+// RepairFiles は、getRepairFiles の応答である。
+type RepairFiles struct {
+	Commit string       `json:"commit"`
+	Files  []RepairFile `json:"files"`
 }
 
 // Tree は、木の概要である。
@@ -187,7 +209,9 @@ type MergeFailure struct {
 
 // ApplyRequest は、apply request である。
 type ApplyRequest struct {
-	ID     string `json:"id"`
+	ID string `json:"id"`
+	// Kind は、change（ふつう）、repair.revert、repair.accept のどれか（design/backend/broken.md）。
+	Kind   string `json:"kind"`
 	Branch string `json:"branch"`
 	// Target は、向き先（pull request の base のブランチ）である。main でなければ、Logiforge は検査も反映もしない。
 	Target            string         `json:"target"`
@@ -214,6 +238,24 @@ type ReviewMaterial struct {
 	Ancestors      []*Hypothesis      `json:"ancestors"`
 	Siblings       []*Story           `json:"siblings"`
 	Citations      []MaterialCitation `json:"citations"`
+	// Repair は、直すための apply request のときだけ、最後に正しかった時点から今の main までの変化を持つ（design/backend/broken.md）。
+	Repair *RepairMaterial `json:"repair,omitempty"`
+}
+
+// RepairMaterial は、直すための apply request のレビューの材料である。反映によらない変更の中身を示す。
+type RepairMaterial struct {
+	Kind           string       `json:"kind"`
+	LastGoodCommit string       `json:"last_good_commit"`
+	MainCommit     string       `json:"main_commit"`
+	Changes        []FileChange `json:"changes"`
+}
+
+// FileChange は、ファイルの変化である。中身は、artifact でないファイルだけを持つ。
+type FileChange struct {
+	Path   string  `json:"path"`
+	Status string  `json:"status"` // added、modified、deleted
+	Before *string `json:"before,omitempty"`
+	After  *string `json:"after,omitempty"`
 }
 
 // MaterialCitation は、レビューの材料の、引用している部分木か artifact である。

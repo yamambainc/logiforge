@@ -46,8 +46,15 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	if got, _ := store.GetMainIndex(ctx, st, "q", 3); got != c3 {
 		t.Fatalf("main/3: %s", got)
 	}
-	if v, err = b.mainAt(ctx, "q", ""); err != nil || v.revision() != c2 {
+	if v, err = b.currentMain(ctx, "q"); err != nil || v.revision() != c2 {
 		t.Fatalf("latest: %v", err)
+	}
+	// 短い書き換えも、壊れた状態にする。木を読む今の main は、書き換えの前の latest（c3）である（design/backend/broken.md）。
+	if br, _ := store.GetBroken(ctx, st, "q"); br == nil || br.LastGood != c3 || br.Reason != "main_rewritten" {
+		t.Fatalf("壊れた状態：%+v", br)
+	}
+	if rv, err := b.mainAt(ctx, "q", ""); err != nil || rv.revision() != c3 {
+		t.Fatalf("読む今の main：%v", err)
 	}
 	if n, _ := b.mainNumber(ctx, v, c3); n != 0 {
 		t.Fatalf("書き換えで外れたコミットが、並びにあると判定された：%d", n)

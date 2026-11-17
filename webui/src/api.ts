@@ -34,6 +34,8 @@ export interface Repository {
   root_hypothesis_id: string;
   root_statement: string | null;
   root_value: boolean | null;
+  /** 壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。 */
+  broken?: { first_commit: string; last_good_commit: string; reason: string } | null;
 }
 
 interface Page<T> { items: T[]; next_cursor: string | null }

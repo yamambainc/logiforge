@@ -97,7 +97,11 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 		}
 	}
 	x.head = rev
-	if ar == "" && c.Parent != nil && trailer(info.Trailers, TrailerInit) == "" {
+	unauthorized := ar == "" && c.Parent != nil && trailer(info.Trailers, TrailerInit) == ""
+	if info.Authorized != nil {
+		unauthorized = !*info.Authorized
+	}
+	if unauthorized {
 		x.warn(&c, func(e *WarnedEntry) { e.NoApplyRequest = true },
 			tree.Violation{Rule: RuleNoApplyRequest, Node: info.Revision, Detail: "反映の記録のないコミット"})
 	}

@@ -2,6 +2,9 @@ package forgejo
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/yamambainc/logiforge/internal/ports"
@@ -46,4 +49,28 @@ func (s *WorkerSource) GitEnv() []string {
 		"LOGIFORGE_GIT_USERNAME=" + s.Login,
 		"LOGIFORGE_GIT_PASSWORD=" + s.Token,
 	}
+}
+
+// MergedByWriter は、sha が、書き込み主体が merge した pull request の merge のコミットかを返す（design/backend/broken.md の「反映かの判定」）。
+// GET /repos/{owner}/{repo}/commits/{sha}/pull は、そのコミットを merge した pull request を返し、なければ 404 を返す。
+func (s *WorkerSource) MergedByWriter(ctx context.Context, gitForgeRef, sha string) (bool, error) {
+	if s.c.cfg.Writer == "" {
+		return false, errors.New("forgejo: 書き込み主体のログイン名（LOGIFORGE_WRITER）がない")
+	}
+	rp, err := repoPath(gitForgeRef)
+	if err != nil {
+		return false, err
+	}
+	var p struct {
+		Merged         bool   `json:"merged"`
+		MergeCommitSHA string `json:"merge_commit_sha"`
+		MergedBy       *user  `json:"merged_by"`
+	}
+	if err := s.c.do(ctx, s.Token, http.MethodGet, rp+"/commits/"+url.PathEscape(sha)+"/pull", nil, &p); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return p.Merged && p.MergeCommitSHA == sha && p.MergedBy != nil && strings.EqualFold(p.MergedBy.Login, s.c.cfg.Writer), nil
 }

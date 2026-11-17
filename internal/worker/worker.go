@@ -326,7 +326,7 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 		return err
 	}
 	if mainSHA, ok := heads["main"]; ok {
-		if err := w.syncMain(ctx, g, r.Name, mainSHA); err != nil {
+		if err := w.syncMain(ctx, g, r, mainSHA); err != nil {
 			return fmt.Errorf("main: %w", err)
 		}
 	}
@@ -384,13 +384,18 @@ func (w *Worker) moveLegacy(ctx context.Context, repo string) error {
 // syncMain は、main の、latest より新しいコミットを、古い順に 1 つずつ取り込む（design/backend/worker.md の「すること」）。
 // 1 つのコミットごとに、コミットの記録、main の並びの索引、スナップショットツリーを置き、latest をそのコミットに進める。
 // スナップショットツリーは、1 つ前のコミットのスナップショットツリーのファイルに、そのコミットの差分を重ねて作る。
-func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA string) error {
+func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository, mainSHA string) error {
+	repo := r.Name
 	latest, err := store.GetLatest(ctx, w.store, repo)
 	if err != nil {
 		return err
 	}
 	if latest == mainSHA {
 		return nil
+	}
+	br, err := store.GetBroken(ctx, w.store, repo)
+	if err != nil {
+		return err
 	}
 	chain, err := g.FirstParents(ctx, mainSHA)
 	if err != nil {
@@ -415,6 +420,15 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 				}
 			}
 		}
+	}
+	// main の書き換えは、壊れた状態にする（design/backend/broken.md の「壊れている状態」）。最後に正しかった時点は、書き換えの前の latest。
+	// すでに壊れていれば、引き継ぐ。
+	if rewritten && br == nil {
+		first := mainSHA
+		if start < len(chain) {
+			first = chain[start]
+		}
+		br = &store.Broken{LastGood: latest, First: first, Reason: string(RuleMainRewritten)}
 	}
 	x := snapshot.NewIndex()
 	var files tree.Files
@@ -447,9 +461,29 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		for j, ch := range changes {
 			paths[j] = ch.Path
 		}
-		rec := x.Record(workcopy.CommitInfo(c), paths)
+		info := workcopy.CommitInfo(c)
+		if info.Authorized, err = w.authorized(ctx, r, sha, i == 0, info); err != nil {
+			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
+			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
+		}
+		rec := x.Record(info, paths)
 		if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
+		}
+		if br == nil && info.Authorized != nil && !*info.Authorized {
+			last := latest
+			if i > 0 {
+				last = chain[i-1]
+			}
+			br = &store.Broken{LastGood: last, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}
+		} else if br != nil && info.Authorized != nil && *info.Authorized {
+			healed, err := w.healed(ctx, g, repo, br, rec, files)
+			if err != nil {
+				return err
+			}
+			if healed {
+				br = nil
+			}
 		}
 		if err := w.putArtifacts(ctx, repo, files, paths); err != nil {
 			return err
@@ -475,6 +509,10 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 		if err := store.PutSnapshotTree(ctx, w.store, repo, sha, t); err != nil {
 			return err
 		}
+		// 壊れていることの記録は、latest を進める前に書く。読む側が、壊れた木を正しいものとして読まないようにするため。
+		if err := w.putBroken(ctx, repo, br); err != nil {
+			return err
+		}
 		err = store.SetLatest(ctx, w.store, repo, sha, latest)
 		if errors.Is(err, store.ErrPrecondition) {
 			return fmt.Errorf("latest が、読んだあとに書き換えられた（worker が 2 つ動いている？）")
@@ -487,11 +525,107 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, repo, mainSHA strin
 	// main が、取り込み終えたコミットまで短く書き換えられたときは、取り込むコミットがない。latest だけを戻す。
 	if rewritten && start == len(chain) {
 		w.cfg.Log.Warn("main が、取り込み終えたコミットまで書き換えられた", "repository", repo, "latest", latest, "main", mainSHA)
+		if err := w.putBroken(ctx, repo, br); err != nil {
+			return err
+		}
 		if err := store.SetLatest(ctx, w.store, repo, mainSHA, latest); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// MergeChecker は、main のコミットが、書き込み主体が merge した pull request の merge のコミットかを、GitForge の API で確かめる
+// （design/backend/broken.md の「反映かの判定」）。worker の Source が実装していれば使う。
+type MergeChecker interface {
+	MergedByWriter(ctx context.Context, gitForgeRef, sha string) (bool, error)
+}
+
+// authorized は、main のコミットが反映によるものかを決める。Source が MergeChecker でなければ nil（trailer で決める）。
+// 根のコミットは、Logiforge-Init: があれば反映によるものとする（repository はバックエンドが作るので、根を先に置ける人がいない）。
+func (w *Worker) authorized(ctx context.Context, r ports.Repository, sha string, root bool, info snapshot.CommitInfo) (*bool, error) {
+	mc, ok := w.src.(MergeChecker)
+	if !ok {
+		return nil, nil
+	}
+	var a bool
+	if root {
+		for _, t := range info.Trailers {
+			if t.Key == snapshot.TrailerInit {
+				a = true
+			}
+		}
+		return &a, nil
+	}
+	a, err := mc.MergedByWriter(ctx, r.GitForgeRef, sha)
+	if err != nil {
+		return nil, err
+	}
+	// GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがある（Forgejo で確かめた）。
+	// 反映の記録（Logiforge-Apply-Request:）のある新しいコミットは、待つ時間のあいだ、反映によらないと決めずに、やり直す。
+	if !a && w.cfg.Now().Sub(info.CommittedAt) < mergeLookupGrace {
+		for _, t := range info.Trailers {
+			if t.Key == snapshot.TrailerApplyRequest {
+				return nil, fmt.Errorf("merge のコミット %s から、まだ pull request を引けない。次の見回りでやり直す", sha)
+			}
+		}
+	}
+	return &a, nil
+}
+
+// mergeLookupGrace は、反映の記録のあるコミットを、反映によらないと決めるまで待つ時間である。
+// なぜ 60 秒か：GitForge が merge のコミットと pull request を結びつけるまでの遅れ（数秒）より十分長く、
+// trailer を偽ったコミットで、壊れた状態になるのを、長くは遅らせないため。
+const mergeLookupGrace = 60 * time.Second
+
+// putBroken は、壊れていることの記録を、変わったときだけ書く。
+func (w *Worker) putBroken(ctx context.Context, repo string, br *store.Broken) error {
+	old, err := store.GetBroken(ctx, w.store, repo)
+	if err != nil {
+		return err
+	}
+	if (old == nil && br == nil) || (old != nil && br != nil && *old == *br) {
+		return nil
+	}
+	if br != nil {
+		w.cfg.Log.Warn("repository が壊れた", "repository", repo, "reason", br.Reason, "first", br.First, "last_good", br.LastGood)
+	} else {
+		w.cfg.Log.Info("repository が直った", "repository", repo)
+	}
+	return store.PutBroken(ctx, w.store, repo, br)
+}
+
+// healed は、壊れた repository で、反映によるコミット rec が直すための apply request の反映で、直したかを返す
+// （design/backend/broken.md の「直すための apply request」）。files は、rec のコミットの木である。
+//   - revert：木の全体が、最後に正しかった時点の木と同じである。
+//   - accept：squash のコミットの親が、apply request のブランチを作った時点の main の先頭（先頭のコミットの親）である。
+func (w *Worker) healed(ctx context.Context, g *gitx.Repo, repo string, br *store.Broken, rec snapshot.Commit, files tree.Files) (bool, error) {
+	switch snapshot.HasTrailer(rec, snapshot.TrailerRepair) {
+	case snapshot.RepairRevert:
+		m, err := store.GetMain(ctx, w.store, repo, br.LastGood)
+		if err != nil {
+			return false, fmt.Errorf("最後に正しかった時点 %s のスナップショットツリー: %w", br.LastGood, err)
+		}
+		good, err := m.SnapshotTree.Files()
+		if err != nil {
+			return false, err
+		}
+		return tree.SameFiles(files, good), nil
+	case snapshot.RepairAccept:
+		head := snapshot.VersionCommit(rec)
+		if head == "" || rec.Parent == nil {
+			return false, nil
+		}
+		if ok, err := g.HasCommit(ctx, head); err != nil || !ok {
+			return false, err
+		}
+		c, err := g.ReadCommit(ctx, head)
+		if err != nil {
+			return false, err
+		}
+		return len(c.Parents) > 0 && c.Parents[0] == *rec.Parent, nil
+	}
+	return false, nil
 }
 
 // RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。

@@ -101,6 +101,11 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 		return Repository{}, err
 	}
 	r := Repository{Name: repo, GitURL: b.Forge.GitURL(ref)}
+	if br, err := b.Snap.Broken(ctx, repo); err != nil {
+		return Repository{}, err
+	} else if br != nil {
+		r.Broken = &BrokenState{FirstCommit: br.First, LastGoodCommit: br.LastGood, Reason: br.Reason}
+	}
 	if root := v.tree.Root(); root != nil {
 		r.RootHypothesisID = root.ID
 		st := root.Statement

@@ -54,7 +54,9 @@ type ApplyRequest struct {
 	HeadRevision  string
 	State         State
 	// Opener は、提案を作った主体である（バックエンドを通した記録の値）。
-	Opener       string
+	Opener string
+	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
+	Kind         string
 	CloseReason  string
 	CloseSession string
 	// MergeFailures は、反映の失敗の記録である（古い順）。
@@ -77,7 +79,9 @@ type MergeFailure struct {
 
 // NewApplyRequest は、提案を作るときに渡すものである。
 type NewApplyRequest struct {
-	ID            string
+	ID string
+	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
+	Kind          string
 	Branch        string
 	Description   string
 	FirstRevision string

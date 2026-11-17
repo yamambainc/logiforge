@@ -838,7 +838,8 @@ components:
   headers:
     RepositoryBroken:
       description: |
-        repository が壊れているときに、repository の木を読む応答に付ける。値は、最後に正しかった時点のコミット。
+        repository が壊れているときに、repository と木を読む応答（getRepository、木、ノード、検証結果）に付ける。値は、最後に正しかった時点のコミット。
+        apply request と人への依頼を読む応答には付けない。
         応答の木は、そのコミットのものである（../../design/backend/broken.md）
       schema: { type: string }
     PendingCommit:
@@ -885,10 +886,11 @@ components:
           description: |
             壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット。壊れていなければ null。
             壊れているあいだ、木を読む API は、最後に正しかった時点の木を返す（../../design/backend/broken.md）
-          required: [first_commit, last_good_commit]
+          required: [first_commit, last_good_commit, reason]
           properties:
             first_commit: { type: string }
             last_good_commit: { type: string }
+            reason: { type: string, enum: [no_apply_request, main_rewritten] }
     MainCommit:
       type: object
       required: [number, commit, committed_at, apply_request_id]
@@ -1216,6 +1218,10 @@ components:
       required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^apr_' }
+        kind:
+          type: string
+          enum: [change, repair.revert, repair.accept]
+          description: 直すための apply request の種類（../../design/backend/broken.md）。ふつうは change
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
@@ -1316,6 +1322,24 @@ components:
       properties:
         apply_request_id: { type: string, pattern: '^apr_' }
         commit: { $ref: '#/components/schemas/Commit' }
+        repair:
+          type: object
+          description: 直すための apply request のときだけ。最後に正しかった時点から今の main までの、ファイルの変化（../../design/backend/broken.md）
+          required: [kind, last_good_commit, main_commit, changes]
+          properties:
+            kind: { type: string, enum: [repair.revert, repair.accept] }
+            last_good_commit: { type: string }
+            main_commit: { type: string }
+            changes:
+              type: array
+              items:
+                type: object
+                required: [path, status]
+                properties:
+                  path: { type: string }
+                  status: { type: string, enum: [added, modified, deleted] }
+                  before: { type: string, description: 前の中身。artifact と、前になかったファイルでは、ない }
+                  after: { type: string, description: 今の中身。artifact と、消えたファイルでは、ない }
         operations:
           type: array
           description: 差分そのもの
@@ -1347,7 +1371,7 @@ components:
 
     WorkKind:
       type: string
-      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
+      enum: [repair_repository, undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
     WorkItem:
       type: object
       required: [kind, subject_id]
@@ -1365,7 +1389,7 @@ components:
             human_request_answered では人への依頼、citation_changed では引用している検証結果（v-…）の識別子である。
         node_id:
           $ref: '#/components/schemas/NodeId'
-          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である
+          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である。repair_repository では、ない（subject_id は、壊れた最初のコミット）
     Completion:
       type: object
       required: [commit, root_value, decided, remaining_work, done]

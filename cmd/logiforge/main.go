@@ -94,15 +94,16 @@ func env(name string) (string, error) {
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
+//	LOGIFORGE_WRITER           書き込み主体のログイン名。main のコミットが、書き込み主体が merge したものかを確かめる（design/backend/broken.md）
 func runWorker(ctx context.Context) error {
-	var cfg struct{ dir, storeDir, url, org, login, token string }
+	var cfg struct{ dir, storeDir, url, org, writer, login, token string }
 	for _, e := range []struct {
 		name string
 		dst  *string
 	}{
 		{"LOGIFORGE_WORKER_DIR", &cfg.dir}, {"LOGIFORGE_STORE_DIR", &cfg.storeDir},
 		{"LOGIFORGE_FORGEJO_URL", &cfg.url}, {"LOGIFORGE_FORGEJO_ORG", &cfg.org},
-		{"LOGIFORGE_WORKER_LOGIN", &cfg.login}, {"LOGIFORGE_WORKER_TOKEN", &cfg.token},
+		{"LOGIFORGE_WRITER", &cfg.writer}, {"LOGIFORGE_WORKER_LOGIN", &cfg.login}, {"LOGIFORGE_WORKER_TOKEN", &cfg.token},
 	} {
 		name, dst := e.name, e.dst
 		v, err := env(name)
@@ -130,7 +131,7 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	defer release()
-	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
+	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org, Writer: cfg.writer}, cfg.login, cfg.token)
 	gitEnv := src.GitEnv()
 	if gitEnv, err = allowProtocol(gitEnv); err != nil {
 		return err

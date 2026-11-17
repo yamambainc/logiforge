@@ -116,7 +116,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 		if !b.waitLatest(ctx, name, func(l string) bool { return l != "" }) {
 			return out, fail(CodeSnapshotPending, "main がすでにあるが、そのスナップショットがまだない。少し待って送り直す")
 		}
-		v, err := b.mainAt(ctx, name, "")
+		v, err := b.currentMain(ctx, name)
 		if err != nil {
 			return out, err
 		}
@@ -144,6 +144,8 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 
 // NewApplyRequest は、apply request の作成の要求である。
 type NewApplyRequest struct {
+	// Kind は、change（ふつう）、repair.revert、repair.accept のどれか。空は change（design/backend/broken.md）。
+	Kind           string
 	Branch         string
 	Commit         string
 	Description    string
@@ -230,6 +232,10 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if n.Branch == "" || n.Branch == "main" {
 		return out, fail(CodeValidationFailed, "branch がないか、main である")
 	}
+	kind, err := normalizeKind(n.Kind)
+	if err != nil {
+		return out, err
+	}
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
 		return out, err
@@ -258,11 +264,26 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if n.Commit != "" && n.Commit != head {
 		return out, fail(CodeValidationFailed, "commit %s が、ブランチの今の先頭のコミット %s と違う", n.Commit, head)
 	}
-	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
+	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		return out, err
 	}
-	latest, err := b.mainAt(ctx, repo, "")
+	if kind != "" {
+		// 直すための apply request は、差分の検査のかわりに、直す条件を確かめる（design/backend/broken.md）。
+		broken, err := b.Snap.Broken(ctx, repo)
+		if err != nil {
+			return out, err
+		}
+		problem, err := b.repairProblem(ctx, repo, kind, br, latest, broken)
+		if err != nil {
+			return out, err
+		}
+		if problem != "" {
+			return out, fail(CodeValidationFailed, "%s", problem)
+		}
+		return b.createForge(ctx, c, repo, ref, id, kind, n, head, nil)
+	}
+	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
 	if err != nil {
 		return out, err
 	}
@@ -279,7 +300,13 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if len(res.Operations) == 0 {
 		return out, fail(CodeValidationFailed, "差分がない")
 	}
-	_, err = b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: id, Branch: n.Branch, Description: n.Description, FirstRevision: head, Opener: c.Principal.Login})
+	return b.createForge(ctx, c, repo, ref, id, "", n, head, res.Operations)
+}
+
+// createForge は、検査を通った apply request を、GitForge に作る。ops は、いま検査した操作（worker の取り込みの前に返すため）。
+func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, id, kind string, n NewApplyRequest, head string, ops []tree.Operation) (Written[ApplyRequest], error) {
+	var out Written[ApplyRequest]
+	_, err := b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: id, Kind: kind, Branch: n.Branch, Description: n.Description, FirstRevision: head, Opener: c.Principal.Login})
 	if errors.Is(err, ports.ErrBranchHasOpen) {
 		return out, fail(CodeValidationFailed, "ブランチ %s に、open の apply request がすでにある", n.Branch)
 	}
@@ -290,7 +317,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	v, err := b.GetApplyRequest(ctx, c, repo, id)
 	if err == nil && len(v.Operations) == 0 {
 		// worker が、まだブランチのスナップショットを作っていない。操作の一覧は、いま検査した結果から返す。
-		for i, op := range res.Operations {
+		for i, op := range ops {
 			v.Operations = append(v.Operations, toOperation(i+1, op))
 		}
 	}
@@ -405,7 +432,7 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 	} else if !errors.Is(err, ports.ErrNotFound) {
 		return HumanRequest{}, err
 	}
-	latest, err := b.mainAt(ctx, repo, "")
+	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		return HumanRequest{}, err
 	}
