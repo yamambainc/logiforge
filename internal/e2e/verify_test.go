@@ -11,6 +11,7 @@ import (
 // 反映かは、だれがどこから merge したかでなく、中身で決める（design/backend/verify.md）。
 //   - 承認された apply request を、人が Forgejo の画面から merge しても、正しい反映になる。
 //   - approve のあとに request_changes が付いた apply request を、人が merge すると、壊れた状態になる。
+//   - merge の権限のない reviewer の approve は、反映の失敗 merge_forbidden になり、権限のある reviewer の approve し直しで反映される。
 //
 // approve したときに Logiforge が反映しないよう、向き先を main でないブランチにしてからレビューし、
 // あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。
@@ -125,6 +126,50 @@ func TestE2EHumanMerge(t *testing.T) {
 	if id, _ := mainCommit(sha); id == nil || *id != ok.ID {
 		t.Fatalf("人の merge のコミットが、%s の反映にならない：%v", ok.ID, id)
 	}
+
+	// ---- merge の権限のない reviewer の approve：GitForge が merge を断り、反映の失敗 merge_forbidden として記録する ----
+	// コードを読むだけで、pull request と issue を書ける team の、エージェント（client）。
+	var nm struct {
+		ID int64 `json:"id"`
+	}
+	w.forgejoCall(w.admin, "POST", "/orgs/"+w.org+"/teams", map[string]any{"name": "no-merge", "permission": "write", "includes_all_repositories": true,
+		"units_map": map[string]string{"repo.code": "read", "repo.pulls": "write", "repo.issues": "write"}}, &nm, 201)
+	login := w.login("nomerge")
+	w.forgejoCall(w.admin, "POST", "/admin/users", map[string]any{"username": login, "email": login + "@example.com", "password": "pw-" + login + "-12345", "must_change_password": false}, nil, 201)
+	w.forgejoCall(w.admin, "PUT", fmt.Sprintf("/teams/%d/members/%s", nm.ID, login), nil, nil, 204)
+	w.tokens["nomerge"] = w.token(login, []string{"all"})
+	weak := w.user("nomerge", "s-weak")
+	if code, _ := weak.cli(w.tokens["nomerge"]+"\n", "auth", "login", "--with-token"); code != 0 {
+		t.Fatal("merge の権限のない reviewer の login")
+	}
+	agent.branch("forbidden")
+	agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("forbidden.md", "権限のない reviewer\n"))
+	agent.commitPush("forbidden", "権限のない reviewer")
+	fb := agent.create("forbidden")
+	var forbidden struct {
+		ApplyRequest struct {
+			State         string  `json:"state"`
+			Awaiting      *string `json:"awaiting"`
+			MergeFailures []struct {
+				Reason string `json:"reason"`
+			} `json:"merge_failures"`
+		} `json:"apply_request"`
+	}
+	_, code, out = weak.review(fb.ID, "approve", 1)
+	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
+		t.Fatalf("merge の権限のない reviewer の approve：%d %s", code, out)
+	}
+	fs := forbidden.ApplyRequest.MergeFailures
+	if forbidden.ApplyRequest.State != "open" || len(fs) == 0 || fs[len(fs)-1].Reason != "merge_forbidden" ||
+		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" {
+		t.Fatalf("merge_forbidden として記録しない：%s", out)
+	}
+	// merge の権限のある reviewer が approve し直せば、反映される。
+	reviewer.session = "s-rev-hm-3"
+	if got, code, out := reviewer.review(fb.ID, "approve", 1); code != 0 || got.State != "merged" {
+		t.Fatalf("権限のある reviewer の approve：%d %s", code, out)
+	}
+	reviewer.session = "s-rev-hm"
 
 	// ---- approve のあとに request_changes が付いた apply request を、人が squash merge する ----
 	ng := prepare("changes-requested", "直すよう求められた変更")

@@ -157,6 +157,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 			p, err := a.getPull(ctx, repo, number)
 			return p.MergeCommitSHA, err
 		}
+		// 主体に merge の権限がなければ、403 か、405 の "User not allowed to merge PR" を返す（Forgejo 17 で確かめた）。
+		// 待っても変わらないので、すぐに返す。
+		if s := statusOf(err); s == http.StatusForbidden || (s == http.StatusMethodNotAllowed && strings.Contains(strings.ToLower(errMessage(err)), "not allowed to merge")) {
+			return "", fmt.Errorf("%w（Forgejo：%v）", ports.ErrMergeForbidden, err)
+		}
 		switch statusOf(err) {
 		case http.StatusConflict:
 			// head_commit_id が今の head と違う（"head out of date"）。

@@ -89,6 +89,7 @@ Forgejo の API の定義（`swagger.v1.json`、Forgejo 17 系）で、次のこ
 | issue と pull request を書ける主体が、ほかの主体のコメントを編集し、消せるか | できる |
 | `issues/comments?since=` が、編集されたコメントを返すか | 返す。`updated_at` は編集の時刻になる |
 | worker のトークンで、コメントを読めるか | `read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 |
+| merge の権限のない主体（コードを読むだけの team）が merge を呼ぶと、どう断られるか | 405 で、`message` は `User not allowed to merge PR`。アダプタは、待たずに `merge_forbidden` にする |
 | merge のすぐあとに、`/commits/{sha}/pull` で pull request を引けるか | 引けないことがある（404）。worker は、初めて見てから 60 秒まで待つ |
 
 ## 認証

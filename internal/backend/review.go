@@ -289,6 +289,10 @@ func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail,
 		return "", fail(CodeCommitConflict, "反映の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
 	case errors.Is(err, ports.ErrConflict):
 		return failure("conflict", err.Error())
+	case errors.Is(err, ports.ErrMergeForbidden):
+		// reviewer のトークンで merge するので、reviewer に merge の権限がなければ、GitForge が断る（design/backend/merge.md の手順 4）。
+		// apply request は open のまま残る。merge の権限のある reviewer が approve し直せば、反映される。
+		return failure("merge_forbidden", "approve した reviewer に、GitForge で merge する権限がない："+err.Error())
 	case err != nil:
 		return "", err
 	}

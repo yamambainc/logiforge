@@ -41,6 +41,15 @@ type apiError struct {
 
 func (e *apiError) Error() string { return fmt.Sprintf("forgejo: %d %s", e.Status, e.Message) }
 
+// errMessage は、Forgejo の誤りの応答の message を返す。
+func errMessage(err error) string {
+	var e *apiError
+	if errors.As(err, &e) {
+		return e.Message
+	}
+	return ""
+}
+
 func statusOf(err error) int {
 	var e *apiError
 	if errors.As(err, &e) {
