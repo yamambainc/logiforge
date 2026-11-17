@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 )
 
 var bin string // ビルドした logiforge
@@ -150,6 +152,9 @@ func (w *world) restartWorker() {
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
 }
 
+// recordSecret は、記録の署名の秘密である。worker には、ここから作った公開鍵だけを渡す。
+const recordSecret = "e2e-secret"
+
 // setup は、Forgejo に organization と主体を作り、serve と worker を動かす。
 func setup(t *testing.T) *world { return setupWith(t, nil) }
 
@@ -170,16 +175,16 @@ func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *wo
 			"includes_all_repositories": true, "can_create_org_repo": createRepo}, &out, 201)
 		return out.ID
 	}
-	writers := team("writers", "write", map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}, true)
-	users := team("logiforge-users", "read", map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}, false)
-	agents := team("agents", "read", map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}, false)
-	readers := team("readers", "read", map[string]string{"repo.code": "read"}, false)
-	for name, tm := range map[string]int64{"writer": writers, "alice": users, "agent": agents, "reviewer": agents, "reader": readers} {
+	// 権限は、design/adapters/forgejo.md の「主体」のとおり。Logiforge に、書き込み主体はない。
+	users := team("logiforge-users", "write", map[string]string{"repo.code": "read", "repo.pulls": "write", "repo.issues": "write"}, true)
+	agents := team("agents", "write", map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}, false)
+	readers := team("readers", "read", map[string]string{"repo.code": "read", "repo.pulls": "read", "repo.issues": "read"}, false)
+	for name, tm := range map[string]int64{"alice": users, "agent": agents, "reviewer": agents, "reader": readers} {
 		login := w.login(name)
 		w.forgejoCall(admin, "POST", "/admin/users", map[string]any{"username": login, "email": login + "@example.com", "password": "pw-" + login + "-12345", "must_change_password": false}, nil, 201)
 		scopes := []string{"all"}
 		if name == "reader" {
-			scopes = []string{"read:repository", "read:organization"}
+			scopes = []string{"read:repository", "read:organization", "read:issue"}
 		}
 		w.tokens[name] = w.token(login, scopes)
 		w.forgejoCall(admin, "PUT", fmt.Sprintf("/teams/%d/members/%s", tm, login), nil, nil, 204)
@@ -189,16 +194,20 @@ func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *wo
 	serveAddr := freePort(t)
 	// バックエンドも、apply request の作成で、worker と同じ読むだけのユーザーで git を読む。
 	common := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_FORGEJO_URL=" + fu, "LOGIFORGE_FORGEJO_ORG=" + w.org,
-		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file",
-		"LOGIFORGE_WRITER=" + w.login("writer")}
-	w.workerEnv = append(common, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s")
+		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
+	ring, err := pullreq.KeyringFromSecrets([]string{"k1"}, []string{recordSecret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.workerEnv = append(common, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s",
+		"LOGIFORGE_RECORD_PUBLIC_KEYS="+ring.FormatPublicKeys())
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
 	var more []string
 	if extra != nil {
 		more = extra(w, "http://"+serveAddr)
 	}
 	w.start("serve", append(append(common, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
-		"LOGIFORGE_WRITER_TOKEN="+w.tokens["writer"], "LOGIFORGE_RECORD_KEYS=k1=e2e-secret",
+		"LOGIFORGE_RECORD_KEYS=k1="+recordSecret,
 		"LOGIFORGE_WAIT_TIMEOUT=20s", "LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
 	w.api = "http://" + serveAddr
 	w.eventually("serve が起動する", 20*time.Second, func() bool {

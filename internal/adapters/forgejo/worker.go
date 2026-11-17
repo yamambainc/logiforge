@@ -14,7 +14,7 @@ import (
 // WorkerSource は、worker が読む repository の一覧と git の URL を、読むだけのユーザーのトークンで求める。
 type WorkerSource struct {
 	c *client
-	// Login と Token は、worker の読むだけのユーザー（read:repository）。
+	// Login と Token は、worker の読むだけのユーザー（read:repository、read:organization、read:issue）。
 	Login, Token string
 }
 

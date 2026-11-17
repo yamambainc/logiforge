@@ -112,7 +112,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
-| `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
+| `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository`、`read:organization`、`read:issue` だけ） |
 | `LOGIFORGE_RECORD_PUBLIC_KEYS` | | 記録の署名の公開鍵（`鍵の ID=鍵,…`）。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)） |
 | `LOGIFORGE_WORKER_RECORD_INTERVAL` | | 記録を読んで控えに足す間隔。既定は見回りの間隔。GitHub では `30s`（[記録の控え](backend/verify.md#記録の控え)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |

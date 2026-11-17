@@ -51,8 +51,10 @@ type Config struct {
 	Verifier Verifier
 	// Records は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。nil なら足さない。
 	Records RecordLog
-	Now         func() time.Time
-	Log         *slog.Logger
+	// RecordInterval は、記録を読んで控えに足す間隔。0 なら見回りごと。
+	RecordInterval time.Duration
+	Now            func() time.Time
+	Log            *slog.Logger
 }
 
 // DefaultInterval は、見回りの間隔の既定である。
@@ -87,6 +89,8 @@ type Worker struct {
 	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
 	repos []ports.Repository
+	// recordsAt は、repository ごとに、最後に記録の控えに足した時刻である。
+	recordsAt map[string]time.Time
 }
 
 // New は、worker を作る。
@@ -333,10 +337,8 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 		return err
 	}
 	// 記録の控えは、main より先に足す。反映かの判定に使うから。
-	if w.cfg.Records != nil {
-		if err := w.cfg.Records.Sync(ctx, r.GitForgeRef); err != nil {
-			return fmt.Errorf("記録の控え: %w", err)
-		}
+	if err := w.syncRecords(ctx, r); err != nil {
+		return fmt.Errorf("記録の控え: %w", err)
 	}
 	if mainSHA, ok := heads["main"]; ok {
 		if err := w.syncMain(ctx, g, r, mainSHA); err != nil {
@@ -356,6 +358,30 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 			w.cfg.Log.Error("ブランチを読めない", "repository", r.Name, "branch", name, "err", err)
 		}
 	}
+	return nil
+}
+
+// syncRecords は、前に足してから RecordInterval が過ぎていれば、記録の控えに、GitForge の新しい記録を足す。
+func (w *Worker) syncRecords(ctx context.Context, r ports.Repository) error {
+	if w.cfg.Records == nil {
+		return nil
+	}
+	now := w.cfg.Now()
+	w.mu.Lock()
+	last, ok := w.recordsAt[r.Name]
+	w.mu.Unlock()
+	if ok && now.Sub(last) < w.cfg.RecordInterval {
+		return nil
+	}
+	if err := w.cfg.Records.Sync(ctx, r.GitForgeRef); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	if w.recordsAt == nil {
+		w.recordsAt = map[string]time.Time{}
+	}
+	w.recordsAt[r.Name] = now
+	w.mu.Unlock()
 	return nil
 }
 

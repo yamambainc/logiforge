@@ -100,9 +100,10 @@ func env(name string) (string, error) {
 //	LOGIFORGE_WORKER_INTERVAL  見回りの間隔（既定は 1s）
 //	LOGIFORGE_GIT_TIMEOUT      git の操作 1 回の時間の上限（既定は 10m）
 //	LOGIFORGE_WORKER_LIST_INTERVAL  repository の一覧を読み直す間隔（既定は 10s）
+//	LOGIFORGE_WORKER_RECORD_INTERVAL  記録を読んで控えに足す間隔（既定は見回りの間隔）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
-//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
+//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository、read:organization、read:issue）
 //	LOGIFORGE_RECORD_PUBLIC_KEYS  記録の署名の公開鍵（鍵の ID=base64,…）。反映かの判定で記録を確かめる（design/backend/verify.md）。
 //	                           logiforge record-public-keys が、LOGIFORGE_RECORD_KEYS から作る
 func runWorker(ctx context.Context) error {
@@ -135,6 +136,10 @@ func runWorker(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	recordInterval, err := duration("LOGIFORGE_WORKER_RECORD_INTERVAL", 0)
+	if err != nil {
+		return err
+	}
 	// worker は 1 つだけ動かす。ほかの worker が同じディレクトリで動いていれば、起動しない。
 	// 置き場が手元のディレクトリなので、置き場の根にもロックを取る。
 	release, err := worker.LockAll(cfg.dir, cfg.storeDir)
@@ -158,7 +163,7 @@ func runWorker(ctx context.Context) error {
 	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, token: cfg.token}
 	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
 	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
-		Verifier: v, Records: records}, src, st)
+		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
 	slog.Info("worker を始めた", "version", version.Get().Version, "interval", interval, "git_timeout", gitTimeout)
 	return w.Run(ctx)
 }

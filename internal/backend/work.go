@@ -212,7 +212,7 @@ func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs ans
 	}
 	used := false
 	err := b.walkNodeChanges(ctx, repo, hr.TargetNode, n.LastChanged, func(_ snapshot.Rev, c snapshot.Commit, _ snapshot.NodeChange) bool {
-		if trailerValue(c.Trailers, snapshot.TrailerApplyRequest) == "" {
+		if snapshot.ApplyRequestOf(c) == "" {
 			return true
 		}
 		used = c.CommittedAt.After(hr.Answer.CreatedAt)

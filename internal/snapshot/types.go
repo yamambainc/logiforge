@@ -53,6 +53,9 @@ type Commit struct {
 	Kind        Kind      `json:"kind"`
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
+	// ApplyRequest は、main のコミットだけ。worker が反映かの判定で見つけた、反映した apply request の識別子である
+	// （design/backend/verify.md）。GitForge の画面で merge したコミットには、trailer がないので、ここに持つ。
+	ApplyRequest string `json:"apply_request,omitempty"`
 	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
 	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`

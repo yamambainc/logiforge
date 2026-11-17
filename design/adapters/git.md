@@ -37,7 +37,7 @@
 - worker とバックエンドが git を読む資格情報は、同じ、読むだけの権限のものにする（[設定と秘密情報](README.md)）。
   - credential helper は、GitForge の URL にだけ設定する。ほかの URL に、トークンを渡さないため。
   - GitHub：contents の read だけを持つ、worker のための GitHub App
-  - Forgejo：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
+  - Forgejo：`read:repository`、`read:organization`、`read:issue` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 
 ## 制約
 

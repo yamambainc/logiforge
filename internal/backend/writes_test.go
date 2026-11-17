@@ -328,8 +328,7 @@ func TestMergeFailurePaths(t *testing.T) {
 		const h5 = "h-6666666666"
 		f.r.write(dS1+"/"+h5+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: h5, Statement: "子3"}))
 		f.r.git("add", "-A")
-		f.r.git("commit", "--quiet", "-m", "x")
-		f.r.git("commit", "--quiet", "--amend", "-m", "反映\n\nLogiforge-Apply-Request: apr_0")
+		f.r.git("commit", "--quiet", "-m", "反映\n\nLogiforge-Apply-Request: apr_0")
 		// 2 つの提案が、別の仮説の下に、同じ識別子のストーリーと仮説を作る。対象ノードは違う。
 		x := create(t, f, "x", "s3", story(dH2))
 		y := create(t, f, "y", "s4", story(dS1+"/"+h5))

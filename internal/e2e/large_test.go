@@ -65,7 +65,7 @@ func TestE2ELargeTree(t *testing.T) {
 	admin.git("push", "--quiet", "origin", "main", "big-edit")
 	pushed := time.Now()
 	w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
-		"enable_merge_whitelist": true, "merge_whitelist_usernames": []string{w.login("writer")}}, nil, 201)
+		"enable_merge_whitelist": false}, nil, 201)
 
 	agent := w.user("agent", "s-agent")
 	if code, _ := agent.cli(w.tokens["agent"]+"\n", "auth", "login", "--with-token"); code != 0 {

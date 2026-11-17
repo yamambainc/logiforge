@@ -14,7 +14,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 | 主体 | 使う者 | 権限 |
 |---|---|---|
-| 読むだけのユーザー | [worker](../backend/worker.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository` と `read:organization`（repository を列挙するため）だけにする。organization が private なら、読むだけの team に入れる |
+| 読むだけのユーザー | [worker](../backend/worker.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository`、`read:organization`（repository を列挙するため）、`read:issue`（記録のコメントを読むため）だけにする。organization が private なら、コード、issue、pull request を読むだけの team に入れる |
 | 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書く |
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 

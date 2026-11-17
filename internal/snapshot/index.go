@@ -77,6 +77,7 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 	ar := trailer(info.Trailers, TrailerApplyRequest)
 	if info.ApplyRequest != "" {
 		ar = info.ApplyRequest
+		c.ApplyRequest = ar
 	}
 	for _, id := range sortedKeys(x.affected(files)) {
 		ch := NodeChange{Node: id, Files: files[id]}
