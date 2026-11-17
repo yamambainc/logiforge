@@ -24,6 +24,7 @@ Logiforge が何を満たすかを確かめるときに読む。
 14. [CLI](cli/README.md)
 15. [WebUI](webui/README.md)
 16. [全体構成](architecture/README.md)
+17. [既存のプロジェクトへの導入](adoption/README.md)
 
 ## 仕様の外にあるもの
 
