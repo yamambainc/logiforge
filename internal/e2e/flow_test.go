@@ -263,17 +263,21 @@ func TestE2E(t *testing.T) {
 	}
 
 	// ---- レビューの鎖が切れたら、close して、同じブランチから作り直す ----
+	// worker が控えに足したレビューは、書き換えられても控えのものを使うので、鎖は切れない。
+	// 鎖が切れるのは、控えに足す前に書き換えられたときである。worker を止めて、その場合を作る。
 	agent.session = "s-agent-4"
 	agent.branch("b4")
 	agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("bg.md", "背景を足す\n"))
 	agent.commitPush("b4", "背景")
 	ar4 := agent.create("b4")
+	w.stopWorker()
 	for i := 0; i < 2; i++ {
 		if _, code, _ := reviewer.review(ar4.ID, "comment", 1); code != 0 {
 			t.Fatal("comment")
 		}
 	}
-	w.deleteFirstReview("q", ar4.ID)
+	w.tamperFirstReview("q", ar4.ID)
+	w.restartWorker()
 	if _, code, out := reviewer.review(ar4.ID, "comment", 1); code != 1 || !strings.Contains(out, "not_open") || !strings.Contains(out, "作り直す") {
 		t.Fatalf("鎖が切れたときのレビュー：%d %s", code, out)
 	}
@@ -316,28 +320,20 @@ func TestE2E(t *testing.T) {
 	}
 }
 
-// deleteFirstReview は、管理者として、apply request の pull request の最初のレビューを消す（鎖を切るため）。
-func (w *world) deleteFirstReview(repo, arID string) {
+// tamperFirstReview は、管理者として、apply request の pull request の最初のレビューの記録を書き換える（署名が合わなくなる）。
+func (w *world) tamperFirstReview(repo, arID string) {
 	w.t.Helper()
 	ref := w.org + "/" + repo
-	var pulls []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
+	var comments []struct {
+		ID   int64  `json:"id"`
+		Body string `json:"body"`
 	}
-	w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/pulls?state=all&limit=50", nil, &pulls, 200)
-	for _, p := range pulls {
-		if !strings.Contains(p.Title, arID) {
-			continue
+	w.forgejoCall(w.admin, "GET", fmt.Sprintf("/repos/%s/issues/%d/comments", ref, w.pullNumber(repo, arID)), nil, &comments, 200)
+	for _, c := range comments {
+		if strings.Contains(c.Body, "Logiforge-Record: review") {
+			w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/issues/comments/%d", ref, c.ID), map[string]string{"body": c.Body + "x"}, nil, 200)
+			return
 		}
-		var reviews []struct {
-			ID int64 `json:"id"`
-		}
-		w.forgejoCall(w.admin, "GET", fmt.Sprintf("/repos/%s/pulls/%d/reviews", ref, p.Number), nil, &reviews, 200)
-		if len(reviews) == 0 {
-			w.t.Fatal("レビューがない")
-		}
-		w.forgejoCall(w.admin, http.MethodDelete, fmt.Sprintf("/repos/%s/pulls/%d/reviews/%d", ref, p.Number, reviews[0].ID), nil, nil, 204)
-		return
 	}
-	w.t.Fatalf("%s の pull request がない", arID)
+	w.t.Fatalf("%s のレビューの記録がない", arID)
 }

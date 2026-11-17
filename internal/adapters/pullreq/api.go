@@ -11,8 +11,6 @@ import (
 // API は、GitForge ごとの REST の呼び方である。repo は、gitforge_ref（`owner/name`）である。
 // 一覧は、作った順（番号の順）に返す。
 type API interface {
-	// WriterLogin は、書き込み主体のログイン名である。
-	WriterLogin() string
 	// RepoID は、GitForge の中で変わらない repository の識別子を返す。記録の MAC に使う。
 	RepoID(ctx context.Context, repo string) (string, error)
 
@@ -23,14 +21,13 @@ type API interface {
 	ClosePull(ctx context.Context, repo string, number int) error
 	// MergePull は、squash merge する。head が headSHA でなければ ErrHeadMoved（ports）、衝突なら ErrConflict（ports）を返す。
 	MergePull(ctx context.Context, repo string, number int, headSHA, title, message string) (string, error)
+	// MergedPull は、sha を merge のコミットにした、merge 済みで向き先が main の pull request を返す。なければ false。
+	MergedPull(ctx context.Context, repo, sha string) (Pull, bool, error)
 
 	// コメントは、pull request と issue で共通である（番号で指す）。
 	CreateComment(ctx context.Context, repo string, number int, body string) (Comment, error)
 	ListComments(ctx context.Context, repo string, number int) ([]Comment, error)
 	ListRepoComments(ctx context.Context, repo string) ([]Comment, error)
-
-	CreateReview(ctx context.Context, repo string, number int, commitSHA, body string) error
-	ListReviews(ctx context.Context, repo string, number int) ([]PullReview, error)
 
 	CreateIssue(ctx context.Context, repo, title, body string, labels []string) (Issue, error)
 	ListIssues(ctx context.Context, repo string) ([]Issue, error)
@@ -69,16 +66,10 @@ type Comment struct {
 	Body        string
 	Author      string
 	CreatedAt   time.Time
+	// UpdatedAt は、最後に変わった時刻。記録の控えの、次に読む位置（since）に使う。
+	UpdatedAt time.Time
 	// Attachments は、コメントの添付の名前から、GitForge の側の識別子を引く。
 	Attachments map[string]string
-}
-
-// PullReview は、pull request のレビューである。
-type PullReview struct {
-	Body      string
-	CommitSHA string
-	Author    string
-	CreatedAt time.Time
 }
 
 // Issue は、issue である。pull request は含めない。

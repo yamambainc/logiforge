@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
-// api は、pullreq.API を Forgejo で実装する。書き込み主体のトークンで呼ぶ。
+// api は、pullreq.API を Forgejo で実装する。ctx の主体のトークン（ports.WithToken）で呼ぶ。
 type api struct{ *client }
 
 var _ pullreq.API = api{}
@@ -51,8 +52,6 @@ func (p pullJSON) pull() pullreq.Pull {
 	return pr
 }
 
-func (a api) WriterLogin() string { return a.cfg.Writer }
-
 // RepoID は、Forgejo の repository の id を返す。名前を変えても、organization を移しても変わらない。
 func (a api) RepoID(ctx context.Context, repo string) (string, error) {
 	rp, err := repoPath(repo)
@@ -72,7 +71,7 @@ func (a api) RepoID(ctx context.Context, repo string) (string, error) {
 }
 
 func (a api) w(ctx context.Context, method, path string, in, out any) error {
-	return a.do(ctx, a.cfg.WriterToken, method, path, in, out)
+	return a.do(ctx, ports.TokenFrom(ctx), method, path, in, out)
 }
 
 func (a api) CreatePull(ctx context.Context, repo, head, title, body string) (pullreq.Pull, error) {
@@ -111,7 +110,7 @@ func (a api) ListPulls(ctx context.Context, repo string) ([]pullreq.Pull, error)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := list[pullJSON](ctx, a.client, a.cfg.WriterToken, rp+"/pulls?state=all&sort=oldest")
+	ps, err := list[pullJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/pulls?state=all&sort=oldest")
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +157,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 			p, err := a.getPull(ctx, repo, number)
 			return p.MergeCommitSHA, err
 		}
+		// 主体に merge の権限がなければ、403 か、405 の "User not allowed to merge PR" を返す（Forgejo 17 で確かめた）。
+		// 待っても変わらないので、すぐに返す。
+		if s := statusOf(err); s == http.StatusForbidden || (s == http.StatusMethodNotAllowed && strings.Contains(strings.ToLower(errMessage(err)), "not allowed to merge")) {
+			return "", fmt.Errorf("%w（Forgejo：%v）", ports.ErrMergeForbidden, err)
+		}
 		switch statusOf(err) {
 		case http.StatusConflict:
 			// head_commit_id が今の head と違う（"head out of date"）。
@@ -202,6 +206,7 @@ type commentJSON struct {
 	Body           string    `json:"body"`
 	User           user      `json:"user"`
 	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 	IssueURL       string    `json:"issue_url"`
 	PullRequestURL string    `json:"pull_request_url"`
 	Assets         []struct {
@@ -211,7 +216,7 @@ type commentJSON struct {
 }
 
 func (c commentJSON) comment() pullreq.Comment {
-	out := pullreq.Comment{ID: c.ID, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt}
+	out := pullreq.Comment{ID: c.ID, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 	u := c.IssueURL
 	if u == "" {
 		u = c.PullRequestURL
@@ -247,7 +252,7 @@ func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullr
 	if err != nil {
 		return nil, err
 	}
-	cs, err := list[commentJSON](ctx, a.client, a.cfg.WriterToken, fmt.Sprintf("%s/issues/%d/comments", rp, number))
+	cs, err := list[commentJSON](ctx, a.client, ports.TokenFrom(ctx), fmt.Sprintf("%s/issues/%d/comments", rp, number))
 	if err != nil {
 		return nil, err
 	}
@@ -265,44 +270,13 @@ func (a api) ListRepoComments(ctx context.Context, repo string) ([]pullreq.Comme
 	if err != nil {
 		return nil, err
 	}
-	cs, err := list[commentJSON](ctx, a.client, a.cfg.WriterToken, rp+"/issues/comments")
+	cs, err := list[commentJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/issues/comments")
 	if err != nil {
 		return nil, err
 	}
 	out := make([]pullreq.Comment, 0, len(cs))
 	for _, c := range cs {
 		out = append(out, c.comment())
-	}
-	return out, nil
-}
-
-func (a api) CreateReview(ctx context.Context, repo string, number int, commitSHA, body string) error {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return err
-	}
-	return a.w(ctx, http.MethodPost, fmt.Sprintf("%s/pulls/%d/reviews", rp, number),
-		map[string]string{"event": "COMMENT", "body": body, "commit_id": commitSHA}, nil)
-}
-
-func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return nil, err
-	}
-	type reviewJSON struct {
-		Body        string    `json:"body"`
-		CommitID    string    `json:"commit_id"`
-		User        user      `json:"user"`
-		SubmittedAt time.Time `json:"submitted_at"`
-	}
-	rs, err := list[reviewJSON](ctx, a.client, a.cfg.WriterToken, fmt.Sprintf("%s/pulls/%d/reviews", rp, number))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]pullreq.PullReview, 0, len(rs))
-	for _, r := range rs {
-		out = append(out, pullreq.PullReview{Body: r.Body, CommitSHA: r.CommitID, Author: r.User.Login, CreatedAt: r.SubmittedAt})
 	}
 	return out, nil
 }
@@ -326,7 +300,7 @@ func (a api) labelIDs(ctx context.Context, rp string, names []string) ([]int64, 
 		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	}
-	have, err := list[labelJSON](ctx, a.client, a.cfg.WriterToken, rp+"/labels")
+	have, err := list[labelJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/labels")
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +343,7 @@ func (a api) ListIssues(ctx context.Context, repo string) ([]pullreq.Issue, erro
 	if err != nil {
 		return nil, err
 	}
-	is, err := list[issueJSON](ctx, a.client, a.cfg.WriterToken, rp+"/issues?state=all&type=issues")
+	is, err := list[issueJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/issues?state=all&type=issues")
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +384,7 @@ func (a api) UploadAttachment(ctx context.Context, repo string, commentID int64,
 	var as struct {
 		ID int64 `json:"id"`
 	}
-	if err := a.upload(ctx, a.cfg.WriterToken, fmt.Sprintf("%s/issues/comments/%d/assets", rp, commentID), "attachment", name, content, &as); err != nil {
+	if err := a.upload(ctx, ports.TokenFrom(ctx), fmt.Sprintf("%s/issues/comments/%d/assets", rp, commentID), "attachment", name, content, &as); err != nil {
 		return "", err
 	}
 	return strconv.FormatInt(as.ID, 10), nil
@@ -427,5 +401,25 @@ func (a api) DownloadAttachment(ctx context.Context, repo string, commentID int6
 	if err := a.w(ctx, http.MethodGet, fmt.Sprintf("%s/issues/comments/%d/assets/%s", rp, commentID, attachmentID), nil, &as); err != nil {
 		return nil, err
 	}
-	return a.download(ctx, a.cfg.WriterToken, as.URL)
+	return a.download(ctx, ports.TokenFrom(ctx), as.URL)
+}
+
+// MergedPull は、sha を merge のコミットにした、向き先が main の pull request を返す（design/backend/verify.md の「GitForge の API」）。
+// GET /repos/{owner}/{repo}/commits/{sha}/pull は、そのコミットを merge した pull request を返し、なければ 404 を返す。
+func (a api) MergedPull(ctx context.Context, repo, sha string) (pullreq.Pull, bool, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return pullreq.Pull{}, false, err
+	}
+	var p pullJSON
+	if err := a.do(ctx, ports.TokenFrom(ctx), http.MethodGet, rp+"/commits/"+url.PathEscape(sha)+"/pull", nil, &p); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return pullreq.Pull{}, false, nil
+		}
+		return pullreq.Pull{}, false, err
+	}
+	if !p.Merged || p.MergeCommitSHA != sha || p.Base.Ref != "main" {
+		return pullreq.Pull{}, false, nil
+	}
+	return p.pull(), true, nil
 }

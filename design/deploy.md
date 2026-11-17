@@ -16,7 +16,7 @@
 - 同じバイナリを、GitHub Releases にも置く（Linux・macOS・Windows × amd64・arm64、README の「インストール」）。opener と reviewer は、ここから CLI として取る。イメージは、Releases には置かない。
   - なぜ：配り方は Releases に決めたから（issue #27）。コンテナイメージの push、`go install`、Homebrew は、今はしない。
 - 設定は、環境変数で渡す。秘密は、マウントしたファイルで渡す。
-  - 必須の環境変数は、名前に `_FILE` を付けると、その値をファイルのパスとして読み、ファイルの中身を設定にする（例：`LOGIFORGE_WRITER_TOKEN_FILE=/run/secrets/writer_token`）。
+  - 必須の環境変数は、名前に `_FILE` を付けると、その値をファイルのパスとして読み、ファイルの中身を設定にする（例：`LOGIFORGE_WORKER_TOKEN_FILE=/run/secrets/worker_token`）。
   - なぜ：秘密を、コンテナの定義や `docker inspect` の出力に書かずに済むから。
 
 ## タスクの形
@@ -96,7 +96,7 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（読むだけ）。apply request の作成で、作業用の git の複製に fetch するのに使う |
 | `LOGIFORGE_GIT_CACHE_DIR` | | 作業用の git の複製を置く、一時的なディレクトリ。既定は OS の一時ディレクトリ（`/tmp`） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。worker と同じ |
-| `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の署名の秘密鍵（Ed25519。`鍵の ID=鍵,…`。最初のものを書くときに使う）。公開鍵は、ここから求める |
+| `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の署名の秘密（`鍵の ID=秘密,…`。最初のものを書くときに使う）。Ed25519 の秘密鍵は、秘密の SHA-256 から作る。worker に渡す公開鍵は、`logiforge record-public-keys` が、この環境変数から作って書く |
 | `LOGIFORGE_WAIT_TIMEOUT` | | 書いたものが読む側に出るまで待つ上限。既定は `10s` |
 | `LOGIFORGE_OAUTH_CLIENT_ID` | | WebUI のサインインに使う、Forgejo の OAuth2 のアプリケーションの client_id（[サインインの中継](webui/oauth-relay.md)） |
 | `LOGIFORGE_OAUTH_CLIENT_SECRET` | ✓ | その client secret |
@@ -112,8 +112,8 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
-| `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
-| `LOGIFORGE_RECORD_PUBLIC_KEYS` | | 記録の署名の公開鍵（`鍵の ID=鍵,…`）。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)） |
+| `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository`、`read:organization`、`read:issue` だけ） |
+| `LOGIFORGE_RECORD_PUBLIC_KEYS` | | 記録の署名の公開鍵（`鍵の ID=base64,…`。`logiforge record-public-keys` の出力）。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)）。秘密ではないが、なければ起動しない |
 | `LOGIFORGE_WORKER_RECORD_INTERVAL` | | 記録を読んで控えに足す間隔。既定は見回りの間隔。GitHub では `30s`（[記録の控え](backend/verify.md#記録の控え)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
@@ -151,8 +151,6 @@ spec:
         - { name: LOGIFORGE_FORGEJO_URL, value: "https://forgejo.example.com" }
         - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
         - { name: LOGIFORGE_USER_TEAM, value: logiforge-users }
-        - { name: LOGIFORGE_WRITER, value: logiforge-writer }
-        - { name: LOGIFORGE_WRITER_TOKEN_FILE, value: /run/secrets/logiforge/writer_token }
         - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
         - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
         - { name: LOGIFORGE_RECORD_KEYS_FILE, value: /run/secrets/logiforge/record_keys }
@@ -178,6 +176,7 @@ spec:
         - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
         - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
         - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
+        - { name: LOGIFORGE_RECORD_PUBLIC_KEYS_FILE, value: /run/secrets/logiforge/record_public_keys }
       livenessProbe:
         exec: { command: ["logiforge", "worker-health"] }
       volumeMounts:

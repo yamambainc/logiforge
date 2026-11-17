@@ -184,10 +184,11 @@ func TestE2EEdges(t *testing.T) {
 			t.Fatalf("保護を外したあとの管理者の push：%v %s", err, out)
 		}
 		w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
-			"enable_merge_whitelist": true, "merge_whitelist_usernames": []string{w.login("writer")}}, nil, 201)
-		// 反映によらないコミットで、repository は壊れた状態になる（design/backend/broken.md）。木を読む CLI は、
+			"enable_merge_whitelist": false}, nil, 201)
+		// 反映によらないコミットで、repository は壊れた状態になる（design/backend/broken.md）。merge した pull request がないので、
+		// worker は、初めて見てから 60 秒待ってから決める（design/backend/verify.md の「GitForge の API」）。木を読む CLI は、
 		// 最後に正しかった時点の木を書き、終了コード 1 で終わる。
-		w.eventually("反映によらないコミットで壊れた状態になる", 30*time.Second, func() bool {
+		w.eventually("反映によらないコミットで壊れた状態になる", 120*time.Second, func() bool {
 			code, out := agent.cli("", "tree", "view", "--json")
 			return code == 1 && strings.Contains(out, `"commit"`)
 		})
@@ -269,8 +270,8 @@ func TestE2EEdges(t *testing.T) {
 			t.Fatalf("2 回目の直接の push：%v %s", err, out)
 		}
 		w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
-			"enable_merge_whitelist": true, "merge_whitelist_usernames": []string{w.login("writer")}}, nil, 201)
-		w.eventually("2 回目の直接の push で壊れる", 30*time.Second, func() bool {
+			"enable_merge_whitelist": false}, nil, 201)
+		w.eventually("2 回目の直接の push で壊れる", 120*time.Second, func() bool {
 			code, _ := agent.cli("", "repo", "view", "q", "--json")
 			return code == 1
 		})

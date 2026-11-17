@@ -9,32 +9,45 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// checkedSource は、反映かを GitForge の API で確かめる source の代わりである。merged に入れたコミットだけを、書き込み主体が merge したものとする。
+// checkedSource は、反映かの判定の代わりである。merged に入れたコミットだけを、反映によるものとする（種類は kinds）。
+// ほかのコミットは、merge した pull request が見つからないとする。
 type checkedSource struct {
 	source
 	merged map[string]bool
+	kinds  map[string]string
 	err    error
 }
 
-func (s *checkedSource) MergedByWriter(_ context.Context, ref, sha string) (bool, error) {
-	if ref != "o/q" {
-		return false, errors.New("ref が違う：" + ref)
+func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha string, _ []string, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+	if r.GitForgeRef != "o/q" {
+		return ports.MergeVerdict{}, errors.New("ref が違う：" + r.GitForgeRef)
 	}
-	return s.merged[sha], s.err
+	if s.err != nil {
+		return ports.MergeVerdict{}, s.err
+	}
+	if s.merged[sha] {
+		return ports.MergeVerdict{Authorized: true, Kind: s.kinds[sha]}, nil
+	}
+	return ports.MergeVerdict{Pending: true, Detail: "merge した pull request が見つからない"}, nil
 }
 
-// 反映によらないコミットで壊れ、戻す反映で直る。trailer だけを偽ったコミットは、反映によるものにならない。
+func checked(dir string) *checkedSource {
+	return &checkedSource{source: source{dir}, merged: map[string]bool{}, kinds: map[string]string{}}
+}
+
+// 反映によらないコミットで壊れ、直すための apply request の反映で直る。trailer だけを偽ったコミットは、反映によるものにならない。
 func TestBrokenAndRevert(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
-	src := &checkedSource{source: source{r.dir}, merged: map[string]bool{}}
+	src := checked(r.dir)
 	st := &store.Dir{Root: t.TempDir()}
 	// 時計は、読むたびに merge の直後の待ち（mergeLookupGrace）より進める。trailer を偽ったコミットは、初めて見た見回りではやり直しになり、
 	// 次の見回りで決まる。
 	clock := time.Now()
-	w := New(Config{Dir: t.TempDir(), Now: func() time.Time { clock = clock.Add(2 * mergeLookupGrace); return clock }}, src, st)
+	w := New(Config{Dir: t.TempDir(), Verifier: src, Now: func() time.Time { clock = clock.Add(2 * mergeLookupGrace); return clock }}, src, st)
 	sync := func() {
 		t.Helper()
 		if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err == nil {
@@ -89,7 +102,7 @@ func TestBrokenAndRevert(t *testing.T) {
 	r.git("checkout", "--quiet", "main")
 	r.git("merge", "--quiet", "--squash", "fix")
 	fixed := r.commit("反映\n\nLogiforge-Apply-Request: apr_fix\nLogiforge-Version: 1 " + r.git("rev-parse", "fix") + "\nLogiforge-Repair: revert")
-	src.merged[fixed] = true
+	src.merged[fixed], src.kinds[fixed] = true, "repair.revert"
 	sync()
 	if br, _ := store.GetBroken(ctx, st, "q"); br != nil {
 		t.Fatalf("戻したのに直らない：%+v", br)
@@ -100,9 +113,9 @@ func TestBrokenAndRevert(t *testing.T) {
 func TestBrokenByRewrite(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
-	src := &checkedSource{source: source{r.dir}, merged: map[string]bool{}}
+	src := checked(r.dir)
 	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir()}, src, st)
+	w := New(Config{Dir: t.TempDir(), Verifier: src}, src, st)
 	root := r.git("rev-parse", "HEAD")
 	r.git("checkout", "--quiet", "-b", "a1")
 	r.write(h1+"/background.md", []byte("背景\n"))
@@ -126,9 +139,9 @@ func TestBrokenByRewrite(t *testing.T) {
 func TestBrokenCheckUnavailable(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
-	src := &checkedSource{source: source{r.dir}, merged: map[string]bool{}}
+	src := checked(r.dir)
 	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir()}, src, st)
+	w := New(Config{Dir: t.TempDir(), Verifier: src}, src, st)
 	if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,15 +157,15 @@ func TestBrokenCheckUnavailable(t *testing.T) {
 	}
 }
 
-// merge の直後、GitForge が merge のコミットから pull request を引けないうちは、反映の記録のあるコミットを、反映によらないと決めない。
+// merge の直後、GitForge が merge のコミットから pull request を引けないうちは、反映によらないと決めない。
 // 待つ時間は、worker が初めて見た時刻から数える。コミットの時刻（未来にもできる）は使わない。
 func TestBrokenWaitsForMergeLookup(t *testing.T) {
 	ctx := context.Background()
 	r := setupRemote(t)
-	src := &checkedSource{source: source{r.dir}, merged: map[string]bool{}}
+	src := checked(r.dir)
 	st := &store.Dir{Root: t.TempDir()}
 	now := time.Now()
-	w := New(Config{Dir: t.TempDir(), Now: func() time.Time { return now }}, src, st)
+	w := New(Config{Dir: t.TempDir(), Verifier: src, Now: func() time.Time { return now }}, src, st)
 	sync := func() error { return w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}) }
 	if err := sync(); err != nil {
 		t.Fatal(err)

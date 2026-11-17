@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dir=.compose/secrets
-if [ -e "$dir/writer_token" ] && [ -s "$dir/writer_token" ]; then
+if [ -e "$dir/worker_token" ] && [ -s "$dir/worker_token" ]; then
   echo "$dir はもうある。作り直すときは、docker compose down -v と rm -rf .compose をしてから動かす" >&2
   exit 1
 fi
@@ -18,7 +18,8 @@ rand() { od -An -tx1 -N20 /dev/urandom | tr -d ' \n'; }
 mkdir -p "$dir"
 chmod 700 .compose "$dir"
 echo "k1=$(rand)" >"$dir/record_keys"
-: >"$dir/writer_token"
+# worker に渡す公開鍵は、秘密から logiforge record-public-keys で作る（イメージは docker compose build で作ってある）。
+docker run --rm -e LOGIFORGE_RECORD_KEYS="$(cat "$dir/record_keys")" logiforge:local record-public-keys >"$dir/record_public_keys"
 : >"$dir/worker_token"
 : >"$dir/oauth_client_id"
 : >"$dir/oauth_client_secret"
@@ -41,20 +42,25 @@ team() { # team <name> <permission> <units_map> <can_create_org_repo>。team の
   call POST /orgs/logiforge/teams "{\"name\":\"$1\",\"permission\":\"$2\",\"units_map\":$3,\"includes_all_repositories\":true,\"can_create_org_repo\":$4}" |
     grep -o '"id":[0-9]*' | head -1 | cut -d: -f2
 }
-writers=$(team writers write '{"repo.code":"write","repo.pulls":"write","repo.issues":"write"}' true)
-users=$(team logiforge-users read '{"repo.code":"write","repo.pulls":"read","repo.issues":"read"}' false)
-readers=$(team readers read '{"repo.code":"read"}' false)
+# 利用者は repository を作り、issue と pull request にコメントを書く。エージェント（opener と reviewer）は、コード、issue、
+# pull request を書き、reviewer は merge する（design/adapters/forgejo.md の「主体」）。Logiforge に、書き込み主体はない。
+users=$(team logiforge-users write '{"repo.code":"read","repo.pulls":"write","repo.issues":"write"}' true)
+agents=$(team agents write '{"repo.code":"write","repo.pulls":"write","repo.issues":"write"}' false)
+readers=$(team readers read '{"repo.code":"read","repo.pulls":"read","repo.issues":"read"}' false)
 
 user() { # user <login> <team の id> <scopes>。トークンを返す
   fj admin user create --username "$1" --random-password --email "$1@example.com" --must-change-password=false >/dev/null
   call PUT "/teams/$2/members/$1" >/dev/null
   fj admin user generate-access-token --username "$1" --token-name logiforge --scopes "$3" --raw
 }
-user logiforge-writer "$writers" all >"$dir/writer_token"
 # worker は、読むだけのトークンを使う。
-user logiforge-reader "$readers" read:repository,read:organization >"$dir/worker_token"
+user logiforge-reader "$readers" read:repository,read:organization,read:issue >"$dir/worker_token"
 user alice "$users" all >.compose/alice_token
 chmod 600 .compose/alice_token
+# エージェントの主体。CLI で、ブランチの push、apply request とレビューに使う。
+user agent "$agents" all >.compose/agent_token
+user reviewer "$agents" all >.compose/reviewer_token
+chmod 600 .compose/agent_token .compose/reviewer_token
 # WebUI には、Forgejo にログインしてサインインする。alice のパスワードを決めて、手元に置く。
 alicepw=$(rand)
 fj admin user change-password --username alice --password "$alicepw" --must-change-password=false >/dev/null
@@ -70,5 +76,5 @@ echo "$app" | grep -o '"client_secret":"[^"]*"' | cut -d'"' -f4 >"$dir/oauth_cli
 # setup に使った admin のトークン（scope は all）は、もう要らないので消す。
 curl -fsS -X DELETE -u "logiforge-admin:$adminpw" "$api/users/logiforge-admin/tokens/setup" >/dev/null
 echo "用意した。次に docker compose up -d --wait で、worker とバックエンドを動かす。"
-echo "利用者 alice のトークンは .compose/alice_token にある。"
+echo "利用者 alice のトークンは .compose/alice_token に、エージェントのトークンは .compose/agent_token と .compose/reviewer_token にある。"
 echo "WebUI は http://localhost:8080/ で、alice とパスワード（.compose/alice_password）でサインインする。"

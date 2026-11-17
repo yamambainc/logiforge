@@ -10,11 +10,13 @@ import (
 
 // ポートの誤り。アダプタは、これを errors.Is で見分けられる形で返す。
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrMainExists       = errors.New("main がすでにある")
-	ErrBranchHasOpen    = errors.New("そのブランチに open の提案がすでにある")
-	ErrHeadMoved        = errors.New("pull request の head が、指定した SHA でない")
-	ErrConflict         = errors.New("git の衝突で merge できない")
+	ErrNotFound      = errors.New("not found")
+	ErrMainExists    = errors.New("main がすでにある")
+	ErrBranchHasOpen = errors.New("そのブランチに open の提案がすでにある")
+	ErrHeadMoved     = errors.New("pull request の head が、指定した SHA でない")
+	ErrConflict      = errors.New("git の衝突で merge できない")
+	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
+	ErrMergeForbidden   = errors.New("この主体には、merge の権限がない")
 	ErrAlreadyAnswered  = errors.New("すでに回答がある")
 	ErrUnauthenticated  = errors.New("この主体は、Logiforge の主体でない")
 	ErrAttachmentTamper = errors.New("添付の sha256 が、記録と合わない")
@@ -197,6 +199,9 @@ type GitForge interface {
 
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
+	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の提案を返す（design/backend/verify.md）。
+	// そういう pull request がなければ ErrNotFound。pull request に apply_request の記録がなければ、ID が空の提案を返す。
+	MergedApplyRequest(ctx context.Context, repo, sha string) (ApplyRequest, error)
 
 	CreateHumanRequest(ctx context.Context, repo string, hr NewHumanRequest) (HumanRequest, error)
 	GetHumanRequest(ctx context.Context, repo, id string) (HumanRequest, error)
@@ -227,4 +232,34 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (Principal, error)
 	// CanRead は、Authenticate を通った主体が、repository を読めるかを返す。
 	CanRead(ctx context.Context, token, repo string) (bool, error)
+}
+
+// tokenKey は、GitForge を呼ぶ主体のトークンを、ctx で渡す鍵である。
+type tokenKey struct{}
+
+// WithToken は、GitForge を呼ぶ主体のトークンを ctx に入れる。アダプタは、GitForge に書くときも読むときも、このトークンを使う
+// （design/adapters/pull-requests.md：Logiforge は、書くための自分のアカウントを持たない）。
+func WithToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, tokenKey{}, token)
+}
+
+// TokenFrom は、ctx の主体のトークンを返す。なければ空。
+func TokenFrom(ctx context.Context) string {
+	t, _ := ctx.Value(tokenKey{}).(string)
+	return t
+}
+
+// MergeVerdict は、main のコミットが反映によるものかの判定である（design/backend/verify.md）。
+type MergeVerdict struct {
+	// Pending は、まだ決められないこと（C を merge した pull request が見つからない、など）。次の見回りでやり直す。
+	Pending bool
+	// MissingHead は、pull request の先頭のコミットのスナップショットがないとき、その SHA である。作ってから、やり直す。
+	MissingHead string
+	// Authorized は、反映によるものか。
+	Authorized bool
+	// ApplyRequest は、反映した apply request の識別子、Kind はその種類（直すための apply request なら repair.revert か repair.accept）。
+	ApplyRequest string
+	Kind         string
+	// Detail は、反映によるものでないときの、満たさなかった条件である。
+	Detail string
 }

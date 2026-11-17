@@ -134,6 +134,14 @@ func (f *fakeForge) GetApplyRequest(_ context.Context, _, id string) (ports.Appl
 	}
 	return ports.ApplyRequest{}, ports.ErrNotFound
 }
+func (f *fakeForge) MergedApplyRequest(_ context.Context, _, sha string) (ports.ApplyRequest, error) {
+	for _, ar := range f.ars {
+		if ar.State == ports.StateMerged && ar.MergedRevision == sha {
+			return ar, nil
+		}
+	}
+	return ports.ApplyRequest{}, ports.ErrNotFound
+}
 func (f *fakeForge) ListApplyRequests(context.Context, string) ([]ports.ApplyRequest, error) {
 	return f.ars, nil
 }

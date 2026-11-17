@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,17 +19,15 @@ type fake struct {
 	pulls    map[int]*Pull
 	issues   map[int]*Issue
 	comments []*Comment
-	reviews  map[int][]PullReview
 	files    map[string][]byte
 	// failUpload は、添付を上げるのを失敗させる回数である。
 	failUpload int
 }
 
 func newFake() *fake {
-	return &fake{writer: "bot", next: 1, pulls: map[int]*Pull{}, issues: map[int]*Issue{}, reviews: map[int][]PullReview{}, files: map[string][]byte{}}
+	return &fake{writer: "bot", next: 1, pulls: map[int]*Pull{}, issues: map[int]*Issue{}, files: map[string][]byte{}}
 }
 
-func (f *fake) WriterLogin() string { return f.writer }
 func (f *fake) RepoID(_ context.Context, repo string) (string, error) {
 	return "id-" + repo, nil
 }
@@ -60,8 +60,16 @@ func (f *fake) MergePull(_ context.Context, _ string, n int, head, _, _ string) 
 	if p.HeadSHA != head {
 		return "", ports.ErrHeadMoved
 	}
-	p.Merged, p.State = true, "closed"
-	return "merge-sha", nil
+	p.Merged, p.State, p.Base, p.MergeCommit = true, "closed", "main", "merge-"+head
+	return p.MergeCommit, nil
+}
+func (f *fake) MergedPull(_ context.Context, _, sha string) (Pull, bool, error) {
+	for _, p := range f.pulls {
+		if p.Merged && p.MergeCommit == sha && p.Base == "main" {
+			return *p, true, nil
+		}
+	}
+	return Pull{}, false, nil
 }
 func (f *fake) addComment(author string, n int, body string) *Comment {
 	c := &Comment{ID: int64(len(f.comments) + 1), IssueNumber: n, Body: body, Author: author, CreatedAt: time.Unix(int64(len(f.comments)), 0)}
@@ -87,13 +95,23 @@ func (f *fake) ListRepoComments(context.Context, string) ([]Comment, error) {
 	}
 	return out, nil
 }
-func (f *fake) CreateReview(_ context.Context, _ string, n int, sha, body string) error {
-	f.reviews[n] = append(f.reviews[n], PullReview{Body: body, CommitSHA: sha, Author: f.writer})
-	return nil
+
+// reviewComments は、pull request n のコメントのうち、レビューの記録の目印のあるものを返す。
+func (f *fake) reviewComments(n int) []*Comment {
+	var out []*Comment
+	for _, c := range f.comments {
+		if c.IssueNumber == n && strings.Contains(c.Body, reviewMark) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
-func (f *fake) ListReviews(_ context.Context, _ string, n int) ([]PullReview, error) {
-	return f.reviews[n], nil
+
+// remove は、コメントを消す。
+func (f *fake) remove(c *Comment) {
+	f.comments = slices.DeleteFunc(f.comments, func(x *Comment) bool { return x == c })
 }
+
 func (f *fake) CreateIssue(_ context.Context, _, title, body string, _ []string) (Issue, error) {
 	is := &Issue{Number: f.next, Title: title, Body: body, State: "open", Author: f.writer}
 	f.issues[is.Number] = is
@@ -184,7 +202,7 @@ func TestCopiedRecordsAreNotCounted(t *testing.T) {
 	if err := a.Close(ctx, repo, "apr_a", "理由", "s"); err != nil {
 		t.Fatal(err)
 	}
-	// 書き込み主体の close の記録を、apr_b の pull request に写す（書き込み主体として書いた、という最悪の場合）。
+	// close の記録を、apr_b の pull request に写す。
 	closeRec := f.comments[len(f.comments)-1].Body
 	f.addComment(f.writer, 2, closeRec)
 	b, err := a.GetApplyRequest(ctx, repo, "apr_b")
@@ -214,10 +232,10 @@ func TestCopiedRecordsAreNotCounted(t *testing.T) {
 		t.Fatalf("写した回答を数えた：%+v", hr)
 	}
 
-	// 書き込み主体でない人の、記録の形のコメントは、数えず、警告にもしない。
+	// ほかの人が写しても、数えない（だれが書いたかは見ない。署名の場所で決まる）。
 	f.addComment("mallory", 2, closeRec)
 	if b, _ := a.GetApplyRequest(ctx, repo, "apr_b"); b.State != ports.StateOpen {
-		t.Fatalf("書き込み主体でない人の記録を数えた：%+v", b)
+		t.Fatalf("写した記録を数えた：%+v", b)
 	}
 }
 
@@ -298,7 +316,7 @@ func TestReviewChain(t *testing.T) {
 	}
 
 	// 後の request_changes を壊すと、前の approve に戻るのではなく、鎖が切れる。
-	f.reviews[1][1].Body += "x"
+	f.reviewComments(1)[1].Body += "x"
 	got, _ = a.ListReviews(ctx, repo, "apr_a")
 	if !got.ChainBroken || len(got.Items) != 1 {
 		t.Fatalf("壊したのに鎖が切れていない：%+v", got)
@@ -308,17 +326,18 @@ func TestReviewChain(t *testing.T) {
 	}
 
 	// 間のレビューが消えても、鎖が切れる。
-	f.reviews[1] = append(f.reviews[1][:1:1], f.reviews[1][2:]...)
+	f.remove(f.reviewComments(1)[1])
 	add2 := func(prev, id string) {
 		text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordReview}, {KeyApplyRequest, "apr_a"}, {KeyReviewID, id}, {KeyPreviousReview, prev}, {KeyReviewRevision, "h-a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
-		f.reviews[1] = append(f.reviews[1], PullReview{Body: text, CommitSHA: "h-a", Author: f.writer})
+		f.addComment("mallory", 1, text)
 	}
 	add2("rev_2", "rev_3")
 	if got, _ := a.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
 		t.Fatalf("間が消えたのに鎖が切れていない：%+v", got)
 	}
 
-	// 最後のレビューを、記録でない本文に書き換えると、鎖が切れる。
+	// 最後のレビューを、署名の合わない本文に書き換えると、鎖が切れる（記録の目印が残っているとき）。
+	// 目印も消されたら、GitForge のコメントだけでは気づけない。記録の控えで気づく（TestReviewsWithLog）。
 	c, h := newAdapter()
 	create(t, c, "apr_a", "a")
 	for _, id := range []string{"rev_1", "rev_2"} {
@@ -326,12 +345,12 @@ func TestReviewChain(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	h.reviews[1][1].Body = "ただの本文"
+	h.reviewComments(1)[1].Body = "ただの本文 " + reviewMark
 	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
 		t.Fatalf("最後を本文に書き換えたのに、鎖が切れていない：%+v", got)
 	}
 	// 種類が review でない、正しい記録に書き換えても、鎖が切れる。
-	h.reviews[1][1].Body, _ = ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, "apr_a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
+	h.reviewComments(1)[0].Body, _ = ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, "apr_a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
 	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
 		t.Fatalf("種類を変えたのに、鎖が切れていない：%+v", got)
 	}
@@ -344,7 +363,7 @@ func TestReviewChain(t *testing.T) {
 	}
 	for _, id := range []string{"rev_2", "rev_3"} {
 		text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordReview}, {KeyApplyRequest, "apr_a"}, {KeyReviewID, id}, {KeyPreviousReview, "rev_1"}, {KeyReviewRevision, "h-a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
-		k.reviews[1] = append(k.reviews[1], PullReview{Body: text, CommitSHA: "h-a", Author: k.writer})
+		k.addComment("bob", 1, text)
 	}
 	if got, _ := d.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 3 {
 		t.Fatalf("同時の 2 つで鎖が切れた：%+v", got)
@@ -353,22 +372,69 @@ func TestReviewChain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// commit_id と記録の版が違うもの、識別子が重なったものも、鎖を切る。
+	// 識別子が重なったものも、鎖を切る。
 	b, g := newAdapter()
 	create(t, b, "apr_a", "a")
 	if err := b.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_1", Revision: "h-a"}); err != nil {
 		t.Fatal(err)
 	}
-	g.reviews[1] = append(g.reviews[1], g.reviews[1][0])
+	g.addComment("mallory", 1, g.reviewComments(1)[0].Body)
 	if got, _ := b.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken || len(got.Items) != 1 {
 		t.Fatalf("重なり：%+v", got)
 	}
-	g.reviews[1] = g.reviews[1][:1]
-	g.reviews[1][0].CommitSHA = "other"
-	if got, _ := b.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken || len(got.Items) != 0 {
-		t.Fatalf("commit_id：%+v", got)
+}
+
+// 記録の控えにあるレビューは、GitForge から消されても数える（design/backend/verify.md の「記録の控え」）。
+func TestReviewsWithLog(t *testing.T) {
+	ctx := context.Background()
+	a, f := newAdapter()
+	create(t, a, "apr_a", "a")
+	for i, kind := range []ports.ReviewKind{ports.ReviewApprove, ports.ReviewRequestChanges} {
+		if err := a.AddReview(ctx, repo, "apr_a", ports.Review{ID: fmt.Sprintf("rev_%d", i+1), Kind: kind, Revision: "h-a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := memLog{}
+	for _, c := range f.comments {
+		log[c.IssueNumber] = append(log[c.IssueNumber], *c)
+	}
+	a.Log = log
+	// request_changes を、記録でない本文に書き換え、さらに消す。
+	rc := f.reviewComments(1)[1]
+	rc.Body = "ただの本文"
+	if got, _ := a.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
+		t.Fatalf("書き換え：%+v", got)
+	}
+	f.remove(rc)
+	if got, _ := a.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
+		t.Fatalf("消した：%+v", got)
+	}
+	// merge した pull request から、提案を引ける。
+	if _, err := a.Merge(ctx, repo, "apr_a", "h-a", "t", "m"); err != nil {
+		t.Fatal(err)
+	}
+	ar, err := a.MergedApplyRequest(ctx, repo, "merge-h-a")
+	if err != nil || ar.ID != "apr_a" || ar.HeadRevision != "h-a" {
+		t.Fatalf("merged: %+v %v", ar, err)
+	}
+	if _, err := a.MergedApplyRequest(ctx, repo, "other"); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("got %v", err)
 	}
 }
+
+// 控えと今のコメントを合わせるとき、本文は控えのもの、添付は今のものを使う。
+func TestMergeCommentsKeepsAttachments(t *testing.T) {
+	logged := []Comment{{ID: 2, Body: "控え"}, {ID: 1, Body: "消された"}}
+	cur := []Comment{{ID: 2, Body: "書き換えた", Attachments: map[string]string{"a.txt": "9"}}, {ID: 3, Body: "新しい"}}
+	got := MergeComments(logged, cur)
+	if len(got) != 3 || got[0].Body != "消された" || got[1].Body != "控え" || got[1].Attachments["a.txt"] != "9" || got[2].Body != "新しい" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+type memLog map[int][]Comment
+
+func (l memLog) Comments(_ context.Context, _ string, n int) ([]Comment, error) { return l[n], nil }
 
 func TestAnswerResumes(t *testing.T) {
 	ctx := context.Background()

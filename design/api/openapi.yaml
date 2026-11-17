@@ -1312,8 +1312,8 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending, repository_broken]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。repository_broken は、壊れた repository に、直すための apply request でないものを反映しようとしたこと
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending, repository_broken, merge_forbidden]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。repository_broken は、壊れた repository に、直すための apply request でないものを反映しようとしたこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
         detail: { type: string }
     ReviewMaterial:
       type: object

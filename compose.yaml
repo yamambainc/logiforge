@@ -14,8 +14,6 @@ x-logiforge-common: &common
   # 読むだけのユーザー。worker は見回りで、バックエンドは apply request の作成で、git を読む。
   LOGIFORGE_WORKER_LOGIN: logiforge-reader
   LOGIFORGE_WORKER_TOKEN_FILE: /run/secrets/worker_token
-  # 書き込み主体。worker は、main のコミットが、書き込み主体が merge したものかを確かめる（design/backend/broken.md）。
-  LOGIFORGE_WRITER: logiforge-writer
   # ローカルの Forgejo は http で動く。本番では https だけにする（既定）。
   LOGIFORGE_GIT_ALLOW_PROTOCOL: http:https:file
 
@@ -56,7 +54,9 @@ services:
     environment:
       <<: *common
       LOGIFORGE_WORKER_DIR: /var/lib/logiforge/worker
-    secrets: [worker_token]
+      # 記録の署名の公開鍵。反映かの判定で、記録を確かめる（design/backend/verify.md）。scripts/compose-setup.sh が作る。
+      LOGIFORGE_RECORD_PUBLIC_KEYS_FILE: /run/secrets/record_public_keys
+    secrets: [worker_token, record_public_keys]
     volumes:
       - worker:/var/lib/logiforge/worker
       - store:/var/lib/logiforge/store
@@ -83,14 +83,12 @@ services:
       <<: *common
       LOGIFORGE_ADDR: 0.0.0.0:8080
       LOGIFORGE_USER_TEAM: logiforge-users
-      LOGIFORGE_WRITER: logiforge-writer
-      LOGIFORGE_WRITER_TOKEN_FILE: /run/secrets/writer_token
       LOGIFORGE_RECORD_KEYS_FILE: /run/secrets/record_keys
       # WebUI のサインイン（Forgejo の OAuth2）。アプリケーションは scripts/compose-setup.sh が登録する。
       LOGIFORGE_OAUTH_CLIENT_ID_FILE: /run/secrets/oauth_client_id
       LOGIFORGE_OAUTH_CLIENT_SECRET_FILE: /run/secrets/oauth_client_secret
       LOGIFORGE_OAUTH_REDIRECT_URI: http://localhost:8080/oauth/callback
-    secrets: [writer_token, record_keys, worker_token, oauth_client_id, oauth_client_secret]
+    secrets: [record_keys, worker_token, oauth_client_id, oauth_client_secret]
     volumes:
       # バックエンドは、置き場を読むだけである。
       - store:/var/lib/logiforge/store:ro
@@ -110,10 +108,11 @@ volumes:
 secrets:
   worker_token:
     file: .compose/secrets/worker_token
-  writer_token:
-    file: .compose/secrets/writer_token
   record_keys:
     file: .compose/secrets/record_keys
+  # 公開鍵は秘密ではないが、ほかと同じくファイルで渡す。
+  record_public_keys:
+    file: .compose/secrets/record_public_keys
   oauth_client_id:
     file: .compose/secrets/oauth_client_id
   oauth_client_secret:

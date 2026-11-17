@@ -317,7 +317,7 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 			return false
 		}
 		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
-		if ar := trailerValue(cm.Trailers, snapshot.TrailerApplyRequest); ar != "" {
+		if ar := snapshot.ApplyRequestOf(cm); ar != "" {
 			e.ApplyRequestID, e.Reflected = &ar, true
 		}
 		for _, t := range cm.Trailers {
@@ -589,7 +589,7 @@ func (b *Backend) mainCommit(ctx context.Context, repo string, num int) (MainCom
 		var cm snapshot.Commit
 		if cm, err = b.Snap.Commit(ctx, repo, sha); err == nil {
 			e := MainCommit{Number: num, Commit: sha, CommittedAt: cm.CommittedAt}
-			if ar := trailerValue(cm.Trailers, snapshot.TrailerApplyRequest); ar != "" {
+			if ar := snapshot.ApplyRequestOf(cm); ar != "" {
 				e.ApplyRequestID = &ar
 			}
 			return e, nil

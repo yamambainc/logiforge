@@ -13,7 +13,8 @@ apply request を main に反映するとき、バックエンドが何を確か
    - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
-   - 先頭のコミット（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。
+   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、先頭のコミット（head のコミット）への `approve` である。
+     - なぜ先頭のコミットに限らないか：worker の判定（[反映かの判定](verify.md)）と同じ条件にするため。ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさない。
    - 先頭のコミットに、書いたセッションの trailer がある（[セッション](../files/revisions.md#セッション)）。
    - その reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。
@@ -26,7 +27,8 @@ apply request を main に反映するとき、バックエンドが何を確か
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、`approve` をした reviewer のトークンで呼ぶ。
    - なぜ reviewer のトークンか：反映は、`approve` の要求の中で同期で行うので、そのトークンがいつも手元にあるから。Logiforge は、merge するための自分のアカウントを持たない（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
-   - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗として記録する。apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
+   - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗の理由を `merge_forbidden` として記録する。apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
+     - `merge_forbidden` は、opener が直すものではないので、修正待ちにしない（レビュー待ちのまま）。
    - 承認された apply request を、人が GitForge の画面で merge してもよい。worker は、中身で反映かを決める（[反映かの判定](verify.md)）。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。

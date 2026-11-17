@@ -40,20 +40,19 @@ func setup(t *testing.T) *env {
 	}
 	e := &env{t: t, url: u, admin: admin, org: fmt.Sprintf("lf%d", time.Now().UnixNano()%1e9), tokens: map[string]string{}}
 	e.call(admin, "POST", "/orgs", map[string]any{"username": e.org, "visibility": "private"}, nil, 201)
-	writers := e.team("writers", map[string]any{"permission": "write", "can_create_org_repo": true,
+	// 権限は、design/adapters/forgejo.md の「主体」のとおり。Logiforge に、書き込み主体はない。
+	users := e.team("logiforge-users", map[string]any{"permission": "write", "can_create_org_repo": true,
+		"units_map": map[string]string{"repo.code": "read", "repo.pulls": "write", "repo.issues": "write"}})
+	clients := e.team("agents", map[string]any{"permission": "write",
 		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}})
-	users := e.team("logiforge-users", map[string]any{"permission": "read",
-		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}})
-	clients := e.team("agents", map[string]any{"permission": "read",
-		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "read", "repo.issues": "read"}})
 	readers := e.team("readers", map[string]any{"permission": "read",
-		"units_map": map[string]string{"repo.code": "read"}})
-	for name, team := range map[string]int64{"writer": writers, "alice": users, "agent": clients, "outsider": 0, "reader": readers} {
+		"units_map": map[string]string{"repo.code": "read", "repo.pulls": "read", "repo.issues": "read"}})
+	for name, team := range map[string]int64{"alice": users, "agent": clients, "outsider": 0, "reader": readers} {
 		login := e.org + name
 		e.call(admin, "POST", "/admin/users", map[string]any{"username": login, "email": login + "@example.com", "password": "pw-" + login + "-12345", "must_change_password": false}, nil, 201)
 		scopes := []string{"all"}
 		if name == "reader" {
-			scopes = []string{"read:repository", "read:organization"}
+			scopes = []string{"read:repository", "read:organization", "read:issue"}
 		}
 		e.tokens[name] = e.token(login, scopes)
 		if team != 0 {
@@ -165,30 +164,32 @@ func (e *env) commitPush(dir, branch, path, content string) string {
 	return mustGit(e.t, dir, "rev-parse", "HEAD")
 }
 
-var keys = pullreq.Keyring{Current: "k1", Keys: map[string][]byte{"k1": []byte("secret")}}
+var keys, _ = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"secret"})
 
 const root = "tree/h-0000000000/hypothesis.md"
 
 func TestForgejo(t *testing.T) {
 	e := setup(t)
-	ctx := context.Background()
-	cfg := Config{URL: e.url, Org: e.org, UserTeam: "logiforge-users", Writer: e.login("writer"), WriterToken: e.tokens["writer"], MergeWait: 5 * time.Second}
+	// GitForge には、いつも、要求を送った主体のトークンで書く。repository の用意と回答は利用者、ほかはエージェント。
+	ctx := ports.WithToken(context.Background(), e.tokens["agent"])
+	asAlice := ports.WithToken(context.Background(), e.tokens["alice"])
+	cfg := Config{URL: e.url, Org: e.org, UserTeam: "logiforge-users", WorkerLogin: e.login("reader"), MergeWait: 5 * time.Second}
 	gf, auth := New(cfg, keys)
 
 	// ---- repository の用意 ----
 	ref, _ := gf.GitForgeRef(ctx, "q")
 	files := []ports.File{{Path: root, Content: []byte("---\nid: h-0000000000\nstatement: 根\n---\n")}}
-	if err := gf.SetupRepository(ctx, ref, files, "用意\n\nLogiforge-Init: 1"); err != nil {
-		t.Fatalf("確かめること：書き込み主体が organization に repository を作り、空の repository に contents で最初のコミットを置ける：%v", err)
+	if err := gf.SetupRepository(asAlice, ref, files, "用意\n\nLogiforge-Init: 1"); err != nil {
+		t.Fatalf("確かめること：利用者が organization に repository を作り、空の repository に contents で最初のコミットを置ける：%v", err)
 	}
-	t.Log("確かめた：team の can_create_org_repo で、書き込み主体が organization に repository を作れる")
+	t.Log("確かめた：team の can_create_org_repo で、利用者が organization に repository を作れる。作った利用者は、main を守る設定を掛けられる")
 	t.Log("確かめた：auto_init なしの空の repository に、POST /contents で最初のコミットを置ける")
-	if err := gf.SetupRepository(ctx, ref, files, "x"); !errors.Is(err, ports.ErrMainExists) {
+	if err := gf.SetupRepository(asAlice, ref, files, "x"); !errors.Is(err, ports.ErrMainExists) {
 		t.Fatalf("2 回目：%v", err)
 	}
 	// 守る設定が消えていても、呼び直せば作り直す。
 	e.call(e.admin, "DELETE", "/repos/"+ref+"/branch_protections/main", nil, nil, 204)
-	_ = gf.SetupRepository(ctx, ref, files, "x")
+	_ = gf.SetupRepository(asAlice, ref, files, "x")
 	e.call(e.admin, "GET", "/repos/"+ref+"/branch_protections/main", nil, nil, 200)
 	rs, err := gf.ListRepositories(ctx)
 	if err != nil || len(rs) != 1 || rs[0].GitForgeRef != ref {
@@ -226,23 +227,30 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("get: %+v %v", got, err)
 	}
 
-	// 読むだけの team の利用者は、記録のコメントを編集・削除できず、pull request を close できない。
-	var comments []struct {
+	// issue と pull request を書ける主体は、ほかの主体のコメントを編集し、消せる（design/adapters/forgejo.md の「主体」）。
+	// 編集されたコメントは、issues/comments?since で、updated_at とともに返る（記録の控えが、それで見つける）。
+	var made struct {
 		ID int64 `json:"id"`
 	}
-	e.call(e.admin, "GET", fmt.Sprintf("/repos/%s/issues/%d/comments", ref, ar.Number), nil, &comments, 200)
-	cid := comments[0].ID
-	for _, c := range []struct{ method, path string }{
-		{"PATCH", fmt.Sprintf("/repos/%s/issues/comments/%d", ref, cid)},
-		{"DELETE", fmt.Sprintf("/repos/%s/issues/comments/%d", ref, cid)},
-		{"PATCH", fmt.Sprintf("/repos/%s/pulls/%d", ref, ar.Number)},
-	} {
-		var in any = map[string]string{"body": "x", "state": "closed"}
-		if s := e.call(e.tokens["alice"], c.method, c.path, in, nil); s != 403 {
-			t.Fatalf("確かめること：読むだけの team の人が %s %s できた：%d", c.method, c.path, s)
-		}
+	e.call(e.tokens["agent"], "POST", fmt.Sprintf("/repos/%s/issues/%d/comments", ref, ar.Number), map[string]string{"body": "エージェントのコメント"}, &made, 201)
+	since := time.Now().UTC().Add(-time.Second)
+	time.Sleep(1100 * time.Millisecond)
+	if s := e.call(e.tokens["alice"], "PATCH", fmt.Sprintf("/repos/%s/issues/comments/%d", ref, made.ID), map[string]string{"body": "書き換えた"}, nil); s != 200 && s != 201 {
+		t.Fatalf("確かめること：利用者が、ほかの主体のコメントを編集できない：%d", s)
 	}
-	t.Log("確かめた：issue と pull request が読むだけの team の人は、他人のコメントを編集・削除できず、pull request も close できない（403）")
+	src := NewWorkerSource(cfg, e.login("reader"), e.tokens["reader"])
+	changed, err := src.CommentsSince(context.Background(), ref, since)
+	found := false
+	for _, c := range changed {
+		found = found || (c.ID == made.ID && c.Body == "書き換えた" && c.UpdatedAt.After(since))
+	}
+	if err != nil || !found {
+		t.Fatalf("確かめること：issues/comments?since が、編集されたコメントを返さない：%+v %v", changed, err)
+	}
+	if s := e.call(e.tokens["alice"], "DELETE", fmt.Sprintf("/repos/%s/issues/comments/%d", ref, made.ID), nil, nil); s != 204 {
+		t.Fatalf("確かめること：利用者が、ほかの主体のコメントを消せない：%d", s)
+	}
+	t.Log("確かめた：issue と pull request を書ける主体は、ほかの主体のコメントを編集し、消せる。issues/comments?since は、編集されたコメントを updated_at とともに返す")
 
 	// refs/pull/<index>/head を fetch できる。
 	mustGit(t, alice, "fetch", "-q", "origin", fmt.Sprintf("refs/pull/%d/head:refs/remotes/pr", ar.Number))
@@ -260,7 +268,7 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("reviews: %+v %v", reviews, err)
 	}
 
-	// ---- 反映 ----
+	// ---- 反映（reviewer のトークンで merge する） ----
 	if _, err := gf.Merge(ctx, ref, "apr_1", strings.Repeat("0", 40), "t", "m"); !errors.Is(err, ports.ErrHeadMoved) {
 		t.Fatalf("違う head：%v", err)
 	}
@@ -277,6 +285,22 @@ func TestForgejo(t *testing.T) {
 	}
 	if got, _ := gf.GetApplyRequest(ctx, ref, "apr_1"); got.State != ports.StateMerged || got.MergedRevision != sha {
 		t.Fatalf("state: %v merged: %s", got.State, got.MergedRevision)
+	}
+	// worker の読むだけのトークンで、merge のコミットから、反映した apply request を引ける（design/backend/verify.md の「GitForge の API」）。
+	// merge のすぐあとは引けないことがあるので、少し待つ。
+	reader := ports.WithToken(context.Background(), e.tokens["reader"])
+	var byMerge ports.ApplyRequest
+	for i := 0; i < 50; i++ {
+		if byMerge, err = gf.MergedApplyRequest(reader, ref, sha); err == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err != nil || byMerge.ID != "apr_1" || byMerge.HeadRevision != head1 {
+		t.Fatalf("merge のコミットから引く：%+v %v", byMerge, err)
+	}
+	if _, err := gf.MergedApplyRequest(reader, ref, head1); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("merge のコミットでないもの：%v", err)
 	}
 	// 送り直しは、同じ反映のコミットを返す。
 	if again, err := gf.Merge(ctx, ref, "apr_1", head1, "反映", "本文"); err != nil || again != sha {
@@ -308,8 +332,8 @@ func TestForgejo(t *testing.T) {
 	if err := gf.Close(ctx, ref, "apr_b", "やめる", "s3"); err != nil {
 		t.Fatal(err)
 	}
-	e.call(e.admin, "PATCH", fmt.Sprintf("/repos/%s/pulls/%d", ref, mustGet(t, gf, ref, "apr_b").Number), map[string]string{"state": "open"}, nil, 201)
-	if b := mustGet(t, gf, ref, "apr_b"); b.State != ports.StateClosed || b.CloseReason != "やめる" || len(b.MergeFailures) != 1 {
+	e.call(e.admin, "PATCH", fmt.Sprintf("/repos/%s/pulls/%d", ref, mustGet(ctx, t, gf, ref, "apr_b").Number), map[string]string{"state": "open"}, nil, 201)
+	if b := mustGet(ctx, t, gf, ref, "apr_b"); b.State != ports.StateClosed || b.CloseReason != "やめる" || len(b.MergeFailures) != 1 {
 		t.Fatalf("reopen のあと：%+v", b)
 	}
 
@@ -321,7 +345,7 @@ func TestForgejo(t *testing.T) {
 	mustGit(t, alice, "push", "-q", "origin", "--delete", "c")
 	var c ports.ApplyRequest
 	for i := 0; i < 20; i++ {
-		if c = mustGet(t, gf, ref, "apr_c"); c.State == ports.StateClosed {
+		if c = mustGet(ctx, t, gf, ref, "apr_c"); c.State == ports.StateClosed {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -348,17 +372,17 @@ func TestForgejo(t *testing.T) {
 		t.Fatalf("起票：%+v %v", hr, err)
 	}
 	photo := bytes.Repeat([]byte{0xff, 0xd8, 0x00}, 1000)
-	if err := gf.Answer(ctx, ref, "hrq_1", "測りました", e.login("alice"), []ports.NewAttachment{{Name: "photo.jpg", Content: photo}}); err != nil {
+	if err := gf.Answer(asAlice, ref, "hrq_1", "測りました", e.login("alice"), []ports.NewAttachment{{Name: "photo.jpg", Content: photo}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := gf.Answer(ctx, ref, "hrq_1", "もう一度", e.login("alice"), nil); !errors.Is(err, ports.ErrAlreadyAnswered) {
+	if err := gf.Answer(asAlice, ref, "hrq_1", "もう一度", e.login("alice"), nil); !errors.Is(err, ports.ErrAlreadyAnswered) {
 		t.Fatalf("2 回目の回答：%v", err)
 	}
 	got1, err := gf.GetHumanRequest(ctx, ref, "hrq_1")
 	if err != nil || got1.Answer == nil || got1.Answer.AnsweredBy != e.login("alice") || len(got1.Answer.Attachments) != 1 || got1.TargetNode != "h-0000000000" {
 		t.Fatalf("get: %+v %v", got1, err)
 	}
-	t.Log("確かめた：添付を足したあとも、記録の MAC は合う（MAC は updated_at に頼らない）")
+	t.Log("確かめた：添付を足したあとも、記録の署名は合う（署名は updated_at に頼らない）")
 	data, err := gf.ReadAttachment(ctx, ref, "hrq_1", got1.Answer.Attachments[0].SHA256)
 	if err != nil || !bytes.Equal(data, photo) {
 		t.Fatalf("添付：%d %v", len(data), err)
@@ -384,7 +408,6 @@ func TestForgejo(t *testing.T) {
 	e.call(e.admin, "PATCH", "/repos/"+renamed, map[string]string{"name": "q"}, nil, 200)
 
 	// ---- worker：読むだけのユーザーで、repository を列挙し、git を読む ----
-	src := NewWorkerSource(cfg, e.login("reader"), e.tokens["reader"])
 	st := &store.Dir{Root: t.TempDir()}
 	// テストの Forgejo は http で動くので、http を許す（本番は https だけ）。
 	w := worker.New(worker.Config{Dir: t.TempDir(), GitEnv: append(src.GitEnv(), "GIT_ALLOW_PROTOCOL=http:https:file")}, src, st)
@@ -400,7 +423,7 @@ func TestForgejo(t *testing.T) {
 	if err != nil || m.Commit.Number < 3 {
 		t.Fatalf("worker のスナップショット：%v", err)
 	}
-	t.Log("確かめた：read:repository と read:organization のトークンで、worker が repository を列挙し、credential helper で git を読める")
+	t.Log("確かめた：read:repository、read:organization、read:issue のトークンで、worker が repository を列挙し、credential helper で git を読める")
 
 	// ---- 認証 ----
 	for who, want := range map[string]ports.PrincipalKind{"alice": ports.PrincipalUser, "agent": ports.PrincipalClient} {
@@ -409,7 +432,7 @@ func TestForgejo(t *testing.T) {
 			t.Fatalf("%s: %+v %v", who, p, err)
 		}
 	}
-	for _, tok := range []string{e.tokens["outsider"], "bad-token", e.tokens["writer"]} {
+	for _, tok := range []string{e.tokens["outsider"], "bad-token", e.tokens["reader"]} {
 		if _, err := auth.Authenticate(ctx, tok); !errors.Is(err, ports.ErrUnauthenticated) {
 			t.Fatalf("organization の外：%v", err)
 		}
@@ -424,9 +447,9 @@ func TestForgejo(t *testing.T) {
 	}
 }
 
-func mustGet(t *testing.T, gf ports.GitForge, ref, id string) ports.ApplyRequest {
+func mustGet(ctx context.Context, t *testing.T, gf ports.GitForge, ref, id string) ports.ApplyRequest {
 	t.Helper()
-	ar, err := gf.GetApplyRequest(context.Background(), ref, id)
+	ar, err := gf.GetApplyRequest(ctx, ref, id)
 	if err != nil {
 		t.Fatal(err)
 	}

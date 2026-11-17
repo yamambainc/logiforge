@@ -9,6 +9,7 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
 // chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/pull-requests.md の「レビューの書き方」）。
@@ -160,18 +161,8 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	if d.reviews.ChainBroken {
 		return "", fail(CodeNotOpen, chainBrokenDetail)
 	}
-	last := lastDecisive(d.reviews.Items, d.current.Commit)
-	if last == nil || last.Kind != ports.ReviewApprove {
+	if approvalProblem(d) != "" {
 		return "", nil
-	}
-	author := d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID
-	if author == nil {
-		return "", nil
-	}
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && *v.AuthorSessionID == last.Session {
-			return "", nil
-		}
 	}
 	// 2. 今の main のスナップショット。GitForge の main が latest より進んでいれば、worker が追いつくのを待つ。
 	// 待ち始めに読んだ head が、latest の history に入ったら抜ける（そのあとに main が進んでもよい）。
@@ -209,38 +200,69 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 		return failure("repository_broken", fmt.Sprintf("repository が壊れている（%s から）。直すための apply request を先に反映する", broken.First))
 	}
 	// 3. 対象ノードの変化、重ねられるか、差分の検査。
-	baseNum, err := b.mainNumber(ctx, latest, d.branch.Diff.Base)
-	if err != nil {
-		return "", err
-	}
-	for _, t := range targetsOf(d.model.Operations) {
-		n := latest.main.SnapshotTree.Nodes[t]
-		if n == nil || baseNum == 0 {
-			return failure("stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t))
+	if reason, detail, err := b.changeProblem(ctx, latest, d.branch, d.model.Operations); err != nil || reason != "" {
+		if err != nil {
+			return "", err
 		}
-		if n.LastChanged.Number > baseNum {
-			return failure("stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t))
+		return failure(reason, detail)
+	}
+	return b.squash(ctx, repo, ref, id, d, "")
+}
+
+// approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
+//   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
+//     （design/backend/verify.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
+//   - 先頭のコミットに、書いたセッションの trailer がある。reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
+func approvalProblem(d *arDetail) string {
+	if d.reviews.ChainBroken {
+		return "レビューの鎖が切れている"
+	}
+	last := lastDecisive(d.reviews.Items, "")
+	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
+		return "最後の決めるレビューが、先頭のコミット " + d.current.Commit + " への approve でない"
+	}
+	if len(d.model.HeadCommits) == 0 || d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
+		return "先頭のコミットに、書いたセッションの trailer がない"
+	}
+	for _, v := range d.model.HeadCommits {
+		if v.AuthorSessionID != nil && *v.AuthorSessionID == last.Session {
+			return "reviewer のセッション " + last.Session + " が、先頭のコミットを書いたセッションと同じ"
+		}
+	}
+	return ""
+}
+
+// changeProblem は、反映の手順の手順 3 を、onto を今の main として行い、満たさなければ失敗の理由と詳しい説明を返す。
+func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Branch, ops []Operation) (string, string, error) {
+	baseNum, err := b.mainNumber(ctx, onto, br.Diff.Base)
+	if err != nil {
+		return "", "", err
+	}
+	for _, t := range targetsOf(ops) {
+		n := onto.main.SnapshotTree.Nodes[t]
+		if n == nil || baseNum == 0 || n.LastChanged.Number > baseNum {
+			return "stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t), nil
 		}
 	}
 	// 引用した部分木が、base のあとに変わっていれば、それも stale_target にする（design/backend/merge.md の「対象ノードの変化」）。
-	for _, op := range d.model.Operations {
+	for _, op := range ops {
 		for _, ci := range op.Citations {
-			if ci.TargetKind == "subtree" && latest.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
-				return failure("stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID))
+			if ci.TargetKind == "subtree" && onto.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
+				return "stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID), nil
 			}
 		}
 	}
-	res, conflicts, err := b.checkVersion(ctx, latest, latest, d.branch)
+	res, conflicts, err := b.checkVersion(ctx, onto, onto, br)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(conflicts) > 0 {
-		return failure("conflict", "今の main に重ねられない："+strings.Join(conflicts, "、"))
+		return "conflict", "今の main に重ねられない：" + strings.Join(conflicts, "、"), nil
 	}
 	if !res.OK() {
-		return failure("invariant_violation", violations(res.Rejected))
+		return "invariant_violation", violations(res.Rejected), nil
 	}
-	return b.squash(ctx, repo, ref, id, d, "")
+	return "", "", nil
 }
 
 // squash は、反映の手順の 4 と 5 である。extra は、記録の trailer のあとに足す行（直すための apply request の Logiforge-Repair:）。
@@ -267,6 +289,10 @@ func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail,
 		return "", fail(CodeCommitConflict, "反映の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
 	case errors.Is(err, ports.ErrConflict):
 		return failure("conflict", err.Error())
+	case errors.Is(err, ports.ErrMergeForbidden):
+		// reviewer のトークンで merge するので、reviewer に merge の権限がなければ、GitForge が断る（design/backend/merge.md の手順 4）。
+		// apply request は open のまま残る。merge の権限のある reviewer が approve し直せば、反映される。
+		return failure("merge_forbidden", "approve した reviewer に、GitForge で merge する権限がない："+err.Error())
 	case err != nil:
 		return "", err
 	}

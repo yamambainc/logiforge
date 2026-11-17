@@ -14,7 +14,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 | 主体 | 使う者 | 権限 |
 |---|---|---|
-| 読むだけのユーザー | [worker](../backend/worker.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository` と `read:organization`（repository を列挙するため）だけにする。organization が private なら、読むだけの team に入れる |
+| 読むだけのユーザー | [worker](../backend/worker.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository`、`read:organization`（repository を列挙するため）、`read:issue`（記録のコメントを読むため）だけにする。organization が private なら、コード、issue、pull request を読むだけの team に入れる |
 | 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書く |
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
@@ -32,7 +32,8 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | repository を用意する | 下の「repository の用意」 |
 | 提案を作る | `POST /repos/{owner}/{repo}/pulls` |
 | 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
-| レビュー | `POST /repos/{owner}/{repo}/pulls/{index}/reviews` に、`event: COMMENT`、`commit_id`、本文（trailer を含む）を渡す |
+| レビュー | pull request の記録のコメント（`POST /repos/{owner}/{repo}/issues/{index}/comments`。[レビューの書き方](pull-requests.md#レビューの書き方)） |
+| 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pull` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify.md)） |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |
 | 回答の添付 | コメントの添付（`POST /repos/{owner}/{repo}/issues/comments/{id}/assets`）。上限は、artifact と同じ 10 MiB |
@@ -85,6 +86,11 @@ Forgejo の API の定義（`swagger.v1.json`、Forgejo 17 系）で、次のこ
 | 主体に、organization に repository を作る権限を与える方法 | team の `can_create_org_repo: true`。主体を、その team に入れる |
 | `refs/pull/<index>/head` が、git の fetch で読めるか | 読める |
 | merge を呼べるのはいつか | Forgejo が merge できるかを確かめ終わるまで、405 を返す。アダプタは、上限つきで待って呼び直す。head が違えば 409 |
+| issue と pull request を書ける主体が、ほかの主体のコメントを編集し、消せるか | できる |
+| `issues/comments?since=` が、編集されたコメントを返すか | 返す。`updated_at` は編集の時刻になる |
+| worker のトークンで、コメントを読めるか | `read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 |
+| merge の権限のない主体（コードを読むだけの team）が merge を呼ぶと、どう断られるか | 405 で、`message` は `User not allowed to merge PR`。アダプタは、待たずに `merge_forbidden` にする |
+| merge のすぐあとに、`/commits/{sha}/pull` で pull request を引けるか | 引けないことがある（404）。worker は、初めて見てから 60 秒まで待つ |
 
 ## 認証
 

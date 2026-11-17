@@ -1,19 +1,20 @@
 package pullreq
 
 import (
-	"crypto/hmac"
+	"crypto/ed25519"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
 // 記録のコメントの trailer（design/adapters/pull-requests.md の「記録のコメント」）。
 const (
 	KeyRecord        = "Logiforge-Record"
-	KeyMac           = "Logiforge-Record-Mac"
+	KeyMac           = "Logiforge-Record-Signature"
 	KeyApplyRequest  = "Logiforge-Apply-Request"
 	KeyFirstRevision = "Logiforge-First-Revision"
 	// KeyApplyRequestKind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request には書かない。
@@ -47,7 +48,7 @@ const (
 // Trailer は、記録の 1 行である。
 type Trailer struct{ Key, Value string }
 
-// Record は、書き込み主体が書く記録である。本文と trailer からなる。
+// Record は、バックエンドが書く記録である。本文と trailer からなる。
 type Record struct {
 	Body     string
 	Trailers []Trailer
@@ -74,12 +75,69 @@ func (r Record) All(key string) []string {
 	return out
 }
 
-// Keyring は、MAC の鍵である。書くときは Current の鍵を使い、確かめるときは鍵の ID で選ぶ。
-// 鍵を取り替えるときは、新しい鍵を Current にし、古い鍵も Keys に残す。
+// Keyring は、記録の署名の鍵（Ed25519）である（design/adapters/pull-requests.md の「記録のコメント」）。
+// 書くときは Current の秘密鍵を使い、確かめるときは鍵の ID で公開鍵を選ぶ。
+// 鍵を取り替えるときは、新しい鍵を Current にし、古い鍵の公開鍵も Public に残す。
+// worker は、公開鍵だけを持つ（Private は空）。記録を作れない。
 type Keyring struct {
 	Current string
-	Keys    map[string][]byte
+	Private map[string]ed25519.PrivateKey
+	Public  map[string]ed25519.PublicKey
 }
+
+// NewKeyring は、秘密鍵の種（32 バイト）から、署名と確かめに使う鍵を作る。最初の ID を Current にする。
+func NewKeyring(ids []string, seeds [][]byte) (Keyring, error) {
+	k := Keyring{Private: map[string]ed25519.PrivateKey{}, Public: map[string]ed25519.PublicKey{}}
+	for i, id := range ids {
+		if !keyIDForm.MatchString(id) || len(seeds[i]) != ed25519.SeedSize {
+			return Keyring{}, fmt.Errorf("pullreq: 鍵 %q の形が正しくない（ID は英数字、種は %d バイト）", id, ed25519.SeedSize)
+		}
+		priv := ed25519.NewKeyFromSeed(seeds[i])
+		k.Private[id], k.Public[id] = priv, priv.Public().(ed25519.PublicKey)
+		if i == 0 {
+			k.Current = id
+		}
+	}
+	return k, nil
+}
+
+// KeyringFromSecrets は、秘密の文字列から鍵を作る。種は、文字列の SHA-256 である。
+// なぜ：設定の秘密を、長さを決めずに、乱数の文字列として作れるようにするため（scripts/compose-setup.sh）。
+func KeyringFromSecrets(ids, secrets []string) (Keyring, error) {
+	seeds := make([][]byte, len(secrets))
+	for i, s := range secrets {
+		h := sha256.Sum256([]byte(s))
+		seeds[i] = h[:]
+	}
+	return NewKeyring(ids, seeds)
+}
+
+// ParsePublicKeys は、「鍵の ID=公開鍵（base64）,…」から、確かめるだけの Keyring を作る（worker の設定）。
+func ParsePublicKeys(v string) (Keyring, error) {
+	k := Keyring{Public: map[string]ed25519.PublicKey{}}
+	for _, part := range strings.Split(v, ",") {
+		id, b64, ok := strings.Cut(strings.TrimSpace(part), "=")
+		pub, err := base64.StdEncoding.DecodeString(b64)
+		if !ok || !keyIDForm.MatchString(id) || err != nil || len(pub) != ed25519.PublicKeySize {
+			return Keyring{}, fmt.Errorf("pullreq: 公開鍵の形が正しくない（鍵の ID=base64,…）：%q", part)
+		}
+		k.Public[id] = pub
+	}
+	return k, nil
+}
+
+// FormatPublicKeys は、公開鍵を「鍵の ID=公開鍵（base64）,…」にする。ParsePublicKeys の逆である。
+func (k Keyring) FormatPublicKeys() string {
+	var parts []string
+	for id, pub := range k.Public {
+		parts = append(parts, id+"="+base64.StdEncoding.EncodeToString(pub))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
+}
+
+// VerifyOnly は、公開鍵だけを残した Keyring を返す。worker に渡す。
+func (k Keyring) VerifyOnly() Keyring { return Keyring{Public: k.Public} }
 
 var (
 	keyLine   = regexp.MustCompile(`^(Logiforge-[A-Za-z-]+): (.*)$`)
@@ -89,8 +147,8 @@ var (
 // ErrNoRecord は、本文が記録の形でないことを表す。
 var ErrNoRecord = errors.New("記録の形でない")
 
-// ErrBadMac は、MAC が合わないことを表す（あとから編集された、など）。
-var ErrBadMac = errors.New("記録の MAC が合わない")
+// ErrBadMac は、署名が合わないことを表す（あとから編集された、など）。
+var ErrBadMac = errors.New("記録の署名が合わない")
 
 // Scope は、記録を置いた場所である。MAC に含め、記録をほかの pull request や issue に写して使い回せないようにする。
 type Scope struct {
@@ -101,11 +159,11 @@ type Scope struct {
 	Number int
 }
 
-// Format は、記録を、MAC を付けた本文にする。本文の CRLF は LF にし、末尾の改行を落とす。値の改行は、空白にする。
+// Format は、記録を、署名を付けた本文にする。本文の CRLF は LF にし、末尾の改行を落とす。値の改行は、空白にする。
 func (k Keyring) Format(r Record, at Scope) (string, error) {
-	key, ok := k.Keys[k.Current]
+	key, ok := k.Private[k.Current]
 	if !ok || !keyIDForm.MatchString(k.Current) {
-		return "", fmt.Errorf("pullreq: MAC の鍵 %q がない", k.Current)
+		return "", fmt.Errorf("pullreq: 署名の秘密鍵 %q がない", k.Current)
 	}
 	r.Body = strings.TrimRight(strings.ReplaceAll(r.Body, "\r\n", "\n"), "\n")
 	trailers := make([]Trailer, len(r.Trailers))
@@ -114,15 +172,13 @@ func (k Keyring) Format(r Record, at Scope) (string, error) {
 	}
 	r.Trailers = trailers
 	text := canonical(r)
-	return text + "\n" + KeyMac + ": " + k.Current + ":" + mac(key, at, text), nil
+	sig := ed25519.Sign(key, signed(at, text))
+	return text + "\n" + KeyMac + ": " + k.Current + ":" + base64.RawStdEncoding.EncodeToString(sig), nil
 }
 
-// mac は、置いた場所と記録の本文に対する HMAC-SHA256 を返す。
-func mac(key []byte, at Scope, text string) string {
-	m := hmac.New(sha256.New, key)
-	fmt.Fprintf(m, "%s#%d\n", at.RepoID, at.Number)
-	m.Write([]byte(text))
-	return hex.EncodeToString(m.Sum(nil))
+// signed は、署名する中身（置いた場所と、記録の本文）である。
+func signed(at Scope, text string) []byte {
+	return []byte(fmt.Sprintf("%s#%d\n%s", at.RepoID, at.Number, text))
 }
 
 // Parse は、コメントの本文から記録を読み、at に置かれたものとして MAC を確かめる。
@@ -155,11 +211,12 @@ func (k Keyring) Parse(text string, at Scope) (Record, error) {
 		return Record{}, ErrNoRecord
 	}
 	id, got, ok := strings.Cut(last[2], ":")
-	key, known := k.Keys[id]
+	key, known := k.Public[id]
 	if !ok || !known {
 		return Record{}, ErrBadMac
 	}
-	if !hmac.Equal([]byte(mac(key, at, canonical(r))), []byte(got)) {
+	sig, err := base64.RawStdEncoding.DecodeString(got)
+	if err != nil || !ed25519.Verify(key, signed(at, canonical(r)), sig) {
 		return Record{}, ErrBadMac
 	}
 	return r, nil

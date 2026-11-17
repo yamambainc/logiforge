@@ -26,7 +26,9 @@ import (
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/cli"
+	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
 	"github.com/yamambainc/logiforge/internal/version"
 	"github.com/yamambainc/logiforge/internal/workcopy"
 	"github.com/yamambainc/logiforge/internal/worker"
@@ -42,6 +44,13 @@ func main() {
 		err = runServe(ctx)
 	case len(os.Args) >= 2 && os.Args[1] == "worker":
 		err = runWorker(ctx)
+	case len(os.Args) >= 2 && os.Args[1] == "record-public-keys":
+		// LOGIFORGE_RECORD_KEYS から、worker に渡す公開鍵（LOGIFORGE_RECORD_PUBLIC_KEYS の値）を作って書く。
+		if err := recordPublicKeys(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	case len(os.Args) >= 2 && os.Args[1] == "worker-health":
 		if err := workerHealth(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -91,19 +100,22 @@ func env(name string) (string, error) {
 //	LOGIFORGE_WORKER_INTERVAL  見回りの間隔（既定は 1s）
 //	LOGIFORGE_GIT_TIMEOUT      git の操作 1 回の時間の上限（既定は 10m）
 //	LOGIFORGE_WORKER_LIST_INTERVAL  repository の一覧を読み直す間隔（既定は 10s）
+//	LOGIFORGE_WORKER_RECORD_INTERVAL  記録を読んで控えに足す間隔（既定は見回りの間隔）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
-//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository と read:organization）
-//	LOGIFORGE_WRITER           書き込み主体のログイン名。main のコミットが、書き込み主体が merge したものかを確かめる（design/backend/broken.md）
+//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository、read:organization、read:issue）
+//	LOGIFORGE_RECORD_PUBLIC_KEYS  記録の署名の公開鍵（鍵の ID=base64,…）。反映かの判定で記録を確かめる（design/backend/verify.md）。
+//	                           logiforge record-public-keys が、LOGIFORGE_RECORD_KEYS から作る
 func runWorker(ctx context.Context) error {
-	var cfg struct{ dir, storeDir, url, org, writer, login, token string }
+	var cfg struct{ dir, storeDir, url, org, login, token, publicKeys string }
 	for _, e := range []struct {
 		name string
 		dst  *string
 	}{
 		{"LOGIFORGE_WORKER_DIR", &cfg.dir}, {"LOGIFORGE_STORE_DIR", &cfg.storeDir},
 		{"LOGIFORGE_FORGEJO_URL", &cfg.url}, {"LOGIFORGE_FORGEJO_ORG", &cfg.org},
-		{"LOGIFORGE_WRITER", &cfg.writer}, {"LOGIFORGE_WORKER_LOGIN", &cfg.login}, {"LOGIFORGE_WORKER_TOKEN", &cfg.token},
+		{"LOGIFORGE_WORKER_LOGIN", &cfg.login}, {"LOGIFORGE_WORKER_TOKEN", &cfg.token},
+		{"LOGIFORGE_RECORD_PUBLIC_KEYS", &cfg.publicKeys},
 	} {
 		name, dst := e.name, e.dst
 		v, err := env(name)
@@ -124,6 +136,10 @@ func runWorker(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	recordInterval, err := duration("LOGIFORGE_WORKER_RECORD_INTERVAL", 0)
+	if err != nil {
+		return err
+	}
 	// worker は 1 つだけ動かす。ほかの worker が同じディレクトリで動いていれば、起動しない。
 	// 置き場が手元のディレクトリなので、置き場の根にもロックを取る。
 	release, err := worker.LockAll(cfg.dir, cfg.storeDir)
@@ -131,14 +147,35 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	defer release()
-	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org, Writer: cfg.writer}, cfg.login, cfg.token)
+	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
+	pub, err := pullreq.ParsePublicKeys(cfg.publicKeys)
+	if err != nil {
+		return fmt.Errorf("LOGIFORGE_RECORD_PUBLIC_KEYS: %w", err)
+	}
 	gitEnv := src.GitEnv()
 	if gitEnv, err = allowProtocol(gitEnv); err != nil {
 		return err
 	}
-	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval}, src, &store.Dir{Root: cfg.storeDir})
+	st := &store.Dir{Root: cfg.storeDir}
+	// 反映かの判定は、バックエンドと同じ規則で、worker の読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
+	forge, _ := forgejo.New(forgejo.Config{URL: cfg.url, Org: cfg.org}, pub)
+	forge.Log = snapstore.RecordLog{Store: st}
+	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, token: cfg.token}
+	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
+	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
+		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
 	slog.Info("worker を始めた", "version", version.Get().Version, "interval", interval, "git_timeout", gitTimeout)
 	return w.Run(ctx)
+}
+
+// verifier は、worker の反映かの判定を、バックエンドの規則で、worker のトークンで行う。
+type verifier struct {
+	b     *backend.Backend
+	token string
+}
+
+func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+	return v.b.VerifyMerge(ports.WithToken(ctx, v.token), r.Name, r.GitForgeRef, sha, parents, files, broken)
 }
 
 // workerHealth は、worker のハートビートを確かめる（`logiforge worker-health`）。worker と同じ環境変数を読む。
@@ -229,20 +266,32 @@ func oauthConfig(forgejoURL string) (*api.OAuth, error) {
 	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
 }
 
-// keyring は、記録の MAC の鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=鍵,…」で、最初のものを書くときに使う。
+// keyring は、記録の署名の秘密鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=秘密,…」で、最初のものを書くときに使う。
+// 秘密の SHA-256 を、Ed25519 の秘密鍵の種にする（pullreq.KeyringFromSecrets）。
 func keyring(v string) (pullreq.Keyring, error) {
-	k := pullreq.Keyring{Keys: map[string][]byte{}}
-	for i, part := range strings.Split(v, ",") {
+	var ids, secrets []string
+	for _, part := range strings.Split(v, ",") {
 		id, secret, ok := strings.Cut(strings.TrimSpace(part), "=")
 		if !ok || id == "" || secret == "" {
-			return k, fmt.Errorf("LOGIFORGE_RECORD_KEYS の形が正しくない（鍵の ID=鍵,…）")
+			return pullreq.Keyring{}, fmt.Errorf("LOGIFORGE_RECORD_KEYS の形が正しくない（鍵の ID=秘密,…）")
 		}
-		if i == 0 {
-			k.Current = id
-		}
-		k.Keys[id] = []byte(secret)
+		ids, secrets = append(ids, id), append(secrets, secret)
 	}
-	return k, nil
+	return pullreq.KeyringFromSecrets(ids, secrets)
+}
+
+// recordPublicKeys は、LOGIFORGE_RECORD_KEYS の秘密から、記録の署名の公開鍵を作り、標準出力に書く。
+func recordPublicKeys() error {
+	v, err := env("LOGIFORGE_RECORD_KEYS")
+	if err != nil {
+		return err
+	}
+	ring, err := keyring(v)
+	if err != nil {
+		return err
+	}
+	fmt.Println(ring.FormatPublicKeys())
+	return nil
 }
 
 // runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/README.md の「設定と秘密情報」）。
@@ -250,22 +299,21 @@ func keyring(v string) (pullreq.Keyring, error) {
 //	LOGIFORGE_ADDR             待ち受けるアドレス（既定は 127.0.0.1:8080）
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ。読むだけ）
 //	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG、LOGIFORGE_USER_TEAM
-//	LOGIFORGE_WRITER、LOGIFORGE_WRITER_TOKEN       書き込み主体
 //	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   worker のユーザー（API の主体として受け付けない）。
 //	                           apply request の作成で、git を読むのにも使う（読むだけのトークン）
 //	LOGIFORGE_GIT_CACHE_DIR    作業用の git の複製を置く、一時的なディレクトリ（既定は OS の一時ディレクトリ）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（worker と同じ）
-//	LOGIFORGE_RECORD_KEYS      記録の MAC の鍵（鍵の ID=鍵,…。最初のものを書くときに使う）
+//	LOGIFORGE_RECORD_KEYS      記録の署名の秘密（鍵の ID=秘密,…。最初のものを書くときに使う。Ed25519 の鍵は、秘密の SHA-256 から作る）
 //	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
 //	LOGIFORGE_OAUTH_CLIENT_ID、LOGIFORGE_OAUTH_CLIENT_SECRET、LOGIFORGE_OAUTH_REDIRECT_URI
 //	                           WebUI のサインイン（Forgejo の OAuth2）。3 つともなければ、サインインの中継を動かさない
 //	LOGIFORGE_FORGEJO_PUBLIC_URL  ブラウザから Forgejo への URL（authorize に使う）。既定は LOGIFORGE_FORGEJO_URL
 func runServe(ctx context.Context) error {
-	var storeDir, url, org, team, writer, writerToken, workerLogin, workerToken, keys string
+	var storeDir, url, org, team, workerLogin, workerToken, keys string
 	if err := envs(map[string]*string{
 		"LOGIFORGE_STORE_DIR":   &storeDir,
 		"LOGIFORGE_FORGEJO_URL": &url, "LOGIFORGE_FORGEJO_ORG": &org, "LOGIFORGE_USER_TEAM": &team,
-		"LOGIFORGE_WRITER": &writer, "LOGIFORGE_WRITER_TOKEN": &writerToken, "LOGIFORGE_WORKER_LOGIN": &workerLogin,
+		"LOGIFORGE_WORKER_LOGIN": &workerLogin,
 		"LOGIFORGE_WORKER_TOKEN": &workerToken, "LOGIFORGE_RECORD_KEYS": &keys,
 	}); err != nil {
 		return err
@@ -278,7 +326,10 @@ func runServe(ctx context.Context) error {
 	if addr == "" {
 		addr = "127.0.0.1:8080"
 	}
-	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, Writer: writer, WriterToken: writerToken, WorkerLogin: workerLogin}, ring)
+	st := &store.Dir{Root: storeDir}
+	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, WorkerLogin: workerLogin}, ring)
+	// 反映の手順でも、worker の記録の控えを合わせて読む（design/backend/merge.md の手順 1）。
+	forge.Log = snapstore.RecordLog{Store: st}
 	// apply request の作成で git を読む、作業用の複製。worker と同じ、読むだけのユーザーで読む。
 	reader := forgejo.NewWorkerSource(forgejo.Config{URL: url, Org: org}, workerLogin, workerToken)
 	gitEnv, err := allowProtocol(reader.GitEnv())
@@ -295,7 +346,7 @@ func runServe(ctx context.Context) error {
 	}
 	// 作業用の複製は、使い捨てのキャッシュである。止まるときに消す。
 	defer os.RemoveAll(git.Dir)
-	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: &store.Dir{Root: storeDir}}, Git: git}
+	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: st}, Git: git}
 	if v := os.Getenv("LOGIFORGE_WAIT_TIMEOUT"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
