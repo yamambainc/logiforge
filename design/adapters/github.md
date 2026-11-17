@@ -92,10 +92,18 @@ GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub
 | `approve` のあとに `request_changes` が付いた apply request を、人が squash merge したコミット | 反映によるものでない。repository は壊れた状態になる |
 | worker が、トークンなしで public のリポジトリを読めるか | 読める。ただし、REST の上限（1 時間に 60 回）に、1 回の試験の途中で当たった |
 
+試験用の OAuth App（yamambainc）で、次のことも確かめた（2026-11-17）。OAuth App のトークンは、device flow（スコープ `read:user` と `read:org`）で得た。
+
+| 項目 | 結果 |
+|---|---|
+| OAuth App のトークンを持ち、`LOGIFORGE_USER_LOGINS` に入れたアカウント | `user`。repository の作成が、主体の種類の確かめを通る |
+| 同じアカウントの、OAuth App のものでないトークン（gh のトークン） | `client`。repository の作成は 403（`forbidden`） |
+| OAuth App のトークンを持つが、`LOGIFORGE_USER_LOGINS` に入れていないアカウント | `client`。403 |
+| `POST /applications/{client_id}/token` に、ほかのトークンを渡す / 違う secret で呼ぶ | 404 / 401 |
+
 まだ確かめていないことは、次のとおりである。
 
-- OAuth App のトークンで `user` になること。偽の GitHub での単体テストだけで確かめた。本番の OAuth App を作るときに、WebUI でサインインして確かめる。
-  - 試験用の OAuth App で、資格情報の確かめ（`POST /applications/{client_id}/token` が、ほかのトークンに 404、違う secret に 401）と、BE の中継は、実際の GitHub で確かめた。
+- WebUI の画面からのサインイン（authorize から callback まで）。BE の中継は、偽の code で GitHub が交換を断るところまで確かめた。
 - private のリポジトリと、`main` を守るルールセットを掛けたリポジトリでの、反映と、守る設定に断られる操作。GitHub Free の organization では、private のリポジトリに守る設定を掛けられないので、確かめられない。
 - fine-grained personal access token の、上の権限だけで、worker とエージェントが動くこと。
 - merge の権限のない reviewer の merge を、GitHub がどう断るか。アダプタは、403 を `merge_forbidden` にする（制限の 403 は、待ってやり直し、権限がないことにしない）。偽の GitHub でだけ確かめた。
