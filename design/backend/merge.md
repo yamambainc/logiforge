@@ -7,7 +7,8 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
-1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
+1. 反映の条件を、GitForge から読んだ pull request とレビュー、worker の記録の控え（[記録の控え](verify.md#記録の控え)）、[スナップショット](snapshot.md) で確かめる。
+   - レビューは、GitForge の記録と控えの記録の、署名の合うものを合わせて読む。なぜ：GitForge から消された `request_changes` を、見落とさないため。
    - pull request の向き先が `main` である。違えば、反映の手順に進まない。レビューを記録し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request.md#向き先)）。
    - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。

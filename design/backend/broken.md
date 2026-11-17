@@ -52,7 +52,7 @@
 - なぜ accept を空のコミットにしないか：空のコミットだけの pull request は、Forgejo で squash merge できないから（Forgejo 17 で確かめた。merge できるかを確かめ終わらず、405 のまま）。
 - 直すための apply request の reviewer の材料（`ar material` の `repair`）は、`last_good` のコミットから今の `main` の先頭までの、ファイルの変化である。
 - 反映のコミットに、trailer `Logiforge-Repair: revert` か `Logiforge-Repair: accept` を書く。表示のためで、判定には使わない。
-- worker は、反映によるコミットで、その pull request の `apply_request` の記録の種類（MAC で守られる）が直すための apply request であり、次のことが成り立てば、`last_good` を空に戻す。
+- worker は、反映によるコミットで、その pull request の `apply_request` の記録の種類（署名で守られる）が直すための apply request であり、次のことが成り立てば、`last_good` を空に戻す。
   - `revert`：そのコミットの木の全体が、`last_good` のコミットの木と同じである。
   - `accept`：squash のコミットの親が、apply request のブランチを作った時点の `main` の先頭（先頭のコミットの親）である。
 - なぜ accept で外のファイルを断るか：認めると、あとで壊れたときの最後に正しかった時点の木が、`getRepairFiles`（`tree/` と `artifacts/` だけ）と一致せず、revert で直せなくなるから。外のファイルを含む変更は、revert でしか直せない。

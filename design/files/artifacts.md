@@ -31,7 +31,7 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
   - GitForge が、API でコメントにファイルを添付できるとき：添付をファイルで受け付け、GitForge に置く。添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
   - 添付できないとき：添付はリンクだけにする。利用者が、ファイルを外に置いてリンクを書く。
 - `link` の添付は、GitForge に置かず、回答の本文の末尾に「添付（リンク）」として書く。
-  - なぜ：リンクは中身を持たず、本文と同じく、回答の記録の MAC で守れるから。
+  - なぜ：リンクは中身を持たず、本文と同じく、回答の記録の署名で守れるから。
 - opener が検証結果で回答を引用するときは、`link` の artifact にする。
   - URL は、その添付を読む API の URL である。`sha256` も書く。
   - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。

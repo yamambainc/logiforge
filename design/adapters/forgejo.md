@@ -21,7 +21,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
 - worker のユーザーのトークンは、設定に置く（[設定と秘密情報](README.md)）。
 - 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体の記録のコメントを編集し、消し、pull request を close できる。
-  - 編集は MAC で見つけ、レビューの削除は鎖で見つける。消された記録は戻らない（[信頼の境界](pull-requests.md#信頼の境界)）。
+  - 編集は署名で見つけ、worker の控えに残る記録は、消されても判定に使う（[信頼の境界](pull-requests.md#信頼の境界)）。
 
 ## 対応
 
