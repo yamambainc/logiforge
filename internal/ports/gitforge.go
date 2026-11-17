@@ -10,13 +10,13 @@ import (
 
 // ポートの誤り。アダプタは、これを errors.Is で見分けられる形で返す。
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrMainExists       = errors.New("main がすでにある")
-	ErrBranchHasOpen    = errors.New("そのブランチに open の提案がすでにある")
-	ErrHeadMoved        = errors.New("pull request の head が、指定した SHA でない")
-	ErrConflict         = errors.New("git の衝突で merge できない")
+	ErrNotFound      = errors.New("not found")
+	ErrMainExists    = errors.New("main がすでにある")
+	ErrBranchHasOpen = errors.New("そのブランチに open の提案がすでにある")
+	ErrHeadMoved     = errors.New("pull request の head が、指定した SHA でない")
+	ErrConflict      = errors.New("git の衝突で merge できない")
 	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
-	ErrMergeForbidden = errors.New("この主体には、merge の権限がない")
+	ErrMergeForbidden   = errors.New("この主体には、merge の権限がない")
 	ErrAlreadyAnswered  = errors.New("すでに回答がある")
 	ErrUnauthenticated  = errors.New("この主体は、Logiforge の主体でない")
 	ErrAttachmentTamper = errors.New("添付の sha256 が、記録と合わない")
