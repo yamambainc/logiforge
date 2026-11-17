@@ -94,7 +94,8 @@ GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub
 
 まだ確かめていないことは、次のとおりである。
 
-- OAuth App のサインインと、`POST /applications/{client_id}/token` で、トークンが Logiforge の OAuth App のものかを確かめること。OAuth App が要る。
+- OAuth App のトークンで `user` になること。偽の GitHub での単体テストだけで確かめた。本番の OAuth App を作るときに、WebUI でサインインして確かめる。
+  - 試験用の OAuth App で、資格情報の確かめ（`POST /applications/{client_id}/token` が、ほかのトークンに 404、違う secret に 401）と、BE の中継は、実際の GitHub で確かめた。
 - private のリポジトリと、`main` を守るルールセットを掛けたリポジトリでの、反映と、守る設定に断られる操作。GitHub Free の organization では、private のリポジトリに守る設定を掛けられないので、確かめられない。
 - fine-grained personal access token の、上の権限だけで、worker とエージェントが動くこと。
 - merge の権限のない reviewer の merge を、GitHub がどう断るか。アダプタは、403 を `merge_forbidden` にする（制限の 403 は、待ってやり直し、権限がないことにしない）。偽の GitHub でだけ確かめた。
