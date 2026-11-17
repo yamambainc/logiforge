@@ -85,10 +85,18 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 		repo, err := b.GetRepository(ctx, c, name)
 		out.Value = repo
 		return out, err
+	} else if done != "" {
+		return out, fail(CodeValidationFailed, "元の repository %s は、すでに %s に移した", from, done)
 	}
 	src, err := b.currentMain(ctx, from)
 	if err != nil {
 		return out, err
+	}
+	// 移すのは、元の GitForge の main の先頭の木である。worker がまだ取り込んでいなければ（archive の直前の反映など）、待ってもらう。
+	if head, err := b.Forge.MainHead(ctx, srcRef); err != nil {
+		return out, err
+	} else if head != src.revision() {
+		return out, fail(CodeSnapshotPending, "元の repository の main %s を、worker がまだ取り込んでいない。少し待って送り直す", head)
 	}
 	var problems []string
 	if broken, err := b.Snap.Broken(ctx, from); err != nil {
