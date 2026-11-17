@@ -3,8 +3,8 @@ package backend
 import (
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // API の応答の形。正本は design/api/openapi.yaml である。

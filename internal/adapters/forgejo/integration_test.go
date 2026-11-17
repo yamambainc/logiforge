@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/pullreq"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/worker"
 )
 
 type env struct {

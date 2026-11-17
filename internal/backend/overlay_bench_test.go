@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // 向き先が main でない apply request を、ノード 4,000 個の木で重ねて読む時間を測る（issue #36。目安は 1 回で約 1 秒）。

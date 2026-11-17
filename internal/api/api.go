@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
+	"github.com/yamambainc/logiforge/internal/backend"
 )
 
 // statuses は、エラーの種類と HTTP の status の対応である（1 対 1）。

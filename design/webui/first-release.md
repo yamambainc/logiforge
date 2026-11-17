@@ -58,7 +58,7 @@ WebUI の実装を、どこまでを最初の 1 件にするかを確かめる�
 
 ## 試作
 
-見た目と、ノード 4,000 個での動きを確かめるための試作を、ブランチ [proto/webui-viewer](https://github.com/yamambainc/hypothesis-verification-harness/tree/proto/webui-viewer/prototypes/webui-viewer) に置く。
+見た目と、ノード 4,000 個での動きを確かめるための試作を、ブランチ [proto/webui-viewer](https://github.com/yamambainc/logiforge/tree/proto/webui-viewer/prototypes/webui-viewer) に置く。
 
 - API のかわりに、サンプルのデータ（ノード 100 個と 4,000 個）を読む。形は `listNodes` の応答に合わせる。
 - アウトラインと図、デスクトップとモバイルの表示を持つ。

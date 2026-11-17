@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
+	"github.com/yamambainc/logiforge/internal/worker"
 )
 
 // live は、setup の木に、見回りで動いている worker をつなぐ。書いた直後の読みを確かめるため。

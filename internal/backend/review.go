@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/ids"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/pull-requests.md の「レビューの書き方」）。

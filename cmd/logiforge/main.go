@@ -20,16 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/forgejo"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/pullreq"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/api"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/cli"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
-	"github.com/yamambainc/hypothesis-verification-harness/webui"
+	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
+	"github.com/yamambainc/logiforge/internal/api"
+	"github.com/yamambainc/logiforge/internal/backend"
+	"github.com/yamambainc/logiforge/internal/cli"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/workcopy"
+	"github.com/yamambainc/logiforge/internal/worker"
+	"github.com/yamambainc/logiforge/webui"
 )
 
 func main() {

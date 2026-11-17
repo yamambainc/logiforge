@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // Code は、エラーの種類である（design/api/openapi.yaml の Problem.code）。

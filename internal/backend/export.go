@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // ExportFormat は、書き出しの JSON の形の名前である。形を変えるときは、名前の末尾の番号（v1）を上げる。

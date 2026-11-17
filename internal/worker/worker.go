@@ -16,12 +16,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/gitx"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
+	"github.com/yamambainc/logiforge/internal/gitx"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
+	"github.com/yamambainc/logiforge/internal/workcopy"
 )
 
 // Source は、worker が読む repository の一覧と、その git の URL である。GitForge ごとに違う。

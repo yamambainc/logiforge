@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
+	"github.com/yamambainc/logiforge/internal/ids"
 )
 
 // ファイルとディレクトリの名前（design/files/layout.md）。

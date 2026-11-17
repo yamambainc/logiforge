@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
 // GetCommit は、コミットの記録を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。

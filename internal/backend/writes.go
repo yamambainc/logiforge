@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ids"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // Written は、書き込みの結果である。Pending が空でなければ、書いたものが、待つ時間の上限までに読む側に出なかった

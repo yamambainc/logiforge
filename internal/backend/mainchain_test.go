@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
+	"github.com/yamambainc/logiforge/internal/worker"
 )
 
 // main が短く書き換えられたあと、main の並びの索引に古い SHA が残っていても、並びにあると判定しない

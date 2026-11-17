@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/store"
 )
 
 // ErrUnavailable は、GitForge の git を読めないこと（止まっている、応答がない）を表す。

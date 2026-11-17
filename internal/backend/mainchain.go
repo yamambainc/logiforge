@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
 // mainNumber は、sha が、latest（v）までの main の並びにあれば、その番号を返す。なければ 0

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
+	"github.com/yamambainc/logiforge/internal/backend"
 )
 
 // Options は、logiforge serve の、API のほかに配るものである。

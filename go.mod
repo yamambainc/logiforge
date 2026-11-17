@@ -1,4 +1,4 @@
-module github.com/yamambainc/hypothesis-verification-harness
+module github.com/yamambainc/logiforge
 
 go 1.27
 
