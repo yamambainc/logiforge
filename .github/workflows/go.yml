@@ -22,6 +22,44 @@ jobs:
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go test -race ./...
 
+  release-snapshot:
+    # GoReleaser の設定（.goreleaser.yaml）を確かめ、linux/amd64 だけを、どこにも置かずにビルドする。
+    # before の hook（WebUI のビルド）と、-ldflags -X で版とコミットが入ることを確かめる。リリースそのものはタグで動く（release.yml）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser
+          version: v2.20.2
+          args: check
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser
+          version: v2.20.2
+          # release は、作る OS と CPU を絞れないので、build --single-target で linux/amd64 だけを作る（hook と -X は release と同じ）
+          args: build --snapshot --clean --single-target
+        env:
+          GOOS: linux
+          GOARCH: amd64
+      - name: バイナリに、版とコミットと WebUI が入っている
+        run: |
+          bin=$(ls dist/logiforge_linux_amd64*/logiforge)
+          "$bin" version
+          test "$("$bin" version --json | jq -r .commit)" = "$(git rev-parse HEAD)"
+          "$bin" version --json | jq -e '.version | test("snapshot")'
+          grep -aq 'dist/assets/main-' "$bin"
+
   webui:
     # WebUI の型の検査、単体のテスト、ビルド。ビルドした出力にインラインの script と style がないことも確かめる（design/webui/security.md）。
     runs-on: ubuntu-latest
@@ -126,11 +164,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: イメージをビルドする
-        run: docker compose build
+        # 版とコミットを、イメージの logiforge に入れる（Dockerfile の ARG）
+        run: |
+          export LOGIFORGE_VERSION=$(git describe --tags --always --dirty) LOGIFORGE_COMMIT=$(git rev-parse HEAD)
+          echo "LOGIFORGE_COMMIT=$LOGIFORGE_COMMIT" >> "$GITHUB_ENV"
+          docker compose build
       - name: compose で動かす
         run: |
           scripts/compose-setup.sh
           docker compose up -d --wait
+      - name: イメージの logiforge に、版とコミットが入っている
+        run: |
+          docker compose exec -T backend logiforge version
+          test "$(docker compose exec -T backend logiforge version --json | jq -r .commit)" = "$LOGIFORGE_COMMIT"
       - name: root で動いていない
         run: |
           test "$(docker compose exec -T backend id -u)" = 10001

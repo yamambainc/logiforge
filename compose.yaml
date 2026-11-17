@@ -39,7 +39,12 @@ services:
       retries: 30
 
   worker:
-    build: .
+    build:
+      context: .
+      # logiforge version に出す版とコミット。渡さなければ dev（例：LOGIFORGE_VERSION=$(git describe --tags --always --dirty) LOGIFORGE_COMMIT=$(git rev-parse HEAD) docker compose build）
+      args:
+        VERSION: ${LOGIFORGE_VERSION:-dev}
+        COMMIT: ${LOGIFORGE_COMMIT:-}
     image: logiforge:local
     command: ["worker"]
     network_mode: service:forgejo
@@ -60,7 +65,12 @@ services:
 
   backend:
     # worker と同じイメージである。コマンドだけを変える。
-    build: .
+    build:
+      context: .
+      # logiforge version に出す版とコミット。渡さなければ dev（例：LOGIFORGE_VERSION=$(git describe --tags --always --dirty) LOGIFORGE_COMMIT=$(git rev-parse HEAD) docker compose build）
+      args:
+        VERSION: ${LOGIFORGE_VERSION:-dev}
+        COMMIT: ${LOGIFORGE_COMMIT:-}
     image: logiforge:local
     command: ["serve"]
     network_mode: service:forgejo

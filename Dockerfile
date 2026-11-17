@@ -11,6 +11,9 @@ COPY webui/ ./
 RUN npm run build
 
 FROM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS build
+# logiforge version に出す版とコミット（internal/version）。compose と CI が、git describe と git rev-parse の値を渡す
+ARG VERSION=dev
+ARG COMMIT=
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -18,7 +21,9 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY webui/embed.go ./webui/
 COPY --from=webui /src/webui/dist ./webui/dist
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/logiforge ./cmd/logiforge
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X github.com/yamambainc/logiforge/internal/version.Version=${VERSION} -X github.com/yamambainc/logiforge/internal/version.Commit=${COMMIT}" \
+    -o /out/logiforge ./cmd/logiforge
 
 FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
 # worker は git を使う。credential helper は sh で動く（alpine の sh を使う）。
