@@ -9,6 +9,8 @@ before:
   hooks:
     # WebUI は、バイナリに embed する（webui/embed.go）。先にビルドしておく
     - sh -c "cd webui && npm ci && npm run build"
+    # ビルドした WebUI がなければ、ここで止める（WebUI のないバイナリを配らない）
+    - test -f webui/dist/index.html
 
 builds:
   - id: logiforge

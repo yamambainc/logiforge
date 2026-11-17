@@ -6,6 +6,9 @@
 
 logiforge は、1 つのバイナリである。CLI と、バックエンドの `serve` と、`worker` が入っている。WebUI も、バイナリに入っている（`serve` が配る）。
 
+- CLI（opener と reviewer が使う）は、Linux・macOS・Windows で動く。
+- `serve` と `worker` は、Linux のコンテナで動かす前提である（[compose で動かす](#compose-で動かす)、[design/deploy.md](design/deploy.md)）。ほかの OS のバイナリでも起動はするが、確かめていない。
+
 [GitHub Releases](https://github.com/yamambainc/logiforge/releases) に、Linux・macOS・Windows × amd64・arm64 の版を置く。
 
 - この repository は private である。取るには、yamambainc/logiforge を読む権限のある GitHub のアカウントが要る。
@@ -22,7 +25,13 @@ tar xzf logiforge_*_linux_amd64.tar.gz logiforge
 gh release download v0.1.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin_arm64.tar.gz' --pattern checksums.txt
 ```
 
-- Windows は zip である。macOS で `shasum -a 256 --ignore-missing -c checksums.txt` を使う。
+- Windows は zip である。macOS では `shasum -a 256 --ignore-missing -c checksums.txt` を使う。
+- macOS：バイナリには、署名と公証をしていない。ブラウザで取ったファイルは、初めて動かすときに止められる。チェックサムを確かめたうえで、隔離の印を外す。
+
+  ```sh
+  xattr -d com.apple.quarantine ./logiforge
+  ```
+
 - `logiforge version` は、版、コミット、ビルドした日付を示す（`--json` で JSON）。
 
 ### リリースの作り方
@@ -32,6 +41,8 @@ gh release download v0.1.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin
 - WebUI を先にビルドし（`webui/` で `npm ci` と `npm run build`）、バイナリに入れる。
 - 版とコミットと日付は、`-ldflags` で入れる（[internal/version](internal/version/)）。
 - 手元で試すときは、どこにも置かずに `dist/` に作る：`goreleaser release --snapshot --clean`
+- pull request ごとの CI でも、linux/amd64 だけを作り、WebUI と版とコミットが入ることを確かめる（[go.yml](.github/workflows/go.yml) の `release-snapshot`）。
+- リリースのジョブは repository に書く権限を持つので、外の action はコミットの SHA で、GoReleaser は版を決めて使う。
 
 ## 開発
 
