@@ -8,7 +8,8 @@ WebUI の応答のヘッダーと、利用者やエージェントが書いた�
 
 - `logiforge serve` は、WebUI の応答に次のヘッダーを付ける。
   - `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self'; frame-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`
-  - 例外は、Mermaid の図を描く `/mermaid.html` だけである。この文書には、別の CSP を付ける（[Markdown と Mermaid の表示](markdown.md#csp)）。
+  - 例外は、Mermaid の図を描く `/mermaid.html` だけである。この文書には、インラインの style を許し、`sandbox allow-scripts` を付けた、別の CSP を付ける。アプリとは `MessageChannel` のポートだけでやりとりする（[Markdown と Mermaid の表示](markdown.md#csp)）。
+- `assets/` の応答には、`Access-Control-Allow-Origin: *` を付ける。sandbox の iframe（オパークなオリジン）が、モジュールのスクリプトを読むためである。`assets/` には、公開してよい静的なファイルしかない。
   - `Referrer-Policy: no-referrer`
 - `logiforge serve` は、WebUI と API のすべての応答に `X-Content-Type-Options: nosniff` を付ける。
 - ビルドした出力（`index.html` と `mermaid.html` と、3D の部分を含むすべての JS と CSS）に、インラインの `<script>` と `<style>` がないことを、CI で確かめる。

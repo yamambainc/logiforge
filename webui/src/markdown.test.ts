@@ -27,6 +27,9 @@ describe('Markdown の XSS', () => {
     expect(html('[外](https://example.com/a?b=1)')).toContain('href="https://example.com/a?b=1" target="_blank" rel="noopener noreferrer"');
     expect(html('[中](/r/q/tree?node=h-1)')).toContain('href="/r/q/tree?node=h-1"');
     expect(html('[中](/r/q/tree?node=h-1)')).not.toContain('target=');
+    // ページの中へのリンク（# で始まる）も通す
+    expect(html('[上へ](#top)')).toContain('href="#top"');
+    expect(html('[上へ](#top)')).not.toContain('target=');
   });
   it('画像は埋め込まず、リンクにする', () => {
     const out = html('![図](https://example.com/a.png) ![x](javascript:alert(1))');
@@ -61,6 +64,7 @@ describe('safeHref', () => {
     expect(safeHref('https://a.example/x')).toBe('https://a.example/x');
     expect(safeHref('HTTP://A.example')).toBe('http://a.example/');
     expect(safeHref('/r/q')).toBe('/r/q');
+    expect(safeHref('#a')).toBe('#a');
     expect(safeHref('//evil.example')).toBeNull();
     expect(safeHref('mailto:a@example.com')).toBeNull();
     expect(safeHref('relative/path')).toBeNull();

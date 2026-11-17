@@ -172,6 +172,10 @@ func TestWebUIServing(t *testing.T) {
 	if rec.Code != 200 || rec.Header().Get("Content-Security-Policy") != MermaidCSP || !strings.Contains(MermaidCSP, "'unsafe-inline'") {
 		t.Fatalf("mermaid.html: %d %v", rec.Code, rec.Header())
 	}
+	// 直接開かれても、オパークなオリジンで動く（allow-same-origin を付けない sandbox）
+	if !strings.HasSuffix(MermaidCSP, "; sandbox allow-scripts") || strings.Contains(MermaidCSP, "allow-same-origin") {
+		t.Fatalf("mermaid.html の sandbox：%s", MermaidCSP)
+	}
 	if strings.Contains(WebUICSP, "unsafe-inline") {
 		t.Fatal("アプリの CSP に unsafe-inline がある")
 	}

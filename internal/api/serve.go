@@ -27,8 +27,9 @@ const WebUICSP = "default-src 'self'; img-src 'self' data: blob:; style-src 'sel
 
 // MermaidCSP は、Mermaid を描く文書（mermaid.html）だけに付ける CSP である（design/webui/markdown.md）。
 // Mermaid は描く途中でインラインの style を使うので、この文書だけ style-src に 'unsafe-inline' を足す。
-// この文書は、sandbox の iframe（allow-same-origin なし）でだけ開く。通信もしない（connect-src は default-src の 'none'）。
-const MermaidCSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+// この文書は、sandbox の iframe（allow-same-origin なし）で開く。CSP の sandbox allow-scripts で、URL を直接開かれても、
+// オパークなオリジンで動く（アプリのオリジンとストレージに触れない）。通信もしない（connect-src は default-src の 'none'）。
+const MermaidCSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts"
 
 // mermaidPage は、Mermaid を描く文書のパスである。
 const mermaidPage = "mermaid.html"
