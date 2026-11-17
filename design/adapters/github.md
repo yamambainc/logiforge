@@ -39,7 +39,7 @@ GitHub に固有のところだけを書く。
 | 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pulls`（[反映かの判定](../backend/verify.md)） |
 
 - 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、根のコミットのあとに、2 つ目のコミットで足す。
-  - 2 つ目のコミットには、`Logiforge-Init-Mac:` を付ける（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
+  - 2 つ目のコミットには、`Logiforge-Init-Signature:` を付ける（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
   - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えないから（409）。
 - 登録する repository の owner（organization かユーザー）は、いくつでもよい。
 - public のリポジトリでも、private のリポジトリでも使える。GitHub Free の private のリポジトリでは、`main` を守る設定が使えないので、守る設定なしで使う（[main を守る](pull-requests.md#main-を守る)）。

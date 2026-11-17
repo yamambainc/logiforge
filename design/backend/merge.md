@@ -26,7 +26,9 @@ apply request を main に反映するとき、バックエンドが何を確か
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、`approve` をした reviewer のトークンで呼ぶ。
    - なぜ reviewer のトークンか：反映は、`approve` の要求の中で同期で行うので、そのトークンがいつも手元にあるから。Logiforge は、merge するための自分のアカウントを持たない（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
    - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗として記録する。apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
-   - 承認された apply request を、人が GitForge の画面で merge してもよい。worker は、中身で反映かを決める（[反映かの判定](verify.md)）。
+   - merge のあと、反映のコミットの SHA と先頭のコミットを指す `merge` の記録を、署名を付けて、同じトークンで書く（[記録のコメント](../adapters/pull-requests.md#記録のコメント)）。worker は、この記録で反映かを決める（[反映かの判定](verify.md)）。
+   - `merge` の記録を書く前に止まったら、`approve` の送り直しで書く。そのときは、pull request が merge 済みで、merge した先頭のコミットが `approve` したものと同じで、手順 1 と 3 を、反映のコミットの 1 つ前の `main` で満たすことを確かめてから書く。
+   - 人が GitForge の画面から merge したものは、記録がないので、反映によらない変更になる。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request.md#向き先)）。

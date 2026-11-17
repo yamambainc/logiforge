@@ -33,9 +33,9 @@
 - trailer の名前（`Logiforge-Version:` など）は、git の履歴に残る永続する形なので、前の呼び名（版、リビジョン）のまま残している。値は、どれもコミットの SHA である。
 - `Logiforge-Version:` の数は、反映した先頭のコミットの、先頭のコミットの一覧の中の位置である。API には出さない。
 - 最初のコミットは、`Logiforge-Apply-Request:` を持たない。
-- 反映によるコミットかは、trailer でなく、中身（元の pull request の記録とレビュー、差分を重ねた木）で決める（[反映かの判定](../backend/verify.md)）。
+- 反映によるコミットかは、trailer でなく、元の pull request の署名のある `merge` の記録と、差分を重ねた木で決める（[反映かの判定](../backend/verify.md)）。
   - なぜ：`main` を守る設定は求めないので、trailer はだれでも書けるから。
-  - 署名は付けない。なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。人が GitForge の画面で merge して trailer がなくても、反映によるコミットになる。
+  - コミットに署名は付けない。なぜ：反映かは、pull request の署名のある `merge` の記録で決めるので、trailer を偽っても、反映によるコミットにはならないから。
 
 ## セッション
 
