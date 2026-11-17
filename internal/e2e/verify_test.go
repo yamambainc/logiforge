@@ -109,10 +109,12 @@ func TestE2EHumanMerge(t *testing.T) {
 		t.Fatalf("承認された apply request の人の merge で、壊れた：%d %s", code, out)
 	}
 	var node struct {
-		Background string `json:"background"`
+		Node struct {
+			Background string `json:"background"`
+		} `json:"node"`
 	}
 	agent.must(&node, "node", "view", repo.Root)
-	if !strings.Contains(node.Background, "承認された変更") {
+	if !strings.Contains(node.Node.Background, "承認された変更") {
 		t.Fatalf("人の merge の変更が、木にない：%+v", node)
 	}
 	var merged applyRequest
@@ -130,7 +132,7 @@ func TestE2EHumanMerge(t *testing.T) {
 		t.Fatalf("approve：%d %s", code, out)
 	}
 	reviewer.session = "s-rev-hm-2"
-	if _, code, out := reviewer.review(ng.ID, "request_changes", 1); code != 0 {
+	if _, code, out := reviewer.review(ng.ID, "request-changes", 1); code != 0 {
 		t.Fatalf("request_changes：%d %s", code, out)
 	}
 	// worker が記録を控えに足すのを待ってから、merge する（控えにない記録は、消されると判定に使えない）。
