@@ -20,6 +20,7 @@ type Repos interface {
 	GitURL(gitForgeRef string) string
 	MainHead(ctx context.Context, gitForgeRef string) (string, error)
 	SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error
+	Archived(ctx context.Context, gitForgeRef string) (bool, error)
 }
 
 // Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は gitforge_ref である。

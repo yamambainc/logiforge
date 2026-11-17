@@ -541,6 +541,23 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if v != nil {
 			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
 		}
+		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
+		// 移した元は、用意のコミットの署名に含まれるので、偽れない。
+		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && v != nil && v.Authorized && from != "" {
+			if src, _, _ := strings.Cut(from, " "); src != "" && src != repo {
+				// 1 つの元は、1 つの先にだけ移す。すでにほかの先があれば、上書きせずに警告する。
+				switch prev, err := store.GetMigratedTo(ctx, w.store, src); {
+				case err != nil:
+					return err
+				case prev == "":
+					if err := store.PutMigratedTo(ctx, w.store, src, repo); err != nil {
+						return err
+					}
+				case prev != repo:
+					w.cfg.Log.Warn("元の repository は、すでにほかの repository に移した。移した先を書き換えない", "repository", repo, "from", src, "migrated_to", prev)
+				}
+			}
+		}
 		rec := x.Record(info, paths)
 		if br == nil && info.Authorized != nil && !*info.Authorized {
 			br = &store.Broken{LastGood: before, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}

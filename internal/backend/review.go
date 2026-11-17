@@ -53,6 +53,10 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if err != nil {
 		return out, err
 	}
+	// 移した元の repository は、読むことだけができる（design/directory/migrate.md の「元の repository」）。
+	if err := b.notMigrated(ctx, repo); err != nil {
+		return out, err
+	}
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
 	if e := AsError(err); e != nil && e.Code == CodeNotOpen && kind == ports.ReviewApprove {
 		// approve の送り直し：反映済みで、最後の決めるレビューが、同じセッションの approve なら、成功として今の状態を返す。

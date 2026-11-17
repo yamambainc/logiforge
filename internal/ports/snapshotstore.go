@@ -29,4 +29,6 @@ type SnapshotStore interface {
 	Broken(ctx context.Context, repo string) (*store.Broken, error)
 	// Scanned は、ディレクトリの repository で、worker が読み終えた git の main の先頭を返す。なければ空。
 	Scanned(ctx context.Context, repo string) (string, error)
+	// MigratedTo は、ほかの repository に移した元の repository なら、移した先の名前を返す。なければ空（design/directory/migrate.md）。
+	MigratedTo(ctx context.Context, repo string) (string, error)
 }

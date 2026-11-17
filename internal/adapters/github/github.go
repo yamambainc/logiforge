@@ -535,3 +535,21 @@ func migratedFrom(message string) string {
 	}
 	return ""
 }
+
+// Archived は、git リポジトリが archive（読むだけ）かを、主体のトークンで読む。
+func (r repos) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
+	rp, err := repoPath(gitForgeRef)
+	if err != nil {
+		return false, err
+	}
+	var x struct {
+		Archived bool `json:"archived"`
+	}
+	if err := r.w(ctx, gitForgeRef, http.MethodGet, rp, nil, &x); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return false, ports.ErrNotFound
+		}
+		return false, err
+	}
+	return x.Archived, nil
+}

@@ -429,3 +429,21 @@ func GetScanned(ctx context.Context, r Reader, repo string) (string, error) {
 func PutScanned(ctx context.Context, w Writer, repo, sha string) error {
 	return w.Put(ctx, ScannedKey(repo), []byte(sha+"\n"))
 }
+
+// MigratedToKey は、別リポジトリ方式から移した元の repository の、移した先の名前のキーである（design/directory/migrate.md）。
+// worker が、移した先の用意のコミットを取り込んだときに書く。git から作り直せないので keep/ に置く。
+func MigratedToKey(repo string) string { return KeepPrefix + repo + "/migrated_to" }
+
+// GetMigratedTo は、移した先の名前を読む。移していなければ空。
+func GetMigratedTo(ctx context.Context, r Reader, repo string) (string, error) {
+	b, err := r.Get(ctx, MigratedToKey(repo))
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	}
+	return strings.TrimSpace(string(b)), err
+}
+
+// PutMigratedTo は、移した先の名前を書く。
+func PutMigratedTo(ctx context.Context, w Writer, repo, to string) error {
+	return w.Put(ctx, MigratedToKey(repo), []byte(to+"\n"))
+}

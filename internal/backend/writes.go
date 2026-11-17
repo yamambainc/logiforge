@@ -279,6 +279,11 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return out, err
 	}
+	// 移した元の repository は、読むことだけができる（design/directory/migrate.md の「元の repository」）。
+	if err := b.notMigrated(ctx, repo); err != nil {
+		return out, err
+	}
+
 	id, err := b.requestID(ids.PrefixApplyRequest, repo, c, n.IdempotencyKey)
 	if err != nil {
 		return out, err
@@ -466,6 +471,11 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return HumanRequest{}, err
 	}
+	// 移した元の repository は、読むことだけができる（design/directory/migrate.md の「元の repository」）。
+	if err := b.notMigrated(ctx, repo); err != nil {
+		return HumanRequest{}, err
+	}
+
 	id, err := b.requestID(ids.PrefixHumanRequest, repo, c, n.IdempotencyKey)
 	if err != nil {
 		return HumanRequest{}, err
@@ -549,6 +559,11 @@ func (b *Backend) AnswerHumanRequest(ctx context.Context, c Caller, repo, id, bo
 	if err != nil {
 		return HumanRequest{}, err
 	}
+	// 移した元の repository は、読むことだけができる（design/directory/migrate.md の「元の repository」）。
+	if err := b.notMigrated(ctx, repo); err != nil {
+		return HumanRequest{}, err
+	}
+
 	err = b.Forge.Answer(ctx, ref, id, body, c.Principal.Login, atts)
 	if errors.Is(err, ports.ErrAttachmentsUnsupported) {
 		return HumanRequest{}, fail(CodeValidationFailed, "この構成では、回答の添付はリンクだけである（kind: link）")

@@ -64,11 +64,11 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 			if c.TargetKind != "subtree" {
 				continue
 			}
-			num, err := b.mainNumber(ctx, v, c.Commit)
+			changed, err := b.citationChanged(ctx, v, c.NodeID, c.Commit)
 			if err != nil {
 				return nil, nil, err
 			}
-			if num == 0 || v.main.SnapshotTree.SubtreeChangedAfter(c.NodeID, num) {
+			if changed {
 				items = append(items, WorkItem{Kind: "citation_changed", SubjectID: vid, NodeID: h.ID})
 				break
 			}

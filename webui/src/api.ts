@@ -36,6 +36,12 @@ export interface Repository {
   root_value: boolean | null;
   /** 壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。 */
   broken?: { first_commit: string; last_good_commit: string; reason: string } | null;
+  /** ディレクトリの repository のパス（design/directory/README.md）。 */
+  directory?: string;
+  /** 別リポジトリ方式から移した repository のとき、元の repository と移したコミット（design/directory/migrate.md）。 */
+  migrated_from?: { repository: string; commit: string } | null;
+  /** ほかの repository に移した元の repository のとき、移した先の名前。 */
+  migrated_to?: string | null;
 }
 
 interface Page<T> { items: T[]; next_cursor: string | null }
