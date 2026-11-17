@@ -27,8 +27,9 @@ type OAuth struct {
 	Client *http.Client
 }
 
-// OAuthScope は、WebUI が求めるスコープである。BE は、利用者のトークンで主体を確かめるだけなので、これだけでよい（design/webui/auth.md）。
-const OAuthScope = "read:user read:organization"
+// OAuthScope は、WebUI が求めるスコープである（design/webui/auth.md の「スコープ」）。BE は、主体を確かめるほか、
+// 利用者のトークンで repository を作り、GitForge を読み、回答を書く。Logiforge は、書くための自分のアカウントを持たないからである。
+const OAuthScope = "read:user read:organization write:organization write:repository write:issue"
 
 // oauthBodyLimit は、交換の要求の本文の上限である（開いたままの代理にしないため）。
 const oauthBodyLimit = 4 << 10

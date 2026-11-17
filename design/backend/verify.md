@@ -51,8 +51,8 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 ## 記録の控え
 
-- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/records/<gitforge_ref>/<番号>` に追記する（[スナップショットの置き場](ports/snapshot-store.md)）。
-  - なぜ gitforge_ref で分けるか：バックエンドの GitForge のアダプタが、gitforge_ref で記録を読むから。
+- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/records/<GitForge の repository の識別子>/<番号>` に追記する（[スナップショットの置き場](ports/snapshot-store.md)）。
+  - 識別子は、記録の署名に使うもの（Forgejo の id、GitHub の node_id）である。なぜ：`owner/name` は、名前の変更や owner の移動で変わり、そのとき控えが古いキーに取り残されるから。
   - 読むのは、repository のコメントの一覧のうち、前に読んだあとに作られたか変わったもの（`since`）だけである。
   - 控えは、記録の識別子ごとに、最初に見た中身を持つ。同じ識別子で中身が違うものを見たら、最初のものを残し、警告する。
   - 控えからは、消さない。GitForge から記録が消えても、控えには残る。

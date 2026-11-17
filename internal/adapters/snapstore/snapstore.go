@@ -81,8 +81,8 @@ func (a *Adapter) Broken(ctx context.Context, repo string) (*store.Broken, error
 // RecordLog は、worker の記録の控えを、pullreq.Adapter に読ませる（design/backend/verify.md の「記録の控え」）。
 type RecordLog struct{ Store store.Reader }
 
-func (l RecordLog) Comments(ctx context.Context, gitForgeRef string, number int) ([]pullreq.Comment, error) {
-	logged, err := store.GetRecords(ctx, l.Store, gitForgeRef, number)
+func (l RecordLog) Comments(ctx context.Context, repoID string, number int) ([]pullreq.Comment, error) {
+	logged, err := store.GetRecords(ctx, l.Store, repoID, number)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,12 @@ type LogSyncer struct {
 const sinceSlack = time.Second
 
 func (s LogSyncer) Sync(ctx context.Context, gitForgeRef string) error {
-	cursor, err := store.GetRecordsCursor(ctx, s.Store, gitForgeRef)
+	// 控えは、名前でなく repository の識別子で分ける（store.RecordsKey）。
+	repoID, err := s.Source.RepoID(ctx, gitForgeRef)
+	if err != nil {
+		return err
+	}
+	cursor, err := store.GetRecordsCursor(ctx, s.Store, repoID)
 	if err != nil {
 		return err
 	}
@@ -128,10 +133,6 @@ func (s LogSyncer) Sync(ctx context.Context, gitForgeRef string) error {
 	if len(cs) == 0 {
 		return nil
 	}
-	repoID, err := s.Source.RepoID(ctx, gitForgeRef)
-	if err != nil {
-		return err
-	}
 	recs, _ := pullreq.Records(s.Keys, repoID, cs)
 	byIssue := map[int][]store.LoggedComment{}
 	var issues []int
@@ -143,7 +144,7 @@ func (s LogSyncer) Sync(ctx context.Context, gitForgeRef string) error {
 		byIssue[c.IssueNumber] = append(byIssue[c.IssueNumber], store.LoggedComment{ID: c.ID, Issue: c.IssueNumber, Body: c.Body, CreatedAt: c.CreatedAt})
 	}
 	for _, n := range issues {
-		changed, err := store.AppendRecords(ctx, s.Store, gitForgeRef, n, byIssue[n])
+		changed, err := store.AppendRecords(ctx, s.Store, repoID, n, byIssue[n])
 		if err != nil {
 			return err
 		}
@@ -165,7 +166,7 @@ func (s LogSyncer) Sync(ctx context.Context, gitForgeRef string) error {
 	if next.Equal(cursor) {
 		return nil
 	}
-	return store.PutRecordsCursor(ctx, s.Store, gitForgeRef, next)
+	return store.PutRecordsCursor(ctx, s.Store, repoID, next)
 }
 
 func (s LogSyncer) logger() *slog.Logger {

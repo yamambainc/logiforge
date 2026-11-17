@@ -48,7 +48,7 @@ func TestLogSyncer(t *testing.T) {
 	if err := s.Sync(ctx, "o/q"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := store.GetRecords(ctx, st, "o/q", 3)
+	got, _ := store.GetRecords(ctx, st, "id", 3)
 	if len(got) != 1 || got[0].ID != 1 {
 		t.Fatalf("控え：%+v", got)
 	}
@@ -62,7 +62,7 @@ func TestLogSyncer(t *testing.T) {
 	if want := t0.Add(-time.Second); !src.since[1].Equal(want) {
 		t.Fatalf("2 回目は、前に読んだ位置の 1 秒前から読む：%v", src.since[1])
 	}
-	got, _ = store.GetRecords(ctx, st, "o/q", 3)
+	got, _ = store.GetRecords(ctx, st, "id", 3)
 	if len(got) != 2 || got[0].ID != 1 || got[1].ID != 4 {
 		t.Fatalf("控え：%+v", got)
 	}
@@ -70,7 +70,7 @@ func TestLogSyncer(t *testing.T) {
 		t.Fatal("控えが書き換えられた")
 	}
 	// バックエンドは、控えを GitForge のコメントと合わせて読む。
-	logged, _ := RecordLog{Store: st}.Comments(ctx, "o/q", 3)
+	logged, _ := RecordLog{Store: st}.Comments(ctx, "id", 3)
 	if len(logged) != 2 || logged[0].ID != 1 {
 		t.Fatalf("RecordLog：%+v", logged)
 	}

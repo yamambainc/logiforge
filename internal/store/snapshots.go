@@ -344,19 +344,20 @@ type LoggedComment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// RecordsKey は、pull request か issue の記録の控えのキーである。gitforge_ref で分ける（バックエンドのアダプタは gitforge_ref で引くため）。
-func RecordsKey(gitForgeRef string, number int) string {
-	return KeepPrefix + "records/" + url.PathEscape(gitForgeRef) + "/" + strconv.Itoa(number)
+// RecordsKey は、pull request か issue の記録の控えのキーである。GitForge の repository の識別子（署名の場所と同じ、
+// 名前を変えても owner を移しても変わらないもの）で分ける。なぜ：名前で分けると、名前が変わったとき、控えが古いキーに取り残されるから。
+func RecordsKey(repoID string, number int) string {
+	return KeepPrefix + "records/" + url.PathEscape(repoID) + "/" + strconv.Itoa(number)
 }
 
 // RecordsCursorKey は、記録の控えの、次に読む位置（コメントの updated_at）のキーである。
-func RecordsCursorKey(gitForgeRef string) string {
-	return KeepPrefix + "records/" + url.PathEscape(gitForgeRef) + "/cursor"
+func RecordsCursorKey(repoID string) string {
+	return KeepPrefix + "records/" + url.PathEscape(repoID) + "/cursor"
 }
 
 // GetRecords は、記録の控えを読む。なければ空。
-func GetRecords(ctx context.Context, r Reader, gitForgeRef string, number int) ([]LoggedComment, error) {
-	b, err := r.Get(ctx, RecordsKey(gitForgeRef, number))
+func GetRecords(ctx context.Context, r Reader, repoID string, number int) ([]LoggedComment, error) {
+	b, err := r.Get(ctx, RecordsKey(repoID, number))
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
@@ -368,8 +369,8 @@ func GetRecords(ctx context.Context, r Reader, gitForgeRef string, number int) (
 }
 
 // AppendRecords は、記録の控えに、まだない id のものだけを足す。控えからは消さない。同じ id で中身が違うものは足さず、返す。
-func AppendRecords(ctx context.Context, w Writer, gitForgeRef string, number int, add []LoggedComment) (changed []LoggedComment, err error) {
-	cur, err := GetRecords(ctx, w, gitForgeRef, number)
+func AppendRecords(ctx context.Context, w Writer, repoID string, number int, add []LoggedComment) (changed []LoggedComment, err error) {
+	cur, err := GetRecords(ctx, w, repoID, number)
 	if err != nil {
 		return nil, err
 	}
@@ -395,12 +396,12 @@ func AppendRecords(ctx context.Context, w Writer, gitForgeRef string, number int
 	if err != nil {
 		return nil, err
 	}
-	return changed, w.Put(ctx, RecordsKey(gitForgeRef, number), b)
+	return changed, w.Put(ctx, RecordsKey(repoID, number), b)
 }
 
 // GetRecordsCursor は、記録の控えの、次に読む位置を読む。なければ時刻のゼロ。
-func GetRecordsCursor(ctx context.Context, r Reader, gitForgeRef string) (time.Time, error) {
-	b, err := r.Get(ctx, RecordsCursorKey(gitForgeRef))
+func GetRecordsCursor(ctx context.Context, r Reader, repoID string) (time.Time, error) {
+	b, err := r.Get(ctx, RecordsCursorKey(repoID))
 	if errors.Is(err, ErrNotFound) {
 		return time.Time{}, nil
 	}
@@ -411,6 +412,6 @@ func GetRecordsCursor(ctx context.Context, r Reader, gitForgeRef string) (time.T
 }
 
 // PutRecordsCursor は、記録の控えの、次に読む位置を書く。
-func PutRecordsCursor(ctx context.Context, w Writer, gitForgeRef string, t time.Time) error {
-	return w.Put(ctx, RecordsCursorKey(gitForgeRef), []byte(t.UTC().Format(time.RFC3339Nano)+"\n"))
+func PutRecordsCursor(ctx context.Context, w Writer, repoID string, t time.Time) error {
+	return w.Put(ctx, RecordsCursorKey(repoID), []byte(t.UTC().Format(time.RFC3339Nano)+"\n"))
 }

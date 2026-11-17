@@ -33,9 +33,9 @@ type Adapter struct {
 	Log RecordLog
 }
 
-// RecordLog は、worker が見た記録のコメントの控えを読む。
+// RecordLog は、worker が見た記録のコメントの控えを読む。repoID は、GitForge の repository の識別子（API.RepoID）である。
 type RecordLog interface {
-	Comments(ctx context.Context, gitForgeRef string, number int) ([]Comment, error)
+	Comments(ctx context.Context, repoID string, number int) ([]Comment, error)
 }
 
 var _ ports.GitForge = (*Adapter)(nil)
@@ -389,7 +389,11 @@ func (a *Adapter) withLog(ctx context.Context, repo string, number int) ([]Comme
 	if a.Log == nil {
 		return cur, nil
 	}
-	logged, err := a.Log.Comments(ctx, repo, number)
+	repoID, err := a.API.RepoID(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	logged, err := a.Log.Comments(ctx, repoID, number)
 	if err != nil {
 		return nil, err
 	}
