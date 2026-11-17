@@ -1,0 +1,50 @@
+# Logiforge の worker（logiforge worker）。1 台に 1 つだけ動かす。
+# 手順と理由は docs/adoption/linux-host/README.md に書く。systemd 251 以上で動く（%d を使うため）。
+[Unit]
+Description=Logiforge worker
+Documentation=https://github.com/yamambainc/logiforge/blob/main/docs/adoption/linux-host/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=logiforge
+Group=logiforge
+EnvironmentFile=/etc/logiforge/logiforge.env
+# 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
+LoadCredential=read_token:/etc/logiforge/secrets/read_token
+Environment=LOGIFORGE_GITHUB_READ_TOKEN_FILE=%d/read_token
+ExecStart=/usr/local/bin/logiforge worker
+Restart=on-failure
+RestartSec=5s
+
+# 書ける場所は、clone と置き場だけである（/var/lib/logiforge/worker、/var/lib/logiforge/store）。
+StateDirectory=logiforge/worker logiforge/store
+StateDirectoryMode=0750
+UMask=0027
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

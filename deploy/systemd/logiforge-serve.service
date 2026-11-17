@@ -1,0 +1,59 @@
+# Logiforge のバックエンド（logiforge serve）。127.0.0.1:8080 で待ち受け、tailscale serve が https で公開する。
+# 手順と理由は docs/adoption/linux-host/README.md に書く。systemd 251 以上で動く（%d を使うため）。
+[Unit]
+Description=Logiforge backend
+Documentation=https://github.com/yamambainc/logiforge/blob/main/docs/adoption/linux-host/README.md
+# 置き場のディレクトリは、worker のユニットが作る。
+Wants=network-online.target logiforge-worker.service
+After=network-online.target logiforge-worker.service
+
+[Service]
+Type=exec
+User=logiforge
+Group=logiforge
+EnvironmentFile=/etc/logiforge/logiforge.env
+# 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
+LoadCredential=read_token:/etc/logiforge/secrets/read_token
+LoadCredential=record_keys:/etc/logiforge/secrets/record_keys
+LoadCredential=oauth_client_secret:/etc/logiforge/secrets/oauth_client_secret
+Environment=LOGIFORGE_GITHUB_READ_TOKEN_FILE=%d/read_token
+Environment=LOGIFORGE_RECORD_KEYS_FILE=%d/record_keys
+Environment=LOGIFORGE_OAUTH_CLIENT_SECRET_FILE=%d/oauth_client_secret
+# tailnet の外から直接届かないように、ループバックだけで待ち受ける。
+Environment=LOGIFORGE_ADDR=127.0.0.1:8080
+# 作業用の git の複製を置く。起動のときに、古い複製を消す（design/deploy.md の「例：Kubernetes の Pod」）。
+Environment=LOGIFORGE_GIT_CACHE_DIR=/var/cache/logiforge-serve
+ExecStart=/usr/local/bin/logiforge serve
+Restart=on-failure
+RestartSec=5s
+
+# 書ける場所は、作業用の git の複製だけである。置き場（/var/lib/logiforge/store）は、読むだけである（ProtectSystem=strict）。
+CacheDirectory=logiforge-serve
+CacheDirectoryMode=0750
+UMask=0027
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
