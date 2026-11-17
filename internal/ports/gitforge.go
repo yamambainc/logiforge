@@ -298,13 +298,17 @@ type MergeVerdict struct {
 func CheckDirectories(rs []Repository) error {
 	names := map[string]bool{}
 	byGit := map[string][]string{}
+	whole := map[string]bool{}
 	for _, r := range rs {
 		if r.Name == "" || names[r.Name] {
 			return fmt.Errorf("repository の名前が空か、重なっている: %q", r.Name)
 		}
 		names[r.Name] = true
 		git, dir := SplitRef(r.GitForgeRef)
+		// GitHub は owner と名前の大文字と小文字を区別しないので、小文字にそろえて比べる。
+		key := strings.ToLower(git)
 		if dir == "" {
+			whole[key] = true
 			continue
 		}
 		for _, part := range strings.Split(dir, "/") {
@@ -312,12 +316,19 @@ func CheckDirectories(rs []Repository) error {
 				return fmt.Errorf("ディレクトリのパスが正しくない: %q", dir)
 			}
 		}
-		for _, other := range byGit[git] {
+		for _, other := range byGit[key] {
 			if other == dir || strings.HasPrefix(dir, other+"/") || strings.HasPrefix(other, dir+"/") {
 				return fmt.Errorf("ディレクトリ %q と %q が、同じ git リポジトリ %s の中で重なる", other, dir, git)
 			}
 		}
-		byGit[git] = append(byGit[git], dir)
+		byGit[key] = append(byGit[key], dir)
+	}
+	// 同じ git リポジトリを、全体の repository とディレクトリの repository の両方には登録しない。
+	// なぜ：全体の repository は、ディレクトリの repository の反映を、反映によらないものとして壊れた状態になるから。
+	for key := range byGit {
+		if whole[key] {
+			return fmt.Errorf("git リポジトリ %s が、全体の repository とディレクトリの repository の両方に登録されている", key)
+		}
 	}
 	return nil
 }

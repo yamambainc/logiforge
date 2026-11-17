@@ -82,6 +82,7 @@ func splitList(v string) []string {
 //	LOGIFORGE_GITHUB_REPOSITORIES  repository の名前と owner/name の組（名前=owner/name,…）。ディレクトリの repository は 名前=owner/name:パス
 //
 // Forgejo のディレクトリの repository は、LOGIFORGE_DIRECTORIES（名前=owner/name:パス,…）に書く。
+//
 //	LOGIFORGE_GITHUB_READ_TOKEN    読むだけのトークン（Contents、Issues、Pull requests の Read）。public のリポジトリだけなら、なくてもよい
 //	LOGIFORGE_GITHUB_API_URL、LOGIFORGE_GITHUB_URL  REST の URL と、画面と git の URL（既定は github.com）
 //	バックエンド：LOGIFORGE_USER_LOGINS、LOGIFORGE_USER_TEAM（user とみなすアカウント名と team（org/slug）。「,」で並べる）、

@@ -47,12 +47,12 @@ func (r repos) list(ctx context.Context, token string) ([]ports.Repository, erro
 	names := map[string]bool{}
 	for _, d := range r.cfg.Directories {
 		git, _ := ports.SplitRef(d.GitForgeRef)
-		hosts[git], names[d.Name] = true, true
+		hosts[strings.ToLower(git)], names[d.Name] = true, true
 	}
 	out := make([]ports.Repository, 0, len(rs)+len(r.cfg.Directories))
 	for _, x := range rs {
 		// ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）と、ディレクトリと同じ名前のものは、数えない。
-		if hosts[x.FullName] || names[x.Name] {
+		if hosts[strings.ToLower(x.FullName)] || names[x.Name] {
 			continue
 		}
 		out = append(out, ports.Repository{Name: x.Name, GitForgeRef: x.FullName})
