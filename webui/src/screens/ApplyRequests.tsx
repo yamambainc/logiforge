@@ -6,6 +6,7 @@ import { getApplyRequest, listApplyRequestsPage, listCommits, Problem, workSubje
 import { arTitle, AWAITING, byTime, FAILURE, opLabel, REVIEW, STATE } from '../ar';
 import { useMobile } from '../hooks';
 import { navigate, useLocation } from '../router';
+import { Markdown } from '../MarkdownLazy';
 
 const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }) : '');
 // 作業としての絞り込み（ダッシュボードの件数と同じもの。listWork の subject_id）
@@ -139,8 +140,8 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
               <li key={op.position}>
                 <span>{l.what}</span>
                 <a className="mono" href={tree(`node=${l.target}`)} onClick={open(tree(`node=${l.target}`))}>{l.target}</a>
-                {/* 検証結果のレポートは、折りたたみで、文字列のまま示す（design/webui/security.md） */}
-                {op.kind === 'verdict.submit' && <details className="op-report"><summary>レポート</summary><p className="prose report">{op.report_body}</p></details>}
+                {/* 検証結果のレポートは、折りたたみで、Markdown として示す（design/webui/markdown.md） */}
+                {op.kind === 'verdict.submit' && <details className="op-report"><summary>レポート</summary><Markdown className="report" text={op.report_body} /></details>}
               </li>
             );
           })}
@@ -160,8 +161,8 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
           {byTime(a.reviews!).map((r) => (
             <li key={r.id} className={r.valid ? '' : 'stale'}>
               <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.reviewer_session_id}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
-              {/* 本文は Markdown を整形せず、文字列として示す（design/webui/security.md） */}
-              {r.body && <p className="prose report">{r.body}</p>}
+              {/* 本文は Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
+              {r.body && <Markdown className="report" text={r.body} />}
             </li>
           ))}
         </ol>

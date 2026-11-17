@@ -146,6 +146,7 @@ func TestWebUIServing(t *testing.T) {
 		"index.html":      {Data: []byte("<!doctype html><title>x</title>")},
 		"assets/app-1.js": {Data: []byte(strings.Repeat("console.log(1);", 100))},
 		"favicon.svg":     {Data: []byte("<svg/>")},
+		"mermaid.html":    {Data: []byte("<!doctype html><title>m</title>")},
 		".gitkeep":        {Data: nil},
 	}
 	h := serverWith(nil, ui)
@@ -161,6 +162,18 @@ func TestWebUIServing(t *testing.T) {
 	rec = do(h, "GET", "/assets/app-1.js", "", "")
 	if rec.Code != 200 || !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") {
 		t.Fatalf("assets: %d %v", rec.Code, rec.Header())
+	}
+	// sandbox の iframe（オパークなオリジン）から読めるように、assets は CORS を許す
+	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("assets の CORS: %v", rec.Header())
+	}
+	// Mermaid を描く文書だけ、インラインの style を許す CSP。ほかの画面は、今までの CSP
+	rec = do(h, "GET", "/mermaid.html", "", "")
+	if rec.Code != 200 || rec.Header().Get("Content-Security-Policy") != MermaidCSP || !strings.Contains(MermaidCSP, "'unsafe-inline'") {
+		t.Fatalf("mermaid.html: %d %v", rec.Code, rec.Header())
+	}
+	if strings.Contains(WebUICSP, "unsafe-inline") {
+		t.Fatal("アプリの CSP に unsafe-inline がある")
 	}
 	// assets にないファイルは 404（index.html に置き換えない）
 	if rec := do(h, "GET", "/assets/old-0.js", "", ""); rec.Code != 404 {

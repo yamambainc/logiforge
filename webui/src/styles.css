@@ -522,3 +522,28 @@ ol.reviews li.stale { opacity: .65; }
 .op-report .report { margin: 6px 0 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; }
 .r-who { font-size: 13px; }
 ul.counts li b small { font-size: 12px; font-weight: 400; color: var(--sub); }
+/* Markdown（design/webui/markdown.md） */
+.md { line-height: 1.7; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h3, .md h4, .md h5, .md h6 { margin: 16px 0 6px; line-height: 1.4; }
+.md h3 { font-size: 16px; } .md h4 { font-size: 15px; } .md h5, .md h6 { font-size: 14px; }
+.md p, .md ul, .md ol, .md blockquote { margin: 8px 0; }
+.md ul, .md ol { padding-left: 22px; }
+.md li.task-list-item { list-style: none; margin-left: -20px; }
+.md blockquote { border-left: 3px solid var(--line); padding: 2px 12px; color: var(--sub); }
+.md code { font-family: var(--mono); font-size: 12.5px; background: #f1f3f7; border-radius: 4px; padding: 1px 4px; }
+.md .md-pre { background: #f6f7f9; border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+.md .md-pre code { background: none; padding: 0; white-space: pre; }
+.md-scroll { overflow-x: auto; max-width: 100%; }
+.md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.md th { background: #f6f7f9; }
+.md-mermaid { margin: 8px 0; }
+.md-mermaid img { max-width: none; height: auto; display: block; background: #fff; }
+.md-badlink { text-decoration: underline dotted; color: var(--sub); }
+.md-img { font-size: 13px; }
+/* Mermaid を描く iframe は、画面の外に置く（描いた SVG は <img> で示す） */
+.mermaid-frame { position: fixed; left: -10000px; top: 0; width: 1000px; height: 800px; border: 0; visibility: hidden; }
+/* 詳細のパネルの節の見出し（.d-sec h3）の形を、Markdown の見出しに持ち込まない */
+.md h3, .md h4, .md h5, .md h6 { color: var(--text); font-weight: 700; letter-spacing: normal; text-transform: none; display: block; }

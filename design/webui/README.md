@@ -18,7 +18,8 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 11. [3D の性能と、描けないとき](viewer-3d-limits.md)：フレームレートの計測と、WebGL を使えないとき
 12. [モバイルの表示](mobile.md)：幅 767 px 以下のレイアウトと、タッチ操作の決まり
 13. [差分の重ね表示と過去の時点](overlay.md)：apply request を反映したあとの姿と、過去の `main` の姿
-14. [最初に作る範囲](first-release.md)：最初の実装に入れるものと、後に回すもの。試作
+14. [Markdown と Mermaid の表示](markdown.md)：利用者とエージェントが書く文章の示し方と、図を sandbox の iframe で描くこと
+15. [最初に作る範囲](first-release.md)：最初の実装に入れるものと、後に回すもの。試作
 
 ## WebUI の決まり
 

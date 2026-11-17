@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 // 開発では、API を手元の serve（127.0.0.1:8080）に渡す。
 export default defineConfig({
   plugins: [react()],
-  build: { outDir: 'dist', emptyOutDir: false, assetsInlineLimit: 0 },
+  // mermaid.html は、Mermaid を描く sandbox の iframe の文書（design/webui/markdown.md）
+  build: { outDir: 'dist', emptyOutDir: false, assetsInlineLimit: 0, rollupOptions: { input: { main: 'index.html', mermaid: 'mermaid.html' } } },
   server: { proxy: { '/v1': 'http://127.0.0.1:8080' } },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 });
