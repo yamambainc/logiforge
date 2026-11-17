@@ -1,1 +1,4 @@
 /.compose/
+
+# GoReleaser の出力（.goreleaser.yaml）
+/dist/

@@ -12,6 +12,8 @@
   - バックエンド：`logiforge serve`
   - worker：`logiforge worker`
 - root では動かさない。イメージの中のユーザー（uid 10001）で動かす。
+- 同じバイナリを、GitHub Releases にも置く（Linux・macOS・Windows × amd64・arm64、README の「インストール」）。opener と reviewer は、ここから CLI として取る。イメージは、Releases には置かない。
+  - なぜ：配り方は Releases に決めたから（issue #27）。コンテナイメージの push、`go install`、Homebrew は、今はしない。
 - 設定は、環境変数で渡す。秘密は、マウントしたファイルで渡す。
   - 必須の環境変数は、名前に `_FILE` を付けると、その値をファイルのパスとして読み、ファイルの中身を設定にする（例：`LOGIFORGE_WRITER_TOKEN_FILE=/run/secrets/writer_token`）。
   - なぜ：秘密を、コンテナの定義や `docker inspect` の出力に書かずに済むから。

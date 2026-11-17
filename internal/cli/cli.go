@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/yamambainc/logiforge/internal/version"
 )
 
 // 終了コード。
@@ -159,10 +161,14 @@ func commands() []command {
 		{"human-request create", "--node <ノード> --kind pvr|decision --body <ファイル>", "人への依頼を起票する", (*App).hrCreate},
 		{"human-request list", "[--kind] [--state] [--node]", "人への依頼の一覧", (*App).hrList},
 		{"human-request view", "<人への依頼>", "人への依頼と回答", (*App).hrView},
+		{"version", "", "このバイナリの版、コミット、ビルドした日付", (*App).version},
 	}
 }
 
 func (a *App) dispatch(ctx context.Context, args []string) error {
+	if len(args) == 1 && args[0] == "--version" {
+		return a.version(ctx, nil)
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		a.help()
 		return nil
@@ -560,4 +566,17 @@ func (a *App) writeProblem(raw []byte, p any) {
 		v[k] = x
 	}
 	_ = json.NewEncoder(a.Stdout).Encode(v)
+}
+
+// version は、このバイナリの版を示す（logiforge version）。--json なら、版、コミット、日付、Go の版を JSON で。
+func (a *App) version(_ context.Context, args []string) error {
+	if len(args) > 0 {
+		return usagef("version は引数を取らない")
+	}
+	i := version.Get()
+	if a.json {
+		return json.NewEncoder(a.Stdout).Encode(i)
+	}
+	fmt.Fprintln(a.Stdout, i.String())
+	return nil
 }

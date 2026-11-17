@@ -22,6 +22,17 @@ jobs:
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go test -race ./...
 
+  release-config:
+    # GoReleaser の設定（.goreleaser.yaml）を確かめる。リリースはタグで動く（release.yml）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check
+
   webui:
     # WebUI の型の検査、単体のテスト、ビルド。ビルドした出力にインラインの script と style がないことも確かめる（design/webui/security.md）。
     runs-on: ubuntu-latest

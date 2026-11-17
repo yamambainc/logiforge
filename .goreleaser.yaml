@@ -1,0 +1,56 @@
+# GitHub Releases に、logiforge のバイナリを置く（issue #27、README の「インストール」）。
+# タグ（v0.1.0 など）を push すると、.github/workflows/release.yml がこれを動かす。
+# 試すとき：goreleaser release --snapshot --clean（dist/ に作るだけで、どこにも置かない）
+version: 2
+
+project_name: logiforge
+
+before:
+  hooks:
+    # WebUI は、バイナリに embed する（webui/embed.go）。先にビルドしておく
+    - sh -c "cd webui && npm ci && npm run build"
+
+builds:
+  - id: logiforge
+    main: ./cmd/logiforge
+    binary: logiforge
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/yamambainc/logiforge/internal/version.Version={{ .Version }}
+      - -X github.com/yamambainc/logiforge/internal/version.Commit={{ .FullCommit }}
+      - -X github.com/yamambainc/logiforge/internal/version.Date={{ .CommitDate }}
+    # 同じコミットからは、同じバイナリができるように（日付はコミットの日付）
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: logiforge
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+
+release:
+  github:
+    owner: yamambainc
+    name: logiforge
+  # 版の番号に - がある（v0.1.0-rc.1 など）ときは、試しの版として置く
+  prerelease: auto

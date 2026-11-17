@@ -403,3 +403,22 @@ func TestRetryOnSnapshotPending(t *testing.T) {
 		t.Fatalf("あきらめない：%d（要求 %d 回）", code, len(st.reqs))
 	}
 }
+
+// logiforge version と --version は、版を示す。--json なら JSON。
+func TestVersion(t *testing.T) {
+	dir := t.TempDir()
+	for _, args := range [][]string{{"version"}, {"--version"}} {
+		code, out, _ := run(t, dir, env{}, "", args...)
+		if code != ExitOK || !strings.HasPrefix(out, "logiforge dev（コミット ") {
+			t.Fatalf("%v：%d %q", args, code, out)
+		}
+	}
+	code, out, _ := run(t, dir, env{}, "", "version", "--json")
+	var v struct{ Version, Go string }
+	if code != ExitOK || json.Unmarshal([]byte(out), &v) != nil || v.Version != "dev" || v.Go == "" {
+		t.Fatalf("--json：%d %q", code, out)
+	}
+	if code, _, _ := run(t, dir, env{}, "", "version", "x"); code != ExitUsage {
+		t.Fatalf("引数：%d", code)
+	}
+}

@@ -2,6 +2,37 @@
 
 仮説検証ハーネス Logiforge のリポジトリである。要件は [docs/](docs/)、設計は [design/](design/) にある。
 
+## インストール
+
+logiforge は、1 つのバイナリである。CLI と、バックエンドの `serve` と、`worker` が入っている。WebUI も、バイナリに入っている（`serve` が配る）。
+
+[GitHub Releases](https://github.com/yamambainc/logiforge/releases) に、Linux・macOS・Windows × amd64・arm64 の版を置く。
+
+- この repository は private である。取るには、yamambainc/logiforge を読む権限のある GitHub のアカウントが要る。
+- [gh](https://cli.github.com/) で取る（`gh auth login` で、読む権限のあるアカウントにサインインしておく）。
+
+```sh
+# 最新の版。Linux の amd64 の例（ほかは darwin・windows、arm64）
+gh release download -R yamambainc/logiforge --pattern 'logiforge_*_linux_amd64.tar.gz' --pattern checksums.txt
+sha256sum --ignore-missing -c checksums.txt
+tar xzf logiforge_*_linux_amd64.tar.gz logiforge
+./logiforge version
+
+# 版を決めて取る
+gh release download v0.1.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin_arm64.tar.gz' --pattern checksums.txt
+```
+
+- Windows は zip である。macOS で `shasum -a 256 --ignore-missing -c checksums.txt` を使う。
+- `logiforge version` は、版、コミット、ビルドした日付を示す（`--json` で JSON）。
+
+### リリースの作り方
+
+タグ（`v0.1.0` など）を push すると、CI（[.github/workflows/release.yml](.github/workflows/release.yml)）が [GoReleaser](https://goreleaser.com/)（[.goreleaser.yaml](.goreleaser.yaml)）でバイナリを作り、Releases に置く。チェックサム（`checksums.txt`、SHA-256）も置く。
+
+- WebUI を先にビルドし（`webui/` で `npm ci` と `npm run build`）、バイナリに入れる。
+- 版とコミットと日付は、`-ldflags` で入れる（[internal/version](internal/version/)）。
+- 手元で試すときは、どこにも置かずに `dist/` に作る：`goreleaser release --snapshot --clean`
+
 ## 開発
 
 Go で書く。Go のバージョンは [go.mod](go.mod) に書く。
@@ -89,6 +120,7 @@ CI は、イメージをビルドし、compose で動かして、repository の�
 | [internal/ports](internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/pullreq](internal/adapters/pullreq/) | GitForge のポートを、pull request と issue と記録のコメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |
+| [internal/version](internal/version/) | バイナリの版、コミット、ビルドした日付（`logiforge version`。リリースのビルドが `-ldflags` で入れる） |
 
 - `internal/tree` は、worker、CLI の `check`、バックエンドが同じものを使う（[差分の検査](design/backend/checks.md)、[ファイルの配置](design/files/layout.md)）。
 

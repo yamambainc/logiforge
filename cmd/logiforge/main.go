@@ -27,6 +27,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/cli"
 	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/version"
 	"github.com/yamambainc/logiforge/internal/workcopy"
 	"github.com/yamambainc/logiforge/internal/worker"
 	"github.com/yamambainc/logiforge/webui"
@@ -135,7 +136,7 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval}, src, &store.Dir{Root: cfg.storeDir})
-	slog.Info("worker を始めた", "interval", interval, "git_timeout", gitTimeout)
+	slog.Info("worker を始めた", "version", version.Get().Version, "interval", interval, "git_timeout", gitTimeout)
 	return w.Run(ctx)
 }
 
@@ -308,7 +309,7 @@ func runServe(ctx context.Context) error {
 	srv := &http.Server{Addr: addr, Handler: api.NewServer(b, slog.Default(), api.Options{OAuth: oauth, WebUI: webui.Dist()}), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	slog.Info("バックエンドを始めた", "addr", addr)
+	slog.Info("バックエンドを始めた", "version", version.Get().Version, "addr", addr)
 	select {
 	case err := <-errc:
 		return err
