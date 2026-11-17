@@ -7,7 +7,7 @@
 logiforge は、1 つのバイナリである。CLI と、バックエンドの `serve` と、`worker` が入っている。WebUI も、バイナリに入っている（`serve` が配る）。
 
 - CLI（opener と reviewer が使う）は、Linux・macOS・Windows で動く。
-- `serve` と `worker` は、Linux のコンテナで動かす前提である（[compose で動かす](#compose-で動かす)、[design/deploy.md](design/deploy.md)）。ほかの OS のバイナリでも起動はするが、確かめていない。
+- `serve` と `worker` は、Linux で動かす前提である。コンテナ（[compose で動かす](#compose-で動かす)、[design/deploy.md](design/deploy.md)）か、systemd のサービス（[1 台の Linux に置く](docs/adoption/linux-host/README.md)）で動かす。ほかの OS のバイナリでも起動はするが、確かめていない。
 
 [GitHub Releases](https://github.com/yamambainc/logiforge/releases) に、Linux・macOS・Windows × amd64・arm64 の版を置く。
 

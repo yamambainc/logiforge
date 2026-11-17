@@ -101,7 +101,7 @@ volumes:
   forgejo:
   # clone を置く。正本ではないが、失うと作り直しに時間がかかる。
   worker:
-  # 置き場（手元のディレクトリ）。branches/ は git から作り直せないので、バックアップを取る。
+  # 置き場（手元のディレクトリ）。keep/ は git から作り直せないので、バックアップを取る（design/adapters/README.md の「組み合わせ」）。
   store:
 
 # scripts/compose-setup.sh が作る。

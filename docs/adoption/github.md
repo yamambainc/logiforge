@@ -63,6 +63,7 @@ organization の「Settings」→「Developer settings」→「OAuth Apps」で�
 ## Logiforge を動かす
 
 - タスクの形は、[動かし方（コンテナ）](../../design/deploy.md) に従う。環境変数は、その「GitHub を使う構成」の表に従う。
+- 1 台の Linux のマシンに systemd で置き、Tailscale で公開する手順は、[1 台の Linux に置く](linux-host/README.md) に書く。
 - 手元で試すときは、バイナリで、worker とバックエンドを動かせる。
 
 ```sh
