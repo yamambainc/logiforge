@@ -42,6 +42,7 @@ gh release download v0.1.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin
 - 版とコミットと日付は、`-ldflags` で入れる（[internal/version](internal/version/)）。
 - リリースの本文の先頭に書くこと（互換のない変更と、移り方）は、`release-notes/<タグ>.md`（例：[release-notes/v0.2.0.md](release-notes/v0.2.0.md)）に書く。タグを push すると、CI がそのファイルを本文の先頭に置く。なければ、コミットの一覧だけになる。
   - 互換のない変更を main に入れるときは、次の版のファイルに書き足す。
+  - リンクは、タグを固定した絶対の URL（`https://github.com/yamambainc/logiforge/blob/<タグ>/...`）で書く。なぜ：本文は Releases のページに置かれるので、相対のリンクは切れるから。
 - 手元で試すときは、どこにも置かずに `dist/` に作る：`goreleaser release --snapshot --clean`
 - pull request ごとの CI でも、linux/amd64 だけを作り、WebUI と版とコミットが入ることを確かめる（[go.yml](.github/workflows/go.yml) の `release-snapshot`）。
 - リリースのジョブは repository に書く権限を持つので、外の action はコミットの SHA で、GoReleaser は版を決めて使う。
