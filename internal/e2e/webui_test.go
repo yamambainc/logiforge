@@ -15,6 +15,12 @@ import (
 // スナップショットツリーのビュワー（アウトライン、図、詳細のパネル、検索）までを通す。
 // LOGIFORGE_E2E_CHROME（Chrome のパス）と、ビルドした webui/dist/index.html がなければ飛ばす。
 // ブラウザの操作は webui/e2e/run.mjs（puppeteer-core）が行う。スクリーンショットは LOGIFORGE_E2E_OUT に書く。
+// reportMD は、E2E で出す検証結果のレポートである。WebUI は、見出し・表・図を示し、スクリプトは動かさない。
+const reportMD = "# 検証\n\n比較実験で、成果物までの時間が**半分**になった。\n\n" +
+	"| 群 | 成果物までの日数 |\n|---|---|\n| 招待 | 5 |\n| 通常 | 10 |\n\n" +
+	"```mermaid\ngraph LR\n  A[招待] --> B[成果物]\n  C[\"<img src=x onerror=parent.__pwn=1>\"] --> B\n  click A href \"javascript:parent.__pwn=1\"\n```\n\n" +
+	"- [x] 比べた\n- [ ] 追試\n\n<script>window.__pwn=1</script>\n[押す](javascript:window.__pwn=1)\n"
+
 // setupWebUI は、WebUI の E2E の用意をする。Chrome と webui/dist がなければ飛ばす。
 // Forgejo に、サインインに使う OAuth2 のアプリケーション（confidential client）を、admin で登録する。
 func setupWebUI(t *testing.T) (*world, string) {
@@ -90,7 +96,8 @@ func TestWebUISignIn(t *testing.T) {
 		t.Fatalf("分解の approve：%d %s", code, out)
 	}
 	agent.branch("b2")
-	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("r1.md", "# 検証\n\n比較実験で、成果物までの時間が半分になった。\n"), "--artifact", agent.file("data.csv", "x,y\n1,2\n"))
+	// レポートは Markdown。表と Mermaid の図と、スクリプトを動かそうとする書き方を含める（design/webui/markdown.md）
+	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("r1.md", reportMD), "--artifact", agent.file("data.csv", "x,y\n1,2\n"))
 	agent.must(nil, "story", "inactivate", inactiveStory, "--reason", "広告は出さない")
 	agent.commitPush("b2", "検証")
 	if got, code, out := reviewer.review(agent.create("b2").ID, "approve", 1); code != 0 || got.State != "merged" {

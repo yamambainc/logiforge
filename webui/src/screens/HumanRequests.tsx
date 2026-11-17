@@ -6,6 +6,7 @@ import { reauthorize, remainingMs } from '../auth';
 import { checkAttachments, clearDraft, HEAVY_ON_MOBILE, isWebLink, loadDraft, saveBlob, saveDraft, toBase64 } from '../files';
 import { useMobile } from '../hooks';
 import { navigate, useLocation } from '../router';
+import { Markdown } from '../MarkdownLazy';
 
 const KIND: Record<string, string> = { pvr: 'PVR', decision: '判断' };
 const STATE: Record<string, string> = { open: 'open', answered: '回答済み' };
@@ -108,8 +109,8 @@ function RequestDetail({ repo, id, mobile, onBack, onAnswered }: { repo: string;
       </div>
       <p className="target">対象：<a href={node} onClick={(e) => { e.preventDefault(); navigate(node); }} className="mono">{h.node_id}</a>（ビュワーで開く）</p>
       <h3 className="sec">{h.kind === 'pvr' ? '検証手順' : '問い'}</h3>
-      {/* 本文は Markdown を整形せず、文字列として示す（design/webui/security.md） */}
-      <p className="prose report">{h.body}</p>
+      {/* 本文は Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
+      <Markdown className="report" text={h.body} />
       {already && <p className="note" role="status">この依頼は、もう回答されています。</p>}
       {h.answer ? <Answer repo={repo} h={h} /> : <AnswerForm repo={repo} h={h} onDone={(r) => { setH(r); onAnswered(); }} onAlready={() => { setAlready(true); setTick((x) => x + 1); onAnswered(); }} />}
     </section>
@@ -121,7 +122,7 @@ function Answer({ repo, h }: { repo: string; h: HumanRequest }) {
   return (
     <div className="answer">
       <h3 className="sec">回答 <span className="dim">{new Date(a.answered_at).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' })}</span></h3>
-      <p className="prose report">{a.body}</p>
+      <Markdown className="report" text={a.body} />
       {a.attachments.length > 0 && (
         <div className="files">
           {a.attachments.map((f) => f.kind === 'link'

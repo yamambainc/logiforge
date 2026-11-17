@@ -31,7 +31,7 @@ function watch(p) {
   return w;
 }
 // 詳細のパネルを読み終える（撮る前に、読み込み中の表示がなくなるのを待つ）
-const detailLoaded = (p) => p.waitForFunction(() => document.querySelector('.detail') && !document.querySelector('.detail .skel'), { timeout: 20000 });
+const detailLoaded = (p) => p.waitForFunction(() => document.querySelector('.detail') && !document.querySelector('.detail .skel') && !document.querySelector('.loading-fig') && !document.querySelector('.md-plain') && [...document.querySelectorAll('.md-mermaid img')].every((i) => i.complete), { timeout: 30000 });
 const rowTexts = (p) => p.$$eval('.row .text', (els) => els.map((e) => e.textContent));
 const selText = (p) => p.$eval('.row.sel .text', (e) => e.textContent);
 const signedIn = (p) => p.waitForFunction(() => [...document.querySelectorAll('button.link')].some((b) => b.textContent === 'サインアウト'), { timeout: 20000 });
@@ -98,8 +98,22 @@ try {
   step('仮説を選ぶと、詳細のパネルに検証結果と artifact が出る。URL に node が入る');
   await page.evaluate(() => [...document.querySelectorAll('.row')].find((r) => r.textContent.includes('成果物までの時間が半分')).click());
   await page.waitForFunction(() => document.querySelector('.verdict .val')?.textContent === '真', { timeout: 20000 });
-  const report = await page.$eval('.verdict .report', (e) => e.textContent);
+  // Markdown の部分は、要るときに読み込む。読み込むまでは元の文字列なので、組み立てたものを待つ
+  await page.waitForSelector('.verdict div.md', { timeout: 20000 });
+  const report = await page.$eval('.verdict div.md', (e) => e.textContent);
   if (!report.includes('半分になった')) throw new Error('レポートが出ない：' + report);
+
+  step('レポートは Markdown：見出し、表、チェックリスト、Mermaid の図。スクリプトは動かず、javascript: はリンクにしない');
+  const md = await page.evaluate(() => {
+    const r = document.querySelector('.verdict .md');
+    return { h: r.querySelector('h3')?.textContent, th: [...r.querySelectorAll('th')].map((t) => t.textContent), boxes: r.querySelectorAll('input[type="checkbox"]').length,
+      script: !!r.querySelector('script'), js: [...r.querySelectorAll('a')].some((a) => /^javascript:/i.test(a.getAttribute('href') ?? '')) };
+  });
+  if (md.h !== '検証' || md.th.join('|') !== '群|成果物までの日数' || md.boxes !== 2 || md.script || md.js) throw new Error('Markdown の表示：' + JSON.stringify(md));
+  await page.waitForFunction(() => { const i = document.querySelector('.verdict .md-mermaid img'); return i && i.complete && i.naturalWidth > 50; }, { timeout: 30000 });
+  const frame = await page.$eval('iframe.mermaid-frame', (f) => [f.getAttribute('sandbox'), f.getAttribute('src')]);
+  if (frame[0] !== 'allow-scripts' || frame[1] !== '/mermaid.html') throw new Error('Mermaid の iframe：' + frame.join(' '));
+  if (await page.evaluate(() => window.__pwn !== undefined)) throw new Error('レポートの中のスクリプトが動いた');
   if (!(await page.$$eval('.file', (els) => els.map((e) => e.textContent))).some((t) => t.includes('data.csv'))) throw new Error('artifact が出ない');
   if (new URL(page.url()).searchParams.get('node') !== NODE_A) throw new Error('URL に node が入らない');
   await detailLoaded(page);
@@ -352,12 +366,12 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
   await page.waitForSelector('.row', { timeout: 20000 });
 
-  step('人への依頼：タブで移り、PVR を開く。本文は文字列のまま。回答の書きかけは、リロードしても残る');
+  step('人への依頼：タブで移り、PVR を開く。本文は Markdown（見出しと番号つきの並び）。回答の書きかけは、リロードしても残る');
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === '人への依頼').click());
   await page.waitForFunction((r) => location.pathname === `/r/${r}/human-requests`, { timeout: 5000 }, REPO);
   await page.waitForSelector('ul.items a', { timeout: 20000 });
   await page.evaluate((id) => [...document.querySelectorAll('ul.items a')].find((a) => a.getAttribute('href') === `?id=${id}`).click(), HR);
-  await page.waitForFunction(() => document.querySelector('.item-pane .report')?.textContent.includes('# 手順'), { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.item-pane div.md h3')?.textContent === '手順' && document.querySelectorAll('.item-pane div.md ol li').length === 2, { timeout: 20000 });
   await page.type('.answer-form textarea', '測った。継続率は下がらなかった');
   const measure = OUT + '/measure.txt';
   writeFileSync(measure, 'rate,0.42\n');
@@ -378,7 +392,7 @@ try {
   const files = await page.$$eval('.answer .file', (fs) => fs.map((f) => f.textContent));
   if (!files.some((t) => t.includes('measure.txt'))) throw new Error('回答の添付が出ない：' + files.join(' / '));
   // リンクの添付は、BE が回答の本文の末尾に書く（internal/backend/writes.go の AnswerHumanRequest）
-  if (!(await page.$eval('.answer .report', (e) => e.textContent)).includes('集計表：https://example.com/sheet')) throw new Error('リンクの添付が、回答の本文にない');
+  if (!(await page.waitForFunction(() => document.querySelector('.answer div.md')?.textContent.includes('集計表：https://example.com/sheet'), { timeout: 10000 }).then(() => true, () => false))) throw new Error('リンクの添付が、回答の本文にない');
   if (await page.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('回答したのに、書きかけが残る');
   await page.screenshot({ path: OUT + '/hr-answered.png' });
 

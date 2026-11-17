@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type At, type HistoryEntry, type NodeDetail } from './api';
 import { saveBlob } from './files';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
+import { Markdown } from './MarkdownLazy';
 
 interface Props {
   repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void;
@@ -103,10 +104,10 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
       )}
 
       {isH ? (
-        n.background ? <Section title="背景情報"><p className="prose">{n.background}</p></Section> : null
+        n.background ? <Section title="背景情報"><Markdown text={n.background} /></Section> : null
       ) : (
         <Section title="概要">
-          <p className="prose">{n.summary}</p>
+          <Markdown text={n.summary} />
           {n.state === 'inactive' && n.reason && <p className="note">inactive にした理由：{n.reason}</p>}
         </Section>
       )}
@@ -121,8 +122,8 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
                 {verdict.apply_request_id && <span className="dim" title={verdict.apply_request_id}>{verdict.apply_request_id.slice(0, 12)}… で反映</span>}
                 <span className="mono dim">{verdict.submitted_commit.slice(0, 7)}</span>
               </div>
-              {/* レポートは Markdown を整形せず、文字列として示す（design/webui/security.md） */}
-              <p className="prose report">{verdict.report_body}</p>
+              {/* レポートは Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
+              <Markdown className="report" text={verdict.report_body} />
               {verdict.artifacts.length > 0 && (
                 <div className="files">{verdict.artifacts.map((a) => <ArtifactItem key={a.name + (a.sha256 ?? a.uri)} repo={repo} a={a} />)}</div>
               )}

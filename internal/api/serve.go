@@ -23,7 +23,16 @@ type Options struct {
 }
 
 // WebUICSP は、WebUI の応答に付ける CSP である（design/webui/security.md）。
-const WebUICSP = "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+const WebUICSP = "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; frame-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+
+// MermaidCSP は、Mermaid を描く文書（mermaid.html）だけに付ける CSP である（design/webui/markdown.md）。
+// Mermaid は描く途中でインラインの style を使うので、この文書だけ style-src に 'unsafe-inline' を足す。
+// この文書は、sandbox の iframe（allow-same-origin なし）で開く。CSP の sandbox allow-scripts で、URL を直接開かれても、
+// オパークなオリジンで動く（アプリのオリジンとストレージに触れない）。通信もしない（connect-src は default-src の 'none'）。
+const MermaidCSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts"
+
+// mermaidPage は、Mermaid を描く文書のパスである。
+const mermaidPage = "mermaid.html"
 
 // NewServer は、logiforge serve の HTTP ハンドラーを返す。
 // /v1/ と /healthz は API、それ以外は WebUI である。すべての応答に nosniff を付け、gzip を受け付ける要求には gzip で返す。
@@ -62,6 +71,9 @@ func webUI(root fs.FS) http.Handler {
 		h.Set("Content-Security-Policy", WebUICSP)
 		h.Set("Referrer-Policy", "no-referrer")
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == mermaidPage {
+			h.Set("Content-Security-Policy", MermaidCSP)
+		}
 		if name != "" && name != "index.html" && !strings.HasPrefix(path.Base(name), ".") {
 			if data, err := fs.ReadFile(root, name); err == nil {
 				if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
@@ -69,6 +81,8 @@ func webUI(root fs.FS) http.Handler {
 				}
 				if strings.HasPrefix(name, "assets/") {
 					h.Set("Cache-Control", "public, max-age=31536000, immutable")
+					// sandbox の iframe（オパークなオリジン）の中の mermaid.html が、モジュールのスクリプトを読めるように。中身は公開してよい静的なファイルだけである
+					h.Set("Access-Control-Allow-Origin", "*")
 				} else {
 					h.Set("Cache-Control", "no-cache")
 				}
