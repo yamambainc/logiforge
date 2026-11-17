@@ -34,6 +34,9 @@ type CommitInfo struct {
 	Revision    string
 	CommittedAt time.Time
 	Trailers    []Trailer
+	// Authorized は、反映によるコミットか（design/backend/broken.md の「反映かの判定」）。worker が GitForge の API で決める。
+	// nil なら、決めていない。そのときは、trailer（Logiforge-Apply-Request: と Logiforge-Init:）で決める。
+	Authorized *bool
 }
 
 // Commit は、コミットの記録である（数 KB）。

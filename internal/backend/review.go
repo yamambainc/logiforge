@@ -182,12 +182,31 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	} else if !errors.Is(err, ports.ErrNotFound) {
 		return "", err
 	}
-	latest, err := b.mainAt(ctx, repo, "")
+	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		if e := AsError(err); e != nil && e.Code == CodeSnapshotPending {
 			return failure("snapshot_pending", "今の main のスナップショットが、まだない")
 		}
 		return "", err
+	}
+	// 壊れた repository には、直すための apply request しか反映しない（design/backend/broken.md）。
+	broken, err := b.Snap.Broken(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	kind := d.port.Kind
+	if kind != "" {
+		problem, err := b.repairProblem(ctx, repo, kind, d.branch, latest, broken)
+		if err != nil {
+			return "", err
+		}
+		if problem != "" {
+			return failure("repository_broken", problem)
+		}
+		return b.squash(ctx, repo, ref, id, d, "\nLogiforge-Repair: "+repairTrailer(kind))
+	}
+	if broken != nil {
+		return failure("repository_broken", fmt.Sprintf("repository が壊れている（%s から）。直すための apply request を先に反映する", broken.First))
 	}
 	// 3. 対象ノードの変化、重ねられるか、差分の検査。
 	baseNum, err := b.mainNumber(ctx, latest, d.branch.Diff.Base)
@@ -221,6 +240,14 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	if !res.OK() {
 		return failure("invariant_violation", violations(res.Rejected))
 	}
+	return b.squash(ctx, repo, ref, id, d, "")
+}
+
+// squash は、反映の手順の 4 と 5 である。extra は、記録の trailer のあとに足す行（直すための apply request の Logiforge-Repair:）。
+func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail, extra string) (string, error) {
+	failure := func(reason, detail string) (string, error) {
+		return "", b.Forge.RecordMergeFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail})
+	}
 	// 4. head の SHA を指定して squash merge する。
 	title := fmt.Sprintf("apply request %s を反映した", id)
 	// 反映したすべての先頭のコミットのセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
@@ -233,6 +260,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 			message += "\nLogiforge-Session-Id: " + *v.AuthorSessionID
 		}
 	}
+	message += extra
 	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Commit, title, message)
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):

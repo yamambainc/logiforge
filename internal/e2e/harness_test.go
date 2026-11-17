@@ -189,7 +189,8 @@ func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *wo
 	serveAddr := freePort(t)
 	// バックエンドも、apply request の作成で、worker と同じ読むだけのユーザーで git を読む。
 	common := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_FORGEJO_URL=" + fu, "LOGIFORGE_FORGEJO_ORG=" + w.org,
-		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
+		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file",
+		"LOGIFORGE_WRITER=" + w.login("writer")}
 	w.workerEnv = append(common, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s")
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
 	var more []string
@@ -197,7 +198,7 @@ func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *wo
 		more = extra(w, "http://"+serveAddr)
 	}
 	w.start("serve", append(append(common, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
-		"LOGIFORGE_WRITER="+w.login("writer"), "LOGIFORGE_WRITER_TOKEN="+w.tokens["writer"], "LOGIFORGE_RECORD_KEYS=k1=e2e-secret",
+		"LOGIFORGE_WRITER_TOKEN="+w.tokens["writer"], "LOGIFORGE_RECORD_KEYS=k1=e2e-secret",
 		"LOGIFORGE_WAIT_TIMEOUT=20s", "LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
 	w.api = "http://" + serveAddr
 	w.eventually("serve が起動する", 20*time.Second, func() bool {

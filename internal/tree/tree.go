@@ -374,3 +374,32 @@ func contentSHA256(f File) string {
 	}
 	return f.SHA256
 }
+
+// SameFiles は、2 つのファイルの集まりが同じか（パス、モード、中身）を返す。中身は、git の blob の SHA が両方にあればそれで、
+// なければ sha256 か、中身そのもので比べる。
+func SameFiles(a, b Files) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for p, fa := range a {
+		fb, ok := b[p]
+		if !ok || fa.Mode != fb.Mode {
+			return false
+		}
+		switch {
+		case fa.SHA != "" && fb.SHA != "":
+			if fa.SHA != fb.SHA {
+				return false
+			}
+		case fa.SHA256 != "" && fb.SHA256 != "":
+			if fa.SHA256 != fb.SHA256 {
+				return false
+			}
+		default:
+			if string(fa.Content) != string(fb.Content) {
+				return false
+			}
+		}
+	}
+	return true
+}

@@ -17,7 +17,7 @@ import (
 )
 
 // 作業の種類（docs/work/README.md）。並びは、この順である。
-var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
+var workKinds = []string{"repair_repository", "undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
 
 // WorkQuery は、着手できる作業の問い合わせである。
 type WorkQuery struct {
@@ -73,6 +73,13 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 				break
 			}
 		}
+	}
+
+	// 壊れた repository を直すこと（design/backend/broken.md）。直すための提案が open なら、返さない。
+	if broken, err := b.Snap.Broken(ctx, repo); err != nil {
+		return nil, nil, err
+	} else if broken != nil && !slices.ContainsFunc(open.ars, func(ar ports.ApplyRequest) bool { return ar.Kind != "" }) {
+		items = append(items, WorkItem{Kind: "repair_repository", SubjectID: broken.First})
 	}
 
 	// レビュー待ちと修正待ちの提案。

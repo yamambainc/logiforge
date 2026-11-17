@@ -9,6 +9,7 @@ import { HumanRequests } from './screens/HumanRequests';
 import { ApplyRequests } from './screens/ApplyRequests';
 import { RepositoryList } from './screens/RepositoryList';
 import { TreeScreen } from './screens/TreeScreen';
+import { BrokenBanner } from './BrokenBanner';
 
 export function App() {
   const auth = useSyncExternalStore(subscribe, getAuth);
@@ -26,6 +27,7 @@ export function App() {
         <span className="spacer" />
         <button className="link" onClick={signOut}>サインアウト</button>
       </header>
+      {'repo' in route && <BrokenBanner key={route.repo} repo={route.repo} />}
       {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} />
         : route.name === 'dashboard' ? <Dashboard key={route.repo} repo={route.repo} />
         : route.name === 'human-requests' ? <HumanRequests key={route.repo} repo={route.repo} />

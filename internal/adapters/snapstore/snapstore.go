@@ -70,3 +70,7 @@ func (a *Adapter) Artifact(ctx context.Context, repo, sha256 string) ([]byte, er
 	b, err := a.Store.Get(ctx, store.ArtifactKey(repo, sha256))
 	return b, notFound(err)
 }
+
+func (a *Adapter) Broken(ctx context.Context, repo string) (*store.Broken, error) {
+	return store.GetBroken(ctx, a.Store, repo)
+}

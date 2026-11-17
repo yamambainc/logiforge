@@ -59,7 +59,7 @@ func (b *Backend) afterView(ctx context.Context, repo, ref, id string) (*view, e
 	if !targetsMain(ar) {
 		return b.afterBranchView(ctx, repo, ar.Target, br)
 	}
-	latest, err := b.mainAt(ctx, repo, "")
+	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		return nil, err
 	}

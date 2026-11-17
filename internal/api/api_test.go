@@ -39,6 +39,8 @@ func (emptySnap) Branch(context.Context, string, string) (*snapshot.Branch, erro
 func (emptySnap) BranchHistory(context.Context, string, string) (store.BranchHistory, error) {
 	return store.BranchHistory{}, nil
 }
+func (emptySnap) Broken(context.Context, string) (*store.Broken, error) { return nil, nil }
+
 func (emptySnap) Artifact(context.Context, string, string) ([]byte, error) {
 	return nil, ports.ErrNotFound
 }

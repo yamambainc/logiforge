@@ -103,7 +103,7 @@ func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest,
 				continue
 			}
 			found = true
-			ar.ID, ar.FirstRevision, ar.Opener = r.Get(KeyApplyRequest), r.Get(KeyFirstRevision), r.Get(KeyPrincipal)
+			ar.ID, ar.FirstRevision, ar.Opener, ar.Kind = r.Get(KeyApplyRequest), r.Get(KeyFirstRevision), r.Get(KeyPrincipal), r.Get(KeyApplyRequestKind)
 			continue
 		}
 		if !found || r.Get(KeyApplyRequest) != ar.ID {
@@ -176,6 +176,9 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		pull = &p
 	}
 	rec := Record{Trailers: []Trailer{{KeyRecord, RecordApplyRequest}, {KeyApplyRequest, n.ID}, {KeyFirstRevision, n.FirstRevision}, {KeyPrincipal, n.Opener}}}
+	if n.Kind != "" {
+		rec.Trailers = append(rec.Trailers, Trailer{KeyApplyRequestKind, n.Kind})
+	}
 	if _, err := a.comment(ctx, repo, pull.Number, rec); err != nil {
 		return ports.ApplyRequest{}, err
 	}

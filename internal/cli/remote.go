@@ -344,6 +344,7 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 func (a *App) arCreate(ctx context.Context, args []string) error {
 	f := newFlags("ar create")
 	repo, branch, desc, sess := repoFlag(f), f.String("branch", "", ""), f.String("description", "", ""), f.String("session", "", "")
+	kind := f.String("kind", "change", "change、repair.revert、repair.accept のどれか")
 	key := f.String("idempotency-key", "", "送り直しを見分けるキー。なければ乱数で作る")
 	if err := f.parse(args); err != nil {
 		return err
@@ -370,6 +371,9 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	if fields := strings.Fields(remote); len(fields) == 0 || fields[0] != local {
 		return fmt.Errorf("ブランチ %s の手元の先頭 %s が、remote の先頭と違う。先に git push する", *branch, local)
 	}
+	if *kind == "change" {
+		a.checkBroken(ctx)
+	}
 	k := *key
 	if k == "" {
 		var b [16]byte
@@ -382,7 +386,7 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
 	a.errorExtra = map[string]any{"idempotency_key": k}
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session, idempotency: k, retry: true,
-		body: map[string]string{"branch": *branch, "commit": local, "description": *desc}})
+		body: map[string]string{"kind": *kind, "branch": *branch, "commit": local, "description": *desc}})
 	if err != nil {
 		return err
 	}

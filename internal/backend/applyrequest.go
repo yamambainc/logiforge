@@ -97,7 +97,11 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	if target == "" {
 		target = mainTarget
 	}
-	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
+	kind := ar.Kind
+	if kind == "" {
+		kind = KindChange
+	}
+	*m = ApplyRequest{ID: ar.ID, Kind: kind, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
 		Operations: []Operation{}, Reviews: []Review{}, MergeFailures: []MergeFailure{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]

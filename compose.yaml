@@ -14,6 +14,8 @@ x-logiforge-common: &common
   # 読むだけのユーザー。worker は見回りで、バックエンドは apply request の作成で、git を読む。
   LOGIFORGE_WORKER_LOGIN: logiforge-reader
   LOGIFORGE_WORKER_TOKEN_FILE: /run/secrets/worker_token
+  # 書き込み主体。worker は、main のコミットが、書き込み主体が merge したものかを確かめる（design/backend/broken.md）。
+  LOGIFORGE_WRITER: logiforge-writer
   # ローカルの Forgejo は http で動く。本番では https だけにする（既定）。
   LOGIFORGE_GIT_ALLOW_PROTOCOL: http:https:file
 

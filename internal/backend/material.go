@@ -25,7 +25,7 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	if !targetsMain(ar) {
 		return ReviewMaterial{}, fail(CodeOverlayUnsupported, "apply request %s の向き先が main でない（%s）。Logiforge は検査しない", id, ar.Target)
 	}
-	v, err := b.mainAt(ctx, repo, "")
+	v, err := b.currentMain(ctx, repo)
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
@@ -42,6 +42,11 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	}
 	m := ReviewMaterial{ApplyRequestID: id, Commit: d.current.Commit, Operations: d.model.Operations,
 		Targets: []Node{}, Ancestors: []*Hypothesis{}, Siblings: []*Story{}, Citations: []MaterialCitation{}}
+	if ar.Kind != "" {
+		if m.Repair, err = b.repairMaterial(ctx, repo, ar.Kind, v); err != nil {
+			return ReviewMaterial{}, err
+		}
+	}
 	seenT, seenA, seenS := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	addAncestors := func(h *tree.Hypothesis) {
 		for ; h != nil; h = parentHyp(h) {
