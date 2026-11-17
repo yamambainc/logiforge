@@ -229,20 +229,18 @@ func oauthConfig(forgejoURL string) (*api.OAuth, error) {
 	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
 }
 
-// keyring は、記録の MAC の鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=鍵,…」で、最初のものを書くときに使う。
+// keyring は、記録の署名の秘密鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=秘密,…」で、最初のものを書くときに使う。
+// 秘密の SHA-256 を、Ed25519 の秘密鍵の種にする（pullreq.KeyringFromSecrets）。
 func keyring(v string) (pullreq.Keyring, error) {
-	k := pullreq.Keyring{Keys: map[string][]byte{}}
-	for i, part := range strings.Split(v, ",") {
+	var ids, secrets []string
+	for _, part := range strings.Split(v, ",") {
 		id, secret, ok := strings.Cut(strings.TrimSpace(part), "=")
 		if !ok || id == "" || secret == "" {
-			return k, fmt.Errorf("LOGIFORGE_RECORD_KEYS の形が正しくない（鍵の ID=鍵,…）")
+			return pullreq.Keyring{}, fmt.Errorf("LOGIFORGE_RECORD_KEYS の形が正しくない（鍵の ID=秘密,…）")
 		}
-		if i == 0 {
-			k.Current = id
-		}
-		k.Keys[id] = []byte(secret)
+		ids, secrets = append(ids, id), append(secrets, secret)
 	}
-	return k, nil
+	return pullreq.KeyringFromSecrets(ids, secrets)
 }
 
 // runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/README.md の「設定と秘密情報」）。

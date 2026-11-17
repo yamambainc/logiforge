@@ -6,7 +6,15 @@ import (
 	"testing"
 )
 
-var ring = Keyring{Current: "k2", Keys: map[string][]byte{"k1": []byte("old"), "k2": []byte("new")}}
+var ring = mustRing([]string{"k2", "k1"}, []string{"new", "old"})
+
+func mustRing(ids, secrets []string) Keyring {
+	k, err := KeyringFromSecrets(ids, secrets)
+	if err != nil {
+		panic(err)
+	}
+	return k
+}
 
 var here = Scope{RepoID: "id-1", Number: 1}
 
@@ -47,7 +55,7 @@ func TestRecordTampered(t *testing.T) {
 		}
 	}
 	// 古い鍵で書いたものも確かめられる。
-	old := Keyring{Current: "k1", Keys: ring.Keys}
+	old := Keyring{Current: "k1", Private: ring.Private, Public: ring.Public}
 	text, _ = old.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}}}, here)
 	if _, err := ring.Parse(text, here); err != nil {
 		t.Fatal(err)

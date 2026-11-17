@@ -165,7 +165,7 @@ func (e *env) commitPush(dir, branch, path, content string) string {
 	return mustGit(e.t, dir, "rev-parse", "HEAD")
 }
 
-var keys = pullreq.Keyring{Current: "k1", Keys: map[string][]byte{"k1": []byte("secret")}}
+var keys, _ = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"secret"})
 
 const root = "tree/h-0000000000/hypothesis.md"
 
