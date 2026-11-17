@@ -1,0 +1,10 @@
+# logiforge-worker-health.service を 1 分ごとに動かす。
+[Unit]
+Description=Check the Logiforge worker heartbeat every minute
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target

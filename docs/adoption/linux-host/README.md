@@ -4,7 +4,7 @@ GitHub を使う構成の Logiforge を、1 台の Linux のマシンで動か�
 [Logiforge の repository を GitHub に置く](../github.md) の「Logiforge を動かす」の、本番の手順である。
 
 - 形は、[動かし方（コンテナ）](../../../design/deploy.md) の「タスクの形」と同じである。コンテナのかわりに、systemd のサービスを 2 つ動かす。
-- 環境変数の正本は、その「環境変数と秘密」である。このページには、置き場所と渡し方だけを書く。
+- 環境変数の正本は、その「環境変数と秘密」である。このページには、環境変数の中身は書かない。
 
 ## 構成
 
@@ -67,25 +67,27 @@ sudo env LOGIFORGE_RECORD_KEYS_FILE=/etc/logiforge/secrets/record_keys logiforge
   - なぜ `EnvironmentFile=` でないか：秘密が、プロセスの環境変数になり、子の git にも渡るから。`_FILE` で渡す方針は、[動かし方](../../../design/deploy.md#イメージ) と同じである。
   - なぜ `LoadCredential=` か：`logiforge` のユーザーは `/etc/logiforge/secrets/` を読めないまま、サービスごとに要る秘密だけを受け取れるから。worker は、署名の秘密を受け取らない。
 - 秘密でない設定は、2 つのサービスが同じ `logiforge.env` を読む。`LOGIFORGE_GITHUB_REPOSITORIES` などを、両方で同じ値にするためである。
-- 見回りの間隔は `10s`、記録を読む間隔は `30s` にする（[GitHub アダプタ](../../../design/adapters/github.md) の「見回りの間隔」）。
 
 ## サービス
 
 ユニットの見本は [deploy/systemd/](../../../deploy/systemd/) にある。
 
 ```sh
-sudo cp deploy/systemd/logiforge-*.service /etc/systemd/system/
+sudo cp deploy/systemd/logiforge-*.service deploy/systemd/logiforge-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now logiforge-worker logiforge-serve
+sudo systemctl enable --now logiforge-worker logiforge-serve logiforge-worker-health.timer
 ```
 
 - 書ける場所は、ユニットごとに絞る。ほかは読むだけである（`ProtectSystem=strict`）。
   - worker：`/var/lib/logiforge/worker`（clone）と `/var/lib/logiforge/store`（置き場）
   - バックエンド：`/var/cache/logiforge-serve`（作業用の git の複製）。置き場は読むだけである。
-- root では動かさない。capability は持たせない。
+- `logiforge-serve` と `logiforge-worker` は、root では動かさない。capability は持たせない。
 - 落ちたら、5 秒あとに起動し直す（`Restart=on-failure`）。
 - worker は、1 つのユニットだけで動かす。2 つ目の worker は、clone のディレクトリのロックが取れずに止まる（[worker を 1 つだけ動かす](../../../design/backend/worker.md#worker-を-1-つだけ動かす)）。
-- systemd は、ハートビートを見ない。プロセスが落ちたときだけ、起動し直す。
+- worker が固まったときは、`logiforge-worker-health.timer` が見つけて、起動し直す。コンテナの livenessProbe と同じ役目である（[ヘルスチェック](../../../design/deploy.md#ヘルスチェック)）。
+  - 1 分ごとに、`logiforge` のユーザーで `logiforge worker-health` を動かし、0 以外なら `systemctl restart logiforge-worker` をする。
+  - root で動かす。worker を起動し直すのに、systemctl が要るから。
+  - worker を止めているあいだは、何もしない。
 
 ## 確かめる
 
@@ -108,8 +110,5 @@ sudo systemctl restart logiforge-worker logiforge-serve
 
 ## バックアップ
 
-- 置き場の `/var/lib/logiforge/store/keep/` を、写して取る。ブランチの履歴と記録の控えは、git から作り直せないからである（[スナップショットの置き場](../../../design/backend/ports/snapshot-store.md)）。
-- ほかの場所は、取らなくてよい。
-  - `/var/lib/logiforge/worker` の clone と、置き場の `keep/` の外は、worker が作り直す。
-  - `/var/cache/logiforge-serve` は、使い捨ての複製である。
+- 置き場の `/var/lib/logiforge/store/keep/` を、写して取る（[組み合わせ](../../../design/adapters/README.md#組み合わせ)）。
 - `/etc/logiforge/secrets/record_keys` は、マシンの外にも控える。この秘密は変えないからである（[Logiforge を動かす](../github.md#logiforge-を動かす)）。

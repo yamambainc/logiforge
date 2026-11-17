@@ -1,0 +1,13 @@
+# worker のハートビートが古ければ、worker を起動し直す。design/deploy.md の livenessProbe と同じ役目である。
+# logiforge-worker-health.timer が動かす。手順は docs/adoption/linux-host/README.md に書く。
+[Unit]
+Description=Restart the Logiforge worker when its heartbeat is stale
+After=logiforge-worker.service
+
+[Service]
+Type=oneshot
+# worker-health は、LOGIFORGE_WORKER_DIR と LOGIFORGE_WORKER_INTERVAL を読む。
+EnvironmentFile=/etc/logiforge/logiforge.env
+# root で動かす。worker を起動し直すのに、systemctl が要るから。確かめるのは logiforge のユーザーで行う。
+# worker を止めているあいだ（更新など）は、何もしない。
+ExecStart=/bin/sh -c 'systemctl is-active --quiet logiforge-worker || exit 0; runuser -u logiforge -- /usr/local/bin/logiforge worker-health || systemctl restart logiforge-worker'
