@@ -12,6 +12,7 @@ Logiforge のバックエンドを実装するときに読む。
 4. [ポート](backend/ports/README.md)
 5. [スナップショット](backend/snapshot.md)
 6. [worker](backend/worker.md)
+   - [壊れた repository](backend/broken.md)
 7. [アダプタ](adapters/README.md)
 8. [API](api/README.md)
 9. [CLI](cli/README.md)

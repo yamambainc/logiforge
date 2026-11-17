@@ -11,7 +11,7 @@ git を読んで、スナップショットを作り続ける worker を、動�
 - worker は、どのポートでも待ち受けない。API を持たない。
   - バックエンドは、worker を呼ばない。置き場を読むだけである。
   - なぜ：worker の仕事は、git の今の姿を、見回りで置き場に写すことだけだから。すべての `main` のコミットにスナップショットツリーを作るので、バックエンドが worker に作らせるものがない（[すべてのコミットに作る](snapshot.md#すべてのコミットに作る)）。見回りの間隔が短いので、起こす要求も要らない。
-- worker は、git を読むだけである。git にも GitForge にも書かない。書く鍵も持たない。
+- worker は、git と GitForge を読むだけである。git にも GitForge にも書かない。書く鍵も持たない。
 - スナップショットを作って置き場に書くのは、worker だけである。
   - バックエンドも、apply request の作成のときだけ、作業用の git の複製から git を読んで検査する（[作業用の git の複製](apply-request.md#作業用の-git-の複製)）。スナップショットは作らない。
   - worker、バックエンド、CLI の `check` は、同じ解析のコードを使う（[ひな形と check](../cli/local.md)）。
@@ -28,6 +28,7 @@ git を読んで、スナップショットを作り続ける worker を、動�
 | ファイルの解析のコード | git のファイルからスナップショットを作る。CLI の `check` と同じコード |
 | 置き場への書き込み | スナップショット、artifact、`main` の並びの索引、`latest`、ブランチの履歴、`repositories` を書く。バックエンドのポート（読むだけ）とは別のインターフェース |
 | リモートの git リポジトリ | GitForge。読むだけの資格情報を使う |
+| GitForge の読むだけの API | `main` のコミットが反映によるものかを確かめる（[壊れた repository](broken.md)）。git と同じ資格情報を使う |
 
 ## 見回り
 
@@ -78,7 +79,7 @@ repository ごとに、次の順に処理する。
 
 `main` の新しいコミットについて、次のことを確かめ、破れていれば警告としてコミットの記録に書く。
 
-- 反映の記録（`Logiforge-Apply-Request:`）がある（[記録の形式](../files/revisions.md)）。
+- 反映によるコミットである（[壊れた repository](broken.md) の「反映かの判定」）。違えば、`no_apply_request` を付け、repository を壊れた状態にする。
 - 木の不変条件が成り立つ（[差分の検査](checks.md) の「head の木で確かめること」）。1 つ前のコミットのスナップショットツリーの `broken` になかったものを、新しく破れたものとする。
 - 反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていない（[対象ノードの変化](merge.md#対象ノードの変化)）。
   - base は、反映した先頭のコミット（反映のコミットの `Logiforge-Version:`）と、反映の直前の `main` の分かれた点である。worker は、自分の clone の `git merge-base` で求める。
@@ -86,7 +87,7 @@ repository ごとに、次の順に処理する。
   - 対象ノードは、反映のコミットで変わったファイルから求める。検証結果と背景情報はその仮説、新しいストーリーは親の仮説、inactive 化はそのストーリーである。
   - 反映した先頭のコミットは、ブランチが消えても、`refs/pull/*/head` を fetch して読む。そのコミットか base が見つからなければ、確かめられなかったことを警告する（`overlap_unchecked`）。
 - 警告の種類は、`no_apply_request`、新しく破れた不変条件の規則、`overlap`、`overlap_unchecked`、`main_rewritten`（[latest](snapshot.md#latest)）である。
-- なぜ：`main` の保護が外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
+- なぜ：`main` を守る設定がないときや外れたときと、検査と merge のすき間（[反映の手順](merge.md)）で起きたことに気づくため。
 
 ## 取り込みの時間
 

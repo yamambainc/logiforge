@@ -110,11 +110,13 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 ## main を守る
 
-- `main` を守る設定は、必須である。
+- `main` を守る設定は、勧めるが求めない。
+  - なぜ：GitForge とプランによっては使えない（例：GitHub Free の private のリポジトリ）から。反映によらない変更は、あとから見つけて直す（[壊れた repository](../backend/broken.md)）。
+- 守る設定を使うときは、次のようにする。
   - `main` への push を禁じ、pull request の merge だけにする。
   - merge できるのは、書き込み主体だけにする。
   - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
-- 守る設定が外れて、反映によらない変更が `main` に入ったら、[worker](../backend/worker.md) が見つけて警告する。
+- 反映によらない変更が `main` に入ったら、[worker](../backend/worker.md) が見つけ、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
 
 ## 信頼の境界
 

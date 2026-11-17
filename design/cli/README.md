@@ -81,6 +81,7 @@ sequenceDiagram
   - `check` は、見つけた誤りの一覧を書く。
 - エラーのときは、終了コードを 0 以外にし、`--json` では API の `Problem` をそのまま書く。
   - CLI の中のエラー（git の失敗など）は、`code` が `cli_error` の `Problem` の形で書く。
+  - repository が壊れているときは、木を読むコマンドは、最後に正しかった時点の木を書いたうえで、`code` が `repository_broken` の `Problem` を標準エラーに書き、終了コード 1 で終わる（[壊れた repository](../backend/broken.md)）。
 - 終了コードは、成功が 0、エラー（API のエラー、`check` の誤り、git の失敗）が 1、使い方の誤り（知らないコマンド、引数の誤り）が 2 である。
 
 ## 要件との対応

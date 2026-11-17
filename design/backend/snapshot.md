@@ -37,7 +37,8 @@
 | `kind` | `main`（`main` のコミット）、`branch`（利用者が push したブランチの先頭） |
 | `committed_at` | コミットの時刻 |
 | `trailers` | コミットの trailer（[記録の形式](../files/revisions.md)） |
-| `warnings` | `main` のコミットだけ。反映の記録がないこと（`Logiforge-Init:` のある最初の用意のコミットを除く）、このコミットで新しく破れた不変条件、worker が見つけた警告（重なり、`main` の書き換え）（[すること](worker.md#すること)） |
+| `last_good` | `main` のコミットだけ。repository が壊れていれば、最後に正しかった時点のコミットの SHA。壊れていなければ null（[壊れた repository](broken.md)） |
+| `warnings` | `main` のコミットだけ。反映によらないこと（[壊れた repository](broken.md) の「反映かの判定」）、このコミットで新しく破れた不変条件、worker が見つけた警告（重なり、`main` の書き換え）（[すること](worker.md#すること)） |
 | `changes` | `main` のコミットだけ。このコミットで変わったノードごとの、ノードの識別子、変わったファイルの種類（`hypothesis`、`background`、`verdict`、`story`、`inactivated`）とパス、そのノードを前に変えたコミット（`previous`。番号と SHA。初めてなら null）（下の「ノードを変えたコミット」） |
 | `paths` | `branch` のコミットだけ。base から変わったファイルのパスと、変わり方（`added`、`modified`、`deleted`） |
 
