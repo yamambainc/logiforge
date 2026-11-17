@@ -185,9 +185,21 @@ func (a *App) commit(_ context.Context, args []string) error {
 
 // worktree は、手元の clone の作業ツリーである。
 type worktree struct {
-	root  string
+	// root は、repository の根（ディレクトリの repository では、そのディレクトリ）。gitRoot は、git の作業ツリーの根である。
+	root, gitRoot string
+	// dir は、ディレクトリの repository のパス。git リポジトリ全体の repository では空。
+	dir   string
 	files tree.Files
 	tree  *tree.Tree
+}
+
+// directory は、clone の git の設定の logiforge.directory（ディレクトリの repository のパス）を返す。なければ空。
+func (a *App) directory() string {
+	out, err := a.git("config", "--get", "logiforge.directory")
+	if err != nil {
+		return ""
+	}
+	return strings.Trim(strings.TrimSpace(out), "/")
 }
 
 // readWorktree は、作業ツリーのファイル（追跡しているものと、無視していない追跡していないもの）を読む。
@@ -196,16 +208,26 @@ func (a *App) readWorktree() (*worktree, error) {
 	if err != nil {
 		return nil, errors.New("git の clone の中で使う")
 	}
+	dir := a.directory()
 	out, err := a.git("-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	if err != nil {
 		return nil, err
 	}
 	files := tree.Files{}
-	for _, p := range strings.Split(out, "\x00") {
-		if p == "" {
+	for _, full := range strings.Split(out, "\x00") {
+		if full == "" {
 			continue
 		}
-		full := filepath.Join(root, filepath.FromSlash(p))
+		// ディレクトリの repository では、ディレクトリの中だけを、ディレクトリを根として読む。
+		p := full
+		if dir != "" {
+			rest, ok := strings.CutPrefix(full, dir+"/")
+			if !ok {
+				continue
+			}
+			p = rest
+		}
+		full := filepath.Join(root, filepath.FromSlash(full))
 		info, err := os.Lstat(full)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue // 消したファイル
@@ -229,7 +251,11 @@ func (a *App) readWorktree() (*worktree, error) {
 		}
 		files[p] = f
 	}
-	return &worktree{root: root, files: files, tree: tree.Build(files)}, nil
+	w := &worktree{root: root, gitRoot: root, dir: dir, files: files, tree: tree.Build(files)}
+	if dir != "" {
+		w.root = filepath.Join(root, filepath.FromSlash(dir))
+	}
+	return w, nil
 }
 
 func (w *worktree) write(p string, content []byte) error {
@@ -514,19 +540,19 @@ func (a *App) check(_ context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	mainSHA, err := a.git("-C", w.root, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
+	mainSHA, err := a.git("-C", w.gitRoot, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
 	if err != nil {
 		return errors.New("origin/main がない。git fetch origin を先に行う")
 	}
-	baseSHA, err := a.git("-C", w.root, "merge-base", "HEAD", mainSHA)
+	baseSHA, err := a.git("-C", w.gitRoot, "merge-base", "HEAD", mainSHA)
 	if err != nil {
 		return err
 	}
-	repoDir, err := a.git("-C", w.root, "rev-parse", "--absolute-git-dir")
+	repoDir, err := a.git("-C", w.gitRoot, "rev-parse", "--absolute-git-dir")
 	if err != nil {
 		return err
 	}
-	g := &gitx.Repo{Dir: repoDir}
+	g := &gitx.Repo{Dir: repoDir, Prefix: w.dir}
 	base, err := g.ReadFiles(context.Background(), baseSHA, tree.MaxArtifactSize)
 	if err != nil {
 		return err

@@ -27,4 +27,6 @@ type SnapshotStore interface {
 	Artifact(ctx context.Context, repo, sha256 string) ([]byte, error)
 	// Broken は、repository が壊れていれば、その記録を返す。壊れていなければ nil（design/backend/broken.md）。
 	Broken(ctx context.Context, repo string) (*store.Broken, error)
+	// Scanned は、ディレクトリの repository で、worker が読み終えた git の main の先頭を返す。なければ空。
+	Scanned(ctx context.Context, repo string) (string, error)
 }

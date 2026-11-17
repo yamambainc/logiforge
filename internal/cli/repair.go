@@ -112,11 +112,11 @@ func (a *App) restoreFiles(ctx context.Context, name string) error {
 	if err := a.getJSON(ctx, repoPath(name)+"/repair-files", nil, &rf); err != nil {
 		return err
 	}
-	root, err := a.git("rev-parse", "--show-toplevel")
+	root, scope, err := a.repoRoot()
 	if err != nil {
 		return err
 	}
-	if _, err := a.git("rm", "-r", "--quiet", "--ignore-unmatch", "--", "."); err != nil {
+	if _, err := a.git("-C", a.gitTop(root, scope), "rm", "-r", "--quiet", "--ignore-unmatch", "--", scope); err != nil {
 		return err
 	}
 	for _, f := range rf.Files {
@@ -135,25 +135,49 @@ func (a *App) restoreFiles(ctx context.Context, name string) error {
 			return err
 		}
 	}
-	_, err = a.git("add", "-A", "--", ".")
+	_, err = a.git("-C", a.gitTop(root, scope), "add", "-A", "--", scope)
 	return err
+}
+
+// repoRoot は、repository の根の絶対パスと、git の作業ツリーの根から見たそのパス（git に渡す pathspec）を返す。
+// ディレクトリの repository では、根はそのディレクトリである（design/directory/README.md）。
+func (a *App) repoRoot() (root, scope string, err error) {
+	top, err := a.git("rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", "", err
+	}
+	if dir := a.directory(); dir != "" {
+		return filepath.Join(top, filepath.FromSlash(dir)), dir, nil
+	}
+	return top, ".", nil
+}
+
+// gitTop は、repoRoot の root と scope から、git の作業ツリーの根を返す。
+func (a *App) gitTop(root, scope string) string {
+	if scope == "." {
+		return root
+	}
+	return strings.TrimSuffix(root, string(filepath.Separator)+filepath.FromSlash(scope))
 }
 
 // addArtifact は、中身を artifact のファイル（artifacts/sha256/…）として置き、git の index に入れる。
 func (a *App) addArtifact(content []byte) error {
-	root, err := a.git("rev-parse", "--show-toplevel")
+	root, scope, err := a.repoRoot()
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(content)
 	rel := tree.ArtifactPath(hex.EncodeToString(sum[:]))
 	p := filepath.Join(root, filepath.FromSlash(rel))
+	if scope != "." {
+		rel = scope + "/" + rel
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(p, content, 0o644); err != nil {
 		return err
 	}
-	_, err = a.git("add", "--", rel)
+	_, err = a.git("-C", a.gitTop(root, scope), "add", "--", rel)
 	return err
 }

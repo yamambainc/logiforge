@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -161,6 +162,11 @@ func setup(t *testing.T) *world { return setupWith(t, nil) }
 // setupWith は、setup と同じだが、serve を動かす前に extra を呼び、返った環境変数を serve に足す。
 // extra は、serve の URL（/v1 の手前まで）を受け取る。
 func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *world {
+	return setupFull(t, nil, extra)
+}
+
+// setupFull は、setupWith と同じだが、serve と worker の両方に足す環境変数を、common で返す（organization を作ったあとに呼ぶ）。
+func setupFull(t *testing.T, common func(w *world) []string, extra func(w *world, serveURL string) []string) *world {
 	fu, admin := os.Getenv("FORGEJO_URL"), os.Getenv("FORGEJO_ADMIN_TOKEN")
 	if fu == "" || admin == "" {
 		t.Skip("FORGEJO_URL と FORGEJO_ADMIN_TOKEN がない（scripts/forgejo-test.sh で Forgejo を起動する）")
@@ -193,20 +199,24 @@ func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *wo
 	w.storeDir = t.TempDir()
 	serveAddr := freePort(t)
 	// バックエンドも、apply request の作成で、worker と同じ読むだけのユーザーで git を読む。
-	common := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_FORGEJO_URL=" + fu, "LOGIFORGE_FORGEJO_ORG=" + w.org,
+	baseEnv := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_FORGEJO_URL=" + fu, "LOGIFORGE_FORGEJO_ORG=" + w.org,
 		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
+	if common != nil {
+		// 下で serve と worker の両方が append するので、容量を切り詰めて、互いに書き換えないようにする。
+		baseEnv = slices.Clip(append(baseEnv, common(w)...))
+	}
 	ring, err := pullreq.KeyringFromSecrets([]string{"k1"}, []string{recordSecret})
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.workerEnv = append(common, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s",
+	w.workerEnv = append(baseEnv, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s",
 		"LOGIFORGE_RECORD_PUBLIC_KEYS="+ring.FormatPublicKeys())
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
 	var more []string
 	if extra != nil {
 		more = extra(w, "http://"+serveAddr)
 	}
-	w.start("serve", append(append(common, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
+	w.start("serve", append(append(baseEnv, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
 		"LOGIFORGE_RECORD_KEYS=k1="+recordSecret,
 		"LOGIFORGE_WAIT_TIMEOUT=20s", "LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
 	w.api = "http://" + serveAddr
@@ -255,7 +265,17 @@ func (w *world) call(who, method, path string, in any, headers ...string) (int, 
 }
 
 // user は、CLI を使う主体（エージェント）の環境である。
+// repoName は、CLI の --repo に渡す repository の名前である。repo が空なら q。
+func (u *user) repoName() string {
+	if u.repo != "" {
+		return u.repo
+	}
+	return "q"
+}
+
 type user struct {
+	// repo は、--repo に渡す repository の名前。空なら q。
+	repo    string
 	w       *world
 	who     string
 	home    string

@@ -95,6 +95,8 @@ type fakeGitHub struct {
 	branchSeq  int
 	// mergeFails は、merge を失敗させる回数。
 	mergeFails int
+	// ruleBlocked なら、merge をルールセットで断る（405 の Repository rule violations）。
+	ruleBlocked bool
 	// ownTokens は、Logiforge の OAuth App のトークン。
 	ownTokens map[string]bool
 	messages  []string
@@ -450,6 +452,10 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		x := f.pulls[num(reMerge, p)]
 		if f.users[tok].noMerge {
 			fail(w, http.StatusForbidden, "Must have push access to repository")
+			return
+		}
+		if f.ruleBlocked {
+			fail(w, http.StatusMethodNotAllowed, "Repository rule violations found\n\nWaiting on required approvals from acme/gate.\n\n")
 			return
 		}
 		if f.mergeFails > 0 {

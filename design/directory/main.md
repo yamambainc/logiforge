@@ -82,10 +82,18 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 - 手順 3 と手順 4 のすき間に、コードの PR が merge されても、ディレクトリの中は変わらない。検査の結果は変わらない。
 - 別の apply request とのすき間は、今までどおりふさがない（[検査と merge のすき間](../backend/merge.md#検査と-merge-のすき間)）。
 
-## 確かめること
+## 確かめたこと
 
-実装するときに、次のことを確かめる。
+yamambainc（GitHub Free の organization）の public のリポジトリ `yamambainc/logiforge-directory-test` で、上の 2 つのルールセットを作り、次のことを確かめた（2026-11-17）。
 
-- GitHub：ルールセットの bypass に team を入れられるか（Free の organization で）。入れた team の人のトークンで、承認の規則で止まった PR を、API で squash merge できるか
-- GitHub：(B) の bypass が、(A) を越えないか（reviewer の team の人が、`main` に直接 push できず、force push もできないか）
-- GitHub：private のリポジトリ（Team）でも、同じルールセットが効くか
+| 項目 | 結果 |
+|---|---|
+| ルールセットの bypass に team を入れられるか | 入れられる（`actor_type: Team`、`bypass_mode: always`） |
+| (B) の bypass の team の人が、ディレクトリを変える PR を API で merge できるか | できる |
+| (B) の bypass がないとき、ディレクトリを変える PR の merge | 405。`Repository rule violations found`、`Waiting on required approvals from <承認の team>`。バックエンドは、反映の失敗 `merge_forbidden` にする |
+| ディレクトリを変えない PR（コードの PR） | merge できる |
+| (B) の bypass の team の人が、`main` に直接 push する、force push する | どちらも (A) で拒まれる（`push declined due to repository rule violations`）。(B) の bypass は (A) を越えない |
+
+まだ確かめていないことは、次のとおりである。
+
+- private のリポジトリ（Team のプラン）でも、同じルールセットが効くか。Free の organization では、private のリポジトリにルールセットを掛けられないので、確かめられない。

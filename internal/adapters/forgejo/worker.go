@@ -29,13 +29,13 @@ func (s *WorkerSource) ListRepositories(ctx context.Context) ([]ports.Repository
 }
 
 // GitForgeRef は、名前から gitforge_ref（<organization>/<名前>）を求める。Forgejo に問い合わせない。
-func (s *WorkerSource) GitForgeRef(_ context.Context, name string) (string, error) {
-	return s.c.cfg.Org + "/" + name, nil
+func (s *WorkerSource) GitForgeRef(ctx context.Context, name string) (string, error) {
+	return repos{client: s.c}.GitForgeRef(ctx, name)
 }
 
 // GitURL は、git で読む URL を返す。資格情報は、URL に入れず、GitEnv の credential helper で渡す。
 func (s *WorkerSource) GitURL(gitForgeRef string) string {
-	return strings.TrimRight(s.c.cfg.URL, "/") + "/" + gitForgeRef + ".git"
+	return strings.TrimRight(s.c.cfg.URL, "/") + "/" + gitRef(gitForgeRef) + ".git"
 }
 
 // GitEnv は、git に資格情報を渡す環境変数を返す。トークンは、コマンドの引数や設定ファイルに書かず、

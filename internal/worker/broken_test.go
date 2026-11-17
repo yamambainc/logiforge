@@ -21,7 +21,7 @@ type checkedSource struct {
 	err    error
 }
 
-func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha string, _ []string, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha string, _ []string, _ string, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
 	if r.GitForgeRef != "o/q" {
 		return ports.MergeVerdict{}, errors.New("ref が違う：" + r.GitForgeRef)
 	}
@@ -35,7 +35,7 @@ func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha s
 }
 
 // VerifyInit は、署名が "ok" のときだけ合うとする。
-func (s *checkedSource) VerifyInit(_ context.Context, _ ports.Repository, _, _, sig string, _ map[string]string) (bool, error) {
+func (s *checkedSource) VerifyInit(_ context.Context, _ ports.Repository, _, _, _, sig string, _ map[string]string) (bool, error) {
 	return sig == "ok", nil
 }
 

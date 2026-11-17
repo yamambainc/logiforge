@@ -316,6 +316,8 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	if err != nil {
 		return err
 	}
+	// ディレクトリの repository では、ディレクトリの中だけを読む（design/directory/history.md）。
+	g.Prefix = r.Directory()
 	remote := w.src.GitURL(r.GitForgeRef)
 	heads, err := g.LsRemote(ctx, remote)
 	if err != nil {
@@ -432,6 +434,18 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	if latest == mainSHA {
 		return nil
 	}
+	// ディレクトリの repository では、版はディレクトリを変えたコミットだけである。latest は版で、git の main の先頭とは限らないので、
+	// どこまで読んだかは scanned で持つ（design/directory/history.md の「worker」）。
+	dir := r.Directory()
+	scanned := ""
+	if dir != "" {
+		if scanned, err = store.GetScanned(ctx, w.store, repo); err != nil {
+			return err
+		}
+		if scanned == mainSHA {
+			return nil
+		}
+	}
 	br, err := store.GetBroken(ctx, w.store, repo)
 	if err != nil {
 		return err
@@ -442,10 +456,15 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	}
 	// 続きから取り込む位置。latest が並びにあれば、その次から。なければ main が書き換えられているので、
 	// 並びのうち、スナップショットツリーのあるいちばん新しいコミットの次から（design/backend/snapshot.md の「latest」）。
-	start, rewritten := 0, false
+	// prevVersion は、続きの最初の版の、1 つ前の版である（そのスナップショットツリーに重ねる）。
+	start, rewritten, prevVersion := 0, false, ""
 	if latest != "" {
 		if i := slices.Index(chain, latest); i >= 0 {
-			start = i + 1
+			start, prevVersion = i+1, latest
+			// ディレクトリの repository では、latest のあとのコードのコミットは、読み終えていれば読み直さない。
+			if j := slices.Index(chain, scanned); dir != "" && j > i {
+				start = j + 1
+			}
 		} else {
 			rewritten = true
 			for i := len(chain) - 1; i >= 0; i-- {
@@ -454,7 +473,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 					return err
 				}
 				if ok {
-					start = i + 1
+					start, prevVersion = i+1, chain[i]
 					break
 				}
 			}
@@ -472,10 +491,10 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	x := snapshot.NewIndex()
 	var files tree.Files
 	var broken []tree.Violation
-	if start > 0 {
-		m, err := store.GetMain(ctx, w.store, repo, chain[start-1])
+	if prevVersion != "" {
+		m, err := store.GetMain(ctx, w.store, repo, prevVersion)
 		if err != nil {
-			return fmt.Errorf("%s のスナップショットツリー: %w", chain[start-1], err)
+			return fmt.Errorf("%s のスナップショットツリー: %w", prevVersion, err)
 		}
 		x = snapshot.IndexFromSnapshotTree(m.Commit, &m.SnapshotTree)
 		if files, err = m.SnapshotTree.Files(); err != nil {
@@ -492,10 +511,15 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
 		}
-		changes, err := g.Diff(ctx, prev, sha)
+		changes, outside, err := g.DiffAll(ctx, prev, sha)
 		if err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
 		}
+		// ディレクトリを変えないコミット（コードのコミット）は、版にしない（design/directory/history.md の「版」）。
+		if dir != "" && len(changes) == 0 {
+			continue
+		}
+		version, before := x.Head().Number, x.Head().Revision
 		paths := make([]string, len(changes))
 		for j, ch := range changes {
 			paths[j] = ch.Path
@@ -504,14 +528,14 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
 		}
-		v, err := w.authorized(ctx, g, r, sha, c.Parents, i, info, changes, files, br)
+		v, err := w.authorized(ctx, g, r, sha, c.Parents, before, version, info, changes, outside, files, br)
 		if err != nil {
 			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
 			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
 		}
 		// 根のコミットが用意のコミットでなければ、最後に正しかった時点がないので、取り込まない。repository は作り直す
 		// （design/backend/verify.md の「repository の用意のコミット」）。
-		if v != nil && i == 0 && !v.Authorized {
+		if v != nil && version == 0 && !v.Authorized {
 			return fmt.Errorf("根のコミット %s が、Logiforge の用意のコミットでない（%s）。repository を作り直す", sha, v.Detail)
 		}
 		if v != nil {
@@ -519,11 +543,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		}
 		rec := x.Record(info, paths)
 		if br == nil && info.Authorized != nil && !*info.Authorized {
-			last := latest
-			if i > 0 {
-				last = chain[i-1]
-			}
-			br = &store.Broken{LastGood: last, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}
+			br = &store.Broken{LastGood: before, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}
 		} else if br != nil && v != nil && v.Authorized && v.Kind != "" {
 			// 直すための apply request の反映で、直す条件は、反映かの判定で確かめた（design/backend/broken.md の「直すための apply request」）。
 			br = nil
@@ -535,8 +555,12 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		newly, _ := tree.NewlyBroken(broken, t.Broken)
 		x.AddNewlyBroken(&rec, newly...)
 		broken = t.Broken
-		if i > 0 {
+		if version > 0 {
 			x.AddWorkerWarnings(&rec, w.overlap(ctx, g, repo, rec)...)
+		}
+		// 反映のコミットが、ディレクトリの外も変えていたら、警告にする（判定には使わない。design/directory/history.md の「反映かの判定」）。
+		if len(outside) > 0 && v != nil && v.Authorized {
+			x.AddWorkerWarnings(&rec, tree.Violation{Rule: tree.RuleOutsideDirectory, Node: sha, Detail: "ディレクトリの外も変えている：" + strings.Join(outside, "、")})
 		}
 		if rewritten && i == start {
 			x.AddWorkerWarnings(&rec, tree.Violation{Rule: RuleMainRewritten, Node: sha, Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
@@ -566,25 +590,31 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		latest = sha
 	}
 	// main が、取り込み終えたコミットまで短く書き換えられたときは、取り込むコミットがない。latest だけを戻す。
-	if rewritten && start == len(chain) {
+	if rewritten && latest != prevVersion && prevVersion != "" && (start == len(chain) || dir != "") {
 		w.cfg.Log.Warn("main が、取り込み終えたコミットまで書き換えられた", "repository", repo, "latest", latest, "main", mainSHA)
 		if err := w.putBroken(ctx, repo, br); err != nil {
 			return err
 		}
-		if err := store.SetLatest(ctx, w.store, repo, mainSHA, latest); err != nil {
+		if err := store.SetLatest(ctx, w.store, repo, prevVersion, latest); err != nil {
 			return err
 		}
+	}
+	if dir != "" {
+		return store.PutScanned(ctx, w.store, repo, mainSHA)
 	}
 	return nil
 }
 
 // Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify.md）。
 // parents はコミットの親（最初の親が 1 つ前の main のコミット）、files はそのコミットの木、broken は 1 つ前の main までの壊れていることの記録である。
+//
+// prevVersion は、1 つ前の版の SHA である。判定は、その版の木に重ねて行う。
 type Verifier interface {
-	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
-	// VerifyInit は、用意のコミットの trailer Logiforge-Init-Signature: が、種類 kind（ports.InitRoot か ports.InitSecond）、
-	// repository、1 つ前のコミット parent（init-root では空）、加えたファイル（パスから中身の sha256）に対する署名かを確かめる。
-	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, signature string, added map[string]string) (bool, error)
+	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
+	// VerifyInit は、用意のコミットの trailer Logiforge-Init-Signature: が、種類 kind（ports.InitRoot、ports.InitSecond、ports.InitDirectory）、
+	// repository（ディレクトリを含む）、1 つ前のコミット parent（init-second のほかは空）、移した元 migratedFrom、
+	// 加えたファイル（パスから中身の sha256。ディレクトリの repository では、ディレクトリの中のパス）に対する署名かを確かめる。
+	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error)
 }
 
 // RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。
@@ -596,21 +626,30 @@ type RecordLog interface {
 // 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、trailer Logiforge-Init-Signature: の署名と、
 // 差分がファイルを加えるだけであることで決める（design/backend/verify.md の「repository の用意のコミット」）。
 // なぜ根も署名で決めるか：GitHub では、管理者が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
-func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, index int, info snapshot.CommitInfo, changes []gitx.Change, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
+//
+// version は、このコミットの前の版の数（最初の版なら 0）、prevVersion は 1 つ前の版の SHA である。git リポジトリ全体の repository では、
+// どのコミットも版なので、git の first-parent と同じである。ディレクトリの repository では、1 つ前の版は、git の親とは限らない。
+// outside は、ディレクトリの repository で、このコミットがディレクトリの外で変えたパスである。
+func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, prevVersion string, version int, info snapshot.CommitInfo, changes []gitx.Change, outside []string, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
 	if w.cfg.Verifier == nil {
 		return nil, nil
 	}
-	if index == 0 {
+	if version == 0 {
 		sig := trailerOf(info, snapshot.TrailerInitSignature)
 		if !hasTrailer(info, snapshot.TrailerInit) || sig == "" {
-			return &ports.MergeVerdict{Detail: "根のコミットに、Logiforge-Init: と Logiforge-Init-Signature: がない"}, nil
+			return &ports.MergeVerdict{Detail: "最初の版に、Logiforge-Init: と Logiforge-Init-Signature: がない"}, nil
 		}
-		return w.initVerdict(ctx, r, "", sig, changes, files)
+		kind := ports.InitRoot
+		if r.Directory() != "" {
+			// ディレクトリの repository の用意のコミット（design/directory/history.md の「用意のコミット」）。
+			kind = ports.InitDirectory
+		}
+		return w.initVerdict(ctx, r, kind, "", sig, info, changes, outside, files)
 	}
-	if sig := trailerOf(info, snapshot.TrailerInitSignature); index == 1 && sig != "" && len(parents) == 1 {
-		return w.initVerdict(ctx, r, parents[0], sig, changes, files)
+	if sig := trailerOf(info, snapshot.TrailerInitSignature); r.Directory() == "" && version == 1 && sig != "" && len(parents) == 1 {
+		return w.initVerdict(ctx, r, ports.InitSecond, parents[0], sig, info, changes, outside, files)
 	}
-	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, files, br)
+	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, files, br)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +670,7 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 			if err := w.buildBranch(ctx, g, r.Name, base, v.MissingHead); err != nil {
 				return nil, err
 			}
-			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, files, br); err != nil {
+			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, files, br); err != nil {
 				return nil, err
 			}
 			if v.MissingHead != "" {
@@ -670,7 +709,10 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 }
 
 // initVerdict は、用意のコミットを確かめる。差分は、ファイルを加えることだけで、その中身の sha256 に署名が合う。parent は、根では空。
-func (w *Worker) initVerdict(ctx context.Context, r ports.Repository, parent, sig string, changes []gitx.Change, files tree.Files) (*ports.MergeVerdict, error) {
+func (w *Worker) initVerdict(ctx context.Context, r ports.Repository, kind, parent, sig string, info snapshot.CommitInfo, changes []gitx.Change, outside []string, files tree.Files) (*ports.MergeVerdict, error) {
+	if len(outside) > 0 {
+		return &ports.MergeVerdict{Detail: "用意のコミットが、ディレクトリの外も変えている（" + strings.Join(outside, "、") + "）"}, nil
+	}
 	added := map[string]string{}
 	for _, ch := range changes {
 		if ch.Status != "A" {
@@ -686,11 +728,7 @@ func (w *Worker) initVerdict(ctx context.Context, r ports.Repository, parent, si
 			return &ports.MergeVerdict{Detail: "用意のコミットの " + ch.Path + " の中身を読めない"}, nil
 		}
 	}
-	kind := ports.InitSecond
-	if parent == "" {
-		kind = ports.InitRoot
-	}
-	ok, err := w.cfg.Verifier.VerifyInit(ctx, r, kind, parent, sig, added)
+	ok, err := w.cfg.Verifier.VerifyInit(ctx, r, kind, parent, trailerOf(info, snapshot.TrailerMigratedFrom), sig, added)
 	if err != nil {
 		return nil, err
 	}
@@ -822,6 +860,16 @@ func (w *Worker) syncBranch(ctx context.Context, g *gitx.Repo, repo, name, head,
 	base, err := g.MergeBase(ctx, mainSHA, head)
 	if err != nil {
 		return err
+	}
+	// ディレクトリの repository では、ディレクトリの中を変えるブランチだけを、ブランチの履歴に入れる（design/directory/history.md の「worker」）。
+	if g.Prefix != "" {
+		changes, _, err := g.DiffAll(ctx, base, head)
+		if err != nil {
+			return err
+		}
+		if len(changes) == 0 {
+			return nil
+		}
 	}
 	if _, err := store.GetCommit(ctx, w.store, repo, head); errors.Is(err, store.ErrNotFound) {
 		if err := w.buildBranch(ctx, g, repo, base, head); err != nil {

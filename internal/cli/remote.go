@@ -66,7 +66,8 @@ func (a *App) repoClone(ctx context.Context, args []string) error {
 		dir = f.positional[1]
 	}
 	var r struct {
-		GitURL string `json:"git_url"`
+		GitURL    string `json:"git_url"`
+		Directory string `json:"directory"`
 	}
 	if err := a.getJSON(ctx, repoPath(name), nil, &r); err != nil {
 		return err
@@ -76,6 +77,12 @@ func (a *App) repoClone(ctx context.Context, args []string) error {
 	}
 	if _, err := a.git("-C", dir, "config", "logiforge.repository", name); err != nil {
 		return err
+	}
+	// ディレクトリの repository では、CLI は、そのディレクトリを根として扱う（design/directory/README.md の「登録」）。
+	if r.Directory != "" {
+		if _, err := a.git("-C", dir, "config", "logiforge.directory", r.Directory); err != nil {
+			return err
+		}
 	}
 	if a.json {
 		return a.writeJSON(map[string]string{"repository": name, "directory": dir, "git_url": r.GitURL})

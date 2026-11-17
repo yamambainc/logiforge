@@ -29,6 +29,9 @@ type Repo struct {
 	// credential helper などは GIT_CONFIG_COUNT、GIT_CONFIG_KEY_n、GIT_CONFIG_VALUE_n で渡す。
 	// 手元から切り離す環境変数より後ろに足すので、同じ名前なら Env が勝つ（例：テストで GIT_ALLOW_PROTOCOL に http を足す）。
 	Env []string
+	// Prefix は、ディレクトリの repository のパス（design/directory/README.md）。空でなければ、ファイルと差分は、
+	// このディレクトリの中のものだけを、パスからディレクトリを除いて返す。外の変化は、DiffAll で別に返す。
+	Prefix string
 	// Timeout は、git の操作 1 回の時間の上限である。0 なら上限を付けない。
 	// 超えたら、git を止めて、ErrTimeout を包んだ誤りを返す（design/backend/worker.md の「すること」）。
 	Timeout time.Duration
@@ -296,6 +299,10 @@ func (r *Repo) readFiles(ctx context.Context, rev string, maxSize int64) (tree.F
 				return nil, err
 			}
 		}
+		p, inside := r.inside(p)
+		if !inside {
+			continue
+		}
 		files[p] = tree.File{Path: p, Mode: f[0], SHA: f[2], Size: size}
 		if f[1] == "blob" && f[0] == tree.RegularMode && size <= maxSize {
 			want = append(want, p)
@@ -386,32 +393,53 @@ type Change struct {
 // Diff は、a から b への、変わったファイルを返す。名前の変更は、消えたと加わったの組にする。
 // a が空なら、空の木から b への差分（b のすべてのファイルが加わった）を返す。最初のコミットに使う。
 func (r *Repo) Diff(ctx context.Context, a, b string) ([]Change, error) {
+	cs, _, err := r.DiffAll(ctx, a, b)
+	return cs, err
+}
+
+// inside は、パスが Prefix のディレクトリの中かと、ディレクトリを除いたパスを返す。Prefix が空なら、どのパスも中である。
+func (r *Repo) inside(p string) (string, bool) {
+	if r.Prefix == "" {
+		return p, true
+	}
+	rest, ok := strings.CutPrefix(p, r.Prefix+"/")
+	return rest, ok && rest != ""
+}
+
+// DiffAll は、Diff と同じく差分を返し、Prefix のディレクトリの外で変わったパスも返す。Prefix が空なら、外はない。
+func (r *Repo) DiffAll(ctx context.Context, a, b string) ([]Change, []string, error) {
 	args := []string{"diff-tree", "-r", "-z", "--no-renames", "--no-commit-id"}
 	if a == "" {
 		if err := checkRevs(b); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		args = append(args, "--root", "--end-of-options", b)
 	} else {
 		if err := checkRevs(a, b); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		args = append(args, "--end-of-options", a, b)
 	}
 	out, err := r.run(ctx, nil, args...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	recs := strings.Split(string(out), "\x00")
 	var cs []Change
+	var outside []string
 	for i := 0; i+1 < len(recs); i += 2 {
 		meta := strings.Fields(strings.TrimPrefix(recs[i], ":"))
 		if len(meta) != 5 {
-			return nil, fmt.Errorf("git diff-tree: 形が正しくない: %q", recs[i])
+			return nil, nil, fmt.Errorf("git diff-tree: 形が正しくない: %q", recs[i])
 		}
-		cs = append(cs, Change{OldMode: meta[0], NewMode: meta[1], OldSHA: meta[2], NewSHA: meta[3], Status: meta[4], Path: recs[i+1]})
+		p, in := r.inside(recs[i+1])
+		if !in {
+			outside = append(outside, recs[i+1])
+			continue
+		}
+		cs = append(cs, Change{OldMode: meta[0], NewMode: meta[1], OldSHA: meta[2], NewSHA: meta[3], Status: meta[4], Path: p})
 	}
-	return cs, nil
+	return cs, outside, nil
 }
 
 // NextFiles は、parent の木のファイル（from のコミット）に、from から to への差分だけを読んで重ね、to の木のファイルを返す。
@@ -509,4 +537,36 @@ func (r *Repo) changedFiles(ctx context.Context, changes []Change, maxSize int64
 		return nil, err
 	}
 	return files, nil
+}
+
+// LastChange は、rev の first-parent の並びのうち、Prefix のディレクトリの中を変えた、いちばん新しいコミット（rev を含む）を返す。
+// なければ空。ディレクトリの repository で、コミットを、その時点の版に引くのに使う（design/directory/history.md の「版」）。
+func (r *Repo) LastChange(ctx context.Context, rev string) (string, error) {
+	if err := checkRevs(rev); err != nil {
+		return "", err
+	}
+	if r.Prefix == "" {
+		return rev, nil
+	}
+	out, err := r.run(ctx, nil, "log", "--first-parent", "-1", "--format=%H", "--end-of-options", rev, "--", r.Prefix)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// IsAncestor は、a が b の祖先（a と b が同じでもよい）かを返す。
+func (r *Repo) IsAncestor(ctx context.Context, a, b string) (bool, error) {
+	if err := checkRevs(a, b); err != nil {
+		return false, err
+	}
+	_, err := r.run(ctx, nil, "merge-base", "--is-ancestor", "--end-of-options", a, b)
+	if err == nil {
+		return true, nil
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
 }

@@ -372,6 +372,12 @@ func TestMergeForbidden(t *testing.T) {
 	if _, err := a.Merge(ports.WithToken(context.Background(), "tok-weak"), fakeRepo, "ar_1", "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
 		t.Fatalf("権限のない主体：%v", err)
 	}
+	// ルールセットに断られた merge（実際の GitHub で確かめた応答の形）も、merge の権限がないこととする。
+	f.ruleBlocked = true
+	if _, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
+		t.Fatalf("ルールセットに断られた merge：%v", err)
+	}
+	f.ruleBlocked = false
 	f.limited = 1000
 	_, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m")
 	if err == nil || errors.Is(err, ports.ErrMergeForbidden) {

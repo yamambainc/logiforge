@@ -11,8 +11,11 @@ import (
 
 // Repository は、repository である。
 type Repository struct {
-	Name             string `json:"name"`
-	GitURL           string `json:"git_url"`
+	Name   string `json:"name"`
+	GitURL string `json:"git_url"`
+	// Directory は、ディレクトリの repository の、git リポジトリの中のパス。git リポジトリ全体の repository では空
+	// （design/directory/README.md）。
+	Directory        string `json:"directory,omitempty"`
 	RootHypothesisID string `json:"root_hypothesis_id"`
 	// RootStatement は、根の仮説の主文（今の main）。スナップショットツリーがまだなければ null（WebUI の repository の一覧のため）。
 	RootStatement *string `json:"root_statement"`

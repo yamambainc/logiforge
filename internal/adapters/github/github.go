@@ -68,6 +68,9 @@ func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth, error) {
 }
 
 func (c Config) check() error {
+	if err := ports.CheckDirectories(c.Repositories); err != nil {
+		return fmt.Errorf("github: %w", err)
+	}
 	seen := map[string]bool{}
 	for _, r := range c.Repositories {
 		if r.Name == "" || seen[r.Name] {
@@ -134,7 +137,9 @@ func lookup(rs []ports.Repository, name string) (string, error) {
 }
 
 // GitURL は、クライアントが clone と push に使う git の URL を返す。
-func (r repos) GitURL(gitForgeRef string) string { return r.cfg.webURL() + "/" + gitForgeRef + ".git" }
+func (r repos) GitURL(gitForgeRef string) string {
+	return r.cfg.webURL() + "/" + gitRef(gitForgeRef) + ".git"
+}
 
 // MainHead は、main の先頭のコミットの SHA を返す。
 func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error) {
@@ -168,6 +173,9 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	rp, err := repoPath(gitForgeRef)
 	if err != nil {
 		return err
+	}
+	if _, dir := ports.SplitRef(gitForgeRef); dir != "" {
+		return r.setupDirectory(ctx, gitForgeRef, rp, dir, files, message)
 	}
 	if err := r.w(ctx, gitForgeRef, http.MethodGet, rp, nil, nil); err != nil {
 		if statusOf(err) == http.StatusNotFound {
@@ -454,4 +462,76 @@ func (a *Auth) CanRead(ctx context.Context, token, repo string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// setupDirectory は、ディレクトリの repository の用意のコミットを、利用者のトークンで、プロジェクトのリポジトリの main に置く
+// （design/directory/history.md の「用意のコミット」）。今の main の木にディレクトリのファイルを足したコミットを Git Data API で作り、
+// main を fast-forward で進める。main がそのあいだに進んでいたら、読み直して作り直す。ディレクトリがすでにあれば ErrMainExists。
+func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []ports.File, message string) error {
+	repoID, err := api(r).RepoID(ctx, ref)
+	if err != nil {
+		return err
+	}
+	signed, err := r.keys.InitMessage(stripInitSignature(message), pullreq.InitScope{Kind: ports.InitDirectory, RepoID: repoID, Directory: dir, MigratedFrom: migratedFrom(message)}, files)
+	if err != nil {
+		return err
+	}
+	type entry struct {
+		Path    string `json:"path"`
+		Mode    string `json:"mode"`
+		Type    string `json:"type"`
+		Content string `json:"content"`
+	}
+	entries := make([]entry, 0, len(files))
+	for _, f := range files {
+		entries = append(entries, entry{Path: dir + "/" + f.Path, Mode: "100644", Type: "blob", Content: string(f.Content)})
+	}
+	for attempt := 0; ; attempt++ {
+		head, err := r.MainHead(ctx, ref)
+		if errors.Is(err, ports.ErrNotFound) {
+			return fmt.Errorf("%w: プロジェクトのリポジトリ %s の main がない", ports.ErrNotFound, gitRef(ref))
+		}
+		if err != nil {
+			return err
+		}
+		// ディレクトリがすでにあれば、用意しない（そのディレクトリを変えた、前のコミットがあってはいけない）。
+		if err := r.w(ctx, ref, http.MethodGet, rp+"/contents/"+escapePath(dir)+"?ref="+url.QueryEscape(head), nil, nil); err == nil {
+			return ports.ErrMainExists
+		} else if statusOf(err) != http.StatusNotFound {
+			return err
+		}
+		var commit struct {
+			Tree struct {
+				SHA string `json:"sha"`
+			} `json:"tree"`
+		}
+		if err := r.w(ctx, ref, http.MethodGet, rp+"/git/commits/"+url.PathEscape(head), nil, &commit); err != nil {
+			return err
+		}
+		var t, c struct {
+			SHA string `json:"sha"`
+		}
+		if err := r.w(ctx, ref, http.MethodPost, rp+"/git/trees", map[string]any{"base_tree": commit.Tree.SHA, "tree": entries}, &t); err != nil {
+			return err
+		}
+		if err := r.w(ctx, ref, http.MethodPost, rp+"/git/commits", map[string]any{"message": signed, "tree": t.SHA, "parents": []string{head}}, &c); err != nil {
+			return err
+		}
+		err = r.w(ctx, ref, http.MethodPatch, rp+"/git/refs/heads/main", map[string]any{"sha": c.SHA, "force": false}, nil)
+		// main が進んでいれば（fast-forward でない）、422。読み直して、もう一度作る。
+		if statusOf(err) == http.StatusUnprocessableEntity && attempt < 3 {
+			continue
+		}
+		return err
+	}
+}
+
+// migratedFrom は、メッセージの trailer Logiforge-Migrated-From: の値を返す。なければ空（design/directory/migrate.md）。
+func migratedFrom(message string) string {
+	for _, l := range strings.Split(message, "\n") {
+		if v, ok := strings.CutPrefix(l, snapshot.TrailerMigratedFrom+": "); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }

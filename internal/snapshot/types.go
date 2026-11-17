@@ -216,6 +216,9 @@ type Branch struct {
 	FormatVersion int    `json:"format_version"`
 	Commit        Commit `json:"commit"`
 	Diff          Diff   `json:"diff"`
+	// Outside は、ディレクトリの repository で、base から先頭までに、ディレクトリの外で変わったパスである。
+	// ディレクトリの外も変える apply request は、検査で拒む（outside_directory。design/directory/README.md）。
+	Outside []string `json:"outside,omitempty"`
 }
 
 // Diff は、base から先頭への、ファイルの差分である。

@@ -36,6 +36,8 @@ type GitReader interface {
 	ReadBranch(ctx context.Context, repo, gitForgeRef, branch string) (*snapshot.Branch, error)
 	// ReadFiles は、ReadBranch で fetch したコミットの木のファイルを読む。
 	ReadFiles(ctx context.Context, repo, gitForgeRef, sha string) (tree.Files, error)
+	// ReachedMain は、ディレクトリの repository で、scanned が head と同じか、head より先かを返す。
+	ReachedMain(ctx context.Context, repo, gitForgeRef, head, scanned string) (bool, error)
 }
 
 // Caller は、API の要求を送った主体と、そのトークンである。

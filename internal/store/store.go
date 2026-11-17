@@ -127,6 +127,10 @@ func CommitKey(repo, sha string) string   { return Prefix + repo + "/commits/" +
 func SnapshotKey(repo, sha string) string { return Prefix + repo + "/snapshots/" + sha }
 func LatestKey(repo string) string        { return Prefix + repo + "/latest" }
 
+// ScannedKey は、ディレクトリの repository で、worker が読み終えた git の main の先頭の SHA のキーである
+// （design/directory/history.md の「worker」）。git リポジトリ全体の repository では使わない（latest と同じになるから）。
+func ScannedKey(repo string) string { return Prefix + repo + "/scanned" }
+
 // MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot.md の「コミットの記録から引くもの」）。
 func MainIndexKey(repo string, number int) string {
 	return Prefix + repo + "/main/" + strconv.Itoa(number)

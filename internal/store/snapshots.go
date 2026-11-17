@@ -415,3 +415,17 @@ func GetRecordsCursor(ctx context.Context, r Reader, repoID string) (time.Time, 
 func PutRecordsCursor(ctx context.Context, w Writer, repoID string, t time.Time) error {
 	return w.Put(ctx, RecordsCursorKey(repoID), []byte(t.UTC().Format(time.RFC3339Nano)+"\n"))
 }
+
+// GetScanned は、ディレクトリの repository の scanned を読む。なければ空。
+func GetScanned(ctx context.Context, r Reader, repo string) (string, error) {
+	b, err := r.Get(ctx, ScannedKey(repo))
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	}
+	return strings.TrimSpace(string(b)), err
+}
+
+// PutScanned は、ディレクトリの repository の scanned を書く。その SHA までの版を置き終えてから書く。
+func PutScanned(ctx context.Context, w Writer, repo, sha string) error {
+	return w.Put(ctx, ScannedKey(repo), []byte(sha+"\n"))
+}

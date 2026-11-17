@@ -166,6 +166,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 		if statusOf(err) == http.StatusForbidden && !limited(err) {
 			return "", fmt.Errorf("%w（GitHub：%v）", ports.ErrMergeForbidden, err)
 		}
+		// 405 の "Repository rule violations found"：ルールセットが、この主体の merge を断った（例：ディレクトリの守りで、
+		// reviewer の team に入っていない。design/directory/main.md）。待っても変わらないので、merge の権限がないこととする。
+		if statusOf(err) == http.StatusMethodNotAllowed && strings.Contains(errMessage(err), "Repository rule violations") {
+			return "", fmt.Errorf("%w（GitHub：%v）", ports.ErrMergeForbidden, err)
+		}
 		switch statusOf(err) {
 		case http.StatusConflict:
 			// 409：head が sha と違う（"Head branch was modified"）。

@@ -22,6 +22,9 @@ const TrailerInit = "Logiforge-Init"
 // （design/backend/verify.md の「repository の用意のコミット」）。
 const TrailerInitSignature = "Logiforge-Init-Signature"
 
+// TrailerMigratedFrom は、別リポジトリ方式から移したときの、用意のコミットの trailer である（design/directory/migrate.md）。
+const TrailerMigratedFrom = "Logiforge-Migrated-From"
+
 // TrailerRepair は、直すための apply request の反映のコミットの trailer である。値は RepairRevert か RepairAccept（design/backend/broken.md）。
 const TrailerRepair = "Logiforge-Repair"
 

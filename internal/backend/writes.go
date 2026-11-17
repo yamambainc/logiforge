@@ -85,6 +85,22 @@ func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest 
 	}
 }
 
+// caughtUp は、worker が、GitForge の main の先頭 head まで読み終えたかを返す。
+//   - git リポジトリ全体の repository：head が、latest までの main の並びにある。
+//   - ディレクトリの repository：scanned が、head と同じか、head より先にある（design/directory/main.md の「反映の順番」）。
+//     コードの merge では版が進まないので、latest は GitForge の main に追いつかないからである。
+func (b *Backend) caughtUp(ctx context.Context, repo, ref, latest, head string) bool {
+	if _, dir := ports.SplitRef(ref); dir == "" {
+		return b.inHistory(ctx, repo, latest, head)
+	}
+	scanned, err := b.Snap.Scanned(ctx, repo)
+	if err != nil || scanned == "" {
+		return false
+	}
+	ok, err := b.Git.ReachedMain(ctx, repo, ref, head, scanned)
+	return err == nil && ok
+}
+
 // ---- repository の作成 ----
 
 // initCommit は、コミットが repository の用意で置いたコミット（trailer `Logiforge-Init:` を持つ）かを返す。
@@ -135,7 +151,7 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 		if err != nil {
 			return out, err
 		}
-		if !b.waitLatest(ctx, name, func(l string) bool { return l == head }) {
+		if !b.waitLatest(ctx, name, func(l string) bool { return l != "" && b.caughtUp(ctx, name, ref, l, head) }) {
 			return out, fail(CodeSnapshotPending, "main がすでにあるが、そのスナップショットがまだない。少し待って送り直す")
 		}
 		v, err := b.currentMain(ctx, name)
@@ -150,7 +166,8 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 		return out, err
 	}
 	if !b.waitLatest(ctx, name, func(l string) bool { return l != "" }) {
-		out.Value = Repository{Name: name, GitURL: b.Forge.GitURL(ref)}
+		_, dir := ports.SplitRef(ref)
+		out.Value = Repository{Name: name, GitURL: b.Forge.GitURL(ref), Directory: dir}
 		out.Pending = "main"
 		if head, err := b.Forge.MainHead(ctx, ref); err == nil {
 			out.Pending = head
@@ -281,6 +298,10 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	}
 	if err != nil {
 		return out, err
+	}
+	// ディレクトリの repository では、差分はディレクトリの中だけにする（design/directory/README.md の outside_directory）。
+	if len(br.Outside) > 0 {
+		return out, fail(CodeValidationFailed, "差分の検査に通らない：%s（ディレクトリの外）：%s", tree.RuleOutsideDirectory, strings.Join(br.Outside, "、"))
 	}
 	head := br.Commit.Revision
 	if n.Commit != "" && n.Commit != head {

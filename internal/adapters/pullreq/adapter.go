@@ -101,6 +101,33 @@ func byIssue(comments []Comment) map[int][]Comment {
 	return m
 }
 
+// withRepository は、ディレクトリの repository の記録に、trailer Logiforge-Repository:（ディレクトリのパス）を足す。署名に含まれる。
+// git リポジトリ全体の repository では、足さない（design/directory/README.md の「apply request とみなす PR」）。
+func withRepository(ts []Trailer, ref string) []Trailer {
+	if _, dir := ports.SplitRef(ref); dir != "" {
+		ts = append(ts, Trailer{KeyRepository, dir})
+	}
+	return ts
+}
+
+// forRepository は、記録のうち、apply_request と human_request の記録で、Logiforge-Repository: が ref のディレクトリと違うもの
+// （ほかの repository の記録）を除く。1 つの git リポジトリに、repository がいくつもあるからである。
+// 除いた記録の提案や依頼は、ほかの記録があっても、この repository のものにならない。
+func forRepository(recs []parsed, ref string) []parsed {
+	_, dir := ports.SplitRef(ref)
+	out := recs[:0:0]
+	for _, r := range recs {
+		switch r.Get(KeyRecord) {
+		case RecordApplyRequest, RecordHumanRequest:
+			if r.Get(KeyRepository) != dir {
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // ---- 提案 ----
 
 // applyRequest は、pull request と、その記録から提案を組み立てる。
@@ -153,7 +180,7 @@ func (a *Adapter) readPull(ctx context.Context, repo string, p Pull) (ports.Appl
 	if err != nil {
 		return ports.ApplyRequest{}, false, err
 	}
-	ar, ok := applyRequest(p, recs, warnings)
+	ar, ok := applyRequest(p, forRepository(recs, repo), warnings)
 	return ar, ok, nil
 }
 
@@ -189,6 +216,7 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		pull = &p
 	}
 	rec := Record{Trailers: []Trailer{{KeyRecord, RecordApplyRequest}, {KeyApplyRequest, n.ID}, {KeyFirstRevision, n.FirstRevision}, {KeyPrincipal, n.Opener}}}
+	rec.Trailers = withRepository(rec.Trailers, repo)
 	if n.Kind != "" {
 		rec.Trailers = append(rec.Trailers, Trailer{KeyApplyRequestKind, n.Kind})
 	}
@@ -280,7 +308,7 @@ func (a *Adapter) listApplyRequests(ctx context.Context, repo string, pulls []Pu
 	seen := map[string]bool{}
 	for _, p := range pulls {
 		recs, warnings := a.records(repoID, by[p.Number])
-		ar, ok := applyRequest(p, recs, warnings)
+		ar, ok := applyRequest(p, forRepository(recs, repo), warnings)
 		if !ok || seen[ar.ID] {
 			continue
 		}
@@ -542,6 +570,7 @@ func (a *Adapter) CreateHumanRequest(ctx context.Context, repo string, n ports.N
 		{KeyRecord, RecordHumanRequest}, {KeyHumanRequest, n.ID}, {KeyHumanKind, string(n.Kind)}, {KeyTargetNode, n.TargetNode},
 		{KeyPrincipal, n.Requester}, {KeySession, n.Session},
 	}}
+	rec.Trailers = withRepository(rec.Trailers, repo)
 	if _, err := a.comment(ctx, repo, is.Number, rec); err != nil {
 		return ports.HumanRequest{}, err
 	}
@@ -576,7 +605,7 @@ func (a *Adapter) readIssue(ctx context.Context, repo string, is Issue) (foundIs
 	if err != nil {
 		return foundIssue{}, err
 	}
-	hr, answer, ok := humanRequest(is, recs, warnings)
+	hr, answer, ok := humanRequest(is, forRepository(recs, repo), warnings)
 	return foundIssue{hr, is, answer, ok}, nil
 }
 
@@ -607,7 +636,7 @@ func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, e
 	by := byIssue(comments)
 	for _, is := range issues {
 		recs, warnings := a.records(repoID, by[is.Number])
-		if hr, answer, ok := humanRequest(is, recs, warnings); ok && hr.ID == id {
+		if hr, answer, ok := humanRequest(is, forRepository(recs, repo), warnings); ok && hr.ID == id {
 			return foundIssue{hr, is, answer, true}, nil
 		}
 	}
@@ -637,7 +666,7 @@ func (a *Adapter) ListHumanRequests(ctx context.Context, repo string) ([]ports.H
 	seen := map[string]bool{}
 	for _, is := range issues {
 		recs, warnings := a.records(repoID, by[is.Number])
-		if hr, _, ok := humanRequest(is, recs, warnings); ok && !seen[hr.ID] {
+		if hr, _, ok := humanRequest(is, forRepository(recs, repo), warnings); ok && !seen[hr.ID] {
 			seen[hr.ID] = true
 			out = append(out, hr)
 		}

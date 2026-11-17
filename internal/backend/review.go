@@ -10,6 +10,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/pull-requests.md の「レビューの書き方」）。
@@ -167,7 +168,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 	// 2. 今の main のスナップショット。GitForge の main が latest より進んでいれば、worker が追いつくのを待つ。
 	// 待ち始めに読んだ head が、latest の history に入ったら抜ける（そのあとに main が進んでもよい）。
 	if head, err := b.Forge.MainHead(ctx, ref); err == nil {
-		if !b.waitLatest(ctx, repo, func(l string) bool { return b.inHistory(ctx, repo, l, head) }) {
+		if !b.waitLatest(ctx, repo, func(l string) bool { return b.caughtUp(ctx, repo, ref, l, head) }) {
 			return failure("snapshot_pending", "GitForge の main "+head+" に、worker がまだ追いついていない")
 		}
 	} else if !errors.Is(err, ports.ErrNotFound) {
@@ -234,6 +235,10 @@ func approvalProblem(d *arDetail) string {
 
 // changeProblem は、反映の手順の手順 3 を、onto を今の main として行い、満たさなければ失敗の理由と詳しい説明を返す。
 func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Branch, ops []Operation) (string, string, error) {
+	// ディレクトリの repository で、差分がディレクトリの外にも及ぶ apply request は、反映しない（design/directory/README.md）。
+	if len(br.Outside) > 0 {
+		return "invariant_violation", fmt.Sprintf("%s（ディレクトリの外）：%s", tree.RuleOutsideDirectory, strings.Join(br.Outside, "、")), nil
+	}
 	baseNum, err := b.mainNumber(ctx, onto, br.Diff.Base)
 	if err != nil {
 		return "", "", err

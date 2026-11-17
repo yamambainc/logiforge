@@ -16,7 +16,10 @@ import (
 // apply request の反映によるものかを、中身だけで決める（design/backend/verify.md の「apply request の反映のコミット」）。
 // files は sha の木、broken は 1 つ前の main までの壊れていることの記録である。worker が呼ぶ。
 // 1 つ前の main のコミットのスナップショットツリーと、先頭のコミットのスナップショットは、置き場から読む。
-func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+//
+// prevVersion は、1 つ前の版（git リポジトリ全体の repository では parents[0] と同じ。ディレクトリの repository では、
+// ディレクトリを変えた 1 つ前の main のコミット）で、その版のスナップショットツリーに重ねる（design/directory/history.md の「反映かの判定」）。
+func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
 	no := func(format string, a ...any) (ports.MergeVerdict, error) {
 		return ports.MergeVerdict{Detail: fmt.Sprintf(format, a...)}, nil
 	}
@@ -58,7 +61,7 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 		return no("apply request %s：%s", ar.ID, p)
 	}
 	// 5. P の木に H の差分を重ね、C の木と同じか。
-	onto, err := b.mainAt(ctx, repo, parents[0])
+	onto, err := b.mainAt(ctx, repo, prevVersion)
 	if err != nil {
 		return ports.MergeVerdict{}, err
 	}

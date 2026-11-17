@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -42,22 +43,38 @@ func (r repos) list(ctx context.Context, token string) ([]ports.Repository, erro
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ports.Repository, 0, len(rs))
+	hosts := map[string]bool{}
+	names := map[string]bool{}
+	for _, d := range r.cfg.Directories {
+		git, _ := ports.SplitRef(d.GitForgeRef)
+		hosts[strings.ToLower(git)], names[d.Name] = true, true
+	}
+	out := make([]ports.Repository, 0, len(rs)+len(r.cfg.Directories))
 	for _, x := range rs {
+		// ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）と、ディレクトリと同じ名前のものは、数えない。
+		if hosts[strings.ToLower(x.FullName)] || names[x.Name] {
+			continue
+		}
 		out = append(out, ports.Repository{Name: x.Name, GitForgeRef: x.FullName})
 	}
+	out = append(out, r.cfg.Directories...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
 // GitForgeRef は、名前から gitforge_ref（<organization>/<名前>）を求める。repository がまだなくてもよい。
 func (r repos) GitForgeRef(_ context.Context, name string) (string, error) {
+	for _, d := range r.cfg.Directories {
+		if d.Name == name {
+			return d.GitForgeRef, nil
+		}
+	}
 	return r.cfg.Org + "/" + name, nil
 }
 
 // GitURL は、クライアントが clone と push に使う git の URL を返す。
 func (r repos) GitURL(gitForgeRef string) string {
-	return strings.TrimRight(r.cfg.URL, "/") + "/" + gitForgeRef + ".git"
+	return strings.TrimRight(r.cfg.URL, "/") + "/" + gitRef(gitForgeRef) + ".git"
 }
 
 // MainHead は、main の先頭のコミットの SHA を返す。
@@ -90,6 +107,9 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	rp, err := repoPath(gitForgeRef)
 	if err != nil {
 		return err
+	}
+	if _, dir := ports.SplitRef(gitForgeRef); dir != "" {
+		return r.setupDirectory(ctx, gitForgeRef, rp, dir, files, message)
 	}
 	owner, name, _ := strings.Cut(gitForgeRef, "/")
 	if err := r.w(ctx, http.MethodGet, rp, nil, nil); statusOf(err) == http.StatusNotFound {
@@ -199,4 +219,51 @@ func (a *Auth) CanRead(_ context.Context, _ string, repo string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// setupDirectory は、ディレクトリの repository の用意のコミットを、利用者のトークンで、プロジェクトのリポジトリの main に置く
+// （design/directory/history.md の「用意のコミット」）。プロジェクトのリポジトリは作らない。main を守る設定も変えない。
+// ディレクトリがすでにあれば、ErrMainExists を返す。
+func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []ports.File, message string) error {
+	if err := r.w(ctx, http.MethodGet, rp+"/branches/main", nil, nil); err != nil {
+		if statusOf(err) == http.StatusNotFound {
+			return fmt.Errorf("%w: プロジェクトのリポジトリ %s か、その main がない", ports.ErrNotFound, gitRef(ref))
+		}
+		return err
+	}
+	if err := r.w(ctx, http.MethodGet, rp+"/contents/"+escapePath(dir)+"?ref=main", nil, nil); err == nil {
+		return ports.ErrMainExists
+	} else if statusOf(err) != http.StatusNotFound {
+		return err
+	}
+	repoID, err := api{r.client}.RepoID(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if message, err = r.keys.InitMessage(message, pullreq.InitScope{Kind: ports.InitDirectory, RepoID: repoID, Directory: dir, MigratedFrom: migratedFrom(message)}, files); err != nil {
+		return err
+	}
+	var ops []map[string]string
+	for _, f := range files {
+		ops = append(ops, map[string]string{"operation": "create", "path": dir + "/" + f.Path, "content": base64.StdEncoding.EncodeToString(f.Content)})
+	}
+	return r.w(ctx, http.MethodPost, rp+"/contents", map[string]any{"branch": "main", "message": message, "files": ops}, nil)
+}
+
+// migratedFrom は、メッセージの trailer Logiforge-Migrated-From: の値を返す。なければ空（design/directory/migrate.md）。
+func migratedFrom(message string) string {
+	for _, l := range strings.Split(message, "\n") {
+		if v, ok := strings.CutPrefix(l, "Logiforge-Migrated-From: "); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func escapePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	return strings.Join(parts, "/")
 }

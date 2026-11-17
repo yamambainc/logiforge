@@ -92,6 +92,7 @@ Forgejo を使う構成のものを書く。GitHub を使う構成で違うも�
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL。クライアントに返す git の URL にも使う |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_USER_TEAM` | | `user` とみなす team |
+| `LOGIFORGE_DIRECTORIES` | | ディレクトリの repository（`名前=owner/name:パス,…`）。バックエンドと worker に、同じ値を渡す（[ディレクトリ方式](directory/README.md)） |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー。API の主体としては受け付けない。apply request の作成で git を読むのにも使う |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（読むだけ）。apply request の作成で、作業用の git の複製に fetch するのに使う |
 | `LOGIFORGE_GIT_CACHE_DIR` | | 作業用の git の複製を置く、一時的なディレクトリ。既定は OS の一時ディレクトリ（`/tmp`） |
@@ -113,6 +114,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository`、`read:organization`、`read:issue` だけ） |
+| `LOGIFORGE_DIRECTORIES` | | ディレクトリの repository（`名前=owner/name:パス,…`）。バックエンドと同じ値 |
 | `LOGIFORGE_RECORD_PUBLIC_KEYS` | | 記録の署名の公開鍵（`鍵の ID=base64,…`。`logiforge record-public-keys` の出力）。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)）。秘密ではないが、なければ起動しない |
 | `LOGIFORGE_WORKER_RECORD_INTERVAL` | | 記録を読んで控えに足す間隔。既定は見回りの間隔。GitHub では `30s`（[記録の控え](backend/verify.md#記録の控え)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
@@ -127,7 +129,7 @@ worker（`logiforge worker`）：
 
 | 名前 | 使う | 秘密 | 中身 |
 |---|---|---|---|
-| `LOGIFORGE_GITHUB_REPOSITORIES` | 両方 | | repository の名前と `owner/name` の組（`名前=owner/name,…`）。owner は複数でもよい（[GitHub アダプタ](adapters/github.md)） |
+| `LOGIFORGE_GITHUB_REPOSITORIES` | 両方 | | repository の名前と `owner/name` の組（`名前=owner/name,…`）。owner は複数でもよい（[GitHub アダプタ](adapters/github.md)）。ディレクトリの repository は `名前=owner/name:パス`（[ディレクトリ方式](directory/README.md)） |
 | `LOGIFORGE_GITHUB_READ_TOKEN` | 両方 | ✓ | 読むだけのトークン（fine-grained personal access token の、Contents、Issues、Pull requests、Metadata の Read）。public のリポジトリだけなら、なくてもよい。そのときは、トークンなしで読む（REST の上限は 1 時間に 60 回） |
 | `LOGIFORGE_USER_LOGINS` | バックエンド | | `user` とみなす GitHub のアカウント名（`,` で並べる） |
 | `LOGIFORGE_USER_TEAM` | バックエンド | | `user` とみなす team（`org/team の slug`。`,` で並べる） |
