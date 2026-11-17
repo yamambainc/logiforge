@@ -16,15 +16,14 @@ GitHub にある既存のプロジェクトのために、Logiforge を動かし
 
 ## Forgejo を用意する
 
-Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ](../../design/adapters/forgejo.md) の「書き込み主体と主体」である。
+Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ](../../design/adapters/forgejo.md) の「主体」である。
 
 1. organization（例：`logiforge`）
-2. 書き込み主体のユーザーと、その team（repository を作れる team）
-3. worker のユーザーと、読むだけの team
-4. 利用者の team（`LOGIFORGE_USER_TEAM`）
-5. エージェントの team。権限は利用者の team と同じにし、利用者の team には入れない。
+2. worker のユーザーと、読むだけの team
+3. 利用者の team（`LOGIFORGE_USER_TEAM`）。repository を作れ（`can_create_org_repo`）、issue と pull request にコメントを書ける team にする。
+4. エージェントの team。コード、issue、pull request を書ける team にし、利用者の team には入れない。reviewer は、この team で merge する。
    - なぜ：エージェントを `user` とみなさず、`client` にするため（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「認証」）。
-6. WebUI のサインインに使う OAuth2 のアプリケーション（[サインイン](../../design/webui/auth.md)）
+5. WebUI のサインインに使う OAuth2 のアプリケーション（[サインイン](../../design/webui/auth.md)）
 
 - 作り方の例は、[scripts/compose-setup.sh](../../scripts/compose-setup.sh) にある。compose で試すときは、このスクリプトがすべて作る。
 - プロジェクトの人は、Forgejo のユーザーを作って、利用者の team に入れる。
@@ -32,16 +31,16 @@ Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ
 ## main を守る
 
 - Forgejo では、repository を作るときに、バックエンドが `main` を守る設定を掛ける。管理者が掛ける設定はない（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「repository の用意」）。
-- 掛かったことは、Forgejo の API で確かめる。`$FORGEJO_TOKEN` は、書き込み主体か organization の owner のトークンにする。
-  - なぜ：ブランチを守る設定を読むには、repository の管理者の権限が要るから。利用者のトークンでは読めない。書き込み主体は、この設定を掛けるので、管理者の権限を持つ。
-- `main` の規則で、`enable_push` が `false`、`merge_whitelist_usernames` が書き込み主体だけならよい。
+- 掛かったことは、Forgejo の API で確かめる。`$FORGEJO_TOKEN` は、repository を作った利用者か organization の owner のトークンにする。
+  - なぜ：ブランチを守る設定を読むには、repository の管理者の権限が要るから。repository を作った利用者は、その管理者になる。
+- `main` の規則で、`enable_push` が `false` ならよい。merge できる人は絞らない（reviewer が merge する）。
 
 ```sh
 curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
   https://forgejo.example.com/api/v1/repos/logiforge/myapp-cache-strategy/branch_protections
 ```
 
-- 設定が外れて、反映によらない変更が `main` に入ったら、worker が警告する（[worker](../../design/backend/worker.md) の「確かめること」の `no_apply_request`）。
+- 設定が外れて、反映によらない変更が `main` に入ったら、worker が見つけ、repository を壊れた状態にする（[反映かの判定](../../design/backend/verify.md)）。
 
 ## repository を作る
 

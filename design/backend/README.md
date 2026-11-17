@@ -34,7 +34,7 @@
 利用者が repository の名前と根の主文を送ったら、バックエンドは次の順に処理する。
 
 1. GitForge のポートの「名前から gitforge_ref を求める」を呼ぶ（[repository の登録](../adapters/README.md)）。
-2. GitForge のポートの「repository を用意する」を呼ぶ。根の仮説だけを入れた最初のコミットを、`main` に置く。
+2. GitForge のポートの「repository を用意する」を、作る利用者のトークンで呼ぶ。根の仮説だけを入れた最初のコミットを、`main` に置く。
    - 最初のコミットの中身は、どの構成でも同じである。
 3. `latest` が出るまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - `latest` があると、repository が API から見えるようになる（下の「状態を持たない」）。

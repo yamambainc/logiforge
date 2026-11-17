@@ -92,8 +92,6 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_FORGEJO_URL` | | Forgejo の URL。クライアントに返す git の URL にも使う |
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_USER_TEAM` | | `user` とみなす team |
-| `LOGIFORGE_WRITER` | | 書き込み主体（Forgejo のユーザー） |
-| `LOGIFORGE_WRITER_TOKEN` | ✓ | 書き込み主体のトークン |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー。API の主体としては受け付けない。apply request の作成で git を読むのにも使う |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（読むだけ）。apply request の作成で、作業用の git の複製に fetch するのに使う |
 | `LOGIFORGE_GIT_CACHE_DIR` | | 作業用の git の複製を置く、一時的なディレクトリ。既定は OS の一時ディレクトリ（`/tmp`） |
@@ -115,7 +113,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
-| `LOGIFORGE_WRITER` | | 書き込み主体（Forgejo のユーザー）。`main` のコミットが、書き込み主体が merge したものかを確かめる（[壊れた repository](backend/broken.md)） |
+| `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の MAC の鍵。バックエンドと同じもの。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |
