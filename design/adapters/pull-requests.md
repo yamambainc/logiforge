@@ -33,7 +33,6 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 |---|---|---|
 | `apply_request` | 提案を作った直後 | `Logiforge-Apply-Request:`、`Logiforge-First-Revision:`（作ったときの先頭のコミット）、`Logiforge-Principal:`（提案を作った主体） |
 | `close` | 提案を close したとき | `Logiforge-Apply-Request:`、`Logiforge-Session-Id:`。理由は本文 |
-| `merge` | 反映したとき（merge のあと） | `Logiforge-Apply-Request:`、`Logiforge-Revision:`（merge した先頭のコミット）、`Logiforge-Merge-Commit:`（反映のコミット）、`Logiforge-Principal:`（reviewer）。MAC のかわりに、署名（`Logiforge-Record-Signature:`）を付ける（[反映かの判定](../backend/verify.md) の「署名」） |
 | `merge_failure` | 反映できなかったとき | `Logiforge-Apply-Request:`、`Logiforge-Merge-Failure:`（失敗の理由）、`Logiforge-Revision:`（反映しようとした先頭のコミット）。詳しい説明は本文 |
 | `human_request` | 人への依頼を起票した直後 | `Logiforge-Human-Request:`、`Logiforge-Human-Request-Kind: pvr\|decision`、`Logiforge-Target-Node:`、`Logiforge-Principal:`（起票した主体）、`Logiforge-Session-Id:`。依頼の本文は本文 |
 | `answer` | 回答を受け付けたとき | `Logiforge-Human-Request:`、`Logiforge-Answered-By:`（回答した利用者）、添付ごとに `Logiforge-Attachment: <名前> sha256:<16 進>`。回答は本文と添付 |
@@ -118,8 +117,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - なぜ：GitForge とプランによっては使えない（例：GitHub Free の private のリポジトリ）から。反映によらない変更は、あとから見つけて直す（[壊れた repository](../backend/broken.md)）。
 - 守る設定を使うときは、次のようにする。
   - `main` への push と force push を禁じ、pull request の merge だけにする。
-  - merge の方法は、squash だけを許す（rebase と merge のコミットを切る）。なぜ：反映は squash merge で、ほかの方法の merge は反映によるものにならないから。
-  - merge できる主体は、絞らない（reviewer が merge するため）。GitForge の画面からの merge は、反映によらない変更として、worker があとから見つける（[反映かの判定](../backend/verify.md)）。
+  - merge できる主体は、絞らない（reviewer が merge するため）。承認されていない pull request の merge は、worker があとから見つける（[反映かの判定](../backend/verify.md)）。
   - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
 - 反映によらない変更が `main` に入ったら、[worker](../backend/worker.md) が見つけ、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
 

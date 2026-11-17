@@ -105,7 +105,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
 バックエンド：
 
 - 構成（GitHub を使う / Forgejo を使う）
-- 記録のコメントの MAC の鍵と、`merge` の記録と用意のコミットの署名の秘密鍵（[GitForge アダプタの共通の書き方](pull-requests.md)、[反映かの判定](../backend/verify.md) の「署名」）
+- 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
   - 鍵は、バックアップを取る。鍵を失うと、それまでのすべての記録の MAC が確かめられず、すべて数えない記録になる。
   - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
@@ -125,7 +125,7 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
   - GitHub を使う構成：Contents と Pull requests の Read だけを持つ、fine-grained personal access token
   - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
-- 署名の公開鍵。反映かの判定で、`merge` の記録と用意のコミットを確かめるのに使う（[反映かの判定](../backend/verify.md)）
+- 記録の MAC の鍵（バックエンドと同じもの）。反映かの判定で、記録を確かめるのに使う（[反映かの判定](../backend/verify.md)）
 - 置き場の接続先と、書く鍵
 - 見回りの間隔（[見回り](../backend/worker.md#見回り)）と、git の操作の時間の上限（[すること](../backend/worker.md#すること)）
 - clone を置く、永続するストレージのパス
@@ -133,4 +133,4 @@ repository の名前の正本は、構成ごとに次のとおりである。
 鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
 
 - ほかの主体には、鍵を置く場所を読ませない。
-- worker は、git と GitForge に書く鍵を持たない。記録の MAC の鍵と、署名の秘密鍵も持たない。
+- worker は、git と GitForge に書く鍵を持たない。記録の MAC の鍵は、確かめることにだけ使う。

@@ -97,7 +97,6 @@ Forgejo を使う構成のものを書く。✓ の行は秘密である。秘�
 | `LOGIFORGE_GIT_CACHE_DIR` | | 作業用の git の複製を置く、一時的なディレクトリ。既定は OS の一時ディレクトリ（`/tmp`） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。worker と同じ |
 | `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の MAC の鍵（`鍵の ID=鍵,…`。最初のものを書くときに使う） |
-| `LOGIFORGE_SIGNING_KEYS` | ✓ | `merge` の記録と用意のコミットの署名の秘密鍵（Ed25519。`鍵の ID=鍵,…`。最初のものを書くときに使う。[反映かの判定](backend/verify.md) の「署名」） |
 | `LOGIFORGE_WAIT_TIMEOUT` | | 書いたものが読む側に出るまで待つ上限。既定は `10s` |
 | `LOGIFORGE_OAUTH_CLIENT_ID` | | WebUI のサインインに使う、Forgejo の OAuth2 のアプリケーションの client_id（[サインインの中継](webui/oauth-relay.md)） |
 | `LOGIFORGE_OAUTH_CLIENT_SECRET` | ✓ | その client secret |
@@ -114,7 +113,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_FORGEJO_ORG` | | repository を置く organization |
 | `LOGIFORGE_WORKER_LOGIN` | | worker のユーザー |
 | `LOGIFORGE_WORKER_TOKEN` | ✓ | worker のユーザーのトークン（`read:repository` と `read:organization` だけ） |
-| `LOGIFORGE_SIGNING_PUBLIC_KEYS` | | 署名の公開鍵（`鍵の ID=鍵,…`）。反映かの判定で、署名を確かめるのに使う（[反映かの判定](backend/verify.md)） |
+| `LOGIFORGE_RECORD_KEYS` | ✓ | 記録の MAC の鍵。バックエンドと同じもの。反映かの判定で、記録を確かめるのに使う（[反映かの判定](backend/verify.md)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |

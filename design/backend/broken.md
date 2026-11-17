@@ -57,7 +57,7 @@
   - `accept`：squash のコミットの親が、apply request のブランチを作った時点の `main` の先頭（先頭のコミットの親）である。
 - なぜ accept で外のファイルを断るか：認めると、あとで壊れたときの最後に正しかった時点の木が、`getRepairFiles`（`tree/` と `artifacts/` だけ）と一致せず、revert で直せなくなるから。外のファイルを含む変更は、revert でしか直せない。
 - なぜ木の全体を比べるか：`tree/` と `artifacts/` だけを比べると、その外の変更（`.github/workflows` など）を、差分の検査なしに `main` に入れられるから。
-- なぜ記録の種類で決めるか：記録の種類は MAC で守られ、コミットのメッセージの trailer は、だれでも書けるから。
+- なぜ記録の種類で決めるか：人が GitForge の画面で merge すると、反映のコミットのメッセージに trailer が入らないから。
 
 ## 確かめたこと
 
@@ -68,4 +68,4 @@ Forgejo 17 で、E2E（`internal/e2e`）として、次のことを確かめた�
 - `repair revert` から作った apply request の反映で直る。
 - `repair accept` から作った apply request の反映で直り、認めた変更が今の木になる。
 
-- [反映かの判定](verify.md) を実装するときも、同じ E2E を通す。あわせて、承認された apply request を、人が GitForge の画面で merge すると壊れた状態になることを確かめる。
+- [反映かの判定](verify.md) を実装するときも、同じ E2E を通す。あわせて、承認された apply request を、人が GitForge の画面で merge しても壊れた状態にならないことを確かめる。
