@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // fake は、メモリの上の GitForge である。

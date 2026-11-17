@@ -3,7 +3,7 @@ package backend
 import (
 	"context"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // GetReviewMaterial は、先頭のコミットの差分に対するレビューの材料を返す（docs/apply-request/review.md の「レビューの材料」）。説明欄は含めない。

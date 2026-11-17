@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // TestE2ELargeTree は、main のコミットが多い repository で、worker の初めての取り込みと、

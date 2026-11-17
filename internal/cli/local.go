@@ -15,9 +15,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/gitx"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/gitx"
+	"github.com/yamambainc/logiforge/internal/ids"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // abs は、作業ディレクトリからのパスにする。

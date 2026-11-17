@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // RuleNoApplyRequest は、反映の記録（Logiforge-Apply-Request:）のない main のコミットの警告である。

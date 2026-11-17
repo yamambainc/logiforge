@@ -3,7 +3,7 @@ package snapshot
 import (
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // 反映のあとに、worker が確かめる警告（design/backend/worker.md の「すること」）。

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // work は、テスト用の作業ツリーつきのリポジトリである。

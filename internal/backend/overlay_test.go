@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
+	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/store"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // apply_request を付けた読みは、open の apply request の差分を、今の main に重ねた、反映したあとの木を返す

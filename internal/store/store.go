@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
 // ErrNotFound は、キーがないことを表す。

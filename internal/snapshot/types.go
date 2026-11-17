@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // FormatVersion は、スナップショットのフォーマットバージョンである。項目を足すときも上げる。

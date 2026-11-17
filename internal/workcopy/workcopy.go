@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/gitx"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/gitx"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // CommitInfo は、git から読んだコミットを、スナップショットを作るための形にする。

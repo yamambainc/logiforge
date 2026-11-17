@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
+	"github.com/yamambainc/logiforge/internal/backend"
 )
 
 // OAuth は、WebUI のサインインの中継の設定である（design/webui/oauth-relay.md）。

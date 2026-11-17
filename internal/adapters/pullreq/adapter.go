@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // Repos は、repository の列挙と用意である。GitForge ごとに違うので、それぞれのアダプタが持つ。

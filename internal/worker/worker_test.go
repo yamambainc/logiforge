@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // remote は、テスト用の、作業ツリーつきのリモートのリポジトリである。

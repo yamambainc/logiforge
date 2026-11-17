@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // WorkerSource は、worker が読む repository の一覧と git の URL を、読むだけのユーザーのトークンで求める。

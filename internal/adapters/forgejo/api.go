@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/pullreq"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // api は、pullreq.API を Forgejo で実装する。書き込み主体のトークンで呼ぶ。

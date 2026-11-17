@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ids"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // ページング（design/api/README.md の「ページング」）。

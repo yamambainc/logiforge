@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/adapters/snapstore"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/workcopy"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/worker"
+	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/store"
+	"github.com/yamambainc/logiforge/internal/tree"
+	"github.com/yamambainc/logiforge/internal/workcopy"
+	"github.com/yamambainc/logiforge/internal/worker"
 )
 
 // ---- テスト用のリモートの git リポジトリ ----

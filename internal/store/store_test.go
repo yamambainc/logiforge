@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
 func TestDir(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/backend"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ports"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/snapshot"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/store"
+	"github.com/yamambainc/logiforge/internal/backend"
+	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/snapshot"
+	"github.com/yamambainc/logiforge/internal/store"
 )
 
 // emptySnap は、repository のない置き場である。broken なら、一覧を読めない。

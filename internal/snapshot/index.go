@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/ids"
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/ids"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // Index は、main のコミットを古い順に 1 つずつ取り込むときの、直前のコミットまでの状態である

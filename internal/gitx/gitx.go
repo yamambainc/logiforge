@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yamambainc/hypothesis-verification-harness/internal/tree"
+	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 // Repo は、手元の clone である。
