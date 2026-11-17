@@ -32,7 +32,9 @@ Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ
 ## main を守る
 
 - Forgejo では、repository を作るときに、バックエンドが `main` を守る設定を掛ける。管理者が掛ける設定はない（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「repository の用意」）。
-- 掛かったことは、Forgejo の API で確かめる。`main` の規則で、`enable_push` が `false`、`merge_whitelist_usernames` が書き込み主体だけならよい。
+- 掛かったことは、Forgejo の API で確かめる。`$FORGEJO_TOKEN` は、書き込み主体か organization の owner のトークンにする。
+  - なぜ：ブランチを守る設定を読むには、repository の管理者の権限が要るから。利用者のトークンでは読めない。書き込み主体は、この設定を掛けるので、管理者の権限を持つ。
+- `main` の規則で、`enable_push` が `false`、`merge_whitelist_usernames` が書き込み主体だけならよい。
 
 ```sh
 curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
@@ -54,8 +56,7 @@ curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
 opener と reviewer（人とエージェント）ごとに行う。
 
 1. CLI を入れる（[README](../../README.md) の「インストール」）。
-2. Forgejo で、アクセストークンを作る。スコープは `read:user`、`read:organization`、`write:repository` にする。
-   - なぜ：バックエンドが `GET /user` と `GET /user/teams` で主体を確かめ、git の push に `write:repository` が要るから。
+2. Forgejo で、アクセストークンを作る。スコープは、[CLI の設計](../../design/cli/README.md) の「認証」に従う。
 3. 次のコマンドで、トークンを渡し、git を設定し、clone する。
 
 ```sh
