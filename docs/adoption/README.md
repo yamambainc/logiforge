@@ -13,9 +13,12 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 置き方：ディレクトリ方式
 
-- ディレクトリ方式は、今の Logiforge では使えない。設計は [issue #51](https://github.com/yamambainc/logiforge/issues/51) で扱う。
+- ディレクトリ方式は、今の Logiforge では使えない。設計は [ディレクトリ方式](../../design/directory/README.md)、実装は [issue #51](https://github.com/yamambainc/logiforge/issues/51) で扱う。
+- ディレクトリ方式は、GitHub と Forgejo のどちらの構成でも使える。`main` を守る設定は勧めるが、なくても使える。守る設定がないときは、反映によらない変更を Logiforge があとから見つける（[main の守り](../../design/directory/main.md)）。
 - それまでは、別リポジトリ方式で始める（[導入](separate-repository.md)）。コードは、検証結果から SHA 付きで引用する。
-- 別リポジトリ方式の repository を、あとでディレクトリ方式に移せるかも、#51 で決める。
+- 別リポジトリ方式の repository は、あとでディレクトリ方式に移せる（[別リポジトリ方式から移す](../../design/directory/migrate.md)）。
+  - 移すのは、移す時点のスナップショットツリーだけである。履歴、apply request、人への依頼は、元の repository に残り、元の repository は読むだけになる。
+  - 移す前に、open の apply request と人への依頼を片付けておく。
 
 ## 設計判断を残す（ADR の代わり）
 

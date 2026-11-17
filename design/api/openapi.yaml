@@ -114,10 +114,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, statement]
+              required: [name]
               properties:
                 name: { $ref: '#/components/schemas/RepositoryNameValue' }
-                statement: { $ref: '#/components/schemas/Statement' }
+                statement:
+                  $ref: '#/components/schemas/Statement'
+                  description: 根の仮説の主文。migrate_from がなければ必須で、あれば渡さない
+                migrate_from:
+                  type: string
+                  description: 別リポジトリ方式から移すときの、元の repository の名前（../../design/directory/migrate.md）。移した先は、ディレクトリの repository である
                 background: { type: string }
       responses:
         '201':
@@ -881,6 +886,18 @@ components:
           type: [string, 'null']
           description: 根の仮説の主文（今の main）。スナップショットツリーがまだなければ null
         root_value: { $ref: '#/components/schemas/TruthValue' }
+        directory:
+          type: string
+          description: ディレクトリの repository の、git リポジトリの中のパス。git リポジトリ全体の repository では空（../../design/directory/README.md）
+        migrated_from:
+          type: [object, 'null']
+          description: 別リポジトリ方式から移した repository のとき、元の repository の名前と、移したコミット
+          properties:
+            repository: { type: string }
+            commit: { type: string }
+        migrated_to:
+          type: [string, 'null']
+          description: ほかの repository に移した、元の repository のとき、移した先の名前
         broken:
           type: [object, 'null']
           description: |

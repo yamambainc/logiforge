@@ -35,6 +35,7 @@ apply request の差分を、バックエンドがどう検査するかを確か
 
 - `tree/` と `artifacts/sha256/` の外の、どんなファイルの変化も
   - 例：CI の設定のディレクトリや、リポジトリの直下のファイル
+  - ディレクトリの repository では、`tree/` と `artifacts/sha256/` は、そのディレクトリの下のものである。ディレクトリの外の変化は、規則 `outside_directory` で拒む（[ディレクトリ方式](../directory/README.md)）
 - 形の読めないファイル（front matter が壊れている、決まっていない項目がある、など）
 - 普通のファイル（git のモード 100644）でないもの：シンボリックリンク、実行の属性の付いたファイル、submodule
 - 上限の大きさを超えるファイル。worker は、解析の前に大きさを確かめ、中身を読まない（[worker](worker.md)）
