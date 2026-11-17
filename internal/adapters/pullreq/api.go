@@ -4,8 +4,9 @@ package pullreq
 
 import (
 	"context"
-	"errors"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // API は、GitForge ごとの REST の呼び方である。repo は、gitforge_ref（`owner/name`）である。
@@ -34,13 +35,15 @@ type API interface {
 	GetIssue(ctx context.Context, repo string, number int) (Issue, error)
 	CloseIssue(ctx context.Context, repo string, number int) error
 
+	// AttachmentsSupported は、コメントにファイルを添付できるかを返す。できなければ、回答の添付はリンクだけである。
+	AttachmentsSupported() bool
 	// UploadAttachment は、コメントにファイルを添付する。添付を持てない GitForge は ErrAttachmentsUnsupported を返す。
 	UploadAttachment(ctx context.Context, repo string, commentID int64, name string, content []byte) (string, error)
 	DownloadAttachment(ctx context.Context, repo string, commentID int64, attachmentID string) ([]byte, error)
 }
 
 // ErrAttachmentsUnsupported は、コメントにファイルを添付できない GitForge であることを表す。
-var ErrAttachmentsUnsupported = errors.New("この GitForge は、コメントにファイルを添付できない")
+var ErrAttachmentsUnsupported = ports.ErrAttachmentsUnsupported
 
 // Pull は、pull request である。
 type Pull struct {

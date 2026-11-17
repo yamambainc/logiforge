@@ -10,6 +10,7 @@ export interface OAuthConfig {
   client_id: string;
   redirect_uri: string;
   scope: string;
+  gitforge?: 'forgejo' | 'github';
 }
 
 export type AuthState =
@@ -174,4 +175,9 @@ export function retryTarget(): string {
 
 export function forgejoOrigin(): string | null {
   return config ? new URL(config.authorize_url).origin : null;
+}
+
+/** サインインする GitForge の表示名。設定を読む前は Forgejo。 */
+export function gitforgeName(): string {
+  return config?.gitforge === 'github' ? 'GitHub' : 'Forgejo';
 }

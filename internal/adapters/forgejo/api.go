@@ -376,6 +376,9 @@ func (a api) CloseIssue(ctx context.Context, repo string, number int) error {
 	return a.w(ctx, http.MethodPatch, fmt.Sprintf("%s/issues/%d", rp, number), map[string]string{"state": "closed"}, nil)
 }
 
+// AttachmentsSupported は、true を返す。Forgejo は、コメントにファイルを添付できる。
+func (a api) AttachmentsSupported() bool { return true }
+
 func (a api) UploadAttachment(ctx context.Context, repo string, commentID int64, name string, content []byte) (string, error) {
 	rp, err := repoPath(repo)
 	if err != nil {

@@ -20,7 +20,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
 	"github.com/yamambainc/logiforge/internal/api"
@@ -102,27 +101,14 @@ func env(name string) (string, error) {
 //	LOGIFORGE_WORKER_LIST_INTERVAL  repository の一覧を読み直す間隔（既定は 10s）
 //	LOGIFORGE_WORKER_RECORD_INTERVAL  記録を読んで控えに足す間隔（既定は見回りの間隔）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
-//	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG
-//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   読むだけのユーザー（read:repository、read:organization、read:issue）
+//	LOGIFORGE_GITFORGE         構成（forgejo か github。既定は forgejo）と、構成ごとの環境変数（setupForge）
+//	                           Forgejo の読むだけのユーザーは、read:repository、read:organization、read:issue
 //	LOGIFORGE_RECORD_PUBLIC_KEYS  記録の署名の公開鍵（鍵の ID=base64,…）。反映かの判定で記録を確かめる（design/backend/verify.md）。
 //	                           logiforge record-public-keys が、LOGIFORGE_RECORD_KEYS から作る
 func runWorker(ctx context.Context) error {
-	var cfg struct{ dir, storeDir, url, org, login, token, publicKeys string }
-	for _, e := range []struct {
-		name string
-		dst  *string
-	}{
-		{"LOGIFORGE_WORKER_DIR", &cfg.dir}, {"LOGIFORGE_STORE_DIR", &cfg.storeDir},
-		{"LOGIFORGE_FORGEJO_URL", &cfg.url}, {"LOGIFORGE_FORGEJO_ORG", &cfg.org},
-		{"LOGIFORGE_WORKER_LOGIN", &cfg.login}, {"LOGIFORGE_WORKER_TOKEN", &cfg.token},
-		{"LOGIFORGE_RECORD_PUBLIC_KEYS", &cfg.publicKeys},
-	} {
-		name, dst := e.name, e.dst
-		v, err := env(name)
-		if err != nil {
-			return err
-		}
-		*dst = v
+	var cfg struct{ dir, storeDir, publicKeys string }
+	if err := envs(map[string]*string{"LOGIFORGE_WORKER_DIR": &cfg.dir, "LOGIFORGE_STORE_DIR": &cfg.storeDir, "LOGIFORGE_RECORD_PUBLIC_KEYS": &cfg.publicKeys}); err != nil {
+		return err
 	}
 	interval, err := duration("LOGIFORGE_WORKER_INTERVAL", worker.DefaultInterval)
 	if err != nil {
@@ -147,20 +133,23 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	defer release()
-	src := forgejo.NewWorkerSource(forgejo.Config{URL: cfg.url, Org: cfg.org}, cfg.login, cfg.token)
 	pub, err := pullreq.ParsePublicKeys(cfg.publicKeys)
 	if err != nil {
 		return fmt.Errorf("LOGIFORGE_RECORD_PUBLIC_KEYS: %w", err)
 	}
+	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
+	fs, err := setupForge(pub, false)
+	if err != nil {
+		return err
+	}
+	src := fs.reader
 	gitEnv := src.GitEnv()
 	if gitEnv, err = allowProtocol(gitEnv); err != nil {
 		return err
 	}
 	st := &store.Dir{Root: cfg.storeDir}
-	// 反映かの判定は、バックエンドと同じ規則で、worker の読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
-	forge, _ := forgejo.New(forgejo.Config{URL: cfg.url, Org: cfg.org}, pub)
-	forge.Log = snapstore.RecordLog{Store: st}
-	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, token: cfg.token}
+	fs.forge.Log = snapstore.RecordLog{Store: st}
+	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, token: fs.readToken, keys: pub, ids: src}
 	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
 	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
 		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
@@ -172,6 +161,23 @@ func runWorker(ctx context.Context) error {
 type verifier struct {
 	b     *backend.Backend
 	token string
+	keys  pullreq.Keyring
+	ids   interface {
+		RepoID(ctx context.Context, gitForgeRef string) (string, error)
+	}
+}
+
+// VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify.md の「用意のコミットの署名」）。
+func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, signature string, added map[string]string) (bool, error) {
+	id, err := v.ids.RepoID(ctx, r.GitForgeRef)
+	if err != nil {
+		return false, err
+	}
+	files := make([]pullreq.InitFile, 0, len(added))
+	for p, sum := range added {
+		files = append(files, pullreq.InitFile{Path: p, SHA256: sum})
+	}
+	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Parent: parent}, files, signature) == nil, nil
 }
 
 func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
@@ -248,7 +254,7 @@ func envs(dsts map[string]*string) error {
 
 // oauthConfig は、WebUI のサインインの中継の設定を読む（design/webui/oauth-relay.md）。
 // 3 つともなければ nil を返す（サインインの中継を動かさない）。一部だけなら、誤りにする。
-func oauthConfig(forgejoURL string) (*api.OAuth, error) {
+func oauthConfig(forgejoURL, kind string) (*api.OAuth, error) {
 	names := []string{"LOGIFORGE_OAUTH_CLIENT_ID", "LOGIFORGE_OAUTH_CLIENT_SECRET", "LOGIFORGE_OAUTH_REDIRECT_URI"}
 	set := 0
 	for _, n := range names {
@@ -263,7 +269,7 @@ func oauthConfig(forgejoURL string) (*api.OAuth, error) {
 	if err := envs(map[string]*string{names[0]: &id, names[1]: &secret, names[2]: &redirect}); err != nil {
 		return nil, fmt.Errorf("WebUI のサインインには、%s の 3 つが要る：%w", strings.Join(names, "、"), err)
 	}
-	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect}, nil
+	return &api.OAuth{ForgejoURL: forgejoURL, PublicURL: os.Getenv("LOGIFORGE_FORGEJO_PUBLIC_URL"), ClientID: id, ClientSecret: secret, RedirectURI: redirect, GitForge: kind}, nil
 }
 
 // keyring は、記録の署名の秘密鍵を読む。LOGIFORGE_RECORD_KEYS は「鍵の ID=秘密,…」で、最初のものを書くときに使う。
@@ -298,24 +304,18 @@ func recordPublicKeys() error {
 //
 //	LOGIFORGE_ADDR             待ち受けるアドレス（既定は 127.0.0.1:8080）
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ。読むだけ）
-//	LOGIFORGE_FORGEJO_URL、LOGIFORGE_FORGEJO_ORG、LOGIFORGE_USER_TEAM
-//	LOGIFORGE_WORKER_LOGIN、LOGIFORGE_WORKER_TOKEN   worker のユーザー（API の主体として受け付けない）。
-//	                           apply request の作成で、git を読むのにも使う（読むだけのトークン）
+//	LOGIFORGE_GITFORGE         構成（forgejo か github。既定は forgejo）と、構成ごとの環境変数（setupForge）。
+//	                           読むだけのトークンは、apply request の作成で git を読むのにも使う
 //	LOGIFORGE_GIT_CACHE_DIR    作業用の git の複製を置く、一時的なディレクトリ（既定は OS の一時ディレクトリ）
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（worker と同じ）
 //	LOGIFORGE_RECORD_KEYS      記録の署名の秘密（鍵の ID=秘密,…。最初のものを書くときに使う。Ed25519 の鍵は、秘密の SHA-256 から作る）
 //	LOGIFORGE_WAIT_TIMEOUT     書いたものが読む側に出るまで待つ時間の上限（既定は 10s）
 //	LOGIFORGE_OAUTH_CLIENT_ID、LOGIFORGE_OAUTH_CLIENT_SECRET、LOGIFORGE_OAUTH_REDIRECT_URI
-//	                           WebUI のサインイン（Forgejo の OAuth2）。3 つともなければ、サインインの中継を動かさない
+//	                           WebUI のサインイン（Forgejo の OAuth2 か、GitHub の OAuth App）。3 つともなければ、サインインの中継を動かさない
 //	LOGIFORGE_FORGEJO_PUBLIC_URL  ブラウザから Forgejo への URL（authorize に使う）。既定は LOGIFORGE_FORGEJO_URL
 func runServe(ctx context.Context) error {
-	var storeDir, url, org, team, workerLogin, workerToken, keys string
-	if err := envs(map[string]*string{
-		"LOGIFORGE_STORE_DIR":   &storeDir,
-		"LOGIFORGE_FORGEJO_URL": &url, "LOGIFORGE_FORGEJO_ORG": &org, "LOGIFORGE_USER_TEAM": &team,
-		"LOGIFORGE_WORKER_LOGIN": &workerLogin,
-		"LOGIFORGE_WORKER_TOKEN": &workerToken, "LOGIFORGE_RECORD_KEYS": &keys,
-	}); err != nil {
+	var storeDir, keys string
+	if err := envs(map[string]*string{"LOGIFORGE_STORE_DIR": &storeDir, "LOGIFORGE_RECORD_KEYS": &keys}); err != nil {
 		return err
 	}
 	ring, err := keyring(keys)
@@ -327,11 +327,15 @@ func runServe(ctx context.Context) error {
 		addr = "127.0.0.1:8080"
 	}
 	st := &store.Dir{Root: storeDir}
-	forge, auth := forgejo.New(forgejo.Config{URL: url, Org: org, UserTeam: team, WorkerLogin: workerLogin}, ring)
+	fs, err := setupForge(ring, true)
+	if err != nil {
+		return err
+	}
+	forge, auth := fs.forge, fs.auth
 	// 反映の手順でも、worker の記録の控えを合わせて読む（design/backend/merge.md の手順 1）。
 	forge.Log = snapstore.RecordLog{Store: st}
-	// apply request の作成で git を読む、作業用の複製。worker と同じ、読むだけのユーザーで読む。
-	reader := forgejo.NewWorkerSource(forgejo.Config{URL: url, Org: org}, workerLogin, workerToken)
+	// apply request の作成で git を読む、作業用の複製。worker と同じ、読むだけのトークンで読む。
+	reader := fs.reader
 	gitEnv, err := allowProtocol(reader.GitEnv())
 	if err != nil {
 		return err
@@ -354,7 +358,7 @@ func runServe(ctx context.Context) error {
 		}
 		b.WaitTimeout = d
 	}
-	oauth, err := oauthConfig(url)
+	oauth, err := oauthConfig(fs.webURL, fs.kind)
 	if err != nil {
 		return err
 	}

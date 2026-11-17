@@ -48,9 +48,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [authorize_url, client_id, redirect_uri, scope]
+                required: [authorize_url, client_id, redirect_uri, scope, gitforge]
                 properties:
                   authorize_url: { type: string, format: uri }
+                  gitforge: { type: string, enum: [forgejo, github], description: 'サインインする GitForge。画面の文言に使う' }
                   client_id: { type: string }
                   redirect_uri: { type: string, format: uri }
                   scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization）' }

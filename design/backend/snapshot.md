@@ -90,7 +90,7 @@
 | 番号から SHA | `main` の並びの索引の、その番号 |
 | 反映によらない変更と、不変条件の警告 | 今の `main` のスナップショットツリーの `warned` |
 | apply request が反映されたコミット | GitForge の pull request の merge のコミット（[GitForge のポート](ports/gitforge.md)）。そのコミットの記録があれば、読む側に出ている |
-| repository に、最初のコミットしかないか | `latest` のコミットの記録の `number` が 1 である |
+| repository に、用意のコミットしかないか | `latest` のコミットの記録の `number` が 2 以下で、trailer `Logiforge-Init:` がある。用意のコミットは、GitForge によって 1 つか 2 つである（[GitHub アダプタ](../adapters/github.md)） |
 
 - `main` の並びの索引は、repository ごとに、番号から SHA を引くキーの集まりである（[スナップショットの置き場](ports/snapshot-store.md)）。
   - worker は、コミットの記録を置いたあと、スナップショットツリーを置く前に、その番号のキーを書く。

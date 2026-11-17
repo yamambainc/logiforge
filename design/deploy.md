@@ -81,7 +81,7 @@ flowchart TB
 
 ## 環境変数と秘密
 
-Forgejo を使う構成のものを書く。✓ の行は秘密である。秘密は、`_FILE` を付けて、ファイルで渡す。
+Forgejo を使う構成のものを書く。GitHub を使う構成で違うものは、下の「GitHub を使う構成」に書く。✓ の行は秘密である。秘密は、`_FILE` を付けて、ファイルで渡す。
 
 バックエンド（`logiforge serve`）：
 
@@ -119,6 +119,23 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
+
+### GitHub を使う構成
+
+構成は、`LOGIFORGE_GITFORGE`（`forgejo` か `github`。既定は `forgejo`）で選ぶ。バックエンドと worker に、同じ値を渡す。
+`github` のときは、`LOGIFORGE_FORGEJO_*`、`LOGIFORGE_WORKER_LOGIN`、`LOGIFORGE_WORKER_TOKEN` のかわりに、次のものを渡す。ほかは、上の表と同じである。
+
+| 名前 | 使う | 秘密 | 中身 |
+|---|---|---|---|
+| `LOGIFORGE_GITHUB_REPOSITORIES` | 両方 | | repository の名前と `owner/name` の組（`名前=owner/name,…`）。owner は複数でもよい（[GitHub アダプタ](adapters/github.md)） |
+| `LOGIFORGE_GITHUB_READ_TOKEN` | 両方 | ✓ | 読むだけのトークン（fine-grained personal access token の、Contents、Issues、Pull requests、Metadata の Read）。public のリポジトリだけなら、なくてもよい。そのときは、トークンなしで読む（REST の上限は 1 時間に 60 回） |
+| `LOGIFORGE_USER_LOGINS` | バックエンド | | `user` とみなす GitHub のアカウント名（`,` で並べる） |
+| `LOGIFORGE_USER_TEAM` | バックエンド | | `user` とみなす team（`org/team の slug`。`,` で並べる） |
+| `LOGIFORGE_GITHUB_API_URL`、`LOGIFORGE_GITHUB_URL` | 両方 | | REST の URL と、画面と git の URL。既定は `https://api.github.com` と `https://github.com` |
+
+- WebUI のサインインには、Logiforge の OAuth App の Client ID と client secret を、`LOGIFORGE_OAUTH_CLIENT_ID` と `LOGIFORGE_OAUTH_CLIENT_SECRET` に渡す。`LOGIFORGE_OAUTH_REDIRECT_URI` は、OAuth App の Authorization callback URL と同じにする。`LOGIFORGE_FORGEJO_PUBLIC_URL` は使わない。
+  - バックエンドは、同じ 2 つで、主体のトークンが Logiforge の OAuth App のものかを確かめる。渡さなければ、`user` の主体はいない（[GitHub アダプタ](adapters/github.md) の「認証」）。
+- 見回りの間隔は `10s`、記録を読む間隔（`LOGIFORGE_WORKER_RECORD_INTERVAL`）は `30s` を目安にする（[GitHub アダプタ](adapters/github.md) の「見回りの間隔」）。
 
 ## 例：Kubernetes の Pod
 

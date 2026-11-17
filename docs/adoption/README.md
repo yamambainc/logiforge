@@ -56,6 +56,8 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 置き方：subtree 方式（[導入](subtree.md)）
 
+- Logiforge の repository を GitHub に置くときも、private のリポジトリにできる。GitHub Free の organization でもよい（[Logiforge の repository を GitHub に置く](github.md)）。
+
 ## 結論を、ライブラリのように版を固定して使う
 
 - プロジェクトは、どの時点の結論を前提にしたかを、コミットで固定する。
@@ -83,4 +85,5 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 - 導入の手順は、使える置き方（別リポジトリ方式と subtree 方式）だけを書く。
 - 導入の手順：
   1. [別リポジトリ方式の導入](separate-repository.md)
+     - Logiforge の repository を GitHub に置くときは、[Logiforge の repository を GitHub に置く](github.md) も読む。
   2. [subtree 方式の導入](subtree.md)（別リポジトリ方式の導入を済ませてから）

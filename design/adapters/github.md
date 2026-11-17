@@ -12,10 +12,13 @@ Logiforge は、GitHub に書くための自分のアカウント（GitHub App �
 |---|---|---|
 | 利用者（人） | WebUI のサインインで得る、Logiforge の OAuth App のトークン | リポジトリへの Write（repository の用意、回答のコメント） |
 | opener と reviewer（人とエージェント） | gh のトークンか、fine-grained personal access token | リポジトリへの Write（ブランチの push、pull request とコメントとレビュー、reviewer は merge） |
-| worker と、バックエンドの作業用の git の複製 | 読むだけのトークン（fine-grained personal access token） | Contents と Pull requests の Read だけ |
+| worker と、バックエンドの作業用の git の複製 | 読むだけのトークン（fine-grained personal access token）。public のリポジトリだけなら、トークンなしでもよい | Contents、Issues、Pull requests の Read だけ |
 
 - reviewer に merge の権限が要る。なぜ：反映は、`approve` をした reviewer のトークンで merge するから（[反映の手順](../backend/merge.md)）。
-- worker の読むだけのトークンは、public のリポジトリでも要る。なぜ：反映かの判定で REST の API を読み、トークンのない要求の上限（1 時間に 60）では足りないから（[反映かの判定](../backend/verify.md)）。
+- worker の読むだけのトークンは、public のリポジトリだけなら、なくてもよい。そのときは、git も REST も、トークンなしで読む。
+  - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を何回も読むので、ふつうは足りない（[反映かの判定](../backend/verify.md) の「重さ」）。試すときだけにし、続けて使うときはトークンを置く。
+  - private のリポジトリでは、要る。
+- Issues の Read は、記録のコメント（`issues/comments`）を読むのに使う（[記録の控え](../backend/verify.md#記録の控え)）。
 - 読むだけのトークンは、サーバの設定に置く（[設定と秘密情報](README.md)）。
 
 ## 見回りの間隔
@@ -39,18 +42,22 @@ GitHub に固有のところだけを書く。
 | 回答の添付 | リンクだけ。ファイルは受け付けない（[人への依頼の回答](../files/artifacts.md)） |
 | 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pulls`（[反映かの判定](../backend/verify.md)） |
 
-- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、根のコミットのあとに、2 つ目のコミットで足す。
+- 根の仮説に背景情報があるときは、根のコミットのあとに、2 つ目のコミットで足す（下の「repository を用意する」）。
   - 2 つ目のコミットには、`Logiforge-Init-Signature:` を付ける（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
-  - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えないから（409）。
+  - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えず（409）、contents API は 1 回に 1 つのファイルしか書けないから。
 - 登録する repository の owner（organization かユーザー）は、いくつでもよい。
 - public のリポジトリでも、private のリポジトリでも使える。GitHub Free の private のリポジトリでは、`main` を守る設定が使えないので、守る設定なしで使う（[main を守る](pull-requests.md#main-を守る)）。
 
 ## repository を用意する
 
 1. 管理者が、空の GitHub リポジトリを作る。
-2. 管理者が、利用者とエージェントに、Write の権限を与える。`main` を守る設定は、使えるなら用意する（[GitHub での main の守りと制約](github-main.md)）。
+2. 管理者が、利用者とエージェントに、Write の権限を与える。
 3. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
-4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで最初のコミットを置く。
+4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで用意のコミットを置く。
+   - 根のコミット：contents API で、根の仮説のファイルを置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。
+   - 背景情報があれば、2 つ目のコミット：Git Data API（tree と commit を作り、`main` の ref を進める）で、残りのファイルを 1 つのコミットにまとめる。trailer `Logiforge-Init-Signature:` を付ける。
+5. `main` を守る設定は、使えるなら、管理者が用意のあとに掛ける（[GitHub での main の守りと制約](github-main.md)）。
+   - なぜ用意のあとか：2 つ目のコミットは、`main` の ref を直接進めるので、「Require a pull request before merging」があると断られるから。
 
 - バックエンドは、GitHub リポジトリを作らない。なぜ：organization にリポジトリを作る権限を、利用者のトークンに求めないため。
 
@@ -70,3 +77,25 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
 
 GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub での main の守りと制約](github-main.md) に書く。
+
+## 確かめたこと
+
+実際の GitHub（public のリポジトリ `yamambainc/logiforge-github-adapter-test-init3`）で、Logiforge の GitHub App も OAuth App もなしに、次のことを確かめた（`internal/adapters/github` の結合テスト `TestGitHubLive`）。
+
+| 項目 | 結果 |
+|---|---|
+| 空のリポジトリに、利用者のトークンで用意のコミットを置けるか | 置ける。根のコミットは contents API、2 つ目は Git Data API |
+| worker が、用意の 2 つのコミットを反映によるものとするか | する。どちらも、署名と、差分がファイルを加えるだけであることで決める |
+| `GET /commits/{sha}/pulls` で、merge した pull request を引けるか | 引ける。merge のすぐあとは、空のことがある。worker は、初めて見てから 60 秒まで待つ |
+| reviewer のトークンで squash merge したコミット | 反映によるもの |
+| 承認された apply request を、人が merge のコミットで merge したコミット | 反映によるもの |
+| `approve` のあとに `request_changes` が付いた apply request を、人が squash merge したコミット | 反映によるものでない。repository は壊れた状態になる |
+| worker が、トークンなしで public のリポジトリを読めるか | 読める。ただし、REST の上限（1 時間に 60 回）に、1 回の試験の途中で当たった |
+
+まだ確かめていないことは、次のとおりである。
+
+- OAuth App のトークンで `user` になること。偽の GitHub での単体テストだけで確かめた。本番の OAuth App を作るときに、WebUI でサインインして確かめる。
+  - 試験用の OAuth App で、資格情報の確かめ（`POST /applications/{client_id}/token` が、ほかのトークンに 404、違う secret に 401）と、BE の中継は、実際の GitHub で確かめた。
+- private のリポジトリと、`main` を守るルールセットを掛けたリポジトリでの、反映と、守る設定に断られる操作。GitHub Free の organization では、private のリポジトリに守る設定を掛けられないので、確かめられない。
+- fine-grained personal access token の、上の権限だけで、worker とエージェントが動くこと。
+- merge の権限のない reviewer の merge を、GitHub がどう断るか。アダプタは、403 を `merge_forbidden` にする（制限の 403 は、待ってやり直し、権限がないことにしない）。偽の GitHub でだけ確かめた。

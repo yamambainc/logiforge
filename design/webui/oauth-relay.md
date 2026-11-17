@@ -9,7 +9,7 @@ BE は、WebUI のサインインのために、次の 2 つを足す。どち�
 
 | 要求 | すること |
 |---|---|
-| `GET /v1/oauth/config` | authorize の URL、`client_id`、`redirect_uri`、スコープを返す |
+| `GET /v1/oauth/config` | authorize の URL、`client_id`、`redirect_uri`、スコープ、GitForge の種類（`forgejo` か `github`）を返す |
 | `POST /v1/oauth/token` | `code` と `code_verifier` を受け取り、client secret を足して Forgejo で交換し、アクセストークンと寿命だけを返す |
 
 ## 開いたままの代理にしない

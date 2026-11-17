@@ -504,10 +504,15 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
 			return fmt.Errorf("%s: %w", sha, err)
 		}
-		v, err := w.authorized(ctx, g, r, sha, c.Parents, i == 0, info, files, br)
+		v, err := w.authorized(ctx, g, r, sha, c.Parents, i, info, changes, files, br)
 		if err != nil {
 			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
 			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
+		}
+		// 根のコミットが用意のコミットでなければ、最後に正しかった時点がないので、取り込まない。repository は作り直す
+		// （design/backend/verify.md の「repository の用意のコミット」）。
+		if v != nil && i == 0 && !v.Authorized {
+			return fmt.Errorf("根のコミット %s が、Logiforge の用意のコミットでない（%s）。repository を作り直す", sha, v.Detail)
 		}
 		if v != nil {
 			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
@@ -577,6 +582,9 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 // parents はコミットの親（最初の親が 1 つ前の main のコミット）、files はそのコミットの木、broken は 1 つ前の main までの壊れていることの記録である。
 type Verifier interface {
 	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
+	// VerifyInit は、用意のコミットの trailer Logiforge-Init-Signature: が、種類 kind（ports.InitRoot か ports.InitSecond）、
+	// repository、1 つ前のコミット parent（init-root では空）、加えたファイル（パスから中身の sha256）に対する署名かを確かめる。
+	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, signature string, added map[string]string) (bool, error)
 }
 
 // RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。
@@ -585,17 +593,22 @@ type RecordLog interface {
 }
 
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
-// 根のコミットは、Logiforge-Init: があれば反映によるものとする（repository はバックエンドが作るので、根を先に置ける人がいない）。
-func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, root bool, info snapshot.CommitInfo, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
+// 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、trailer Logiforge-Init-Signature: の署名と、
+// 差分がファイルを加えるだけであることで決める（design/backend/verify.md の「repository の用意のコミット」）。
+// なぜ根も署名で決めるか：GitHub では、管理者が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
+func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, index int, info snapshot.CommitInfo, changes []gitx.Change, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
 	if w.cfg.Verifier == nil {
 		return nil, nil
 	}
-	if root {
-		v := ports.MergeVerdict{Authorized: hasTrailer(info, snapshot.TrailerInit)}
-		if !v.Authorized {
-			v.Detail = "根のコミットに Logiforge-Init: がない"
+	if index == 0 {
+		sig := trailerOf(info, snapshot.TrailerInitSignature)
+		if !hasTrailer(info, snapshot.TrailerInit) || sig == "" {
+			return &ports.MergeVerdict{Detail: "根のコミットに、Logiforge-Init: と Logiforge-Init-Signature: がない"}, nil
 		}
-		return &v, nil
+		return w.initVerdict(ctx, r, "", sig, changes, files)
+	}
+	if sig := trailerOf(info, snapshot.TrailerInitSignature); index == 1 && sig != "" && len(parents) == 1 {
+		return w.initVerdict(ctx, r, parents[0], sig, changes, files)
 	}
 	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, files, br)
 	if err != nil {
@@ -654,6 +667,46 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 	delete(w.firstSeen, sha)
 	w.mu.Unlock()
 	return &v, nil
+}
+
+// initVerdict は、用意のコミットを確かめる。差分は、ファイルを加えることだけで、その中身の sha256 に署名が合う。parent は、根では空。
+func (w *Worker) initVerdict(ctx context.Context, r ports.Repository, parent, sig string, changes []gitx.Change, files tree.Files) (*ports.MergeVerdict, error) {
+	added := map[string]string{}
+	for _, ch := range changes {
+		if ch.Status != "A" {
+			return &ports.MergeVerdict{Detail: "用意のコミットが、ファイルを加えること以外の変更（" + ch.Path + "）を含む"}, nil
+		}
+		f, ok := files[ch.Path]
+		switch {
+		case ok && f.Content != nil:
+			added[ch.Path] = tree.SHA256Hex(f.Content)
+		case ok && f.SHA256 != "":
+			added[ch.Path] = f.SHA256
+		default:
+			return &ports.MergeVerdict{Detail: "用意のコミットの " + ch.Path + " の中身を読めない"}, nil
+		}
+	}
+	kind := ports.InitSecond
+	if parent == "" {
+		kind = ports.InitRoot
+	}
+	ok, err := w.cfg.Verifier.VerifyInit(ctx, r, kind, parent, sig, added)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return &ports.MergeVerdict{Detail: "Logiforge-Init-Signature: の署名が合わない"}, nil
+	}
+	return &ports.MergeVerdict{Authorized: true}, nil
+}
+
+func trailerOf(info snapshot.CommitInfo, key string) string {
+	for _, t := range info.Trailers {
+		if t.Key == key {
+			return t.Value
+		}
+	}
+	return ""
 }
 
 func hasTrailer(info snapshot.CommitInfo, key string) bool {

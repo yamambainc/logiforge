@@ -101,7 +101,7 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 		}
 	}
 	x.head = rev
-	unauthorized := ar == "" && c.Parent != nil && trailer(info.Trailers, TrailerInit) == ""
+	unauthorized := ar == "" && c.Parent != nil && !(c.Number <= MaxInitCommits && trailer(info.Trailers, TrailerInit) != "")
 	if info.Authorized != nil {
 		unauthorized = !*info.Authorized
 	}

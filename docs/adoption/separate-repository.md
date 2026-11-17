@@ -5,8 +5,9 @@ GitHub にある既存のプロジェクトのために、Logiforge を動かし
 
 ## 構成
 
-- Logiforge の repository は、Forgejo に置く。プロジェクトのリポジトリは、GitHub のままにする。
-  - なぜ：今のバイナリが持つ GitForge のアダプタは、Forgejo アダプタだけだから。GitHub アダプタは [issue #30](https://github.com/yamambainc/logiforge/issues/30) で扱う。
+- Logiforge の repository を置く GitForge は、Forgejo か GitHub から選ぶ。プロジェクトのリポジトリは、GitHub のままにする。
+  - Forgejo：このページの手順で進める。GitHub のアカウントのない人も参加できる。
+  - GitHub：apply request と人への依頼を、GitHub の pull request と issue として見られる。「Logiforge を動かす」から「main を守る」までを、[Logiforge の repository を GitHub に置く](github.md) に置き換える。
 - Forgejo、バックエンド、worker の関係は、[動かし方（コンテナ）](../../design/deploy.md) に書く。
 
 ## Logiforge を動かす

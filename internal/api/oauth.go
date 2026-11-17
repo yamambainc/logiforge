@@ -23,6 +23,8 @@ type OAuth struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string // Forgejo に登録した redirect_uri。完全に一致させる
+	// GitForge は、サインインする GitForge の種類（forgejo か github）。WebUI が文言に使う。空なら forgejo。
+	GitForge string
 	// Client は、Forgejo を呼ぶ HTTP のクライアントである。nil なら、10 秒で切るクライアントを使う。
 	Client *http.Client
 }
@@ -31,8 +33,26 @@ type OAuth struct {
 // 利用者のトークンで repository を作り、GitForge を読み、回答を書く。Logiforge は、書くための自分のアカウントを持たないからである。
 const OAuthScope = "read:user read:organization write:organization write:repository write:issue"
 
+// GitHubOAuthScope は、GitHub を使う構成で WebUI が求めるスコープである（design/webui/auth.md の「スコープ」）。
+// repo は private のリポジトリを読み書きするため、read:org は team の所属を確かめるため。
+const GitHubOAuthScope = "repo read:org"
+
+func (o *OAuth) scope() string {
+	if o.gitforge() == "github" {
+		return GitHubOAuthScope
+	}
+	return OAuthScope
+}
+
 // oauthBodyLimit は、交換の要求の本文の上限である（開いたままの代理にしないため）。
 const oauthBodyLimit = 4 << 10
+
+func (o *OAuth) gitforge() string {
+	if o.GitForge == "" {
+		return "forgejo"
+	}
+	return o.GitForge
+}
 
 func (o *OAuth) base() string { return strings.TrimRight(o.ForgejoURL, "/") }
 
@@ -49,7 +69,8 @@ func (o *OAuth) config(w http.ResponseWriter, _ *http.Request) {
 		"authorize_url": o.public() + "/login/oauth/authorize",
 		"client_id":     o.ClientID,
 		"redirect_uri":  o.RedirectURI,
-		"scope":         OAuthScope,
+		"scope":         o.scope(),
+		"gitforge":      o.gitforge(),
 	})
 }
 

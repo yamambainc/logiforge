@@ -4,11 +4,15 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // 記録のコメントの trailer（design/adapters/pull-requests.md の「記録のコメント」）。
@@ -236,3 +240,85 @@ func canonical(r Record) string {
 	}
 	return b.String()
 }
+
+// InitFile は、repository の用意の 2 つ目のコミットで加えるファイルのパスと、中身の sha256 である。
+type InitFile struct {
+	Path   string
+	SHA256 string
+}
+
+// InitScope は、用意のコミットの署名の、ファイルのほかの欄である（design/backend/verify.md の「用意のコミットの署名」）。
+type InitScope struct {
+	// Kind は、用意のコミットの種類（ports.InitRoot か ports.InitSecond）。
+	Kind string
+	// RepoID は、記録の署名の場所と同じ、repository の識別子。
+	RepoID string
+	// Directory は、ディレクトリの repository のパス。git リポジトリ全体の repository では空。
+	Directory string
+	// Parent は、init-second で、1 つ前のコミットの SHA。ほかでは空。
+	Parent string
+	// MigratedFrom は、移したときの Logiforge-Migrated-From: の値。ほかでは空。
+	MigratedFrom string
+}
+
+// initSigned は、用意のコミットの署名の中身である。欄は、どれも長さを前に付けて並べる。
+// なぜ：空の欄が多いので、区切りだけで並べると、欄がずれても同じバイト列になりうるから。
+func initSigned(at InitScope, files []InitFile) []byte {
+	fs := slices.Clone(files)
+	sort.Slice(fs, func(i, j int) bool { return fs[i].Path < fs[j].Path })
+	var b strings.Builder
+	field := func(v string) { fmt.Fprintf(&b, "%d:%s\n", len(v), v) }
+	field("logiforge-init-signature")
+	field(at.Kind)
+	field(at.RepoID)
+	field(at.Directory)
+	field(at.Parent)
+	field(at.MigratedFrom)
+	field(fmt.Sprint(len(fs)))
+	for _, f := range fs {
+		field(f.Path)
+		field(f.SHA256)
+	}
+	return []byte(b.String())
+}
+
+// SignInit は、用意のコミットの trailer Logiforge-Init-Signature: の値（鍵の ID:署名）を作る。
+func (k Keyring) SignInit(at InitScope, files []InitFile) (string, error) {
+	key, ok := k.Private[k.Current]
+	if !ok {
+		return "", fmt.Errorf("pullreq: 署名の秘密鍵 %q がない", k.Current)
+	}
+	return k.Current + ":" + base64.RawStdEncoding.EncodeToString(ed25519.Sign(key, initSigned(at, files))), nil
+}
+
+// VerifyInit は、Logiforge-Init-Signature: の値が、at と files に対する署名かを確かめる。合わなければ ErrBadMac。
+func (k Keyring) VerifyInit(at InitScope, files []InitFile, value string) error {
+	id, got, ok := strings.Cut(strings.TrimSpace(value), ":")
+	key, known := k.Public[id]
+	if !ok || !known {
+		return ErrBadMac
+	}
+	sig, err := base64.RawStdEncoding.DecodeString(got)
+	if err != nil || !ed25519.Verify(key, initSigned(at, files), sig) {
+		return ErrBadMac
+	}
+	return nil
+}
+
+// InitMessage は、repository の用意のコミットのメッセージに、trailer Logiforge-Init-Signature: を足す
+// （design/backend/verify.md の「用意のコミットの署名」）。files は、そのコミットで加えるファイルである。
+func (k Keyring) InitMessage(message string, at InitScope, files []ports.File) (string, error) {
+	signed := make([]InitFile, 0, len(files))
+	for _, f := range files {
+		sum := sha256.Sum256(f.Content)
+		signed = append(signed, InitFile{Path: f.Path, SHA256: hex.EncodeToString(sum[:])})
+	}
+	sig, err := k.SignInit(at, signed)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(message, "\n") + "\n" + KeyInitSignature + ": " + sig, nil
+}
+
+// KeyInitSignature は、用意のコミットの署名の trailer である（snapshot.TrailerInitSignature と同じ）。
+const KeyInitSignature = "Logiforge-Init-Signature"
