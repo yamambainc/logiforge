@@ -25,6 +25,12 @@ Logiforge が何を満たすかを確かめるときに読む。
 15. [WebUI](webui/README.md)
 16. [全体構成](architecture/README.md)
 
+## 使い始める
+
+仕様ではなく、導入の手順である。
+
+- [既存のプロジェクトへの導入](adoption/README.md)：使い方から置き方を選び、Logiforge を導入する
+
 ## 仕様の外にあるもの
 
 - 決まっていない論点は、このリポジトリの issue で扱う。

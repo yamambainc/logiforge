@@ -35,6 +35,12 @@ sequenceDiagram
 ## 認証
 
 - CLI は、GitForge のトークンを、バックエンドの API と git の両方で使う。
+- Forgejo を使う構成では、トークンのスコープを `read:user`、`read:organization`、`write:repository` にする。
+  - `read:user` と `read:organization`：バックエンドが、`GET /user` と `GET /user/teams` で主体を確かめるため（[Forgejo アダプタ](../adapters/forgejo.md) の「認証」）。
+  - `write:repository`：git でブランチを push するため。
+  - このトークンは、利用者が Forgejo で書けるすべての repository に push できる。範囲は WebUI のトークン（[サインインのスコープ](../webui/auth.md#スコープ)）より広いが、受け入れる。なぜ：Forgejo のスコープは repository ごとに絞れず、push には `write:repository` が要るから。
+    - 範囲を絞りたいときは、Logiforge のためだけの Forgejo のユーザーを作り、そのトークンを使う。
+  - このスコープで push と API が通ることは、動く Forgejo ではまだ確かめていない。
 - トークンの置き場所は、次の順に探す。
   1. 環境変数 `LOGIFORGE_TOKEN`
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`

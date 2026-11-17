@@ -94,6 +94,8 @@ npm run dev         # 開発。/v1 は手元の serve（127.0.0.1:8080）に渡�
 
 ## compose で動かす
 
+既存のプロジェクトで使い始めるときは、[既存のプロジェクトへの導入](docs/adoption/README.md) から読む。
+
 [compose.yaml](compose.yaml) は、Forgejo、worker、バックエンドの 3 つを、1 つのタスクに見立てて動かす。イメージは [Dockerfile](Dockerfile) の 1 つで、コンテナごとにコマンド（`serve`、`worker`）を変える。形の理由は、[動かし方（コンテナ）](design/deploy.md) に書く。
 
 ```sh
