@@ -9,6 +9,7 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
    - pull request の向き先が `main` である。違えば、反映の手順に進まない。レビューを記録し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request.md#向き先)）。
+   - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
    - 先頭のコミット（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。

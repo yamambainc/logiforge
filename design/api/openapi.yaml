@@ -353,6 +353,11 @@ paths:
               required: [branch]
               properties:
                 branch: { $ref: '#/components/schemas/BranchName' }
+                kind:
+                  type: string
+                  enum: [change, repair.revert, repair.accept]
+                  default: change
+                  description: 直すための apply request の種類（../../design/backend/broken.md）。指定しなければ、ふつうの apply request
                 commit:
                   $ref: '#/components/schemas/Commit'
                   description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない。指定しなければ、ブランチの今の先頭
@@ -802,6 +807,11 @@ components:
       schema: { type: string, minLength: 1, maxLength: 128 }
 
   headers:
+    RepositoryBroken:
+      description: |
+        repository が壊れているときに、repository の木を読む応答に付ける。値は、最後に正しかった時点のコミット。
+        応答の木は、そのコミットのものである（../../design/backend/broken.md）
+      schema: { type: string }
     PendingCommit:
       description: |
         書いたものが、待つ時間の上限までに読む側に出なかったときに付ける。値は、読む側に出るのを待っているコミット。
@@ -841,6 +851,15 @@ components:
           type: [string, 'null']
           description: 根の仮説の主文（今の main）。スナップショットツリーがまだなければ null
         root_value: { $ref: '#/components/schemas/TruthValue' }
+        broken:
+          type: [object, 'null']
+          description: |
+            壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット。壊れていなければ null。
+            壊れているあいだ、木を読む API は、最後に正しかった時点の木を返す（../../design/backend/broken.md）
+          required: [first_commit, last_good_commit]
+          properties:
+            first_commit: { type: string }
+            last_good_commit: { type: string }
     MainCommit:
       type: object
       required: [number, commit, committed_at, apply_request_id]
@@ -1258,8 +1277,8 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending, repository_broken]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。repository_broken は、壊れた repository に、直すための apply request でないものを反映しようとしたこと
         detail: { type: string }
     ReviewMaterial:
       type: object

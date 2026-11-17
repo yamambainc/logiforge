@@ -30,6 +30,8 @@ Logiforge は、いま着手できる作業を返す問い合わせを提供す�
     - その回答の artifact を引用した apply request が、open になったか、反映された。
     - 回答のあとに、対象ノードについての apply request が反映された。
 - 引用元が変化した検証結果（[検証結果と引用](../tree/verdict.md)）
+- 壊れた repository を直すこと（[壊れた repository を直す](../apply-request/repair.md)）
+  - 直すための apply request が open なら、返さない。
 
 問い合わせの範囲は、次のとおり。
 

@@ -4,11 +4,11 @@ GitHub を使って Logiforge を動かすときに、[GitForge](../backend/port
 Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、書き込み主体が作ったものだけを数えること、main を守ること）は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
 [worker](../backend/worker.md) は、[git アダプタ](git.md) で、GitHub リポジトリを読む。
 
-## 前提：main を守る設定
+## main を守る設定
 
-- `main` を守る設定（ルールセットかブランチ保護）は、必須である。管理者が用意する（[main への書き込みを守る](github-main.md)）。
+- `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、管理者が用意する（[main への書き込みを守る](github-main.md)）。
   - `main` に入るのは、App による pull request の merge だけにする。
-- 守る設定がないと、反映によらない変更が `main` に入りうる。[worker](../backend/worker.md) は、それを見つけたら警告する。
+- 守る設定がないと、反映によらない変更が `main` に入りうる。[worker](../backend/worker.md) は、それを見つけたら、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
 
 ## 見回りの間隔
 
@@ -52,7 +52,7 @@ GitHub に固有のところだけを書く。
 
 1. 管理者が、空の GitHub リポジトリを作る。
 2. 管理者が、その GitHub リポジトリに App を入れる。
-3. 管理者が、利用者とエージェントに、ブランチを push できる権限を与え、`main` を守る設定を用意する（[main への書き込みを守る](github-main.md)）。
+3. 管理者が、利用者とエージェントに、ブランチを push できる権限を与える。`main` を守る設定は、使えるなら用意する（[main への書き込みを守る](github-main.md)）。
 4. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
 5. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、最初のコミットを置く。
 
