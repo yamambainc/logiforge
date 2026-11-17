@@ -19,7 +19,8 @@
 バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
 
 - pull request を、head の SHA を指定して squash merge できる。
-- `main` への push を禁じ、merge を書き込み主体だけにできる。
+- merge したコミットから、その pull request を API で引ける（[反映かの判定](../backend/verify.md)）。
+- 主体のトークンで、pull request、レビュー、コメント、issue を書ける。
 - git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
 - pull request の最後の先頭のコミットを、ref に残す。
 
@@ -85,11 +86,11 @@ flowchart TB
 repository の名前の正本は、構成ごとに次のとおりである。
 
 - GitHub を使う構成：サーバの設定（repository の名前と `owner/name` の組）
-  - 管理者が GitHub リポジトリを作り、書き込み主体を入れて、この組を登録する（[GitHub アダプタ](github.md)）。
+  - 管理者が GitHub リポジトリを作り、この組を登録する（[GitHub アダプタ](github.md)）。
   - gitforge_ref は `owner/name` である。
   - 設定に登録されていない名前では、repository を作れない（`repository_not_registered`）。
 - Forgejo を使う構成：設定した organization の、Forgejo の repository の一覧
-  - 利用者が作るときに、バックエンドが Forgejo に repository を作る（[Forgejo アダプタ](forgejo.md)）。
+  - 利用者が作るときに、バックエンドが、利用者のトークンで Forgejo に repository を作る（[Forgejo アダプタ](forgejo.md)）。
   - gitforge_ref は、`<organization>/<名前>` である。
   - 管理者の登録は要らない。そのため、`repository_not_registered` は起きない。
 
@@ -104,26 +105,27 @@ repository の名前の正本は、構成ごとに次のとおりである。
 バックエンド：
 
 - 構成（GitHub を使う / Forgejo を使う）
-- 記録のコメントの MAC の鍵（[GitForge アダプタの共通の書き方](pull-requests.md)）
-  - 鍵は、バックアップを取る。鍵を失うと、それまでのすべての記録の MAC が確かめられず、すべて数えない記録になる。
-  - 鍵を取り替えるときは、新しい鍵で書き、確かめる鍵を複数持てるようにする。MAC に書いた鍵の ID で、確かめる鍵を選ぶ。
+- 記録のコメントの署名の秘密鍵（Ed25519。[GitForge アダプタの共通の書き方](pull-requests.md)）
+  - 鍵は、バックアップを取る。鍵を失うと、新しい記録に署名できない。それまでの記録は、公開鍵で確かめられる。
+  - 鍵を取り替えるときは、新しい鍵で書き、確かめる公開鍵を複数持てるようにする。署名に書いた鍵の ID で、確かめる公開鍵を選ぶ。
 - 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
 - git を読む、読むだけの資格情報（worker と同じもの）と、作業用の git の複製を置く一時的なディレクトリ（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）
 - GitHub を使う構成だけ
-  - GitHub の書き込み主体の認証情報（GitHub App の秘密鍵）
+  - WebUI のサインインに使う OAuth App の client_id と client secret（[GitHub アダプタ](github.md) の「認証」）
   - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）
   - repository の名前と `owner/name` の組
 - Forgejo を使う構成だけ
   - Forgejo の URL
-  - 書き込み主体（Forgejo のユーザー）のトークン（[Forgejo アダプタ](forgejo.md)）
   - repository を置く organization と、`user` とみなす team
+- バックエンドは、GitForge に書く資格情報を持たない。書くときは、要求を送った主体のトークンを使う（[GitForge アダプタの共通の書き方](pull-requests.md)）。
 
 [worker](../backend/worker.md)：
 
 - 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
 - git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
-  - GitHub を使う構成：contents の read だけを持つ、worker のための GitHub App の秘密鍵
+  - GitHub を使う構成：Contents と Pull requests の Read だけを持つ、fine-grained personal access token
   - Forgejo を使う構成：`read:repository` と `read:organization` だけを持つ、worker のためのユーザーのトークン
+- 記録の署名の公開鍵。反映かの判定で、記録を確かめるのに使う（[反映かの判定](../backend/verify.md)）
 - 置き場の接続先と、書く鍵
 - 見回りの間隔（[見回り](../backend/worker.md#見回り)）と、git の操作の時間の上限（[すること](../backend/worker.md#すること)）
 - clone を置く、永続するストレージのパス
@@ -131,4 +133,4 @@ repository の名前の正本は、構成ごとに次のとおりである。
 鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
 
 - ほかの主体には、鍵を置く場所を読ませない。
-- worker は、git と GitForge に書く鍵を持たない。
+- worker は、git と GitForge に書く鍵を持たない。記録を作る秘密鍵も持たない。

@@ -1,14 +1,22 @@
 # GitHub アダプタ
 
 GitHub を使って Logiforge を動かすときに、[GitForge](../backend/ports/gitforge.md) のポートをどう実装するかを確かめるために読む。
-Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、書き込み主体が作ったものだけを数えること、main を守ること）は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+Forgejo アダプタと共通のところ（pull request の対応、レビューとコメントの書き方、署名の合う記録だけを数えること、main を守ること）は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
 [worker](../backend/worker.md) は、[git アダプタ](git.md) で、GitHub リポジトリを読む。
 
-## main を守る設定
+## アカウントとトークン
 
-- `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、管理者が用意する（[main への書き込みを守る](github-main.md)）。
-  - `main` に入るのは、App による pull request の merge だけにする。
-- 守る設定がないと、反映によらない変更が `main` に入りうる。[worker](../backend/worker.md) は、それを見つけたら、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
+Logiforge は、GitHub に書くための自分のアカウント（GitHub App など）を持たない。GitHub に書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+
+| 使う者 | トークン | 要る権限 |
+|---|---|---|
+| 利用者（人） | WebUI のサインインで得る、Logiforge の OAuth App のトークン | リポジトリへの Write（repository の用意、回答のコメント） |
+| opener と reviewer（人とエージェント） | gh のトークンか、fine-grained personal access token | リポジトリへの Write（ブランチの push、pull request とコメントとレビュー、reviewer は merge） |
+| worker と、バックエンドの作業用の git の複製 | 読むだけのトークン（fine-grained personal access token） | Contents と Pull requests の Read だけ |
+
+- reviewer に merge の権限が要る。なぜ：反映は、`approve` をした reviewer のトークンで merge するから（[反映の手順](../backend/merge.md)）。
+- worker の読むだけのトークンは、public のリポジトリでも要る。なぜ：反映かの判定で REST の API を読み、トークンのない要求の上限（1 時間に 60）では足りないから（[反映かの判定](../backend/verify.md)）。
+- 読むだけのトークンは、サーバの設定に置く（[設定と秘密情報](README.md)）。
 
 ## 見回りの間隔
 
@@ -16,18 +24,7 @@ Forgejo アダプタと共通のところ（pull request の対応、レビュ�
   - なぜ：repository の数 × 1 秒に 1 回の `git ls-remote` は、GitHub の git の操作の、乱用を防ぐ制限に当たるおそれがあるから（[費用と規模の見積もり](../estimates.md)）。
   - そのかわり、push と書き込みが読む側に出るまでの遅れが、間隔の分だけ長くなる。
 - 制限に当たったら（`ls-remote` が拒まれる、遅くなる）、間隔をさらに延ばす。
-- repository の一覧を読む REST の要求は、条件付きの要求（`ETag` と `If-None-Match`）で読む。変わっていなければ 304 が返り、304 は REST の上限に数えられない。
-
-## 書き込み主体
-
-GitHub アダプタに必要なのは、バックエンドだけが使う、専用の書き込み主体である。
-
-- なぜ：GitHub に書き込む認証情報が要るから。
-- なぜ：`main` に merge できる主体を、バックエンドだけに絞るから。
-
-書き込み主体には、GitHub App を使う。以下では「App」と書く。
-
-- 権限を細かく絞れる。人に紐づかない。席を消費しない。
+- 記録を読んで控えに足す間隔は、30 秒にする（[記録の控え](../backend/verify.md#記録の控え)）。なぜ：repository ごとに REST を 1 回使うので、10 秒ごとでは、repository が多いと上限に当たるから。
 
 ## 対応
 
@@ -35,44 +32,41 @@ GitHub に固有のところだけを書く。
 
 | GitForge のポートの操作 | GitHub での実装 |
 |---|---|
-| repository | GitHub リポジトリ（1 つの repository に 1 つ）。gitforge_ref は `owner/name` |
-| repository を用意する | 空のリポジトリに、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
-| 反映する | `PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
-| レビュー | `event=COMMENT` の pull request review |
-| 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
-| 回答の添付 | リンクだけ。ファイルは受け付けない。Forgejo を使う構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |
+| repository | 設定に登録した GitHub リポジトリ（1 つの repository に 1 つ）。gitforge_ref は `owner/name` |
+| repository を用意する | 空のリポジトリに、作る利用者のトークンで、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
+| 反映する | reviewer のトークンで、`PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
+| レビュー | reviewer のトークンで、pull request の記録のコメント（[レビューの書き方](pull-requests.md#レビューの書き方)） |
+| 回答の添付 | リンクだけ。ファイルは受け付けない（[人への依頼の回答](../files/artifacts.md)） |
+| 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pulls`（[反映かの判定](../backend/verify.md)） |
 
-- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、根のコミットのあと、書き込み主体が背景情報を置くブランチの pull request を作って merge する（反映によるコミットになる。[壊れた repository](../backend/broken.md)）。
-  - 用意のコミットには、trailer `Logiforge-Init:` を付ける。worker は、これを反映によらない変更として扱わない。
-- GitHub アダプタを作るときに、次のことを確かめる。
-  - App が、`main` を守る設定の例外として、pull request を merge できるか
-  - 空のリポジトリに、contents API で最初のコミットを作れるか
+- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、根のコミットのあとに、2 つ目のコミットで足す。
+  - 2 つ目のコミットには、`Logiforge-Init-Signature:` を付ける（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
+  - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えないから（409）。
+- 登録する repository の owner（organization かユーザー）は、いくつでもよい。
+- public のリポジトリでも、private のリポジトリでも使える。GitHub Free の private のリポジトリでは、`main` を守る設定が使えないので、守る設定なしで使う（[main を守る](pull-requests.md#main-を守る)）。
 
 ## repository を用意する
 
 1. 管理者が、空の GitHub リポジトリを作る。
-2. 管理者が、その GitHub リポジトリに App を入れる。
-3. 管理者が、利用者とエージェントに、ブランチを push できる権限を与える。`main` を守る設定は、使えるなら用意する（[main への書き込みを守る](github-main.md)）。
-4. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
-5. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、最初のコミットを置く。
+2. 管理者が、利用者とエージェントに、Write の権限を与える。`main` を守る設定は、使えるなら用意する（[GitHub での main の守りと制約](github-main.md)）。
+3. 管理者が、repository の名前と `owner/name` の組を、サーバの設定に登録する（[repository の登録](README.md)）。この組が、名前の正本である。
+4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで最初のコミットを置く。
 
-- App は、organization に GitHub リポジトリを作らない。
-  - なぜ：App に、organization の Administration write という強い権限を持たせないため。
+- バックエンドは、GitHub リポジトリを作らない。なぜ：organization にリポジトリを作る権限を、利用者のトークンに求めないため。
 
 ## 認証
 
 GitHub を使う構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。認証は GitHub に任せる。
 
-- 主体は、GitHub のアカウント（人）と、GitHub App または機械用アカウント（エージェント、外の仕組み）である。
-- API は GitHub のトークンを受け取り、要求ごとに GitHub に問い合わせて主体を確かめる。結果を保持しない。
-- 利用者は、WebUI で、書き込み主体と同じ GitHub App のユーザー認可（user-to-server トークン）でログインする。OAuth App は使わない。
+- 主体は、GitHub のアカウント（人と、エージェントの機械用アカウント）である。
+- API は GitHub のトークンを受け取り、要求ごとに `GET /user` で主体を確かめる。結果を保持しない。
+- 利用者は、WebUI で、Logiforge の OAuth App でサインインする（[サインイン](../webui/auth.md)）。
 - 主体の種類は、管理者が主体ごとに決める。
-  - `user` とみなすのは、user-to-server トークンを持ち、かつ管理者がサーバの設定に登録した人（GitHub のアカウント名か、organization の team）だけである。
-  - それ以外の主体（gh の CLI のトークン、App のトークンなど）は、`client` である。
-- GitHub への問い合わせは、主体のトークンで行う。そのため、主体ごとの上限に数え、App の上限には数えない。
-- 読める repository は、主体のトークンで、サーバの設定に登録した GitHub リポジトリの権限を確かめて求める。
-  - `main` に merge できるのは、書き込み主体（App）だけにする（[main への書き込みを守る](github-main.md)）。
+  - `user` とみなすのは、Logiforge の OAuth App のトークンを持ち、かつサーバの設定に登録した人（GitHub のアカウント名か、organization の team）だけである。
+    - Logiforge の OAuth App のトークンかは、`POST /applications/{client_id}/token` を、OAuth App の client_id と client secret で呼んで確かめる。なぜ：ほかのトークン（gh のトークンなど）を持つ主体を、`user` にしないため。
+    - team の所属は、主体のトークンで `GET /user/teams` を呼んで確かめる。アカウント名と team の名前は、大文字と小文字を区別せずに比べる。
+  - それ以外の GitHub のアカウントのトークンは、`client` である。
+- 読める repository は、主体のトークンで、登録した GitHub リポジトリを読めるかで決める。
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。
-- そのため、この構成では、サーバに正本が残らない（[組み合わせ](README.md)）。
 
 GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub での main の守りと制約](github-main.md) に書く。

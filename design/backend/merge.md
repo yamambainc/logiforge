@@ -7,7 +7,8 @@ apply request を main に反映するとき、バックエンドが何を確か
 
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
-1. 反映の条件を、GitForge から読んだ pull request とレビュー、[スナップショット](snapshot.md) で確かめる。
+1. 反映の条件を、GitForge から読んだ pull request とレビュー、worker の記録の控え（[記録の控え](verify.md#記録の控え)）、[スナップショット](snapshot.md) で確かめる。
+   - レビューは、GitForge の記録と控えの記録の、署名の合うものを合わせて読む。なぜ：GitForge から消された `request_changes` を、見落とさないため。
    - pull request の向き先が `main` である。違えば、反映の手順に進まない。レビューを記録し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request.md#向き先)）。
    - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
@@ -23,7 +24,10 @@ apply request を main に反映するとき、バックエンドが何を確か
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
    - 先頭のコミットの差分を、今の `main` に重ねる（重ね方は [向き先に重ねる](snapshot.md#向き先に重ねる)）。重ねられなければ、`conflict`。
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
-4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して呼ぶ。
+4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、`approve` をした reviewer のトークンで呼ぶ。
+   - なぜ reviewer のトークンか：反映は、`approve` の要求の中で同期で行うので、そのトークンがいつも手元にあるから。Logiforge は、merge するための自分のアカウントを持たない（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+   - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗として記録する。apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
+   - 承認された apply request を、人が GitForge の画面で merge してもよい。worker は、中身で反映かを決める（[反映かの判定](verify.md)）。
    - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request.md#向き先)）。

@@ -17,14 +17,19 @@ BE が主体を確かめる方法は、[認証](../backend/ports/authentication.
 - なぜ BE が中継するか：
   - client secret を、ブラウザに渡さずに済むから。
   - WebUI と BE は同じオリジンなので、Forgejo の CORS と、CSP の `connect-src` を広げずに済むから。Forgejo の CORS の設定は、Forgejo の API 全体に効く。
-- GitHub を使う構成のサインインは、[GitHub アダプタ](../adapters/github.md#認証) と一緒に作る。この WebUI の範囲ではない。
+- GitHub を使う構成でも、同じ流れで、Logiforge の OAuth App でサインインする。authorize とトークンのエンドポイントは、`https://github.com/login/oauth/` の下にある（[GitHub アダプタ](../adapters/github.md#認証)）。
 
 ## スコープ
 
-- スコープは、`read:user` と `read:organization` だけにする。
-  - なぜ：BE は、利用者のトークンを、主体を確かめるのにだけ使う（`GET /user`、`GET /user/teams`）。repository を読めるかは、主体が organization にいることで決まり、利用者のトークンで Forgejo を呼ばない（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。GitForge への書き込みは、書き込み主体が行う（[書き込み主体と主体](../adapters/forgejo.md#書き込み主体と主体)）。
-  - なぜ `read:repository` を求めないか：そのスコープは、利用者が Forgejo で読めるすべての repository（個人の private や、ほかの organization のもの）の中身まで読めるからである。盗まれたときに読まれる範囲を、Logiforge の外に広げない。
-  - Forgejo 17 で、このスコープのトークンで `GET /user` と `GET /user/teams` が通り、書き込みと repository の読みは `403` になることを確かめた。
+- スコープは、`read:user`、`read:organization`、`write:organization`、`write:repository`、`write:issue` にする。
+  - `read:user` と `read:organization`：BE が、主体を確かめるため（`GET /user`、`GET /user/teams`。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
+  - `write:organization` と `write:repository`：BE が、利用者のトークンで、organization に repository を作り、最初のコミットを置くため（[Forgejo アダプタ](../adapters/forgejo.md) の「repository の用意」）。
+  - `write:issue`：BE が、利用者のトークンで、回答の記録のコメントを書き、issue を閉じるため。
+  - なぜ書くスコープを求めるか：Logiforge は、書くための自分のアカウントを持たず、要求を送った主体のトークンで書くから（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+  - そのかわり、盗まれたときに書ける範囲は、利用者が Forgejo で書けるすべての repository に広がる。トークンは、メモリにだけ持ち、短い寿命で使う（下の「トークンの持ち方」）。
+- GitHub を使う構成では、Logiforge の OAuth App のスコープを、`repo` と `read:org` にする。
+  - `repo`：private のリポジトリを読み書きするため。public のリポジトリだけなら `public_repo` でよい。
+  - `read:org`：team の所属を確かめるため（[GitHub アダプタ](../adapters/github.md#認証)）。
 
 ## サインインの流れ
 

@@ -10,17 +10,18 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - Forgejo は、別のプロセス（単体のバイナリかコンテナ）として動かす。Logiforge は、Forgejo の HTTP の API と git だけを使う。
 - Forgejo のライセンスは GPL である。Logiforge は、Forgejo のコードをリンクせず、別のプロセスとして使う。
 
-## 書き込み主体と主体
+## 主体
 
 | 主体 | 使う者 | 権限 |
 |---|---|---|
-| 書き込み主体（Forgejo のユーザー） | バックエンド | organization で repository を作り、pull request を作り・merge し・close し、レビューとコメントを書く |
-| 読むだけのユーザー | [worker](../backend/worker.md) | repository を読む。トークンの範囲は `read:repository` と `read:organization`（repository を列挙するため）だけにする。organization が private なら、読むだけの team に入れる |
-| 利用者とエージェント | CLI、WebUI | repository を読み、`main` 以外のブランチに push する。team の権限は、コードを書き込み、issue と pull request を読むだけにする |
+| 読むだけのユーザー | [worker](../backend/worker.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository` と `read:organization`（repository を列挙するため）だけにする。organization が private なら、読むだけの team に入れる |
+| 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書く |
+| opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
-- 書き込み主体と、worker のユーザーのトークンは、設定に置く（[設定と秘密情報](README.md)）。
-- 利用者とエージェントに、issue と pull request を書く権限を与えない。
-  - なぜ：書く権限があると、書き込み主体の記録のコメントを編集し、消し、pull request を close できるから（[信頼の境界](pull-requests.md)）。
+- Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+- worker のユーザーのトークンは、設定に置く（[設定と秘密情報](README.md)）。
+- 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体の記録のコメントを編集し、消し、pull request を close できる。
+  - 編集は署名で見つけ、worker の控えに残る記録は、消されても判定に使う（[信頼の境界](pull-requests.md#信頼の境界)）。
 
 ## 対応
 
@@ -40,6 +41,8 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 ## repository の用意
 
+作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の管理者になる。
+
 1. `POST /orgs/{org}/repos` で、repository を作る。`auto_init` は付けない。
 2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。
 3. `POST /repos/{owner}/{repo}/branch_protections` で、`main` を守る。
@@ -52,7 +55,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 `main` を守る設定は、次のとおりである。
 
 - `enable_push: false`：だれも `main` に push できない。
-- `enable_merge_whitelist: true`、`merge_whitelist_usernames`：書き込み主体だけが merge できる。
+- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify.md)）。
 - `block_on_outdated_branch: false`：`main` に追いついていることを merge の条件にしない。
 
 - pull request の最後の先頭のコミットは、`refs/pull/<index>/head` で取れる（[ブランチの履歴](../backend/snapshot.md)）。
@@ -79,8 +82,7 @@ Forgejo の API の定義（`swagger.v1.json`、Forgejo 17 系）で、次のこ
 | `POST /contents` で、空の repository に最初のコミットを作れるか | 作れる。`auto_init` は要らない |
 | ブランチを消すと、pull request が閉じるか | 閉じる |
 | repository の管理者が、`enable_push: false` を越えて `main` に push できないか | できない。サイトの管理者でも、pre-receive で拒まれる |
-| 書き込み主体に、organization に repository を作る権限を与える方法 | team の `can_create_org_repo: true`。書き込み主体を、その team に入れる |
-| issue と pull request を読むだけの team の人が、他人のコメントを編集・削除し、pull request を close できるか | できない（403）。コメントを書くことはできるが、書き込み主体のものでないので数えない |
+| 主体に、organization に repository を作る権限を与える方法 | team の `can_create_org_repo: true`。主体を、その team に入れる |
 | `refs/pull/<index>/head` が、git の fetch で読めるか | 読める |
 | merge を呼べるのはいつか | Forgejo が merge できるかを確かめ終わるまで、405 を返す。アダプタは、上限つきで待って呼び直す。head が違えば 409 |
 
