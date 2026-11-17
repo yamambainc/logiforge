@@ -98,8 +98,7 @@ func TestVerifyMerge(t *testing.T) {
 	// merge のコミットに、apply request の差分のほかの変更を足したもの。
 	e := create(t, f, "ve", "s7", bg("5"))
 	review(e, "s9", ports.ReviewApprove)
-	sha, err = f.forge.Merge(ctx, "o/q", e, f.forge.ar(e).HeadRevision, "画面から", "")
-	if err != nil {
+	if _, err := f.forge.Merge(ctx, "o/q", e, f.forge.ar(e).HeadRevision, "画面から", ""); err != nil {
 		t.Fatal(err)
 	}
 	f.r.write("extra.txt", []byte("x\n"))

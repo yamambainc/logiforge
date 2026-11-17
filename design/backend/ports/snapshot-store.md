@@ -15,7 +15,8 @@
 | `keep/<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot.md#ブランチの履歴)）。ブランチの名前は、パスとしてエスケープする（`/` を `%2F` に） | 変わる |
 | `keep/<repository>/branch-snapshots/<SHA>` | ブランチの先頭のスナップショット（コミットの記録と差分を 1 つにまとめたもの）。中に自分のフォーマットバージョンを持つ | 変わらない |
 | `keep/<repository>/branch-index` | 履歴のあるブランチの名前の一覧。消えたブランチを見つけるのに使う | 変わる |
-| `keep/<repository>/records/<pull request か issue の番号>` | worker が見た、署名の合う記録の控え。追記だけで、消さない（[記録の控え](../verify.md#記録の控え)） | 増える |
+| `keep/records/<gitforge_ref>/<pull request か issue の番号>` | worker が見た、署名の合う記録の控え。追記だけで、消さない（[記録の控え](../verify.md#記録の控え)）。gitforge_ref は、パスとしてエスケープする | 増える |
+| `keep/records/<gitforge_ref>/cursor` | 記録の控えの、次に読む位置（コメントの `updated_at`） | 変わる |
 | `keep/<repository>/broken` | 壊れていることの記録（[壊れた repository](../broken.md)）。壊れていなければ、空の記録 | 変わる |
 
 - git から作り直せるものは、フォーマットバージョンの接頭辞（`v<フォーマットバージョン>/`）の下に置く。

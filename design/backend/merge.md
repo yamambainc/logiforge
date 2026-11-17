@@ -13,7 +13,8 @@ apply request を main に反映するとき、バックエンドが何を確か
    - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
    - レビューの鎖が切れていない（[レビューの書き方](../adapters/pull-requests.md)）。
-   - 先頭のコミット（head のコミット）に対する最後の決めるレビュー（`approve` か `request_changes`）が `approve` である。
+   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、先頭のコミット（head のコミット）への `approve` である。
+     - なぜ先頭のコミットに限らないか：worker の判定（[反映かの判定](verify.md)）と同じ条件にするため。ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさない。
    - 先頭のコミットに、書いたセッションの trailer がある（[セッション](../files/revisions.md#セッション)）。
    - その reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
 2. `latest` を読み、今の `main` のスナップショットを得る。

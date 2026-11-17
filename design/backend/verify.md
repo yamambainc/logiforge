@@ -51,7 +51,8 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 ## 記録の控え
 
-- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/<repository>/records/` に追記する（[スナップショットの置き場](ports/snapshot-store.md)）。
+- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/records/<gitforge_ref>/<番号>` に追記する（[スナップショットの置き場](ports/snapshot-store.md)）。
+  - なぜ gitforge_ref で分けるか：バックエンドの GitForge のアダプタが、gitforge_ref で記録を読むから。
   - 読むのは、repository のコメントの一覧のうち、前に読んだあとに作られたか変わったもの（`since`）だけである。
   - 控えは、記録の識別子ごとに、最初に見た中身を持つ。同じ識別子で中身が違うものを見たら、最初のものを残し、警告する。
   - 控えからは、消さない。GitForge から記録が消えても、控えには残る。
@@ -92,9 +93,17 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 - 記録を読むのは、見回りごとに、repository ごとに REST が 1 回（変わったものがなければ、空の 1 ページ）である。GitHub で 30 秒ごとなら、repository 1 つで 1 時間に 120 回で、上限（1 時間に 5,000）に対して、repository 30 個ほどまで足りる。
 - 判定は、新しいコミットにだけ行う。取り込み済みのコミットは、判定し直さない。
 
-## 確かめること（実装のとき）
+## 確かめたこと
 
-- Write の権限の人が、ほかの人のコメントを、編集でき、消せるか（GitHub と Forgejo）。
-- `issues/comments?since=` が、編集されたコメントを返すか（`updated_at` で）。
+Forgejo 17 で、次のことを確かめた（`internal/adapters/forgejo` の結合テストと、`internal/e2e` の E2E）。
+
+- issue と pull request を書ける主体は、ほかの主体のコメントを、編集でき、消せる。
+- `issues/comments?since=` は、編集されたコメントを、`updated_at` とともに返す。
+  - 時刻は秒の単位なので、worker は、前に読んだ位置の 1 秒前から読む。同じものを読み直しても、控えには足さない。
+- 承認された apply request を、人が Forgejo の画面から merge のコミットで merge すると、反映によるものになる。
+- `approve` のあとに `request_changes` が付いた apply request を、人が squash merge すると、反映によらないコミットになり、壊れた状態になる。
+
+## 確かめること
+
+- GitHub で、上のことが同じか（[GitHub アダプタ](../adapters/github.md)）。
 - pull request の先頭のコミットを、直接 `main` に push したとき、GitForge が pull request を merge 済みにするか。そのときの `merge_commit_sha`。
-- 承認された apply request を、人が GitForge の画面で squash merge と merge のコミットで merge したとき、反映によるものになるか。
