@@ -94,6 +94,8 @@ repository の名前の正本は、構成ごとに次のとおりである。
   - gitforge_ref は、`<organization>/<名前>` である。
   - 管理者の登録は要らない。そのため、`repository_not_registered` は起きない。
 
+- ディレクトリの repository は、どちらの構成でも、サーバの設定（repository の名前と、git リポジトリとディレクトリのパスの組）が正本である（[ディレクトリ方式](../directory/README.md)）。
+
 - 利用者は、名前と根の主文だけで repository を作る。
 
 ## 設定と秘密情報

@@ -29,6 +29,8 @@
 | `Logiforge-Apply-Request:` | apply request の識別子 |
 | `Logiforge-Version:` | 反映した先頭のコミットの、先頭のコミットの一覧の中の位置と、その SHA（例：`3 <commit SHA>`） |
 | `Logiforge-Session-Id:` | 先頭のコミットを書いたセッション。自己申告である（下の「セッション」） |
+| `Logiforge-Repository:` | repository の名前。ディレクトリの repository だけに書く（[ディレクトリ方式の履歴](../directory/history.md)） |
+| `Logiforge-Migrated-From:` | 元の repository の名前と、移したコミットの SHA。別リポジトリ方式から移した用意のコミットだけに書く（[別リポジトリ方式から移す](../directory/migrate.md)） |
 
 - trailer の名前（`Logiforge-Version:` など）は、git の履歴に残る永続する形なので、前の呼び名（版、リビジョン）のまま残している。値は、どれもコミットの SHA である。
 - `Logiforge-Version:` の数は、反映した先頭のコミットの、先頭のコミットの一覧の中の位置である。API には出さない。
@@ -36,6 +38,7 @@
 - 反映によるコミットかは、trailer でなく、中身（元の pull request の記録とレビュー、差分を重ねた木）で決める（[反映かの判定](../backend/verify.md)）。
   - なぜ：`main` を守る設定は求めないので、trailer はだれでも書けるから。
   - 署名は付けない。なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。人が GitForge の画面で merge して trailer がなくても、反映によるコミットになる。
+- ディレクトリの repository では、版はディレクトリを変えたコミットだけで、反映かの判定もそのコミットにだけ行う（[ディレクトリ方式の履歴](../directory/history.md)）。
 
 ## セッション
 
