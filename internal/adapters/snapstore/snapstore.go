@@ -82,6 +82,10 @@ func (a *Adapter) Scanned(ctx context.Context, repo string) (string, error) {
 	return store.GetScanned(ctx, a.Store, repo)
 }
 
+func (a *Adapter) MigratedTo(ctx context.Context, repo string) (string, error) {
+	return store.GetMigratedTo(ctx, a.Store, repo)
+}
+
 // RecordLog は、worker の記録の控えを、pullreq.Adapter に読ませる（design/backend/verify.md の「記録の控え」）。
 type RecordLog struct{ Store store.Reader }
 

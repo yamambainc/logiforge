@@ -81,6 +81,8 @@ type fakeForge struct {
 	mergeErr error
 	// mainHead があれば、MainHead はそれを返す（worker が追いつかない場合を作るため）。
 	mainHead string
+	// archived は、archive の git リポジトリ（gitforge_ref）。
+	archived map[string]bool
 }
 
 func (f *fakeForge) ListRepositories(context.Context) ([]ports.Repository, error) { return nil, nil }
@@ -102,6 +104,9 @@ func (f *fakeForge) SetupRepository(_ context.Context, ref string, _ []ports.Fil
 		return ports.ErrMainExists
 	}
 	return errors.New("unused")
+}
+func (f *fakeForge) Archived(_ context.Context, ref string) (bool, error) {
+	return f.archived[ref], nil
 }
 func (f *fakeForge) number() int {
 	f.next++

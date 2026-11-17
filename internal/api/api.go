@@ -350,11 +350,22 @@ func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http
 		Name       string `json:"name"`
 		Statement  string `json:"statement"`
 		Background string `json:"background"`
+		// MigrateFrom は、別リポジトリ方式から移すときの、元の repository の名前（design/directory/migrate.md）。
+		MigrateFrom string `json:"migrate_from"`
 	}
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	out, err := s.b.CreateRepository(ctx, c, in.Name, in.Statement, in.Background)
+	var out backend.Written[backend.Repository]
+	var err error
+	if in.MigrateFrom != "" {
+		if in.Statement != "" || in.Background != "" {
+			return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "migrate_from のときは、statement と background を渡さない（元の repository の木を移す）"}
+		}
+		out, err = s.b.MigrateRepository(ctx, c, in.Name, in.MigrateFrom)
+	} else {
+		out, err = s.b.CreateRepository(ctx, c, in.Name, in.Statement, in.Background)
+	}
 	if err != nil {
 		return nil, err
 	}

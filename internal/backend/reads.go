@@ -107,6 +107,14 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 	} else if br != nil {
 		r.Broken = &BrokenState{FirstCommit: br.First, LastGoodCommit: br.LastGood, Reason: br.Reason}
 	}
+	if r.MigratedFrom, err = b.migratedFrom(ctx, repo); err != nil {
+		return Repository{}, err
+	}
+	if to, err := b.Snap.MigratedTo(ctx, repo); err != nil {
+		return Repository{}, err
+	} else if to != "" {
+		r.MigratedTo = &to
+	}
 	if root := v.tree.Root(); root != nil {
 		r.RootHypothesisID = root.ID
 		st := root.Statement

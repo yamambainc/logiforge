@@ -22,6 +22,16 @@ type Repository struct {
 	RootValue     *bool   `json:"root_value"`
 	// Broken は、壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。
 	Broken *BrokenState `json:"broken"`
+	// MigratedFrom は、別リポジトリ方式から移した repository のとき、元の repository の名前と、移したコミット
+	// （design/directory/migrate.md）。MigratedTo は、ほかの repository に移した元の repository のとき、移した先の名前。
+	MigratedFrom *MigratedFrom `json:"migrated_from"`
+	MigratedTo   *string       `json:"migrated_to"`
+}
+
+// MigratedFrom は、移した元の repository と、移したコミットである。
+type MigratedFrom struct {
+	Repository string `json:"repository"`
+	Commit     string `json:"commit"`
 }
 
 // BrokenState は、壊れた repository の状態である。

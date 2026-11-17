@@ -203,6 +203,8 @@ type GitForge interface {
 	// SetupRepository は、repository を用意する。用意が途中で止まっていれば、続きから行う。
 	// main がすでにあり、用意が終わっていれば、ErrMainExists を返す。
 	SetupRepository(ctx context.Context, gitForgeRef string, files []File, message string) error
+	// Archived は、git リポジトリが読むだけ（archive）かを返す（design/directory/migrate.md）。
+	Archived(ctx context.Context, gitForgeRef string) (bool, error)
 
 	CreateApplyRequest(ctx context.Context, repo string, ar NewApplyRequest) (ApplyRequest, error)
 	GetApplyRequest(ctx context.Context, repo, id string) (ApplyRequest, error)

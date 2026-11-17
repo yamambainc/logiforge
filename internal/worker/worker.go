@@ -541,6 +541,15 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if v != nil {
 			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
 		}
+		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
+		// 移した元は、用意のコミットの署名に含まれるので、偽れない。
+		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && v != nil && v.Authorized && from != "" {
+			if src, _, _ := strings.Cut(from, " "); src != "" && src != repo {
+				if err := store.PutMigratedTo(ctx, w.store, src, repo); err != nil {
+					return err
+				}
+			}
+		}
 		rec := x.Record(info, paths)
 		if br == nil && info.Authorized != nil && !*info.Authorized {
 			br = &store.Broken{LastGood: before, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}

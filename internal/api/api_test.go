@@ -41,6 +41,7 @@ func (emptySnap) BranchHistory(context.Context, string, string) (store.BranchHis
 }
 func (emptySnap) Broken(context.Context, string) (*store.Broken, error) { return nil, nil }
 func (emptySnap) Scanned(context.Context, string) (string, error)       { return "", nil }
+func (emptySnap) MigratedTo(context.Context, string) (string, error)    { return "", nil }
 
 func (emptySnap) Artifact(context.Context, string, string) ([]byte, error) {
 	return nil, ports.ErrNotFound

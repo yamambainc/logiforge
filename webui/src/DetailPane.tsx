@@ -1,7 +1,7 @@
 // 詳細のパネル（design/webui/snapshot-tree-viewer.md の「詳細のパネル」、docs/webui/tree-viewer.md の「ノードの詳細」）。
 // listNodes で分かる項目は、すぐに示す。getNode と getNodeHistory の応答が来たら、検証結果や履歴を示す。
 import { useEffect, useState } from 'react';
-import { abortAfter, fetchArtifact, getNode, getNodeHistory, type Artifact, type At, type HistoryEntry, type NodeDetail } from './api';
+import { abortAfter, fetchArtifact, getNode, getNodeHistory, getRepository, type Artifact, type At, type HistoryEntry, type NodeDetail, type Repository } from './api';
 import { saveBlob } from './files';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 import { Markdown } from './MarkdownLazy';
@@ -24,6 +24,14 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // 別リポジトリ方式から移した repository では、履歴の終わりに、元の repository での履歴へのリンクを示す（design/directory/migrate.md）。
+  const [migratedFrom, setMigratedFrom] = useState<Repository['migrated_from']>(null);
+  useEffect(() => {
+    let live = true;
+    setMigratedFrom(null);
+    getRepository(repo).then((r) => live && setMigratedFrom(r.migrated_from ?? null)).catch(() => {});
+    return () => { live = false; };
+  }, [repo]);
   // 選ぶノードが続けて変わる（矢印のキーを押し続ける、検索の語を打つ）ときに、1 つごとに要求を送らない。
   // 150 ms 止まってから送り、別のノードを選んだら前の要求をやめる。20 秒で答えがなければ、読めなかったと示す。
   useEffect(() => {
@@ -177,6 +185,12 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
               </li>
             ))}
           </ol>
+        )}
+        {migratedFrom && id && (
+          <p className="dim">
+            それより前の履歴は、移した元の repository にあります：{' '}
+            <a href={`/r/${encodeURIComponent(migratedFrom.repository)}/tree?node=${encodeURIComponent(id)}&commit=${encodeURIComponent(migratedFrom.commit)}`}>{migratedFrom.repository}</a>
+          </p>
         )}
       </Section>
     </aside>
