@@ -28,8 +28,12 @@ git subtree add --prefix=logiforge https://forgejo.example.com/logiforge/myapp-c
 git push -u origin logiforge-import
 ```
 
-3. プロジェクトのリポジトリで PR を作り、merge する。
+3. プロジェクトのリポジトリで PR を作り、merge のコミットで merge する（GitHub の「Create a merge commit」）。
 
+- 取り込みと更新の PR は、merge のコミットで merge する。squash merge と rebase merge にしない。
+  - なぜ：squash のコミット（下の 2 行の入ったもの）が、そのままプロジェクトの履歴に残るから。下の「取り込んでいる版の確かめ方」は、そのコミットを読む。
+  - squash merge にすると、そのコミットはなくなり、PR の 1 つのコミットにまとめられる。GitHub の squash の本文を PR のタイトルだけにする設定では、2 行も消え、版を確かめられなくなる。
+  - rebase merge にすると、複製の中身だけを持つ squash のコミットが、`main` の上に並べ直され、プロジェクトの木が壊れる。
 - `--squash` を必ず付ける。
   - なぜ：Logiforge の `main` のコミットを、プロジェクトの履歴に 1 つずつ入れないため。
   - なぜ：取り込みのたびに、複製の中身と同じ tree の squash のコミットができ、CI がそれと照らせるから。
@@ -68,20 +72,32 @@ jobs:
         with:
           fetch-depth: 0
       - name: logiforge/ が、取り込んだ版のままか
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           dir=logiforge
-          cur=$(git rev-parse "HEAD:$dir" 2>/dev/null) || exit 0
-          if git log --format=%T --grep="^git-subtree-dir: $dir\$" HEAD | grep -qx "$cur"; then
-            echo "$dir/ は、取り込んだ版のままである"
+          # 比べる基点は、base と HEAD の分かれた点にする。checkout の ref を PR の先頭に変えても、base の側の変更を混ぜないため。
+          base=$(git merge-base "$BASE" HEAD)
+          if git diff --quiet "$base" HEAD -- "$dir"; then
+            echo "$dir/ は変わっていない"
+            exit 0
+          fi
+          cur=$(git rev-parse "HEAD:$dir" 2>/dev/null) || cur=
+          if [ -n "$cur" ] && git log --format=%T --grep="^git-subtree-dir: $dir\$" "$base..HEAD" | grep -qx "$cur"; then
+            echo "$dir/ は、この PR の git subtree の取り込みのとおりである"
           else
             echo "::error::$dir/ が、取り込んだ版と違う。Logiforge の repository で apply request を出し、git subtree pull で取り込む"
             exit 1
           fi
 ```
 
-- `logiforge/` の tree が、どれかの squash のコミットの tree と同じなら通す。違えば落とす。
-  - 取り込みと更新の PR は、通る。複製の中のファイルを変えた PR は、落ちる。
-- `fetch-depth: 0` は必須である。なぜ：浅い clone では squash のコミットが見えず、いつも落ちるから。
+- PR が `logiforge/` を変えていなければ、通す。変えていれば、この PR の中に、`logiforge/` の今の tree と同じ tree の squash のコミットがあるときだけ通す。違えば落とす。
+  - 取り込みと更新の PR は、通る。複製の中のファイルを変えた PR、取り込みに書き換えを混ぜた PR、複製を消した PR は、落ちる。
+  - なぜ PR の中の squash のコミットとだけ照らすか：取り込みの PR が squash merge されると、squash のコミットは `main` の履歴に残らないから。`main` の履歴と照らす形では、そのあとのすべての PR が落ちる。また、前に取り込んだ古い版に戻す書き換えも、落とせる。
+- `fetch-depth: 0` は必須である。なぜ：浅い clone では、base のコミットと squash のコミットが見えないから。
+- base の SHA は、`env` で渡す。`run` の中に `${{ }}` で埋め込まない。なぜ：workflow への注入を避けるため。
+- 比べる基点は、base の SHA でなく、`git merge-base` で求めた分かれた点にする。なぜ：checkout の既定の ref（`refs/pull/<番号>/merge`）では、どちらでも同じだが、`ref` を PR の先頭に変えると、PR を作ったあとに base に入った変更（ほかの取り込みなど）が、逆向きの差分として混ざり、`logiforge/` に触れない PR まで落ちうるから。
+- この例は、GitHub Actions の上で確かめた（2026-11-17。[試験の repository](https://github.com/yamambainc/logiforge-subtree-test-project/pulls?q=is%3Apr)）。取り込み、コードだけ、`git subtree pull` の PR は通り、複製を書き換えた PR、複製を消した PR、取り込みに書き換えを混ぜた PR は落ちる。更新の PR を squash merge したあとのコードだけの PR も通る。
 - `paths` で絞らない。なぜ：この job を必須の check にしたとき、`logiforge/` に触れない PR で check が来ないまま待ち続けるから。
 - プロジェクトのリポジトリの `main` を守る設定で、この job を必須の check にする。
 - この CI が止めるのは、誤った書き換えである。squash のコミットを手で作る偽装は止めない。
