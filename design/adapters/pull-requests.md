@@ -136,4 +136,3 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
   - 最後のレビューを丸ごと消されるか、`Logiforge-Record:` のない本文に書き換えられると、鎖からはわからない。レビューを消せるのは repository の管理者で、書き換えられるのはそのレビューの作者（reviewer 本人）と管理者である。
 - repository に書く権限を持つ人は、記録のコメントを消すこともできる。消された記録は戻らない。GitHub と Forgejo のどちらでも、これは防げない。
   - 反映のあとに消されても、反映かの判定は、worker が取り込んだときに済んでいる（[反映かの判定](../backend/verify.md)）。
-  - worker が取り込む前に `merge` の記録が消されると、正しい反映が、反映によらない変更として壊れた状態になる。これは使えなくなるだけの弱さで、反映によらない変更が正しいものとして通ることはない。直すには、`repair.accept` で認める（[壊れた repository](../backend/broken.md)）。
