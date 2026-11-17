@@ -144,6 +144,35 @@ paths:
               schema: { $ref: '#/components/schemas/Repository' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
+  /repositories/{repository}/repair-files:
+    get:
+      tags: [repository]
+      operationId: getRepairFiles
+      summary: 壊れた repository の、最後に正しかった時点のファイル（CLI の repair revert が使う）
+      description: |
+        最後に正しかった時点のコミットの tree/ と artifacts/ のファイルを、スナップショットツリーと artifact の置き場から返す。
+        壊れていなければ not_found。設計は ../../design/backend/broken.md に従う
+      parameters:
+        - $ref: '#/components/parameters/RepositoryName'
+      responses:
+        '200':
+          description: ファイルの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commit, files]
+                properties:
+                  commit: { type: string, description: 最後に正しかった時点のコミット }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      required: [path, content_base64]
+                      properties:
+                        path: { type: string }
+                        content_base64: { type: string }
+        '4XX': { $ref: '#/components/responses/Problem' }
   /repositories/{repository}/tree:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'

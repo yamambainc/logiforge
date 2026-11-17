@@ -42,7 +42,7 @@ GitHub に固有のところだけを書く。
 | 反映の失敗 | バックエンドが書く check run（`logiforge/core`）の結果 |
 | 回答の添付 | リンクだけ。ファイルは受け付けない。Forgejo を使う構成と違い、GitHub の構成では、利用者がファイルを外に置いてリンクを書く（[人への依頼の回答](../files/artifacts.md)） |
 
-- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、2 つ目のコミットで足す。
+- 根の仮説に背景情報があるときは、contents API が 1 回に 1 つのファイルしか書けないので、根のコミットのあと、書き込み主体が背景情報を置くブランチの pull request を作って merge する（反映によるコミットになる。[壊れた repository](../backend/broken.md)）。
   - 用意のコミットには、trailer `Logiforge-Init:` を付ける。worker は、これを反映によらない変更として扱わない。
 - GitHub アダプタを作るときに、次のことを確かめる。
   - App が、`main` を守る設定の例外として、pull request を merge できるか
