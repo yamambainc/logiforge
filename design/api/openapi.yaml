@@ -1316,8 +1316,8 @@ components:
             slug: { type: string }
             api_url: { type: string, format: uri }
             web_url: { type: string, format: uri }
-            private_key_set: { type: boolean }
-            client_secret_set: { type: boolean }
+            private_key: { $ref: '#/components/schemas/SecretState' }
+            client_secret: { $ref: '#/components/schemas/SecretState' }
         forgejo:
           type: [object, 'null']
           description: Forgejo を使う構成のときだけ
@@ -1326,15 +1326,23 @@ components:
             public_url: { type: string, format: uri }
             organization: { type: string }
             client_id: { type: string }
-            client_secret_set: { type: boolean }
+            client_secret: { $ref: '#/components/schemas/SecretState' }
             worker_user: { type: string }
-            worker_token_set: { type: boolean }
+            worker_token: { $ref: '#/components/schemas/SecretState' }
         intervals: { $ref: '#/components/schemas/IntervalSettings' }
         users:
           type: array
           items: { $ref: '#/components/schemas/UserEntry' }
         updated_by: { type: string, description: 最後に設定を変えた管理者 }
         updated_at: { type: string, format: date-time }
+    SecretState:
+      type: object
+      description: 秘密の値は返さない。置いてあるかと、最後に変えた管理者と時刻だけを返す（design/settings/secrets.md の「秘密を差し替える」）
+      required: [set]
+      properties:
+        set: { type: boolean, description: 置いてあるか }
+        updated_by: { type: [string, 'null'], description: 最後に変えた管理者 }
+        updated_at: { type: [string, 'null'], format: date-time }
     RegisteredRepository:
       type: object
       required: [name, gitforge_ref]

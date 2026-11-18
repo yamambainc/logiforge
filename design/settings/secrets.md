@@ -44,6 +44,34 @@
 - 暗号文の頭に、鍵の ID を付ける。
   - なぜ：鍵を取り替えるときに、古い鍵で書いた行を見分けるため。
 
+## 秘密を差し替える
+
+管理者は、設定の画面から、次の秘密を差し替えられる（[設定の画面](../../docs/webui/settings.md)、[設定の API](../api/endpoints/settings.md) の `updateGitForgeSettings`）。
+
+- GitHub App の client secret
+- GitHub App の秘密鍵（`.pem`）
+- Forgejo の OAuth2 のアプリケーションの client secret
+- Forgejo の worker のユーザーのトークン
+
+手順（GitHub App の例）：
+
+1. 管理者が、GitHub の App の設定の画面で、新しい client secret か秘密鍵を作る。
+2. 管理者が、それを設定の画面に入れる。
+   - バックエンドは、置く前に、新しい値で GitHub を呼べることを確かめる。秘密鍵なら JWT で `GET /app` を、client secret なら `POST /applications/{client_id}/token` を呼ぶ。呼べなければ `validation_failed` を返し、置かない。
+3. 管理者が、GitHub で、古いものを消す。
+   - なぜ消すのを最後にするか：新しい値が効く前に古いものを消すと、そのあいだ、サインインと worker の読みが止まるから。
+
+読む側：
+
+- バックエンドは、次の要求から、新しい値を使う。要求ごとに設定の DB を読むから（[設定を読むとき](README.md#設定を読むとき)）。
+- worker は、次に repository の一覧を読み直したときから、新しい値を使う。
+  - 作ってある installation token は、切れるまで使う。秘密鍵を差し替えたあと、次に作るトークンから、新しい鍵を使う。
+- どちらも、起動し直さない。
+
+画面と API は、秘密を読み返さない。秘密ごとに、置いてあるかと、最後に変えた管理者と時刻だけを返す。
+
+- なぜ：画面やログに出ると、漏れる場所が増えるから。
+
 ## 鍵を取り替える
 
 - `logiforge settings rekey` で、新しい鍵で、すべての秘密を暗号化し直す。
