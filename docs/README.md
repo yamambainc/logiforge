@@ -6,6 +6,13 @@ Logiforge が何を満たすかを確かめるときに読む。
 - 仕様の入口は、このページである。
 - [index.html](index.html) は、clone した手元のブラウザで開く概要ページである。
 
+## design へのリンク
+
+- 要件のページ（`tree/`、`apply-request/`、`webui/` など）は、[design/](../design/README.md) を指さない。
+  - なぜ：design が要件に従うので、要件が design に頼ると、依存が両向きになるから。
+- 導入と運用の手順（[install](install.md)、[adoption/](adoption/README.md)、[development/](development/README.md)）は、design を指してよい。
+  - なぜ：手順の理由や環境変数の正本は design にあり、写さずにリンクで指すため。
+
 ## 読む順
 
 1. [目的と範囲](concepts/README.md)
