@@ -13,21 +13,37 @@ GitHub にある既存のプロジェクトのために、Logiforge を動かし
 ## Logiforge を動かす
 
 - 試すとき：[compose で動かす](../development/compose.md) の手順で、Forgejo、バックエンド、worker を手元で動かす。
-- 続けて使うとき：[動かし方（コンテナ）](../../design/deploy/README.md) に従って、タスクを置く。環境変数と秘密は、[環境変数と秘密](../../design/deploy/env.md) の表に従う。
+- 続けて使うとき：[動かし方（コンテナ）](../../design/deploy/README.md) に従って、タスクを置く。起動時に渡す環境変数は、[環境変数](../../design/deploy/env.md) の表に従う。
+  - 渡すのは、設定の DB の場所、2 つの鍵、ホストに結び付くディレクトリとアドレスだけである。ほかの設定は、下の「Forgejo を用意する」のあと、セットアップの画面で入れる。
+- v0.3.0 からの移行には対応しない。新しく入れ、初回のセットアップから始める。
 
 ## Forgejo を用意する
 
 Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ](../../design/adapters/forgejo.md) の「主体」である。
 
 1. organization（例：`logiforge`）
-2. worker のユーザーと、読むだけの team
-3. 利用者の team（`LOGIFORGE_USER_TEAM`）。repository を作れ（`can_create_org_repo`）、issue と pull request にコメントを書ける team にする。
-4. エージェントの team。コード、issue、pull request を書ける team にし、利用者の team には入れない。reviewer は、この team で merge する。
-   - なぜ：エージェントを `user` とみなさず、`client` にするため（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「認証」）。
-5. WebUI のサインインに使う OAuth2 のアプリケーション（[サインイン](../../design/webui/auth.md)）
+2. worker のユーザーと、読むだけの team。worker のユーザーは、この team にだけ入れる。トークンの範囲は `read:repository`、`read:organization`、`read:issue` にする（[worker のトークンを確かめる](../../design/adapters/forgejo.md#worker-のトークンを確かめる)）。
+3. 利用者の team。コード、issue、pull request を書け（`write`）、repository を作れる（`can_create_org_repo`）team にする。
+   - 利用者の名簿はない。WebUI でサインインし、organization のコードを書ける team（`write` 以上）にいる人が、利用者（`user`）になる（[利用者](../../design/settings/users.md)）。
+   - 利用者は、設定も変えられる。そのため、コードを書ける team には、信頼できる人だけを入れる。
+4. エージェントの team。コード、issue、pull request を書ける team にする。reviewer は、この team で merge する。
+   - エージェントは、WebUI でサインインしない。これは運用の決まりである。CLI のトークンを使うので、`client` になる（[Forgejo アダプタ](../../design/adapters/forgejo.md#認証)）。
+5. WebUI のサインインに使う OAuth2 のアプリケーション（confidential client）。redirect URI は、WebUI の `/oauth/callback` にする（[サインイン](../../design/webui/auth.md)）。
 
-- 作り方の例は、[scripts/compose-setup.sh](../../scripts/compose-setup.sh) にある。compose で試すときは、このスクリプトがすべて作る。
+- 作り方の例は、[scripts/compose-setup.sh](../../scripts/compose-setup.sh) にある。compose で試すときは、このスクリプトがすべて作り、設定の DB にも書く。
 - プロジェクトの人は、Forgejo のユーザーを作って、利用者の team に入れる。
+
+## セットアップ
+
+サーバを動かす人が、初めて起動したあとに 1 回だけ行う。画面は [セットアップ](../webui/setup.md)、流れの正本は [初回のセットアップ](../../design/settings/setup.md) である。
+
+1. WebUI（例：`https://logiforge.example.com/setup`）を開き、バックエンドのログのコードを入れる。
+2. 構成で Forgejo を選ぶ。
+3. Forgejo の URL と organization を入れる。
+4. OAuth2 のアプリケーションの client_id と client secret、worker のユーザーとトークンを入れる。
+5. 「Forgejo でサインインして、利用者になる」を押す。サインインした人が、最初の利用者になる。コードを書ける team にいなければ、断られる。
+
+- あとから変えるときは、[設定](../webui/settings.md) の画面で変える。秘密の入れ直しも、そこで行う。サーバは起動し直さない。
 
 ## main を守る
 

@@ -1,36 +1,37 @@
-# GitHub を使う構成で用意するもの
+# GitHub App
 
-[Logiforge の repository を GitHub に置く](README.md) ときに、OAuth App、読むだけの GitHub App、署名の秘密を用意するために読む。
+[Logiforge の repository を GitHub に置く](README.md) ときに、Logiforge の GitHub App を作り、install し、秘密を入れ直すために読む。
+App の権限とトークンの正本は、[GitHub App とトークン](../../../design/adapters/github-app.md) である。
 
-| もの | 作る人 | 使い道 |
-|---|---|---|
-| OAuth App | organization の owner | WebUI のサインイン。利用者を `user` とみなすのに使う |
-| 読むだけの GitHub App | organization の owner | worker と、バックエンドの作業用の git の複製が、repository を読む |
-| 署名の秘密（`LOGIFORGE_RECORD_KEYS`） | 管理者 | 記録の署名。バックエンドだけが持つ |
+## 1 つの App
 
-## OAuth App
+- Logiforge が GitHub に持つものは、1 つの GitHub App だけである。OAuth App と personal access token は使わない。
+- App は、次の 2 つに使う。
+  - worker とバックエンドが、repository を読む（installation token。Read だけ）。
+  - 利用者が、WebUI でサインインし、本人の権限で書く（user access token）。
+- なぜ 1 つにまとめるか：作り、install し、秘密を守るものを、1 つにするため。
 
-organization の「Settings」→「Developer settings」→「OAuth Apps」で作る。
+## 作る
 
-- Authorization callback URL：WebUI の `https://logiforge.example.com/oauth/callback`
-- 作ったら、Client ID と client secret を控える。
-- OAuth App がなくても、CLI（`client`）だけで使える。そのときは、`user` の主体がいないので、WebUI で repository を作ることと、人への依頼に答えることができない。
+- App は、[セットアップ](../../webui/setup.md) の画面から、manifest flow で作る。GitHub の画面で手で作らない。
+  - 権限、Webhook を使わないこと、callback の URL は、manifest に入っている（[初回のセットアップ](../../../design/settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)）。
+- App を作る owner（organization かアカウント）の管理者の権限が要る。
+- 登録するリポジトリの owner が複数なら、セットアップの画面で「ほかの owner にも install する」を選ぶ。
+  - なぜ：選ばない App は、App を作った owner にしか install できないから。
+  - 選ぶと、App は public になり、だれでも自分のアカウントに install できる。Logiforge は、登録した owner の分しかトークンを作らない。
+- App の ID、秘密鍵、client secret は、設定の DB に暗号化して置く。手で控える必要はない。
 
-## 読むだけの GitHub App
+## install する
 
-organization の「Settings」→「Developer settings」→「GitHub Apps」→「New GitHub App」で作る。個人のリポジトリなら、個人の「Settings」→「Developer settings」で作る。
+- App を、登録するリポジトリの owner ごとに install する。その owner の管理者の権限が要る。
+- Repository access は、「Only select repositories」にし、Logiforge の repository を選ぶのを勧める。
+  - repository を足したら、install の設定でも選び足す。選んでいないリポジトリは、worker が読めず、ログに出す。
+  - App が install されていないリポジトリでは、Write があっても利用者にならない。
+- 設定の画面で repository を足すとき、install されていない owner なら、画面が install の画面へのリンクを示す（[設定](../../webui/settings.md)）。
 
-- GitHub App name：たとえば `logiforge-reader-acme`
-- Homepage URL：Logiforge の URL か、この repository の URL
-- Webhook：「Active」を外す
-- Repository permissions：Contents、Issues、Pull requests を Read-only にする（Metadata は Read-only が既定で付く）。ほかは No access のまま
-- Organization permissions と Account permissions：No access のまま
-- Where can this GitHub App be installed?：Only on this account
-- 作ったら、App ID を控え、「Private keys」→「Generate a private key」で秘密鍵（`.pem`）を落とす。秘密鍵は、サーバの秘密の置き場に移し、ほかに残さない。
-- 「Install App」で、organization に install する。Repository access は「Only select repositories」にし、Logiforge の repository を選ぶ。
-  - repository を足したら、install の設定でも選び足す。選んでいない repository は、worker が読めない（ログに `App が … に入っていない` と出る）。
-  - 登録する repository の owner が複数なら、App を「Any account」にして、owner ごとに install する。
-    - 「Any account」にすると、App は public になり、だれでも自分のアカウントに install できる。それでも問題はない。App は読むだけで、Logiforge は登録した owner の分しかトークンを作らないから。
-- public のリポジトリだけなら、App がなくても動く。そのときは、トークンなしで読む。
-  - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を読むので、ふつうは足りない。試すときだけにする。
-- private のリポジトリでは、要る。
+## 秘密を入れ直す
+
+- App の client secret と秘密鍵は、[設定](../../webui/settings.md) の画面の「GitForge」で入れ直す。サーバは起動し直さない。
+  1. GitHub の App の設定で、新しい client secret か秘密鍵を作る。
+  2. 設定の画面に入れる。
+  3. GitHub の App の設定で、古いものを消す。

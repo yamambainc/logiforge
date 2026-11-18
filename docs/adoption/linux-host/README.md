@@ -17,9 +17,12 @@ flowchart LR
     W["logiforge-worker"]
     ST[("/var/lib/logiforge/store")]
     WD[("/var/lib/logiforge/worker")]
+    DB[("/var/lib/logiforge/config（設定の DB）")]
   end
   GH["GitHub"]
   B -->|https| TS --> S
+  S -->|読み書き| DB
+  W -->|読む| DB
   S -->|読む| ST
   W -->|書く| ST
   W --> WD
@@ -35,18 +38,22 @@ flowchart LR
 ## 入れる
 
 1. Releases から linux のバイナリを取り、`/usr/local/bin/logiforge` に置く（取り方は [インストール](../../install.md)）。
-   - v0.3.0 以降のバイナリを使う。読むだけの GitHub App を使うためである。
+   - v0.4.0 以降のバイナリを使う。v0.3.0 からの移行には対応しない。新しく入れ直す。
 2. git を入れる（例：`apt install git`）。worker とバックエンドが使う。
 3. 専用のユーザーを作る。ログインはさせない。
+
+4. 設定の DB、置き場、clone のディレクトリを作る。ユニットは、これらのディレクトリだけに書ける。
 
 ```sh
 sudo install -m 0755 logiforge /usr/local/bin/logiforge
 sudo useradd --system --home-dir /var/lib/logiforge --no-create-home --shell /usr/sbin/nologin logiforge
+sudo install -d -o logiforge -g logiforge -m 0750 /var/lib/logiforge /var/lib/logiforge/config /var/lib/logiforge/store /var/lib/logiforge/worker
 ```
 
-## 設定と秘密
+## 設定と鍵
 
-- 設定のファイルと秘密は、[設定と秘密を置く](secrets.md) の手順で置く。
+- 起動時に渡すファイルと 2 つの鍵は、[設定と鍵を置く](secrets.md) の手順で置く。
+- ほかの設定（GitHub App、repository、間隔）は、設定の DB に置く。起動したあとに、WebUI のセットアップの画面で入れる（下の「セットアップ」）。
 
 ## サービス
 
@@ -59,8 +66,9 @@ sudo systemctl enable --now logiforge-worker logiforge-serve logiforge-worker-he
 ```
 
 - 書ける場所は、ユニットごとに絞る。ほかは読むだけである（`ProtectSystem=strict`）。
-  - worker：`/var/lib/logiforge/worker`（clone）と `/var/lib/logiforge/store`（置き場）
-  - バックエンド：`/var/cache/logiforge-serve`（作業用の git の複製）。置き場は読むだけである。
+  - worker：`/var/lib/logiforge/worker`（clone）と `/var/lib/logiforge/store`（置き場）。設定の DB は読むだけである。
+  - バックエンド：`/var/lib/logiforge/config`（設定の DB）と `/var/cache/logiforge-serve`（作業用の git の複製）。置き場は読むだけである。
+  - なぜ worker に設定の DB を書かせないか：[設定の DB](../../../design/settings/database.md#db-の種類) に書く。2 つのユニットは同じユーザーで動くので、ファイルの権限でなく、ユニットの `ReadOnlyPaths=` で読むだけにする。
 - `logiforge-serve` と `logiforge-worker` は、root では動かさない。capability は持たせない。
 - 落ちたら、5 秒あとに起動し直す（`Restart=on-failure`）。
 - worker は、1 つのユニットだけで動かす。2 つ目の worker は、clone のディレクトリのロックが取れずに止まる（[worker を 1 つだけ動かす](../../../design/backend/worker/operation.md#worker-を-1-つだけ動かす)）。
@@ -68,6 +76,20 @@ sudo systemctl enable --now logiforge-worker logiforge-serve logiforge-worker-he
   - 1 分ごとに、`logiforge` のユーザーで `logiforge worker-health` を動かし、0 以外なら `systemctl restart logiforge-worker` をする。
   - root で動かす。worker を起動し直すのに、systemctl が要るから。
   - worker を止めているあいだは、何もしない。
+
+## セットアップ
+
+1. [Tailscale で公開する](tailscale.md) の手順で、`https://<host>.<tailnet>.ts.net` を開けるようにする。
+2. ログから、セットアップのコードを読む。コードは、起動するたびに変わる。
+
+```sh
+journalctl -u logiforge-serve | grep setup_code | tail -1
+```
+
+3. ブラウザで `https://<host>.<tailnet>.ts.net/setup` を開き、コードを入れる。GitHub を選び、画面の段に沿って、GitHub App を作り、install し、最初の repository を登録し、サインインする（[セットアップ](../../webui/setup.md)）。
+   - WebUI は、`https://` の名前で開く。この URL が、GitHub App の callback になる。
+   - サインインした人が、最初の利用者になる。その repository に Write がなければならない。
+4. ほかの repository は、[設定の画面](../../webui/settings.md) で足す。サービスを起動し直さずに効く。
 
 ## 状態を見る
 
@@ -91,4 +113,6 @@ sudo systemctl restart logiforge-worker logiforge-serve
 ## バックアップ
 
 - 置き場の `/var/lib/logiforge/store/keep/` を、写して取る（[組み合わせ](../../../design/adapters/README.md#組み合わせ)）。
-- `/etc/logiforge/secrets/record_keys` は、マシンの外にも控える。この秘密は変えないからである（[Logiforge を動かす](../github/README.md#logiforge-を動かす)）。
+- 設定の DB（`/var/lib/logiforge/config/settings.db`）を、写して取る。記録の署名の鍵が入っている。なくすと、それまでの記録を確かめられない。
+  - 写すときは、`logiforge-serve` を止めるか、`sqlite3 settings.db ".backup <先>"` を使う。
+- 2 つの鍵（`/etc/logiforge/secrets/backend_key` と `shared_key`）は、設定の DB と別の場所に控える。鍵がないと、設定の DB の秘密を読めない（[鍵を置く場所](../../../design/settings/secrets.md#鍵を置く場所)）。
