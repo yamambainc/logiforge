@@ -119,11 +119,23 @@ func runServe(ctx context.Context) error {
 	}
 	l := &liveServer{db: db, keys: keys, store: &store.Dir{Root: storeDir}}
 	// 作業用の複製は、使い捨てのキャッシュである。設定が変わっても、作り直さずに使い続ける。URL と資格情報は、今の設定のものを使う。
-	l.git, err = workcopy.NewCache(cacheDir, gitEnv, func(ref string) string { return l.reader().GitURL(ref) })
+	// 設定がそろっていないときや、読みに失敗したあとは、reader がない。そのときは、空の URL と誤りにして、git を呼ばせない。
+	l.git, err = workcopy.NewCache(cacheDir, gitEnv, func(ref string) string {
+		if r := l.reader(); r != nil {
+			return r.GitURL(ref)
+		}
+		return ""
+	})
 	if err != nil {
 		return fmt.Errorf("作業用の git の複製の置き場を作れない：%w", err)
 	}
-	l.git.Credentials = func(ctx context.Context, ref string) ([]string, error) { return l.reader().GitEnv(ctx, ref) }
+	l.git.Credentials = func(ctx context.Context, ref string) ([]string, error) {
+		r := l.reader()
+		if r == nil {
+			return nil, &backend.Error{Code: backend.CodeUnavailable, Detail: "設定の DB を読み直している。少し待って送り直す"}
+		}
+		return r.GitEnv(ctx, ref)
+	}
 	defer os.RemoveAll(l.git.Dir)
 	srv := &http.Server{Addr: addr, Handler: l, ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
