@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +20,21 @@ import (
 	"github.com/yamambainc/logiforge/internal/settings"
 	"github.com/yamambainc/logiforge/internal/store"
 )
+
+// appIs42 は、App の JWT の iss が、偽の GitHub の App（ID 42）かを返す。署名は確かめない。
+func appIs42(r *http.Request) bool {
+	parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), ".")
+	if len(parts) != 3 {
+		return false
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims map[string]any
+	_ = json.Unmarshal(b, &claims)
+	return fmt.Sprint(claims["iss"]) == "42"
+}
 
 // fakeSetupGitHub は、セットアップで呼ぶ GitHub の API だけを持つ。
 func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Server {
@@ -32,7 +49,10 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 		case r.Method == "POST" && strings.HasPrefix(p, "/app-manifests/"):
 			w.WriteHeader(404)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-		case r.Method == "GET" && p == "/repos/acme/q/installation":
+		case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/") && strings.HasSuffix(p, "/installation") && !appIs42(r):
+			w.WriteHeader(401)
+			_, _ = w.Write([]byte(`{"message":"bad jwt"}`))
+		case r.Method == "GET" && strings.HasPrefix(p, "/repos/acme/") && strings.HasSuffix(p, "/installation"):
 			if !*installed {
 				w.WriteHeader(404)
 				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
@@ -42,9 +62,14 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 		case r.Method == "POST" && p == "/app/installations/1/access_tokens":
 			w.WriteHeader(201)
 			_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_read", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
-		case r.Method == "GET" && p == "/repos/acme/q" && tok == "ghs_read":
+		case r.Method == "GET" && (p == "/repos/acme/q" || p == "/repos/acme/r" || p == "/repos/acme/u") && tok == "ghs_read":
 			_, _ = w.Write([]byte(`{"id":7,"full_name":"acme/q"}`))
 		case r.Method == "POST" && p == "/applications/Iv1.cid/token":
+			if _, secret, _ := r.BasicAuth(); secret != "csecret" {
+				w.WriteHeader(401)
+				_, _ = w.Write([]byte(`{"message":"Bad credentials"}`))
+				return
+			}
 			var in map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&in)
 			if in["access_token"] != "ghu_alice" && in["access_token"] != "ghu_bob" {
@@ -60,9 +85,12 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 		case p == "/user/installations" && (tok == "ghu_alice" || tok == "ghu_bob"):
 			_, _ = w.Write([]byte(`{"total_count":1,"installations":[{"id":1}]}`))
 		case p == "/user/installations/1/repositories" && (tok == "ghu_alice" || tok == "ghu_bob"):
+			// alice は q と r に書け、u は読むだけ。bob は q を読むだけ。
 			push := tok == "ghu_alice"
-			_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "repositories": []map[string]any{
-				{"full_name": "acme/q", "permissions": map[string]bool{"push": push, "pull": true}}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 3, "repositories": []map[string]any{
+				{"full_name": "acme/q", "permissions": map[string]bool{"push": push, "pull": true}},
+				{"full_name": "acme/r", "permissions": map[string]bool{"push": push, "pull": true}},
+				{"full_name": "acme/u", "permissions": map[string]bool{"push": false, "pull": true}}}})
 		default:
 			w.WriteHeader(404)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
@@ -145,6 +173,7 @@ func TestSetupGitHub(t *testing.T) {
 	want(call("POST", "/v1/setup/code", code, "", nil), 204, "コード")
 	// ほかの API は、setup_required。
 	want(call("GET", "/v1/repositories", "", "", nil), 503, "セットアップの前の API")
+	want(call("GET", "/v1/settings", "", "", nil), 503, "セットアップの前の設定の API")
 
 	r = call("PUT", "/v1/setup/gitforge", code, "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
 	want(r, 200, "構成")
@@ -201,6 +230,8 @@ func TestSetupGitHub(t *testing.T) {
 	if r := call("GET", "/v1/setup", "", "", nil); r.body["done"] != true {
 		t.Fatalf("終わったあとの getSetup：%v", r.body)
 	}
+	// 終わったら、設定の API が使える（セットアップの前は setup_required）。
+	want(call("GET", "/v1/settings", "", "ghu_alice", nil), 200, "セットアップのあとの getSettings")
 	c, err := db.Load(t.Context(), keys)
 	if err != nil || len(c.RecordKeys) != 1 || c.Ready() != nil {
 		t.Fatalf("記録の鍵：%v %v", c, err)

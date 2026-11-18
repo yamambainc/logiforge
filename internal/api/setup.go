@@ -232,6 +232,10 @@ func (h *setupHandler) reply(w http.ResponseWriter, r *http.Request, f func(ctx 
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	if c, ok := out.(created); ok {
+		writeCreated(w, c)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }

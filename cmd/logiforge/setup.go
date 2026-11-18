@@ -190,21 +190,8 @@ func (s *setupService) SetRepository(ctx context.Context, r api.SetupRepository)
 	if !ids.RepositoryNamePattern.MatchString(r.Name) {
 		return api.SetupState{}, problem(backend.CodeValidationFailed, "repository の名前は、小文字の英数字とハイフンで、63 文字以下")
 	}
-	ref := r.GitForgeRef
-	if r.Directory != "" {
-		ref += ":" + r.Directory
-	}
-	rs, err := github.ParseRepositories(r.Name + "=" + ref)
-	if err != nil {
-		return api.SetupState{}, problem(backend.CodeValidationFailed, "%v", err)
-	}
-	app, err := github.NewApp(github.Config{APIURL: c.GitHub.APIURL, WebURL: c.GitHub.WebURL, Repositories: rs}, c.GitHub.AppID, []byte(c.GitHub.AppPrivateKey))
-	if err != nil {
+	if err := checkGitHubRepository(ctx, c, nil, settings.Repository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory}); err != nil {
 		return api.SetupState{}, err
-	}
-	if err := app.CanReadRepository(ctx, rs[0].GitForgeRef); err != nil {
-		return api.SetupState{}, problem(backend.CodeValidationFailed, "GitHub App で %s を読めない。App を install し、このリポジトリを選ぶ：%s（%v）",
-			r.GitForgeRef, github.InstallURL(c.GitHub.WebURL, c.GitHub.Slug), err)
 	}
 	if err := s.db.SetFirstRepository(ctx, settings.Repository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory}, ""); err != nil {
 		return api.SetupState{}, problem(backend.CodeValidationFailed, "%v", err)
@@ -339,5 +326,26 @@ func logSetupCode(ctx context.Context, db *settings.DB) error {
 		return err
 	}
 	slog.Warn("初回のセットアップが終わっていない。WebUI の /setup を開き、このコードを入れる。コードは、起動するたびに変わる", "setup_code", code)
+	return nil
+}
+
+// checkGitHubRepository は、GitHub を使う構成で、repository r を、others（登録済みのもの）に足してよいかと、
+// GitHub App の installation token で、その GitHub リポジトリを読めるかを確かめる。読めなければ、install の URL を detail に書く。
+func checkGitHubRepository(ctx context.Context, c *settings.Config, others []settings.Repository, r settings.Repository) error {
+	if c.GitHub.AppID == "" || c.GitHub.AppPrivateKey == "" {
+		return problem(backend.CodeValidationFailed, "先に GitHub App を作る")
+	}
+	all, err := github.ParseRepositories(repoList(append(append([]settings.Repository(nil), others...), r), false))
+	if err != nil {
+		return problem(backend.CodeValidationFailed, "%v", err)
+	}
+	app, err := github.NewApp(github.Config{APIURL: c.GitHub.APIURL, WebURL: c.GitHub.WebURL, Repositories: all}, c.GitHub.AppID, []byte(c.GitHub.AppPrivateKey))
+	if err != nil {
+		return problem(backend.CodeValidationFailed, "%v", err)
+	}
+	if err := app.CanReadRepository(ctx, r.GitForgeRef); err != nil {
+		return problem(backend.CodeValidationFailed, "GitHub App で %s を読めない。App を install し、このリポジトリを選ぶ：%s（%v）",
+			r.GitForgeRef, github.InstallURL(c.GitHub.WebURL, c.GitHub.Slug), err)
+	}
 	return nil
 }

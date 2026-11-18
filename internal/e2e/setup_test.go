@@ -83,4 +83,17 @@ func TestE2ESetupForgejo(t *testing.T) {
 		st, _ := w.call("alice", "GET", "/repositories/q", nil)
 		return st == 200
 	})
+	// 設定の API：WebUI のサインインの user だけが使える。書ける worker のトークンには置き換えない。
+	if st, b := w.call("agent", "GET", "/settings", nil); st != 403 {
+		t.Fatalf("personal access token の getSettings：%d %s", st, b)
+	}
+	if st, b := w.call("alice", "GET", "/settings", nil); st != 200 || strings.Contains(string(b), f.WorkerToken) || strings.Contains(string(b), f.OAuthClientSecret) {
+		t.Fatalf("getSettings：%d %s", st, b)
+	}
+	if st, b := w.call("alice", "PATCH", "/settings/gitforge", map[string]any{"forgejo": map[string]string{"worker_user": w.login("agent"), "worker_token": w.tokens["agent"]}}); st != 422 {
+		t.Fatalf("書ける worker のトークンに置き換えた：%d %s", st, b)
+	}
+	if st, b := w.call("alice", "PATCH", "/settings/gitforge", map[string]any{"intervals": map[string]any{"patrol_seconds": 2}}); st != 200 {
+		t.Fatalf("間隔：%d %s", st, b)
+	}
 }
