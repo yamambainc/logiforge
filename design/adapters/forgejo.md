@@ -85,8 +85,11 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 - そのトークンで、`GET /user` が worker のユーザーを返し、organization を読める。
 - そのトークンで、書くスコープの要る API が 403 になる。
-  - 害のない要求を使う：`PATCH /user/settings`（`write:user`）と、`POST /repos/{owner}/{repo}/issues`（`write:issue`）を、本文を空にして呼ぶ。
-  - Forgejo は、スコープの足りないトークンを、本文を確かめる前に 403 で断る。403 でなければ、書けるトークンとみなす。
+  - 害のない要求を使う。どれも本文を空にして呼ぶ。
+    - `PATCH /user/settings`（`write:user`）
+    - `POST /repos/{owner}/{repo}/issues`（`write:issue`）。repository は、`GET /orgs/{org}/repos` の最初のものにする。organization に repository がなければ、この要求は飛ばす。
+  - Forgejo は、スコープの足りないトークンを、本文を確かめる前に 403 で断る。
+  - 403 なら、書けないとみなす。404 は、どちらともみなさない。それ以外（400、422 など、スコープを通った応答）なら、書けるトークンとみなして断る。
 - worker のユーザーが、organization の team のうち、`read` より強い権限の team に入っていない（`GET /user/teams`）。
 
 ## 認証
