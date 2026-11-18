@@ -617,6 +617,11 @@ try {
   const out = await ctx.newPage();
   await out.setViewport({ width: 1280, height: 800 });
   const ow = watch(out);
+  out.on('request', (r) => console.log('REQ', r.method(), r.url().slice(0, 160), r.isNavigationRequest() ? 'NAV' : ''));
+  out.on('response', (r) => console.log('RES', r.status(), r.url().slice(0, 160)));
+  out.on('requestfailed', (r) => console.log('FAIL', r.url().slice(0, 160), r.failure()?.errorText));
+  out.on('console', (m) => console.log('CONSOLE', m.text()));
+  out.on('framenavigated', (f) => { if (f === out.mainFrame()) console.log('NAVIGATED', f.url().slice(0, 160)); });
   await out.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await out.type('#user_name', OUTSIDER_LOGIN);
   await out.type('#password', OUTSIDER_PASSWORD);
