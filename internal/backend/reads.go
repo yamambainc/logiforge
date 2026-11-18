@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/yamambainc/logiforge/internal/ids"
@@ -410,7 +411,7 @@ func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string
 	if err != nil {
 		return ApplyRequest{}, err
 	}
-	d.model.OpenedByCaller = ar.Opener != "" && ar.Opener == c.Principal.Login
+	d.model.OpenedByCaller = ar.Opener != "" && strings.EqualFold(ar.Opener, c.Principal.Login)
 	return d.model, nil
 }
 

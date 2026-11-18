@@ -5,7 +5,8 @@ import { FAILURE } from './ar';
 
 const SESSION_KEY = 'lf-session-id';
 
-/** このタブの Logiforge-Session-Id。タブごとに乱数で 1 度だけ作り、sessionStorage に置いて使い回す */
+/** このタブの Logiforge-Session-Id。タブごとに乱数で 1 度だけ作り、sessionStorage に置いて使い回す。
+ * ブラウザでタブを「複製」すると sessionStorage も写るので、2 つのタブが同じ値になる。どちらも本人なので、受け入れる */
 export function sessionId(): string {
   const v = sessionStorage.getItem(SESSION_KEY);
   if (v) return v;
