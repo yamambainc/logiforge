@@ -40,8 +40,14 @@ func Manifest(in ManifestInput) (manifest map[string]any, postURL string, err er
 	if web == "" {
 		web = DefaultWebURL
 	}
+	// App の名前は、GitHub 全体で 1 つで、34 文字まで。owner を付けて、ほかの owner の App とぶつからないようにする。
+	// ぶつかれば、作る人が GitHub の画面で名前を変える。
+	name := "Logiforge " + in.Owner
+	if len(name) > 34 {
+		name = name[:34]
+	}
 	manifest = map[string]any{
-		"name":            "Logiforge " + u.Host,
+		"name":            name,
 		"url":             webui,
 		"redirect_url":    webui + "/setup/github/callback",
 		"callback_urls":   []string{webui + "/oauth/callback"},
