@@ -26,7 +26,7 @@ func (c *comments) CommentsSince(_ context.Context, _ string, since time.Time) (
 	return out, nil
 }
 
-// 記録の控えには、署名の合う記録だけを足す。書き換えられても消されても、控えには最初のものが残る（design/backend/verify.md）。
+// 記録の控えには、署名の合う記録だけを足す。書き換えられても消されても、控えには最初のものが残る（design/backend/verify/records.md）。
 func TestLogSyncer(t *testing.T) {
 	ctx := context.Background()
 	keys, _ := pullreq.KeyringFromSecrets([]string{"k1"}, []string{"s"})

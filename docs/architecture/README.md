@@ -45,7 +45,6 @@ flowchart TB
 - 履歴は append-only にする。
   - 書き換えも削除もしない。
 - 反映によらない変更が `main` に入ったら、Logiforge が見つけて、その repository を壊れた状態にする（[壊れた repository を直す](../apply-request/repair.md)）。
-  - GitForge の `main` を守る設定は、勧めるが求めない。
 - ノードごとの履歴を表示できる。
 - 任意の時点の木を表示できる。
 

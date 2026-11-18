@@ -1,8 +1,8 @@
 // logiforge は、Logiforge の 1 つのバイナリである。サブコマンドで、役割を選ぶ。
 //
 //	logiforge serve    バックエンドの API（design/api/README.md）
-//	logiforge worker   git を読んでスナップショットを作り続ける worker（design/backend/worker.md）
-//	logiforge worker-health  worker のハートビートを確かめる。古ければ 0 以外で終わる（design/deploy.md の「ヘルスチェック」）
+//	logiforge worker   git を読んでスナップショットを作り続ける worker（design/backend/worker/README.md）
+//	logiforge worker-health  worker のハートビートを確かめる。古ければ 0 以外で終わる（design/deploy/README.md の「ヘルスチェック」）
 //	logiforge <名詞> <動詞>  opener と reviewer の CLI（design/cli/README.md）。logiforge help で一覧を見る
 package main
 
@@ -70,7 +70,7 @@ func main() {
 }
 
 // env は、必須の環境変数を読む。name の代わりに name_FILE があれば、そのパスのファイルの中身を値にする
-// （末尾の改行は除く）。秘密を、マウントしたファイルで渡すためである（design/deploy.md）。
+// （末尾の改行は除く）。秘密を、マウントしたファイルで渡すためである（design/deploy/README.md）。
 func env(name string) (string, error) {
 	v, file := os.Getenv(name), os.Getenv(name+"_FILE")
 	switch {
@@ -92,8 +92,8 @@ func env(name string) (string, error) {
 	return v, nil
 }
 
-// runWorker は、worker を動かす。設定は、環境変数で受け取る（design/adapters/README.md の「設定と秘密情報」）。
-// worker は、どのポートでも待ち受けない。見回りの間隔ごとに git を見て、置き場に書く（design/backend/worker.md）。
+// runWorker は、worker を動かす。設定は、環境変数で受け取る（design/adapters/settings.md）。
+// worker は、どのポートでも待ち受けない。見回りの間隔ごとに git を見て、置き場に書く（design/backend/worker/README.md）。
 //
 //	LOGIFORGE_WORKER_DIR       clone とハートビートを置く、永続するディレクトリ
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ）
@@ -104,7 +104,7 @@ func env(name string) (string, error) {
 //	LOGIFORGE_GIT_ALLOW_PROTOCOL  git で使える転送の方式（既定は https:file。https、http、file の部分集合）
 //	LOGIFORGE_GITFORGE         構成（forgejo か github。既定は forgejo）と、構成ごとの環境変数（setupForge）
 //	                           Forgejo の読むだけのユーザーは、read:repository、read:organization、read:issue
-//	LOGIFORGE_RECORD_PUBLIC_KEYS  記録の署名の公開鍵（鍵の ID=base64,…）。反映かの判定で記録を確かめる（design/backend/verify.md）。
+//	LOGIFORGE_RECORD_PUBLIC_KEYS  記録の署名の公開鍵（鍵の ID=base64,…）。反映かの判定で記録を確かめる（design/backend/verify/README.md）。
 //	                           logiforge record-public-keys が、LOGIFORGE_RECORD_KEYS から作る
 func runWorker(ctx context.Context) error {
 	var cfg struct{ dir, storeDir, publicKeys string }
@@ -170,7 +170,7 @@ type verifier struct {
 	keys pullreq.Keyring
 }
 
-// VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify.md の「用意のコミットの署名」）。
+// VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify/init.md の「用意のコミットの署名」）。
 func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error) {
 	id, err := v.src.RepoID(ctx, r.GitForgeRef)
 	if err != nil {
@@ -307,7 +307,7 @@ func recordPublicKeys() error {
 	return nil
 }
 
-// runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/README.md の「設定と秘密情報」）。
+// runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/settings.md）。
 //
 //	LOGIFORGE_ADDR             待ち受けるアドレス（既定は 127.0.0.1:8080）
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ。読むだけ）

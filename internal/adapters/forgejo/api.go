@@ -407,7 +407,7 @@ func (a api) DownloadAttachment(ctx context.Context, repo string, commentID int6
 	return a.download(ctx, ports.TokenFrom(ctx), as.URL)
 }
 
-// MergedPull は、sha を merge のコミットにした、向き先が main の pull request を返す（design/backend/verify.md の「GitForge の API」）。
+// MergedPull は、sha を merge のコミットにした、向き先が main の pull request を返す（design/backend/verify/README.md の「GitForge の API」）。
 // GET /repos/{owner}/{repo}/commits/{sha}/pull は、そのコミットを merge した pull request を返し、なければ 404 を返す。
 func (a api) MergedPull(ctx context.Context, repo, sha string) (pullreq.Pull, bool, error) {
 	rp, err := repoPath(repo)

@@ -18,7 +18,7 @@ type At struct {
 	ApplyRequest string
 }
 
-// mainTarget は、Logiforge が検査し、反映する向き先である（design/backend/apply-request.md の「向き先」）。
+// mainTarget は、Logiforge が検査し、反映する向き先である（design/backend/apply-request/target.md の「向き先」）。
 const mainTarget = "main"
 
 // targetsMain は、apply request の向き先が main かを返す。向き先がわからない（GitForge が返さない）ときは、main とみなす。
@@ -37,7 +37,7 @@ func (b *Backend) readAt(ctx context.Context, repo, ref string, at At) (*view, e
 }
 
 // afterView は、open の apply request の先頭のコミットの差分を、向き先の今の先頭（latest）のスナップショットツリーに重ねた、
-// 反映したあとの view を返す（design/backend/snapshot.md の「向き先に重ねる」）。重ねた結果は保持しない。
+// 反映したあとの view を返す（design/backend/snapshot/branch.md の「向き先に重ねる」）。重ねた結果は保持しない。
 func (b *Backend) afterView(ctx context.Context, repo, ref, id string) (*view, error) {
 	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
 	if errors.Is(err, ports.ErrNotFound) {
@@ -74,7 +74,7 @@ func (b *Backend) afterView(ctx context.Context, repo, ref, id string) (*view, e
 }
 
 // afterBranchView は、向き先が main でない apply request の差分を、向き先のブランチの今の先頭に重ねた view を返す。
-// 衝突は判定せず、検査もしない（design/backend/snapshot.md の「向き先に重ねる」）。応答のコミットは、向き先のブランチの今の先頭である。
+// 衝突は判定せず、検査もしない（design/backend/snapshot/branch.md の「向き先に重ねる」）。応答のコミットは、向き先のブランチの今の先頭である。
 func (b *Backend) afterBranchView(ctx context.Context, repo, target string, ar *snapshot.Branch) (*view, error) {
 	h, err := b.Snap.BranchHistory(ctx, repo, target)
 	if err != nil {
@@ -110,7 +110,7 @@ func (b *Backend) commitAt(ctx context.Context, repo, revision string) (*view, e
 	return b.branchView(ctx, repo, revision)
 }
 
-// branchView は、ブランチのコミットのスナップショットツリーを、読むたびに作る（design/backend/snapshot.md の
+// branchView は、ブランチのコミットのスナップショットツリーを、読むたびに作る（design/backend/snapshot/branch.md の
 // 「ブランチのコミットのスナップショットツリー」）。base の main の木に、ブランチの差分を重ねる。置き場には置かない。
 func (b *Backend) branchView(ctx context.Context, repo, revision string) (*view, error) {
 	br, err := b.Snap.Branch(ctx, repo, revision)

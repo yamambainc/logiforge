@@ -5,8 +5,8 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 
 ## 守ること
 
-- プロジェクトの人は、コードの PR を、今までどおり merge する。
-- 登録したディレクトリは、apply request の反映でだけ変わる。反映によるものかは、だれが merge したかでなく、中身で決める（[反映かの判定](../backend/verify.md)、[履歴](history.md) の「反映かの判定」）。
+- プロジェクトの人は、コードの PR を、プロジェクトの決まりで merge する。
+- 登録したディレクトリは、apply request の反映でだけ変わる。反映によるものかは、だれが merge したかでなく、中身で決める（[反映かの判定](../backend/verify/README.md)、[履歴](history.md) の「反映かの判定」）。
   - Logiforge は、GitForge に書くための自分のアカウント（書き込み主体）を持たない。反映は、`approve` をした reviewer のトークンで merge する（[反映の手順](../backend/merge.md)）。
 - 守る設定は、git リポジトリ全体の repository と同じく、勧めるが求めない（[main を守る](../adapters/pull-requests.md#main-を守る)）。
   - 守る設定がなくても、ディレクトリを変える反映によらないコミットは、worker が見つけ、その repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
@@ -24,6 +24,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 | (B) ディレクトリ | Require a pull request before merging の Required reviewers：登録したディレクトリ（例：`logiforge/**`）に、Logiforge の承認の team を 1 人の承認で付ける | Logiforge の reviewer の team（Logiforge で `approve` し、merge する人とエージェント） |
 
 - なぜ 2 つに分けるか：bypass は、そのルールセットのすべての規則に効くから。1 つにまとめると、reviewer の team が、`main` への直接の push と force push もできてしまう。
+- (B) の bypass は、(A) には効かない。reviewer の team の人も、`main` への直接の push と force push はできない。
 - 「Require branches to be up to date before merging」は使わない（[衝突](../backend/merge.md#衝突)）。
 
 Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのいない team にし、リポジトリの Write の権限を与える。
@@ -36,10 +37,14 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
 - 使えるのは、organization のリポジトリだけである。public なら Free で、private なら Team 以上で使える。
   - 個人のアカウントのリポジトリには team がなく、Free の private のリポジトリではリポジトリのルールセットが効かない。そのときは、守る設定なしで使う。
   - organization のルールセットと「Require workflows to pass」は、Enterprise だけの機能なので、使わない（GitHub の [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) と [Available rules for rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)）。
-- yamambainc（Free）の public のリポジトリで、次のことを確かめた（bypass を GitHub App にしていたとき）。
-  - ディレクトリを変える PR の merge は、リポジトリの管理者でも、`Waiting on required approvals` で拒まれる（405）。
-  - ディレクトリを変えない PR は、そのまま merge できる。
-  - パスの境目の PR も拒まれる：ディレクトリの中のファイルを外へ rename する PR、ディレクトリを消す PR、外のファイルをディレクトリの中へ移す PR。
+- (B) の bypass には、team を `actor_type: Team`、`bypass_mode: always` で入れる。
+- (B) の Required reviewers は、パスの境目の PR にも効く。
+  - ディレクトリの中のファイルを外へ rename する PR
+  - ディレクトリを消す PR
+  - 外のファイルをディレクトリの中へ移す PR
+- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は 405 で断る。リポジトリの管理者でも同じである。
+  - 応答は `Repository rule violations found` と `Waiting on required approvals from <承認の team>` である。
+  - アダプタは、これを反映の失敗 `merge_forbidden` にする。
 
 ## Forgejo の守る設定
 
@@ -47,6 +52,8 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 
 - そのため、Forgejo では、ディレクトリの守りは、後から検査だけにする。`protected_file_patterns` は使わない。
   - なぜ：`protected_file_patterns` を掛けると、管理者でない reviewer も、ディレクトリを変える apply request を merge できなくなり、反映できないから。
+  - Forgejo は、`protected_file_patterns` に掛かる PR を、管理者のほかは `Changed protected files` で断る。管理者は、`force_merge: true` でだけ merge できる。
+  - Forgejo は、rename の新しいパスだけを見る。そのため、ディレクトリの中のファイルを外へ rename する PR は、`protected_file_patterns` でも止まらない。
 - `main` のブランチの保護は、次のものだけを設定する。
 
 | 項目 | 値 | 理由 |
@@ -54,12 +61,6 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 | `enable_push` | `false` | 直接の push を禁じる |
 | `enable_merge_whitelist` | プロジェクトの決まりのまま | コードの PR は、人が merge する。reviewer も merge できるようにしておく |
 | `block_on_outdated_branch` | `false` | [衝突](../backend/merge.md#衝突) と同じ |
-
-- Forgejo 17.0.1 で、次のことを確かめた（書き込み主体を管理者にしていたとき）。
-  - `protected_file_patterns` を掛けると、Write の権限の人の、ディレクトリにファイルを足す PR、ディレクトリを消す PR、外のファイルをディレクトリの中へ移す PR は、`Changed protected files` で拒まれる。
-  - ディレクトリの中のファイルを外へ rename する PR は、merge できてしまう（Forgejo は、rename の新しいパスだけを見る）。
-  - 管理者は、`force_merge: true` でだけ merge できる。
-  - `main` への直接の push は、拒まれる。
 
 ## 管理者
 
@@ -80,20 +81,4 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
     - なぜ「同じになるまで」でないか：コードの merge が続くリポジトリでは、`main` の先頭がいつまでも先に進み、待ちが終わらないから。
   - 手順 3 の検査に、差分がディレクトリの中だけであること（`outside_directory`）を足す。
 - 手順 3 と手順 4 のすき間に、コードの PR が merge されても、ディレクトリの中は変わらない。検査の結果は変わらない。
-- 別の apply request とのすき間は、今までどおりふさがない（[検査と merge のすき間](../backend/merge.md#検査と-merge-のすき間)）。
-
-## 確かめたこと
-
-yamambainc（GitHub Free の organization）の public のリポジトリ `yamambainc/logiforge-directory-test` で、上の 2 つのルールセットを作り、次のことを確かめた（2026-11-17）。
-
-| 項目 | 結果 |
-|---|---|
-| ルールセットの bypass に team を入れられるか | 入れられる（`actor_type: Team`、`bypass_mode: always`） |
-| (B) の bypass の team の人が、ディレクトリを変える PR を API で merge できるか | できる |
-| (B) の bypass がないとき、ディレクトリを変える PR の merge | 405。`Repository rule violations found`、`Waiting on required approvals from <承認の team>`。バックエンドは、反映の失敗 `merge_forbidden` にする |
-| ディレクトリを変えない PR（コードの PR） | merge できる |
-| (B) の bypass の team の人が、`main` に直接 push する、force push する | どちらも (A) で拒まれる（`push declined due to repository rule violations`）。(B) の bypass は (A) を越えない |
-
-まだ確かめていないことは、次のとおりである。
-
-- private のリポジトリ（Team のプラン）でも、同じルールセットが効くか。Free の organization では、private のリポジトリにルールセットを掛けられないので、確かめられない。
+- 別の apply request とのすき間は、git リポジトリ全体の repository と同じく、ふさがない（[検査と merge のすき間](../backend/merge.md#検査と-merge-のすき間)）。

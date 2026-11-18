@@ -11,7 +11,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/store"
 )
 
-// 反映かの判定は、だれが merge したかでなく、中身で決める（design/backend/verify.md）。
+// 反映かの判定は、だれが merge したかでなく、中身で決める（design/backend/verify/README.md）。
 func TestVerifyMerge(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)

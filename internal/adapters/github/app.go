@@ -22,7 +22,7 @@ import (
 )
 
 // App は、worker とバックエンドの作業用の複製が読むための、読むだけの GitHub App である（design/adapters/github.md の「読むだけの GitHub App」）。
-// App は書かない。反映かの判定は、中身だけで決める（design/backend/verify.md）。App は、読むトークンを作るためだけにある。
+// App は書かない。反映かの判定は、中身だけで決める（design/backend/verify/README.md）。App は、読むトークンを作るためだけにある。
 //
 // App の ID と秘密鍵から JWT を作り、installation token を作る。installation token は、owner（organization か個人）ごとに 1 つで、
 // 登録した repository だけと、読む権限（Contents、Issues、Pull requests、Metadata の Read）だけに絞って作る。

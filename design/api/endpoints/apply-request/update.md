@@ -1,7 +1,7 @@
 # apply request を更新する
 
 opener が、apply request の説明欄を書き換えるときに、CLI から呼ぶ。
-apply request の先頭のコミットを変えるには、ブランチに push するだけで、この API は使わない（[先頭のコミット](../../../backend/apply-request.md#先頭のコミット)）。
+apply request の先頭のコミットを変えるには、ブランチに push するだけで、この API は使わない（[先頭のコミット](../../../backend/apply-request/README.md#先頭のコミット)）。
 
 ## 呼び出し
 

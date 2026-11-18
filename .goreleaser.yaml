@@ -1,4 +1,4 @@
-# GitHub Releases に、logiforge のバイナリを置く（issue #27、README の「インストール」）。
+# GitHub Releases に、logiforge のバイナリを置く（issue #27、docs/install.md）。
 # タグ（v0.1.0 など）を push すると、.github/workflows/release.yml がこれを動かす。
 # 試すとき：goreleaser release --snapshot --clean（dist/ に作るだけで、どこにも置かない）
 version: 2

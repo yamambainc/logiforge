@@ -387,7 +387,7 @@ func TestReviewChain(t *testing.T) {
 	}
 }
 
-// 記録の控えにあるレビューは、GitForge から消されても数える（design/backend/verify.md の「記録の控え」）。
+// 記録の控えにあるレビューは、GitForge から消されても数える（design/backend/verify/records.md）。
 func TestReviewsWithLog(t *testing.T) {
 	ctx := context.Background()
 	a, f := newAdapter()

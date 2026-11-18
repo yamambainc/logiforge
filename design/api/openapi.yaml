@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Logiforge のバックエンドの API。
-    全体に共通する決まり（主体と認証、セッション ID、コミット、エラー、ページング）は design/api/README.md に書く。
+    全体に共通する決まり（主体と認証、セッション ID、コミット、エラー）は design/api/README.md に、ページングは design/api/paging.md に書く。
     要件は docs/ が正本である。
     主文・タイトル・概要の文字数の上限と数え方は、../../docs/tree/README.md に従う。
   license:
@@ -280,7 +280,7 @@ paths:
       operationId: listCommits
       summary: main のコミットの一覧（新しい順）
       description: |
-        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot.md の「コミットの記録から引くもの」）。
+        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
         カーソルは、次に読むコミットの number である。
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -371,10 +371,10 @@ paths:
       operationId: createApplyRequest
       summary: apply request を作る（client だけ）
       description: |
-        push したブランチから main への pull request を作る。ブランチの先頭のコミットが、最初の先頭のコミットになる。手順は ../../design/backend/apply-request.md に従う。
+        push したブランチから main への pull request を作る。ブランチの先頭のコミットが、最初の先頭のコミットになる。手順は ../../design/backend/apply-request/README.md に従う。
         差分が 4 種類の操作として読めなければ、validation_failed で受け付けない。操作は、差分から復元して応答に入れる。
         そのブランチに open の apply request がすでにあれば、validation_failed で受け付けない。
-        バックエンドが、作業用の git の複製からブランチを読んで検査する。worker を待たない（../../design/backend/apply-request.md の「作成」）。
+        バックエンドが、作業用の git の複製からブランチを読んで検査する。worker を待たない（../../design/backend/apply-request/create.md の「作成」）。
         先頭のコミットのスナップショットは、worker がブランチを取り込んでから読む側に出る。それまで、そのコミットへのレビューは snapshot_pending になる。
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -430,7 +430,7 @@ paths:
       operationId: updateApplyRequest
       summary: apply request の説明欄を書き換える（client なら、どのセッションからでもよい）
       description: |
-        新しいコミットは、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request.md）。
+        新しいコミットは、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request/README.md）。
         この API は、説明欄だけを書き換える。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
@@ -480,7 +480,7 @@ paths:
                 kind: { $ref: '#/components/schemas/ReviewKind' }
                 commit:
                   $ref: '#/components/schemas/Commit'
-                  description: レビューした先頭のコミットの SHA（../../design/backend/apply-request.md）。ブランチの今の先頭のコミットと違えば commit_conflict で受け付けない
+                  description: レビューした先頭のコミットの SHA（../../design/backend/apply-request/README.md）。ブランチの今の先頭のコミットと違えば commit_conflict で受け付けない
                 body: { type: string }
                 prompt_revision:
                   type: string
@@ -589,7 +589,7 @@ paths:
                     additionalProperties: { type: integer }
                   items:
                     type: array
-                    description: 作業の種類の順、次にノードの識別子の順、次に subject_id の順。カーソルは commit に結びつける（../../design/api/README.md のページング）
+                    description: 作業の種類の順、次にノードの識別子の順、次に subject_id の順。カーソルは commit に結びつける（../../design/api/paging.md）
                     items: { $ref: '#/components/schemas/WorkItem' }
                   next_cursor: { $ref: '#/components/schemas/NextCursor' }
         '4XX': { $ref: '#/components/responses/Problem' }
@@ -802,7 +802,7 @@ components:
       in: query
       description: >-
         読むコミットの SHA。main のコミットか、worker がブランチのスナップショットを作ったブランチのコミットである。指定しなければ、今の main のコミット（latest）。
-        ブランチのコミットのスナップショットツリーは、その base の main のスナップショットツリーにブランチの差分を重ねて、読むたびに作る（../../design/backend/snapshot.md の「ブランチのコミットのスナップショットツリー」）。
+        ブランチのコミットのスナップショットツリーは、その base の main のスナップショットツリーにブランチの差分を重ねて、読むたびに作る（../../design/backend/snapshot/branch.md の「ブランチのコミットのスナップショットツリー」）。
         worker が、まだそのコミットを取り込んでいなければ、snapshot_pending になる。少し待って送り直す。
       schema: { $ref: '#/components/schemas/Commit' }
     ApplyRequestView:
@@ -810,7 +810,7 @@ components:
       in: query
       description: >-
         open の apply request の識別子。指定すると、その先頭のコミットの差分を、向き先の今の先頭のスナップショットツリーに重ねた、
-        反映したあとの木を返す（../../design/backend/snapshot.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
+        反映したあとの木を返す（../../design/backend/snapshot/branch.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
         向き先が main なら、今の先頭は latest である。向き先が main でなければ、向き先のブランチの履歴の最後のコミットである。このとき、Logiforge は検査しないので、値は決まりに沿っているかを確かめていない。
         commit と同時には指定できない（validation_failed）。
         向き先が main で、重ねられなければ overlay_conflict を返す。向き先が main でなければ、衝突は判定しない（差分が変えたパスは先頭のファイル、ほかは向き先のファイルを使う）。先頭のコミットか、向き先の今の先頭のスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
@@ -1247,14 +1247,14 @@ components:
           type: string
           description: >-
             向き先（pull request の base のブランチ）。Logiforge が作るものは main。
-            main でなければ、Logiforge は検査も反映もしない。operations は空で、作業の一覧に出ない（../../design/backend/apply-request.md の「向き先」）
+            main でなければ、Logiforge は検査も反映もしない。operations は空で、作業の一覧に出ない（../../design/backend/apply-request/target.md の「向き先」）
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         head_commit:
           $ref: '#/components/schemas/Commit'
           description: ブランチの今の先頭のコミット。レビューと反映は、このコミットを SHA で指す
         head_commits:
           type: array
-          description: ブランチに push された先頭のコミットの一覧（古い順）。worker が見つけた時刻と、書いたセッションを持つ（../../design/backend/apply-request.md の「先頭のコミット」）
+          description: ブランチに push された先頭のコミットの一覧（古い順）。worker が見つけた時刻と、書いたセッションを持つ（../../design/backend/apply-request/README.md の「先頭のコミット」）
           items:
             type: object
             required: [commit, base_commit, seen_at, author_session_id]

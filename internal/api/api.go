@@ -86,7 +86,7 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
 	route("POST "+repo+"/human-requests", s.createHumanRequest)
 	route("POST "+repo+"/human-requests/{humanRequestId}/answer", s.answerHumanRequest)
-	// ヘルスチェック。/v1 の外に置き、認証を求めない。GitForge や置き場には触れない（design/deploy.md）。
+	// ヘルスチェック。/v1 の外に置き、認証を求めない。GitForge や置き場には触れない（design/deploy/README.md）。
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeNotFound, Detail: "そのパスの API はない"})

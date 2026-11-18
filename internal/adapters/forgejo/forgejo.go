@@ -124,7 +124,7 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	mainExisted := true
 	if err := r.w(ctx, http.MethodGet, rp+"/branches/main", nil, nil); statusOf(err) == http.StatusNotFound {
 		mainExisted = false
-		// 根のコミットにも、署名を付ける。worker は、それで用意のコミットと決める（design/backend/verify.md）。
+		// 根のコミットにも、署名を付ける。worker は、それで用意のコミットと決める（design/backend/verify/README.md）。
 		repoID, err := api{r.client}.RepoID(ctx, gitForgeRef)
 		if err != nil {
 			return err

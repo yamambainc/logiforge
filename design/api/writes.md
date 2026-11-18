@@ -5,21 +5,41 @@
 
 ## 書いた直後の読み
 
-- 木は、[worker](../backend/worker.md) がスナップショットにしてから、読む側に出る。worker は、見回りの間隔（既定 1 秒）ごとに git を見て取り込む（[見回り](../backend/worker.md#見回り)）。
-- git に関わる書き込み（repository の作成、`approve` による反映）の API は、書いたあと、読む側に出るまで（`latest` がそのコミットに進むまで）待ってから応答する。worker は起こさない。
-  - 待つ時間の上限は、設定にする（[設定と秘密情報](../adapters/README.md)）。
-  - 上限を過ぎたら、成功として応答し、`Logiforge-Pending-Commit` ヘッダーに、待っていた `main` のコミットを入れる。
-  - クライアントは、少し待ってから、そのコミットを指定して読み直す。スナップショットがまだなければ、`snapshot_pending` が返る。
-- apply request の作成は、worker を待たない。バックエンドが、作業用の git の複製から読んで検査し、pull request を作ったら応答する（[作成](../backend/apply-request.md#作成)）。
-  - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、バックエンドの検査の結果から返す。
-  - 先頭のコミットのスナップショットは、worker がブランチを取り込んでから、読む側に出る。それまで、そのコミットへのレビューは `snapshot_pending` になる。少し待って送り直す。
-- 利用者がブランチに push した新しい先頭のコミットは、worker が次に見回ったときに、読む側に出る（[先頭のコミット](../backend/apply-request.md#先頭のコミット)）。
+- 木は、[worker](../backend/worker/README.md) がスナップショットにしてから、読む側に出る。
+  - worker は、見回りの間隔ごとに git を見て取り込む（[見回りの間隔](../backend/worker/patrol.md#見回りの間隔)）。
+
+### git に書く API
+
+- git に関わる書き込み（repository の作成、`approve` による反映）の API は、書いたあと、読む側に出るまで待ってから応答する。
+  - 読む側に出るとは、`latest` がそのコミットに進むことである。
+  - worker は起こさない。
+- 待つ時間の上限は、設定にする（[設定と秘密情報](../adapters/settings.md)）。
+- 上限を過ぎたら、成功として応答し、`Logiforge-Pending-Commit` ヘッダーに、待っていた `main` のコミットを入れる。
+  - クライアントは、少し待ってから、そのコミットを指定して読み直す。
+  - スナップショットがまだなければ、`snapshot_pending` が返る。
+
+### apply request の作成
+
+- apply request の作成は、worker を待たない。
+  - バックエンドが、作業用の git の複製から読んで検査し、pull request を作ったら応答する（[作成](../backend/apply-request/create.md#作成)）。
+- worker がブランチを取り込む前は、応答の操作の一覧を、バックエンドの検査の結果から返す。
+- 先頭のコミットのスナップショットは、worker がブランチを取り込んでから、読む側に出る。
+  - それまで、そのコミットへのレビューは `snapshot_pending` になる。クライアントは、少し待って送り直す。
+- 利用者がブランチに push した新しい先頭のコミットは、worker が次に見回ったときに、読む側に出る（[先頭のコミット](../backend/apply-request/README.md#先頭のコミット)）。
+- worker が止まっていても、apply request の作成はできる。
+  - ただし、先頭のコミットのスナップショットができないので、レビューは `snapshot_pending` のままになる。
+- GitForge の git を読めないと、apply request の作成は `unavailable` を返す。クライアントは、少し待ってから送り直す。
+
+### snapshot_pending を返す時点
+
 - バックエンドは、`snapshot_pending` を、GitForge にも git にも何かを書く前にだけ返す。
-  - なぜ：クライアントが、`snapshot_pending` のあとに同じ要求を送り直しても、二重に書かないようにするため（[コマンドの一覧](../cli/commands.md)）。
-  - 書いたあとに、読む側に出るのを待ちきれなかったときは、`snapshot_pending` ではなく、成功として `Logiforge-Pending-Commit` を付けて応答する（上の決まり）。
-- GitForge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。GitForge から直接読むので、すぐに見える。
-- worker が止まっていても、apply request の作成はできる。ただし、先頭のコミットのスナップショットができないので、レビューは `snapshot_pending` のままになる。
-- GitForge の git を読めないと、apply request の作成は `unavailable` を返す。少し待ってから送り直す。
+  - なぜ：クライアントが、`snapshot_pending` のあとに同じ要求を送り直しても、二重に書かないようにするため（[コマンドの一覧](../cli/commands.md#apply-request)）。
+- 書いたあとに、読む側に出るのを待ちきれなかったときは、成功として `Logiforge-Pending-Commit` を付けて応答する（[git に書く API](#git-に書く-api)）。
+
+### GitForge だけに書く API
+
+- GitForge だけに書く API（レビュー、close、人への依頼の起票と回答）は、待たない。
+  - なぜ：GitForge から直接読むので、すぐに見えるから。
 
 ## 同じ要求の繰り返し
 
@@ -32,10 +52,9 @@
   - 要求の中身は比べない。
   - なぜ：操作の中で作る仮説とストーリーの識別子は、要求ごとに乱数で決まり、最初の要求と比べられないから。
 - クライアントは、中身の違う要求ごとに、新しいキーを作る。
-- バックエンドが書く順は、[apply request の作成と更新](../backend/apply-request.md) に書く。
+- バックエンドが書く順は、[apply request](../backend/apply-request/README.md) に書く。
 - キーと応答は、どこにも置かない。
   - なぜ：識別子だけで送り直しを見分けられ、再起動しても、別のプロセスに届いても効くから。
 - repository の作成と、人への依頼への回答は、キーを使わない。
-  - repository の作成：名前で一意である。送り直しは、[repository の用意](../backend/README.md) の判定で済む。
-  - 回答：1 回だけである。送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする（[人への依頼の回答](../files/artifacts.md)）。
-
+  - repository の作成：名前で一意である。送り直しは、[repository の用意](../backend/README.md#repository-の用意) の判定で済む。
+  - 回答：1 回だけである。送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする（[人への依頼の回答](../files/artifacts.md#人への依頼の回答)）。

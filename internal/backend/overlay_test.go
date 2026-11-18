@@ -16,7 +16,7 @@ import (
 )
 
 // apply_request を付けた読みは、open の apply request の差分を、今の main に重ねた、反映したあとの木を返す
-// （design/backend/snapshot.md の「向き先に重ねる」）。
+// （design/backend/snapshot/branch.md の「向き先に重ねる」）。
 func TestReadAfterApplyRequest(t *testing.T) {
 	ctx := context.Background()
 	f := setup(t)
@@ -90,7 +90,7 @@ func TestReadAfterApplyRequest(t *testing.T) {
 	}
 }
 
-// 向き先が main でない apply request は、検査も反映もしない（design/backend/apply-request.md の「向き先」）。
+// 向き先が main でない apply request は、検査も反映もしない（design/backend/apply-request/target.md の「向き先」）。
 func TestTargetNotMain(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
@@ -167,7 +167,7 @@ func TestReviewSnapshotPendingWritesNothing(t *testing.T) {
 	}
 }
 
-// 向き先が main でない apply request は、向き先のブランチの今の先頭に、衝突を判定せずに重ねる（design/backend/snapshot.md の「向き先に重ねる」）。
+// 向き先が main でない apply request は、向き先のブランチの今の先頭に、衝突を判定せずに重ねる（design/backend/snapshot/branch.md の「向き先に重ねる」）。
 // 積み上げた apply request（下の apply request と同じファイルを変える）でも衝突にせず、上の apply request の先頭の内容を出す。
 func TestReadAfterStackedApplyRequest(t *testing.T) {
 	ctx := context.Background()
@@ -239,7 +239,7 @@ func TestReadAfterStackedApplyRequest(t *testing.T) {
 	}
 }
 
-// ブランチのコミットの base の main が、まだ取り込まれていなければ snapshot_pending（design/backend/snapshot.md の
+// ブランチのコミットの base の main が、まだ取り込まれていなければ snapshot_pending（design/backend/snapshot/branch.md の
 // 「ブランチのコミットのスナップショットツリー」）。
 func TestBranchBasePending(t *testing.T) {
 	ctx := context.Background()

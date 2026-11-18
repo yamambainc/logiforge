@@ -94,7 +94,7 @@ func (d *Dir) Put(_ context.Context, key string, data []byte) error {
 	return os.Rename(f.Name(), p)
 }
 
-// PutIf は、同じプロセスの中でだけ、比べて書くことを不可分にする。worker は 1 つだけ動かす前提である（design/backend/worker.md）。
+// PutIf は、同じプロセスの中でだけ、比べて書くことを不可分にする。worker は 1 つだけ動かす前提である（design/backend/worker/operation.md の「worker を 1 つだけ動かす」）。
 func (d *Dir) PutIf(ctx context.Context, key string, data, old []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -131,7 +131,7 @@ func LatestKey(repo string) string        { return Prefix + repo + "/latest" }
 // （design/directory/history.md の「worker」）。git リポジトリ全体の repository では使わない（latest と同じになるから）。
 func ScannedKey(repo string) string { return Prefix + repo + "/scanned" }
 
-// MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot.md の「コミットの記録から引くもの」）。
+// MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
 func MainIndexKey(repo string, number int) string {
 	return Prefix + repo + "/main/" + strconv.Itoa(number)
 }

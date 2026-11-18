@@ -1,4 +1,4 @@
-// Package worker は、git を読んでスナップショットを作り続ける worker である（design/backend/worker.md）。
+// Package worker は、git を読んでスナップショットを作り続ける worker である（design/backend/worker/README.md）。
 // git にも GitForge にも書かない。置き場に書くのは、worker だけである。
 package worker
 
@@ -42,7 +42,7 @@ type Config struct {
 	// GitCredentials は、repository（gitforge_ref）を git で読むための資格情報の環境変数を返す。git の操作の前に、毎回呼ぶ
 	// （GitHub の installation token は切れるので）。nil なら、資格情報を渡さない。
 	GitCredentials func(ctx context.Context, gitForgeRef string) ([]string, error)
-	// Interval は、見回りの間隔。0 なら 1 秒（design/backend/worker.md の「見回り」）。
+	// Interval は、見回りの間隔。0 なら 1 秒（design/backend/worker/patrol.md の「見回りの間隔」）。
 	Interval time.Duration
 	// GitTimeout は、git の操作 1 回の時間の上限。0 なら 10 分。
 	GitTimeout time.Duration
@@ -50,9 +50,9 @@ type Config struct {
 	ListInterval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
-	// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify.md）。nil なら決めない（trailer で決める）。
+	// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify/README.md）。nil なら決めない（trailer で決める）。
 	Verifier Verifier
-	// Records は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。nil なら足さない。
+	// Records は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify/records.md）。nil なら足さない。
 	Records RecordLog
 	// RecordInterval は、記録を読んで控えに足す間隔。0 なら見回りごと。
 	RecordInterval time.Duration
@@ -148,7 +148,7 @@ func (w *Worker) tryLock(repo string) func() {
 	}
 }
 
-// Run は、見回りの間隔ごとに、すべての repository の見回りを始める。ctx が終わるまで返らない（design/backend/worker.md の「見回り」）。
+// Run は、見回りの間隔ごとに、すべての repository の見回りを始める。ctx が終わるまで返らない（design/backend/worker/patrol.md の「見回りの間隔」）。
 // 前の回の処理が終わっていない repository は、その回は飛ばす。repository の処理は待たない。
 // そのため、1 つの repository の長い取り込みが、ほかの repository の見回りとハートビートを遅らせない。
 func (w *Worker) Run(ctx context.Context) error {
@@ -304,7 +304,7 @@ func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
 }
 
-// Sync は、1 つの repository を見回りする（design/backend/worker.md の「すること」）。何度動かしても、結果は同じになる。
+// Sync は、1 つの repository を見回りする（design/backend/worker/patrol.md の「すること」）。何度動かしても、結果は同じになる。
 // repository のロックを取るまで待つ。
 func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	defer w.lock(r.Name)()
@@ -432,7 +432,7 @@ func (w *Worker) moveLegacy(ctx context.Context, repo string) error {
 	return nil
 }
 
-// syncMain は、main の、latest より新しいコミットを、古い順に 1 つずつ取り込む（design/backend/worker.md の「すること」）。
+// syncMain は、main の、latest より新しいコミットを、古い順に 1 つずつ取り込む（design/backend/worker/patrol.md の「すること」）。
 // 1 つのコミットごとに、コミットの記録、main の並びの索引、スナップショットツリーを置き、latest をそのコミットに進める。
 // スナップショットツリーは、1 つ前のコミットのスナップショットツリーのファイルに、そのコミットの差分を重ねて作る。
 func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository, mainSHA string) error {
@@ -465,7 +465,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		return err
 	}
 	// 続きから取り込む位置。latest が並びにあれば、その次から。なければ main が書き換えられているので、
-	// 並びのうち、スナップショットツリーのあるいちばん新しいコミットの次から（design/backend/snapshot.md の「latest」）。
+	// 並びのうち、スナップショットツリーのあるいちばん新しいコミットの次から（design/backend/snapshot/main.md の「latest」）。
 	// prevVersion は、続きの最初の版の、1 つ前の版である（そのスナップショットツリーに重ねる）。
 	start, rewritten, prevVersion := 0, false, ""
 	if latest != "" {
@@ -544,7 +544,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
 		}
 		// 根のコミットが用意のコミットでなければ、最後に正しかった時点がないので、取り込まない。repository は作り直す
-		// （design/backend/verify.md の「repository の用意のコミット」）。
+		// （design/backend/verify/init.md の「repository の用意のコミット」）。
 		if v != nil && version == 0 && !v.Authorized {
 			return fmt.Errorf("根のコミット %s が、Logiforge の用意のコミットでない（%s）。repository を作り直す", sha, v.Detail)
 		}
@@ -632,7 +632,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	return nil
 }
 
-// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify.md）。
+// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify/README.md）。
 // parents はコミットの親（最初の親が 1 つ前の main のコミット）、files はそのコミットの木、broken は 1 つ前の main までの壊れていることの記録である。
 //
 // prevVersion は、1 つ前の版の SHA である。判定は、その版の木に重ねて行う。
@@ -644,14 +644,14 @@ type Verifier interface {
 	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error)
 }
 
-// RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify.md の「記録の控え」）。
+// RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify/records.md）。
 type RecordLog interface {
 	Sync(ctx context.Context, gitForgeRef string) error
 }
 
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
 // 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、trailer Logiforge-Init-Signature: の署名と、
-// 差分がファイルを加えるだけであることで決める（design/backend/verify.md の「repository の用意のコミット」）。
+// 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。
 // なぜ根も署名で決めるか：GitHub では、管理者が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
 //
 // version は、このコミットの前の版の数（最初の版なら 0）、prevVersion は 1 つ前の版の SHA である。git リポジトリ全体の repository では、

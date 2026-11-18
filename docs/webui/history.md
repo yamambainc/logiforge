@@ -27,7 +27,8 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 - 選んだ apply request について、次のものを示す。
   - 差分
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
-  - レビュー。議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。だれが、いつ書いたかも示す。
+  - レビュー。だれが、いつ書いたかも示す。
+    - 議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。
 - WebUI からは、apply request を審査しない（[反映の条件](../apply-request/review.md)）。
 
 ## 反映したあとの木
@@ -40,8 +41,9 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - なぜ：衝突したままでは反映できず、反映したあとの木が決まらないから。
 - 向き先が `main` でない apply request（ほかの apply request のブランチに向けたものなど）でも、向き先のブランチに反映したあとの木を示す。
   - 木の上に、「`main` 向きではないので、検査していません」と示す。
-  - 衝突は確かめない。衝突は、GitForge の画面で確かめる。
-  - なぜ：`main` 向きでない apply request は `main` に入らないので、Logiforge は検査しない。そのため、示す値が決まりに沿っているかは確かめていない。
+  - Logiforge は、衝突を確かめない。衝突は、GitForge の画面で確かめる。
+  - 示す値が決まりに沿っていることは、保証しない。
+  - なぜ：`main` 向きでない apply request は `main` に入らないので、Logiforge は検査しないから。
 
 ## 過去の時点の木
 

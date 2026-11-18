@@ -1,4 +1,4 @@
-// Package snapshot は、スナップショットの形と、その作り方と読み方である（design/backend/snapshot.md）。
+// Package snapshot は、スナップショットの形と、その作り方と読み方である（design/backend/snapshot/README.md）。
 // スナップショットの形の正本は、このパッケージの Go の型である。
 // worker が git から読んだファイルで作り、バックエンドは読んで tree.Files に戻す。git には触れない。
 package snapshot
@@ -54,13 +54,13 @@ type Commit struct {
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
 	// ApplyRequest は、main のコミットだけ。worker が反映かの判定で見つけた、反映した apply request の識別子である
-	// （design/backend/verify.md）。GitForge の画面で merge したコミットには、trailer がないので、ここに持つ。
+	// （design/backend/verify/README.md）。GitForge の画面で merge したコミットには、trailer がないので、ここに持つ。
 	ApplyRequest string `json:"apply_request,omitempty"`
 	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
 	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`
 	// Changes は、main のコミットだけ。このコミットで変わったノードごとの、変わったファイルと、そのノードを前に変えたコミット
-	// （design/backend/snapshot.md の「ノードを変えたコミット」）。ノードの識別子の順。
+	// （design/backend/snapshot/main.md の「ノードを変えたコミット」）。ノードの識別子の順。
 	Changes []NodeChange `json:"changes,omitempty"`
 	// Paths は、branch のコミットだけ。base から変わったファイルのパスと、変わり方。
 	Paths []PathChange `json:"paths,omitempty"`
@@ -131,7 +131,7 @@ type File struct {
 	// SHA256 は、artifact の中身の sha256。artifact の中身はスナップショットに入れず、置き場に別に置く。
 	SHA256 string `json:"sha256,omitempty"`
 	// Added は、main のスナップショットツリーの検証結果のファイルだけ。そのファイルが加わった main のコミット
-	// （design/backend/snapshot.md の「ノードを変えたコミット」）。
+	// （design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 	Added *AddedIn `json:"added,omitempty"`
 }
 
@@ -158,7 +158,7 @@ type SnapshotTree struct {
 	// Other は、どのノードにも、artifact にも当たらないファイルである（木の外のファイルなど）。
 	Other []File `json:"other,omitempty"`
 	// Warned は、最初のコミットからこのコミットまでのうち、警告のある main のコミットである（番号の順）。
-	// history は持たない。コミットの数とともに伸びるからである（design/backend/snapshot.md の「中身」）。
+	// history は持たない。コミットの数とともに伸びるからである（design/backend/snapshot/README.md の「中身」）。
 	Warned []WarnedEntry `json:"warned,omitempty"`
 	// Broken は、このスナップショットツリーで破れている不変条件のすべてである（前のコミットから破れているものを含む）。
 	Broken []tree.Violation `json:"broken,omitempty"`
@@ -187,7 +187,7 @@ type Node struct {
 	NeedsReconsideration bool `json:"needs_reconsideration,omitempty"`
 	Inactive             bool `json:"inactive,omitempty"`
 	Evidence             bool `json:"evidence,omitempty"`
-	// LastChanged は、そのノードを最後に変えた main のコミットである（design/backend/snapshot.md の「ノードを変えたコミット」）。
+	// LastChanged は、そのノードを最後に変えた main のコミットである（design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 	LastChanged Rev `json:"last_changed"`
 	// InactivatedAt は、ストーリーだけ。inactivated.md が加わった main のコミットの番号。inactive でなければ 0。
 	InactivatedAt int `json:"inactivated_at,omitempty"`

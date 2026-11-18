@@ -7,13 +7,13 @@ GitHub にある既存のプロジェクトのために、Logiforge を動かし
 
 - Logiforge の repository を置く GitForge は、Forgejo か GitHub から選ぶ。プロジェクトのリポジトリは、GitHub のままにする。
   - Forgejo：このページの手順で進める。GitHub のアカウントのない人も参加できる。
-  - GitHub：apply request と人への依頼を、GitHub の pull request と issue として見られる。「Logiforge を動かす」から「main を守る」までを、[Logiforge の repository を GitHub に置く](github.md) に置き換える。
-- Forgejo、バックエンド、worker の関係は、[動かし方（コンテナ）](../../design/deploy.md) に書く。
+  - GitHub：apply request と人への依頼を、GitHub の pull request と issue として見られる。「Logiforge を動かす」から「main を守る」までを、[Logiforge の repository を GitHub に置く](github/README.md) に置き換える。
+- Forgejo、バックエンド、worker の関係は、[動かし方（コンテナ）](../../design/deploy/README.md) に書く。
 
 ## Logiforge を動かす
 
-- 試すとき：[README](../../README.md) の「compose で動かす」の手順で、Forgejo、バックエンド、worker を手元で動かす。
-- 続けて使うとき：[動かし方（コンテナ）](../../design/deploy.md) に従って、タスクを置く。環境変数と秘密は、その「環境変数と秘密」の表に従う。
+- 試すとき：[compose で動かす](../development/compose.md) の手順で、Forgejo、バックエンド、worker を手元で動かす。
+- 続けて使うとき：[動かし方（コンテナ）](../../design/deploy/README.md) に従って、タスクを置く。環境変数と秘密は、[環境変数と秘密](../../design/deploy/env.md) の表に従う。
 
 ## Forgejo を用意する
 
@@ -41,7 +41,7 @@ curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
   https://forgejo.example.com/api/v1/repos/logiforge/myapp-cache-strategy/branch_protections
 ```
 
-- 設定が外れて、反映によらない変更が `main` に入ったら、worker が見つけ、repository を壊れた状態にする（[反映かの判定](../../design/backend/verify.md)）。
+- 設定が外れて、反映によらない変更が `main` に入ったら、worker が見つけ、repository を壊れた状態にする（[反映かの判定](../../design/backend/verify/README.md)）。
 
 ## repository を作る
 
@@ -55,7 +55,7 @@ curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
 
 opener と reviewer（人とエージェント）ごとに行う。
 
-1. CLI を入れる（[README](../../README.md) の「インストール」）。
+1. CLI を入れる（[インストール](../install.md)）。
 2. Forgejo で、アクセストークンを作る。スコープは、[CLI の設計](../../design/cli/README.md) の「認証」に従う。
 3. 次のコマンドで、トークンを渡し、git を設定し、clone する。
 

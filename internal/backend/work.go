@@ -198,7 +198,7 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 	return refs
 }
 
-// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/README.md の「計算」）。
+// answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/compute.md）。
 //   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
 //   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
 //     反映の記録のある最初のコミットである。
@@ -224,7 +224,7 @@ func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs ans
 	return used, err
 }
 
-// ListWork は、着手できる作業を返す。カーソルは、計算したコミットに結びつける（design/api/README.md の「ページング」）。
+// ListWork は、着手できる作業を返す。カーソルは、計算したコミットに結びつける（design/api/paging.md）。
 func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQuery) (WorkPage, error) {
 	limit, err := CheckLimit(q.Limit)
 	if err != nil {

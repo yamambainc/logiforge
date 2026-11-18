@@ -30,7 +30,7 @@ type Backend struct {
 }
 
 // GitReader は、apply request の作成で、git からブランチを読むことである。実装は internal/workcopy の作業用の複製で、
-// テストのために interface にする（design/backend/apply-request.md の「作成」）。
+// テストのために interface にする（design/backend/apply-request/create.md の「作成」）。
 type GitReader interface {
 	// ReadBranch は、main とブランチを fetch し、main と分かれた点からの差分のスナップショットを返す。ブランチがなければ ports.ErrNotFound。
 	ReadBranch(ctx context.Context, repo, gitForgeRef, branch string) (*snapshot.Branch, error)

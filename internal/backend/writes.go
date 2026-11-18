@@ -262,7 +262,7 @@ func violations(vs []tree.Violation) string {
 	return strings.Join(parts, "；")
 }
 
-// CreateApplyRequest は、push したブランチから apply request を作る（design/backend/apply-request.md の「作成」）。client だけが使える。
+// CreateApplyRequest は、push したブランチから apply request を作る（design/backend/apply-request/create.md の「作成」）。client だけが使える。
 func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string, n NewApplyRequest) (Written[ApplyRequest], error) {
 	var out Written[ApplyRequest]
 	if err := requireClient(c, n.Session); err != nil {
@@ -296,7 +296,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	} else if !errors.Is(err, ports.ErrNotFound) {
 		return out, err
 	}
-	// ブランチは、worker を待たずに、作業用の複製から git を読んで検査する（design/backend/apply-request.md の「作成」）。
+	// ブランチは、worker を待たずに、作業用の複製から git を読んで検査する（design/backend/apply-request/create.md の「作成」）。
 	br, err := b.Git.ReadBranch(ctx, repo, ref, n.Branch)
 	if errors.Is(err, ports.ErrNotFound) {
 		return out, fail(CodeValidationFailed, "ブランチ %s がない（push したか確かめる）", n.Branch)

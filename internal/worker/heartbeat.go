@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// HeartbeatFile は、clone のディレクトリに置く、ハートビートのファイルの名前である（design/backend/worker.md の「ハートビート」）。
+// HeartbeatFile は、clone のディレクトリに置く、ハートビートのファイルの名前である（design/backend/worker/operation.md の「ハートビート」）。
 const HeartbeatFile = "heartbeat"
 
 // stallFactor は、見回りの間隔の何倍のあいだハートビートが書かれなければ、止まっているとみなすかである。

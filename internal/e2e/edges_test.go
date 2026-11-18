@@ -186,7 +186,7 @@ func TestE2EEdges(t *testing.T) {
 		w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
 			"enable_merge_whitelist": false}, nil, 201)
 		// 反映によらないコミットで、repository は壊れた状態になる（design/backend/broken.md）。merge した pull request がないので、
-		// worker は、初めて見てから 60 秒待ってから決める（design/backend/verify.md の「GitForge の API」）。木を読む CLI は、
+		// worker は、初めて見てから 60 秒待ってから決める（design/backend/verify/README.md の「GitForge の API」）。木を読む CLI は、
 		// 最後に正しかった時点の木を書き、終了コード 1 で終わる。
 		w.eventually("反映によらないコミットで壊れた状態になる", 120*time.Second, func() bool {
 			code, out := agent.cli("", "tree", "view", "--json")

@@ -13,7 +13,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/pull-requests.md の「レビューの書き方」）。
+// chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/records.md の「レビューの書き方」）。
 const chainBrokenDetail = "レビューの鎖が切れている（数えないレビューがある）ので、この apply request には、レビューも反映もできない。" +
 	"opener は、この apply request を close し、同じブランチから apply request を作り直す"
 
@@ -98,7 +98,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 		warnings = append(warnings, "reviewer の主体が、apply request を作った主体と同じ（セッションは自己申告なので、確かめられない）")
 	}
 	// 向き先が main でない apply request は、Logiforge の反映の対象でない。approve は記録するだけで、反映の手順に進まない
-	// （design/backend/apply-request.md の「向き先」）。
+	// （design/backend/apply-request/target.md の「向き先」）。
 	if kind == ports.ReviewApprove && !targetsMain(d.port) {
 		warnings = append(warnings, "向き先が main でない（"+d.port.Target+"）ので、approve しても Logiforge は反映しない")
 	} else if kind == ports.ReviewApprove {
@@ -216,7 +216,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
 //   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
-//     （design/backend/verify.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
+//     （design/backend/verify/README.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
 //   - 先頭のコミットに、書いたセッションの trailer がある。reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
 func approvalProblem(d *arDetail) string {
 	if d.reviews.ChainBroken {

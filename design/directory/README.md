@@ -10,14 +10,14 @@
 - 1 つの git リポジトリに、ディレクトリの repository をいくつも置ける（例：`logiforge/cache-strategy/`、`logiforge/index-layout/`）。
 - ディレクトリの repository の中のファイルの配置は、ディレクトリを根として、[ファイルの配置](../files/layout.md) と同じである（`<ディレクトリ>/tree/`、`<ディレクトリ>/artifacts/`）。
 - ディレクトリの外のファイル（プロジェクトのコード）は、Logiforge は読まない。
-- 前提：GitForge の動作は止められない。Logiforge が検査し反映するのは、`main` 向きの apply request だけである（[向き先](../backend/apply-request.md#向き先)）。
+- 前提：GitForge の動作は止められない。Logiforge が検査し反映するのは、`main` 向きの apply request だけである（[向き先](../backend/apply-request/target.md#向き先)）。
 
 ## 登録
 
 - 管理者が、サーバの設定に、repository の名前と「git リポジトリとディレクトリのパス」の組を登録する（例：`cache-strategy=acme/myapp:logiforge/cache-strategy`）。
   - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのときは、worker が見つけて、壊れた状態にする。
     - なぜ用意のあとか：用意のコミットは、利用者のトークンで `main` に直接置くから（[履歴](history.md) の「用意のコミット」）。
-  - 設定の形は、構成の設定と同じく環境変数に置く（[動かし方](../deploy.md)）。Forgejo は `LOGIFORGE_DIRECTORIES`、GitHub は `LOGIFORGE_GITHUB_REPOSITORIES` に、`名前=owner/name:パス` で書く。
+  - 設定の形は、構成の設定と同じく環境変数に置く（[動かし方](../deploy/README.md)）。Forgejo は `LOGIFORGE_DIRECTORIES`、GitHub は `LOGIFORGE_GITHUB_REPOSITORIES` に、`名前=owner/name:パス` で書く。
   - gitforge_ref は、`owner/name:パス` である。GitForge の API と git には、`owner/name` の部分を使う。
   - Forgejo では、ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）を、git リポジトリ全体の repository としては数えない。
   - なぜ Logiforge の側か：プロジェクトのリポジトリに設定のファイルを置くと、コードの PR でディレクトリを足したり外したりでき、apply request を通らずに repository の範囲が変わるから。
@@ -25,13 +25,13 @@
   - なぜ：1 つのファイルが、2 つの repository のものになるのを防ぐため。
 - GitHub と Forgejo のどちらの構成でも登録できる。git リポジトリ全体の repository と、同じサーバに並べられる。
 - 利用者が repository を作ると、バックエンドは、利用者のトークンで、根のファイルをディレクトリに置く用意のコミットを、`main` に置く（[履歴](history.md) の「用意のコミット」）。
-  - 用意のコミットには、署名（`Logiforge-Init-Signature:`）を付ける。worker は、署名で用意のコミットと決める（[反映かの判定](../backend/verify.md) の「repository の用意のコミット」）。
+  - 用意のコミットには、署名（`Logiforge-Init-Signature:`）を付ける。worker は、署名で用意のコミットと決める（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
 - API の `Repository` は、ディレクトリのパス（`directory`）を持つ。git リポジトリ全体の repository では空である。
   - CLI は、`check`、ひな形、`ar create` で、このパスを根として扱う（[CLI](../cli/README.md)）。
 
 ## apply request とみなす PR
 
-- apply request は、今までどおり、署名の合う `apply_request` の記録のコメントがある pull request だけである（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。だれのトークンで作ったかは問わない。
+- apply request は、git リポジトリ全体の repository と同じく、署名の合う `apply_request` の記録のコメントがある pull request だけである（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。だれのトークンで作ったかは問わない。
   - 記録のない PR は、ディレクトリを変えていても、apply request ではない。Logiforge は反映しない。人が merge すれば、反映によらないコミットになる（[履歴](history.md) の「反映かの判定」）。
   - コードだけの PR は、Logiforge は読まない。
 - 記録のコメントに、trailer `Logiforge-Repository:`（ディレクトリのパス。例：`logiforge/cache-strategy`）を足す。署名に含める。
@@ -45,16 +45,16 @@
 
 ## 人への依頼
 
-- 人への依頼の issue は、今までどおり、署名の合う `human_request` の記録で見分ける。コードの issue は、記録がないので数えない。
+- 人への依頼の issue は、git リポジトリ全体の repository と同じく、署名の合う `human_request` の記録で見分ける。コードの issue は、記録がないので数えない。
 - 記録には、`Logiforge-Repository:` を足す（上と同じ）。
 - 画面で見分けるために、ラベル `logiforge` と `logiforge/<repository の名前>` を足す。タイトルは `[Logiforge <repository の名前>] <識別子>` にする。
-  - ラベルとタイトルは、読まない（[署名の合う記録だけを信じる](../adapters/pull-requests.md#署名の合う記録だけを信じる)）。
+  - ラベルとタイトルは、読まない（[署名の合う記録だけを信じる](../adapters/records.md#署名の合う記録だけを信じる)）。
 
 ## 別リポジトリ方式から移すこと
 
 - 別リポジトリ方式の repository を、ディレクトリの repository に移せる。移すのは、`main` の先頭のスナップショットツリーだけで、履歴は移さない（[別リポジトリ方式から移す](migrate.md)）。
 
-## ページ
+## 読む順
 
 1. [main の守り](main.md)：人がコードを merge するリポジトリで、ディレクトリを Logiforge の反映だけで変える仕組み
 2. [履歴](history.md)：スナップショットツリーの版の数え方、記録、worker

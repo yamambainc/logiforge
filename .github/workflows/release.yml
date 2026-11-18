@@ -24,7 +24,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: webui/package-lock.json
-      # release-notes/<タグ>.md があれば、リリースの本文の先頭に置く（互換のない変更など。README の「リリースの作り方」）。
+      # release-notes/<タグ>.md があれば、リリースの本文の先頭に置く（互換のない変更など。docs/development/release.md）。
       - id: notes
         run: |
           f="release-notes/${GITHUB_REF_NAME}.md"

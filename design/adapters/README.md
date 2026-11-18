@@ -11,15 +11,16 @@
 | スナップショットの置き場 | 静的ファイルストレージ、手元のディレクトリ | [スナップショットの置き場のアダプタ](snapshot-store.md) |
 | 認証 | GitHub アダプタ、Forgejo アダプタ | [GitHub アダプタ](github.md)、[Forgejo アダプタ](forgejo.md) |
 
-- [worker](../backend/worker.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
-- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+- [worker](../backend/worker/README.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
+- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
+- 構成ごとの設定と秘密情報は、[設定と秘密情報](settings.md) に書く。
 
 ## GitForge アダプタに求めること
 
 バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
 
 - pull request を、head の SHA を指定して squash merge できる。
-- merge したコミットから、その pull request を API で引ける（[反映かの判定](../backend/verify.md)）。
+- merge したコミットから、その pull request を API で引ける（[反映かの判定](../backend/verify/README.md)）。
 - 主体のトークンで、pull request、レビュー、コメント、issue を書ける。
 - git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
 - pull request の最後の先頭のコミットを、ref に残す。
@@ -31,11 +32,6 @@ GitForge ごとに違う性質は、次のとおりである。
 | API でコメントにファイルを添付できるか（[人への依頼の回答](../files/artifacts.md)） | できない。添付はリンクだけ | できる |
 | repository をバックエンドが作れるか（[repository の登録](#repository-の登録)） | 作らない。管理者が作り、登録する | 作る |
 | pull request の最後の先頭のコミットの ref | `refs/pull/<number>/head` | `refs/pull/<index>/head` |
-
-## 自前で持つ構成に Forgejo を使う理由
-
-- pull request、レビュー、issue、添付、ブランチの保護、トークンを、Forgejo がすでに持つ。自前で作らずに、GitHub と同じ pull request の形で扱える。
-- Forgejo は、別のプロセスのサービスである。ライセンスは GPL で、Logiforge は Forgejo のコードをリンクしない（[Forgejo アダプタ](forgejo.md)）。
 
 ## 組み合わせ
 
@@ -65,10 +61,10 @@ flowchart TB
 - GitForge と認証のポートは、同じアダプタが実装する。
   - なぜ：どちらの正本も、同じ GitForge にあるから。
 - GitHub の PR（pull request）や issue として、apply request や人への依頼を見たいなら、GitHub を使う構成にする。
-- GitHub を使わずに動かしたいなら、Forgejo を使う構成にする（[Forgejo アダプタ](forgejo.md)）。
-- GitHub を使う構成は、複数人で使い、バックエンドを何台か並べることを想定する。そのため、置き場を、どのプロセスからも読める静的ファイルストレージにする（[バックエンドだけを増やすとき](../deploy.md#バックエンドだけを増やすとき)）。
-- Forgejo を使う構成は、1 台のマシンで使うことを想定する。Forgejo と、バックエンドと worker を並べた 1 つのタスクを動かし、置き場を、タスクの中で共有する手元のディレクトリにする（[動かし方](../deploy.md)）。
-- どちらの構成でも、[worker](../backend/worker.md) が置き場に書き、バックエンドが読む。
+- GitHub を使わずに動かしたいなら、Forgejo を使う構成にする。Forgejo を使う理由は、[Forgejo アダプタ](forgejo.md#forgejo-を使う理由) に書く。
+- GitHub を使う構成は、複数人で使い、バックエンドを何台か並べることを想定する。そのため、置き場を、どのプロセスからも読める静的ファイルストレージにする（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
+- Forgejo を使う構成は、1 台のマシンで使うことを想定する。Forgejo と、バックエンドと worker を並べた 1 つのタスクを動かし、置き場を、タスクの中で共有する手元のディレクトリにする（[動かし方](../deploy/README.md)）。
+- どちらの構成でも、[worker](../backend/worker/README.md) が置き場に書き、バックエンドが読む。
 
 構成ごとの正本とバックアップは、次のとおりである。
 
@@ -97,42 +93,3 @@ repository の名前の正本は、構成ごとに次のとおりである。
 - ディレクトリの repository は、どちらの構成でも、サーバの設定（repository の名前と、git リポジトリとディレクトリのパスの組）が正本である（[ディレクトリ方式](../directory/README.md)）。
 
 - 利用者は、名前と根の主文だけで repository を作る。
-
-## 設定と秘密情報
-
-次のものは、設定ファイルか環境変数に置く。git リポジトリには置かない。
-
-- なぜ：git リポジトリは、人やエージェントが読めるから。
-
-バックエンド：
-
-- 構成（GitHub を使う / Forgejo を使う）
-- 記録のコメントの署名の秘密鍵（Ed25519。[GitForge アダプタの共通の書き方](pull-requests.md)）
-  - 鍵は、バックアップを取る。鍵を失うと、新しい記録に署名できない。それまでの記録は、公開鍵で確かめられる。
-  - 鍵を取り替えるときは、新しい鍵で書き、確かめる公開鍵を複数持てるようにする。署名に書いた鍵の ID で、確かめる公開鍵を選ぶ。
-- 置き場の接続先と、読む鍵（[スナップショットの置き場のアダプタ](snapshot-store.md)）
-- git を読む、読むだけの資格情報（worker と同じもの）と、作業用の git の複製を置く一時的なディレクトリ（[作業用の git の複製](../backend/apply-request.md#作業用の-git-の複製)）
-- GitHub を使う構成だけ
-  - WebUI のサインインに使う OAuth App の client_id と client secret（[GitHub アダプタ](github.md) の「認証」）
-  - `user` とみなす GitHub のアカウント名か、organization の team（[GitHub アダプタ](github.md)）
-  - repository の名前と `owner/name` の組
-- Forgejo を使う構成だけ
-  - Forgejo の URL
-  - repository を置く organization と、`user` とみなす team
-- バックエンドは、GitForge に書く資格情報を持たない。書くときは、要求を送った主体のトークンを使う（[GitForge アダプタの共通の書き方](pull-requests.md)）。
-
-[worker](../backend/worker.md)：
-
-- 構成と、repository の名前と `owner/name` の組（GitHub を使う構成だけ）
-- git を読み、repository の一覧を読む、読むだけの資格情報（[git アダプタ](git.md)）
-  - GitHub を使う構成：Contents、Issues、Pull requests、Metadata の Read だけを持つ、読むだけの GitHub App の ID と秘密鍵。worker が、installation token を作って読む（[GitHub アダプタ](github.md#読むだけの-github-app)）。public のリポジトリだけなら、なくてもよい
-  - Forgejo を使う構成：`read:repository`、`read:organization`、`read:issue` だけを持つ、worker のためのユーザーのトークン
-- 記録の署名の公開鍵。反映かの判定で、記録を確かめるのに使う（[反映かの判定](../backend/verify.md)）
-- 置き場の接続先と、書く鍵
-- 見回りの間隔（[見回り](../backend/worker.md#見回り)）と、git の操作の時間の上限（[すること](../backend/worker.md#すること)）
-- clone を置く、永続するストレージのパス
-
-鍵を置く場所（バックエンドと worker を動かす環境）の管理者を信頼する。
-
-- ほかの主体には、鍵を置く場所を読ませない。
-- worker は、git と GitForge に書く鍵を持たない。記録を作る秘密鍵も持たない。

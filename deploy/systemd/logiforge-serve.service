@@ -21,7 +21,7 @@ Environment=LOGIFORGE_RECORD_KEYS_FILE=%d/record_keys
 Environment=LOGIFORGE_OAUTH_CLIENT_SECRET_FILE=%d/oauth_client_secret
 # tailnet の外から直接届かないように、ループバックだけで待ち受ける。
 Environment=LOGIFORGE_ADDR=127.0.0.1:8080
-# 作業用の git の複製を置く。起動のときに、古い複製を消す（design/deploy.md の「例：Kubernetes の Pod」）。
+# 作業用の git の複製を置く。起動のときに、古い複製を消す（design/deploy/kubernetes.md）。
 Environment=LOGIFORGE_GIT_CACHE_DIR=/var/cache/logiforge-serve
 ExecStart=/usr/local/bin/logiforge serve
 Restart=on-failure

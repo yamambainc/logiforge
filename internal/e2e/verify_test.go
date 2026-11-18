@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// 反映かは、だれがどこから merge したかでなく、中身で決める（design/backend/verify.md）。
+// 反映かは、だれがどこから merge したかでなく、中身で決める（design/backend/verify/README.md）。
 //   - 承認された apply request を、人が Forgejo の画面から merge しても、正しい反映になる。
 //   - approve のあとに request_changes が付いた apply request を、人が merge すると、壊れた状態になる。
 //   - merge の権限のない reviewer の approve は、反映の失敗 merge_forbidden になり、権限のある reviewer の approve し直しで反映される。

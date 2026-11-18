@@ -29,7 +29,7 @@ func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 // clockSlack は、worker と GitForge の時計のずれとして見込む時間である。
 const clockSlack = 5 * time.Minute
 
-// headCommits は、ブランチの履歴から、提案のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request.md の「先頭のコミット」）。
+// headCommits は、ブランチの履歴から、提案のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request/README.md の「先頭のコミット」）。
 //   - 提案を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
 //   - 先頭が前に見た SHA に戻ったら（A → B → A）、一覧に足さない。
 //
@@ -155,7 +155,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 			return nil, err
 		}
 	}
-	// 向き先が main でなければ、差分を検査しないので、操作の一覧は空にする（design/backend/apply-request.md の「向き先」）。
+	// 向き先が main でなければ、差分を検査しないので、操作の一覧は空にする（design/backend/apply-request/target.md の「向き先」）。
 	if withOps && d.branch != nil && targetsMain(ar) {
 		ops, base, err := b.operations(ctx, repo, d.branch)
 		if err != nil {
@@ -166,7 +166,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	return d, nil
 }
 
-// awaiting は、open で向き先が main の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/README.md の「計算」）。
+// awaiting は、open で向き先が main の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/compute.md）。
 //   - 修正待ち：先頭のコミットへの最後の決めるレビュー（approve か request_changes）が request_changes か、
 //     先頭のコミットの反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
 //   - レビュー待ち：修正待ちでないもの。決めるレビューがないか、最後の決めるレビューが approve なのに、まだ open である

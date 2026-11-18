@@ -10,7 +10,7 @@ import (
 )
 
 // Index は、main のコミットを古い順に 1 つずつ取り込むときの、直前のコミットまでの状態である
-// （design/backend/snapshot.md の「すべてのコミットに作る」）。
+// （design/backend/snapshot/main.md の「すべてのコミットに作る」）。
 // 直前のコミットのスナップショットツリーから作り（IndexFromSnapshotTree）、Record でコミットを 1 つ足し、BuildSnapshotTree でそのコミットのスナップショットツリーを作る。
 type Index struct {
 	// head は、最後に足したコミットである。まだなければ番号は 0。
@@ -199,7 +199,7 @@ func targets(c Commit) map[string]*Rev {
 }
 
 // OverlapWarnings は、反映のコミット c の対象ノードが、base（番号 baseNumber の main のコミット）のあとに、
-// c より前の別のコミットで変わっていれば、警告を返す（design/backend/worker.md の「確かめること」）。
+// c より前の別のコミットで変わっていれば、警告を返す（design/backend/worker/patrol.md の「コミットの警告」）。
 func OverlapWarnings(c Commit, baseNumber int) []tree.Violation {
 	ts := targets(c)
 	var out []tree.Violation

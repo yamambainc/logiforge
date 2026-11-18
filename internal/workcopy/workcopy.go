@@ -1,5 +1,5 @@
 // Package workcopy は、git の木から、ブランチの差分のスナップショットを作るコードと、
-// バックエンドが持つ、repository ごとの作業用の git の複製である（design/backend/apply-request.md の「作成」）。
+// バックエンドが持つ、repository ごとの作業用の git の複製である（design/backend/apply-request/create.md の「作成」）。
 // 差分のスナップショットを作るコードは、worker とバックエンドが同じものを使う。
 package workcopy
 

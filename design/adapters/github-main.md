@@ -8,9 +8,9 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 - 利用者とエージェントは、GitHub リポジトリに、apply request のもとになるブランチを push する（[CLI](../cli/README.md)）。
 - `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、管理者が用意する。
   - ルールセットで、`main` に「Require a pull request before merging」「Block force pushes」「Restrict deletions」を付ける。bypass には、だれも入れない。
-  - merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify.md)）。
+  - merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify/README.md)）。
 - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
-- 守る設定がないか外れて、反映によらない変更が `main` に入ったら、[worker](../backend/worker.md) が見つけ、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
+- 守る設定がないか外れて、反映によらない変更が `main` に入ったら、[worker](../backend/worker/README.md) が見つけ、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
 - 信頼の境界は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
 - 他人のブランチの削除を防ぎたいときは、ブランチを守る設定で禁じる。
 
@@ -24,7 +24,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | worker | `git ls-remote` と `git fetch`。反映かの判定で、`main` のコミットごとに、REST で PR とコメントとレビューを読む | 読むだけの App の installation token の上限 |
 
 - バックエンドは、読んだ結果を保持しない（[状態を持たない](../backend/README.md)）。
-- レート制限は、今は考えない。見積もりと、当たるようになったときの対処は、[費用と規模の見積もり](../estimates.md) に書く。
+- バックエンドは、GitHub の API のレート制限を避ける仕組み（キャッシュなど）を持たない。回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) に書く。
 
 ## GitHub の制約への対処
 

@@ -19,7 +19,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
-// Config は、GitHub アダプタの設定である（design/adapters/README.md の「設定と秘密情報」）。
+// Config は、GitHub アダプタの設定である（design/adapters/settings.md）。
 type Config struct {
 	// APIURL は、REST の URL。空なら https://api.github.com。
 	APIURL string
@@ -166,7 +166,7 @@ func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error)
 // 呼ぶのは、repository を作る利用者のトークンである。
 //   - 根のコミット：contents API（PUT /contents）で、根の仮説のファイルを置く。空のリポジトリでは、ほかの方法がないから。
 //   - 2 つ目のコミット：残りのファイル（背景情報）を、Git Data API で 1 つのコミットにまとめて置き、
-//     trailer Logiforge-Init-Signature: を付ける（design/backend/verify.md の「repository の用意のコミット」）。
+//     trailer Logiforge-Init-Signature: を付ける（design/backend/verify/init.md の「repository の用意のコミット」）。
 //
 // main が呼ぶ前からあれば、用意の続き（2 つ目のコミット）だけを行い、ErrMainExists を返す。repository がなければ ErrNotFound を返す。
 func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error {
@@ -200,7 +200,7 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 		} `json:"commit"`
 	}
 	// 根のコミットにも、署名を付ける。なぜ：管理者が Write を与えてから用意するまでのあいだに、ほかの人が Logiforge-Init: 付きの
-	// 根を push できるから。worker は、署名で用意のコミットと決める（design/backend/verify.md の「repository の用意のコミット」）。
+	// 根を push できるから。worker は、署名で用意のコミットと決める（design/backend/verify/init.md の「repository の用意のコミット」）。
 	repoID, err := api(r).RepoID(ctx, gitForgeRef)
 	if err != nil {
 		return err

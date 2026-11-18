@@ -3,6 +3,20 @@
 バックエンド（core）が、どのルールを持ち、何を計算するかを確かめるときに読む。
 ルールを持つのはこのレイヤーだけ、という決まりは [レイヤー構成](../architecture.md) が正本である。
 
+## 読む順
+
+1. このページ：持つルール、認可、repository の用意、操作と差分、状態を持たない
+2. [差分の検査](checks.md)
+3. [反映の手順](merge.md)
+4. [計算](compute.md)
+5. [apply request](apply-request/README.md)
+6. [人への依頼の起票と回答](human-requests.md)
+7. [ポート](ports/README.md)
+8. [スナップショット](snapshot/README.md)
+9. [worker](worker/README.md)
+10. [反映かの判定](verify/README.md)
+11. [壊れた repository](broken.md)
+
 ## 持つルール
 
 | ルール | 要件 | 実現 |
@@ -10,12 +24,10 @@
 | 不変条件 | [仮説とストーリーの木](../../docs/tree/README.md)、[inactive 化](../../docs/tree/inactive.md) | [差分の検査](checks.md) |
 | 反映の条件 | [論理レビュー](../../docs/apply-request/review.md) | [反映の手順](merge.md) |
 | 対象ノードの変化 | [反映](../../docs/apply-request/README.md) | [反映の手順](merge.md) |
-| 値の計算 | [真偽値の伝播](../../docs/tree/propagation.md) | 下の「計算」 |
-| 着手できる作業 | [着手できる作業](../../docs/work/README.md) | 下の「計算」 |
-| 作業の終わりの判定 | [作業の終わりの判定](../../docs/work/README.md) | 下の「計算」 |
+| 値の計算 | [真偽値の伝播](../../docs/tree/propagation.md) | [計算](compute.md) |
+| 着手できる作業 | [着手できる作業](../../docs/work/README.md) | [計算](compute.md) |
+| 作業の終わりの判定 | [作業の終わりの判定](../../docs/work/README.md) | [計算](compute.md) |
 | 認可 | [役割](../../docs/roles/README.md) | 下の「認可」 |
-
-バックエンドが使うポートは、[ポート](ports/README.md) に、スナップショットツリーの読み方は [スナップショット](snapshot.md) に書く。
 
 ## 認可
 
@@ -57,50 +69,22 @@
   - 4 種類の操作として読めない変化は、[差分の検査](checks.md) で拒む。
   - なぜ：操作を別に保存しなくても、差分だけで API の応答を作れるようにするため。
 - バックエンドが自分でファイルを書き出す（serialize）のは、最初のコミットだけである。反映は、GitForge の squash merge である。git のファイルを読んで解析しない。
-- 先頭のコミットの決め方と、apply request の作成・更新の順は、[apply request の作成と更新](apply-request.md) に書く。
-
-## 計算
-
-バックエンドは、次のものを [スナップショット](snapshot.md) と、GitForge から読んだやりとりから計算する。
-
-- 値と、葉・要再検討・inactive
-  - worker がスナップショットを作るときに計算して入れたものを、そのまま使う。
-- 引用元の変化
-  - 有効な検証結果の部分木の引用ごとに、部分木のノードの `last_changed` の番号に、引用したコミットの番号より大きいものがあるかを見る（[ノードを変えたコミット](snapshot.md#ノードを変えたコミット)）。
-- 反映したあとの姿
-  - open の apply request の先頭のコミットの差分を、向き先の今の先頭のスナップショットツリーに重ねて、木と値を求める（[向き先に重ねる](snapshot.md#向き先に重ねる)）。向き先が `main` でなければ、向き先のブランチの今の先頭の木を、その場で作って重ねる。衝突は判定せず、検査もしない。
-  - 向き先が `main` で、重ねられなければ、`overlay_conflict`（409）を返し、`detail` に衝突したパスを書く。
-  - 求めた結果は保持しない。読むたびに重ねる。
-- 着手できる作業（[着手できる作業](../../docs/work/README.md)）
-  - 木の作業は、スナップショットツリーから計算する。
-  - 向き先が `main` でない apply request は、作業に数えない（[向き先](apply-request.md#向き先)）。
-  - apply request と人への依頼の作業は、[ブランチの履歴](snapshot.md) と、GitForge から読んだ提案、レビュー、人への依頼から計算する。
-  - open の apply request の対象ノードは、先頭のコミットの差分のファイルのパスを含む、今のスナップショットツリーのいちばん近いノードである（新しいストーリーは親の仮説、`inactivated.md` はそのストーリー、検証結果と背景情報はその仮説になる）。先頭のコミットのスナップショットがなければ、対象ノードはないものとする。
-  - レビュー待ちと修正待ちは、先頭のコミットへの最後の決めるレビュー（`approve` か `request_changes`）と、先頭のコミットの反映の失敗で決める。
-    - 修正待ち：`request_changes` か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗がある。
-    - レビュー待ち：修正待ちでなく、決めるレビューがないか、最後の決めるレビューが `approve` なのに、まだ open である（`approve` し直しを待つ）。
-      - `approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗したときと、向き先が `main` でないあいだに `approve` され、あとで向き先を `main` に戻したときが、これに当たる（[向き先](apply-request.md#向き先)）。
-    - [着手できる作業](../../docs/work/README.md) の「反映に失敗して `open` に戻った」は、opener が直すべき失敗のことである。
-  - 回答済みの人への依頼は、次のどちらかで作業から外す。
-    - その回答を引用した検証結果が、今の `main` のスナップショットツリーか、open の apply request（向き先が `main` でないものも含む）の先頭のコミットの差分の検証結果のファイルにある。引用とは、検証結果の artifact が、回答の添付を読む API の URL の `link` であるか、その sha256 を持つことである（[人への依頼の回答](../files/artifacts.md)）。背景情報など、検証結果でないファイルは見ない。
-      - 向き先が `main` でないものも含めるのは、積み上げた変更は、いずれ `main` 向きの apply request に含まれるからである。
-    - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードの `last_changed` から `previous` をたどり、`Logiforge-Apply-Request:` のある最初のコミットである（[ノードを変えたコミット](snapshot.md#ノードを変えたコミット)）。
-  - 引用元の変化は、引用したコミットが `main` の並びにないときも、変化したものとみなす。並びにあるかの判定は、[コミットの記録から引くもの](snapshot.md#コミットの記録から引くもの) に従う。
-- 作業の終わりの判定
-  - 根拠部分木をスナップショットツリーから求め、上の着手できる作業のうち、根拠部分木にあるものを数える。
-  - 対象ノードのわからない（worker が追いついていない）、向き先が `main` のレビュー待ち・修正待ちの apply request があれば、終わりとしない。
+- 先頭のコミットの決め方と、apply request の作成・更新の順は、[apply request](apply-request/README.md) に書く。
 
 ## 状態を持たない
 
-- バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい（[バックエンドだけを増やすとき](../deploy.md#バックエンドだけを増やすとき)）。
+- バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
-  - 注記：apply request の作成のために、作業用の git の複製を一時的なディスクに持つ。これは使い捨てのキャッシュで、正本ではない。消えても、次の要求で作り直す。プロセスの間で共有しないので、何台並べても互いに影響しない（[作業用の git の複製](apply-request.md#作業用の-git-の複製)）。
-  - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request の作成と更新](apply-request.md)）。
+  - apply request の作成のために、作業用の git の複製を一時的なディスクに持つ。これは使い捨てのキャッシュで、正本ではない（[作業用の git の複製](apply-request/create.md#作業用の-git-の複製)）。
+  - 作業用の git の複製は、プロセスの間で共有しないので、何台並べても互いに影響しない。
+  - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request](apply-request/README.md)）。
 - git を読むのは、apply request の作成の検査のときだけで、作業用の複製から読む。要求ごとに clone せず、fetch だけにする。
 - git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
-- 置き場と GitForge から読んだものも、要求ごとに読み直す。置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
+  - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
+- 置き場と GitForge から読んだものも、要求ごとに読み直す。
+  - 置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
-- repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot.md)）。
+- repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot/main.md#latest)）。
   - `latest` がある repository だけが入る。`latest` のないものは `not_found` に見える。
   - なぜ：用意が途中で止まった repository を、スナップショットツリーのない repository として見せないため。同じ名前で作り直せば、用意の続きから終わる。
 - 反映によらない変更と force push の警告は、worker が作るスナップショットから出す。定期的な突き合わせは、行わない。

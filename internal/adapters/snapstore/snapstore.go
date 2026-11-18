@@ -86,7 +86,7 @@ func (a *Adapter) MigratedTo(ctx context.Context, repo string) (string, error) {
 	return store.GetMigratedTo(ctx, a.Store, repo)
 }
 
-// RecordLog は、worker の記録の控えを、pullreq.Adapter に読ませる（design/backend/verify.md の「記録の控え」）。
+// RecordLog は、worker の記録の控えを、pullreq.Adapter に読ませる（design/backend/verify/records.md）。
 type RecordLog struct{ Store store.Reader }
 
 func (l RecordLog) Comments(ctx context.Context, repoID string, number int) ([]pullreq.Comment, error) {
@@ -108,7 +108,7 @@ type CommentSource interface {
 	CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error)
 }
 
-// LogSyncer は、記録の控えに、GitForge の新しい記録のうち署名の合うものを足す（design/backend/verify.md の「記録の控え」）。
+// LogSyncer は、記録の控えに、GitForge の新しい記録のうち署名の合うものを足す（design/backend/verify/records.md）。
 // worker が、見回りのたびに呼ぶ。
 type LogSyncer struct {
 	Source CommentSource

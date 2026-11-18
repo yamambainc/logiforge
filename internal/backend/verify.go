@@ -13,7 +13,7 @@ import (
 )
 
 // VerifyMerge は、main のコミット sha（親は parents、最初の親が 1 つ前の main のコミット）が、
-// apply request の反映によるものかを、中身だけで決める（design/backend/verify.md の「apply request の反映のコミット」）。
+// apply request の反映によるものかを、中身だけで決める（design/backend/verify/README.md の「apply request の反映のコミット」）。
 // files は sha の木、broken は 1 つ前の main までの壊れていることの記録である。worker が呼ぶ。
 // 1 つ前の main のコミットのスナップショットツリーと、先頭のコミットのスナップショットは、置き場から読む。
 //

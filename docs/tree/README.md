@@ -7,6 +7,7 @@
 - 根は仮説である。
 - 木は、repository ごとに 1 つだけある。
   - repository は、1 つの問い（根の仮説）とその木を収める単位である。
+  - repository は、[GitForge](../concepts/glossary.md) の 1 つの git リポジトリか、git リポジトリの中の 1 つのディレクトリに対応する。
   - 1 つの Logiforge は、複数の repository を扱える。
   - 別の問いを扱いたいときは、repository をもう 1 つ作る。
   - なぜ：仮説とストーリーは、1 つの木構造として表すものだから。

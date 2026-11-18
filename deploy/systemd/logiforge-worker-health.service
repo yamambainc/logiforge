@@ -1,4 +1,4 @@
-# worker のハートビートが古ければ、worker を起動し直す。design/deploy.md の livenessProbe と同じ役目である。
+# worker のハートビートが古ければ、worker を起動し直す。design/deploy/kubernetes.md の livenessProbe と同じ役目である。
 # logiforge-worker-health.timer が動かす。手順は docs/adoption/linux-host/README.md に書く。
 [Unit]
 Description=Restart the Logiforge worker when its heartbeat is stale

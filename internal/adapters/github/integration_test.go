@@ -1,7 +1,7 @@
 package github
 
 // 実際の GitHub での結合テスト。環境変数がなければ飛ばす。
-// design/adapters/github.md と design/backend/verify.md の「確かめること」を確かめる。書くのは、いつも主体のトークンである。
+// design/adapters/github.md と design/backend/verify/README.md の「反映によるコミット」を確かめる。書くのは、いつも主体のトークンである。
 //
 //	GITHUB_TEST_REPO          試験の repository（owner/name）。空なら、用意から確かめる。用意のあとは、Logiforge の repository として使い続ける
 //	GITHUB_TEST_TOKEN         利用者、opener、reviewer、人として使うトークン（repository の Write。gh auth login のトークンでよい）

@@ -35,7 +35,7 @@
 
 ## 元の repository
 
-- 元の repository は、消さない。今までどおり、読むことだけができる。
+- 元の repository は、消さない。移したあとは、読むことだけができる。
   - 書く操作は、GitForge の archive で断られる。バックエンドは、`not_open` で返す。
 - API の `Repository` は、移した先では `migrated_from`（元の repository の名前と、移したコミット）を持ち、元の repository では `migrated_to`（移した先の名前）を持つ。
   - `migrated_to` は、worker が、移した先の用意のコミット（`Logiforge-Migrated-From:` のあるもの）を取り込んだときに、元の repository の置き場に書く。バックエンドは、それを読む。
