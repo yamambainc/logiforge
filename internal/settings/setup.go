@@ -130,26 +130,6 @@ func (d *DB) Put(ctx context.Context, keys Keys, values map[string]string, by st
 	})
 }
 
-// AddRepository は、repository を 1 つ登録する。同じ名前がすでにあれば、同じ組のときだけ受け付ける（外したものは登録し直す）。
-func (d *DB) AddRepository(ctx context.Context, r Repository, by string) error {
-	if r.Name == "" || r.GitForgeRef == "" || !strings.Contains(r.GitForgeRef, "/") {
-		return fmt.Errorf("settings: repository には、名前と owner/name が要る：%+v", r)
-	}
-	return d.write(ctx, func(tx *sql.Tx) error {
-		rs, err := loadRepositories(ctx, tx)
-		if err != nil {
-			return err
-		}
-		for _, h := range rs {
-			if h.Name == r.Name {
-				rs = nil
-				break
-			}
-		}
-		return saveRepositories(ctx, tx, append(rs, r), now(), by)
-	})
-}
-
 // SetFirstRepository は、セットアップの最初の repository を r だけにする。前にセットアップで登録したものは外す。
 // なぜ：セットアップの repository の段を、名前を変えてやり直せるようにするため。
 func (d *DB) SetFirstRepository(ctx context.Context, r Repository, by string) error {

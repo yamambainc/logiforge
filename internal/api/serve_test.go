@@ -236,3 +236,24 @@ func TestAttachmentHeaders(t *testing.T) {
 		t.Fatalf("artifact と添付のヘッダー：%v", rec.Header())
 	}
 }
+
+// セットアップの画面（/setup の下）だけ、CSP の form-action に GitHub のオリジンを足す。ほかの画面には足さない。
+func TestSetupFormAction(t *testing.T) {
+	ui := fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}}
+	h := SetupRequired("x", Options{WebUI: ui, SetupFormAction: "https://github.com"})
+	csp := func(path string) string {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		return rec.Header().Get("Content-Security-Policy")
+	}
+	for _, p := range []string{"/setup", "/setup/github/callback"} {
+		if c := csp(p); !strings.Contains(c, "form-action 'self' https://github.com;") {
+			t.Fatalf("%s の CSP に GitHub がない：%s", p, c)
+		}
+	}
+	for _, p := range []string{"/", "/r/q", "/setupx"} {
+		if c := csp(p); strings.Contains(c, "github.com") || !strings.Contains(c, "form-action 'self';") {
+			t.Fatalf("%s の CSP：%s", p, c)
+		}
+	}
+}
