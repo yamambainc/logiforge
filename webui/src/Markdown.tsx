@@ -1,6 +1,6 @@
 // 利用者とエージェントが書く文章を、Markdown として示す（design/webui/markdown.md）。
 // - Markdown は React の要素に組み立てる（react-markdown）。生の HTML は通さない（skipHtml。rehype-raw は使わない）。
-// - リンクは http(s) と、同じオリジンだけ。ほかは文字として示す。画像は読みに行かず、リンクにする。
+// - リンクは http(s) と、同じオリジンのパスと、ページの中（#）だけ。ほかは文字として示す。画像は読みに行かず、リンクにする。
 // - 表、コード、引用、チェックリスト（GFM）を示す。```mermaid は、図にする（MermaidBlock）。
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';

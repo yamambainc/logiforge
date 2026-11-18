@@ -603,7 +603,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if err := store.PutSnapshotTree(ctx, w.store, repo, sha, t); err != nil {
 			return err
 		}
-		// 壊れていることの記録は、latest を進める前に書く。読む側が、壊れた木を正しいものとして読まないようにするため。
+		// 壊れていることの記録は、latest を進める前に書く。読む側が、壊れたスナップショットツリーを正しいものとして読まないようにするため。
 		if err := w.putBroken(ctx, repo, br); err != nil {
 			return err
 		}

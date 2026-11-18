@@ -212,7 +212,7 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 // CanRead は、主体が repository を読めるかを返す。Forgejo を使う構成では、organization のすべての主体が、
 // organization のすべての repository を読める（design/adapters/forgejo.md の「認証」）。主体が organization にいることは
 // Authenticate が確かめているので、ここでは主体のトークンで Forgejo を呼ばない。
-// なぜ：利用者のトークンに read:repository を求めずに済むから（WebUI のトークンは読むだけの最小のスコープにする。design/webui/auth.md）。
+// なぜ：organization にいる主体は、どれも読めると決めているので、Forgejo に聞いても答えが変わらないから。
 // repository があるかは、呼ぶ側がスナップショットで確かめる。
 func (a *Auth) CanRead(_ context.Context, _ string, repo string) (bool, error) {
 	if _, err := repoPath(a.c.cfg.Org + "/" + repo); err != nil {

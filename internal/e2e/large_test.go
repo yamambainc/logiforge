@@ -100,7 +100,7 @@ func TestE2ELargeTree(t *testing.T) {
 		return strings.TrimSpace(string(b)) == head
 	})
 	ingest := time.Since(pushed)
-	t.Logf("大きめの木：main のコミット %d、ノード %d", n+1, nodes)
+	t.Logf("大きめのスナップショットツリー：main のコミット %d、ノード %d", n+1, nodes)
 	t.Logf("push の直後の ar create（バックエンドの初めての clone を含む。worker の取り込みと重なる）：%v", first.Round(time.Millisecond))
 	t.Logf("2 回目の ar create（fetch だけ）：%v", second.Round(time.Millisecond))
 	t.Logf("push から、worker が main に追いつくまで：%v", ingest.Round(time.Millisecond))

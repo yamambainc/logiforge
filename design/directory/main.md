@@ -20,7 +20,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 
 | ルールセット | Rules | Bypass list |
 |---|---|---|
-| (A) main の基本 | Require a pull request before merging、Block force pushes | だれも入れない |
+| (A) main の基本 | git リポジトリ全体の repository と同じ（[main への書き込みを守る](../adapters/github-main.md#main-への書き込みを守る)） | だれも入れない |
 | (B) ディレクトリ | Require a pull request before merging の Required reviewers：登録したディレクトリ（例：`logiforge/**`）に、Logiforge の承認の team を 1 人の承認で付ける | Logiforge の reviewer の team（Logiforge で `approve` し、merge する人とエージェント） |
 
 - なぜ 2 つに分けるか：bypass は、そのルールセットのすべての規則に効くから。1 つにまとめると、reviewer の team が、`main` への直接の push と force push もできてしまう。
@@ -42,9 +42,7 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
   - ディレクトリの中のファイルを外へ rename する PR
   - ディレクトリを消す PR
   - 外のファイルをディレクトリの中へ移す PR
-- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は 405 で断る。リポジトリの管理者でも同じである。
-  - 応答は `Repository rule violations found` と `Waiting on required approvals from <承認の team>` である。
-  - アダプタは、これを反映の失敗 `merge_forbidden` にする。
+- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は断る。アダプタは、これを反映の失敗 `merge_forbidden` にする（[GitHub アダプタ](../adapters/github.md#merge-を断られたとき) の「merge を断られたとき」）。
 
 ## Forgejo の守る設定
 
@@ -77,7 +75,7 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 - ディレクトリを変えるのは、反映だけなので、ディレクトリの中の順番は、反映の merge の順である。
 - 反映の手順（[反映の手順](../backend/merge.md)）は、次のところだけが変わる。
   - 手順 2 の「worker が追いつくのを待つ」は、待ち始めに読んだ GitForge の `main` の先頭が、`scanned`（worker が読み終えた `main` の先頭。[履歴](history.md)）と同じか、その祖先になったら終わる。
-    - なぜ `latest` でないか：コードの merge では、ディレクトリの版は進まないので、`latest` は GitForge の `main` に追いつかないから。
+    - なぜ `latest` でないか：コードの merge では、ディレクトリの[版](history.md#版)は進まないので、`latest` は GitForge の `main` に追いつかないから。
     - なぜ「同じになるまで」でないか：コードの merge が続くリポジトリでは、`main` の先頭がいつまでも先に進み、待ちが終わらないから。
   - 手順 3 の検査に、差分がディレクトリの中だけであること（`outside_directory`）を足す。
 - 手順 3 と手順 4 のすき間に、コードの PR が merge されても、ディレクトリの中は変わらない。検査の結果は変わらない。

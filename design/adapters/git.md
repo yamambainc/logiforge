@@ -6,7 +6,9 @@
 ## 読む主体
 
 - worker は、見回りで git を読み、スナップショットを作って置き場に書く。
-- バックエンドは、apply request の作成のときだけ、作業用の git の複製から git を読んで検査する（[作業用の git の複製](../backend/apply-request/create.md#作業用の-git-の複製)）。置き場には書かない。
+- バックエンドは、作業用の git の複製から git を読む（[作業用の git の複製](../backend/apply-request/create.md#作業用の-git-の複製)）。置き場には書かない。
+  - apply request の作成で、ブランチを検査するとき
+  - ディレクトリの repository の反映で、worker が `main` に追いついたかを確かめるとき（[反映の順番](../directory/main.md#反映の順番)）
 - サーバの側が git に書くのは、GitForge の API による repository の用意と、pull request の squash merge だけである（[GitForge のポート](../backend/ports/gitforge.md)）。
   - そのため、このアダプタには、書く操作がない。
 

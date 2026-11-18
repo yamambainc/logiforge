@@ -35,7 +35,7 @@ tar xzf logiforge_*_linux_amd64.tar.gz logiforge
 ./logiforge version
 
 # 版を決めて取る
-gh release download v0.1.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin_arm64.tar.gz' --pattern checksums.txt
+gh release download v0.3.0 -R yamambainc/logiforge --pattern 'logiforge_*_darwin_arm64.tar.gz' --pattern checksums.txt
 ```
 
 - Windows の版は zip である。

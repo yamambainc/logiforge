@@ -52,7 +52,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - 応答には、読んだコミット（`commit`）を含める。
 - コミットは、不透明な文字列である（[main のコミットと記録](../files/revisions.md)）。
 
-## 反映したあとの木
+## 反映したあとのスナップショットツリー
 
 - 木の概要、木のノード、ノードの詳細は、`apply_request` で open の apply request を指定できる。
   - その apply request を反映したあとの、向き先に重ねたスナップショットツリーを返す（[向き先に重ねる](../backend/snapshot/branch.md#向き先に重ねる)）。
@@ -65,7 +65,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - その識別子の apply request がこの repository になければ、`not_found`（404）を返す。
   - ほかの repository の apply request も、これにあたる。
 - 反映すると消えるノードを指定したら、`not_found`（404）を返す。
-  - なぜ：反映したあとの木に、そのノードがないから。
+  - なぜ：反映したあとのスナップショットツリーに、そのノードがないから。
 
 ## エラー
 

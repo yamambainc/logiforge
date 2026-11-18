@@ -11,7 +11,7 @@ worker が、`main` のコミットを repository の用意のコミットと決
   - なぜ根も署名で決めるか（位置で決めないか）：GitHub では、管理者が空のリポジトリを作って Write を与えてから、利用者が用意するまでのあいだに、Write の主体が、`Logiforge-Init:` を付けた好きな中身の根を push できるから。Forgejo でも同じ決まりにする。
 - C が根の次のコミットで、trailer `Logiforge-Init-Signature:` があり、種類 `init-second` の署名が合う。
   - なぜ：GitHub の空のリポジトリには、ファイルを 1 つずつしか置けないので、背景情報を 2 つ目のコミットで置くから（[GitHub アダプタ](../../adapters/github.md)）。
-- ディレクトリの repository では、そのディレクトリの版の 1 番で、種類 `init-directory` の署名が合うもの（[ディレクトリ方式の履歴](../../directory/history.md) の「用意のコミット」）。
+- ディレクトリの repository では、そのディレクトリの[版](../../directory/history.md#版)の 1 番で、種類 `init-directory` の署名が合うもの（[ディレクトリ方式の履歴](../../directory/history.md) の「用意のコミット」）。
 
 - どれでも、C の差分が、ファイルを加えることだけであることも確かめる。
 - 根のコミットが用意のコミットでなければ、worker は、その repository を取り込まない。
