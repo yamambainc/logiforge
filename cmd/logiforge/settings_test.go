@@ -23,6 +23,11 @@ func TestSettingsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	key2, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key2)}))
 	installed := true
 	gh := fakeSetupGitHub(t, pemKey, &installed)
 	defer gh.Close()
@@ -98,6 +103,10 @@ func TestSettingsAPI(t *testing.T) {
 		"構成の違う設定":            map[string]any{"forgejo": map[string]any{"url": "https://f.example"}},
 		"秘密を空にする":            map[string]any{"github": map[string]any{"client_secret": ""}},
 		"PEM でない秘密鍵":         map[string]any{"github": map[string]any{"private_key": "nope"}},
+		// 間違った client secret にすると、だれも user でなくなるので、置かない。
+		"間違った client secret": map[string]any{"github": map[string]any{"client_secret": "wrong"}},
+		// 登録した repository を読めない App の秘密鍵は、置かない。
+		"別の App の秘密鍵": map[string]any{"github": map[string]any{"app_id": 43, "private_key": otherKey}},
 	} {
 		if st, _, b := call("ghu_alice", "PATCH", "/v1/settings/gitforge", body); st != 422 {
 			t.Fatalf("%s：%d %s", what, st, b)
@@ -106,6 +115,10 @@ func TestSettingsAPI(t *testing.T) {
 	// repository の登録と外す。
 	if st, _, b := call("ghu_alice", "DELETE", "/v1/settings/repositories/q", nil); st != 422 {
 		t.Fatalf("最後の repository を外せた：%d %s", st, b)
+	}
+	// 本人が Write を持たない git リポジトリは、登録できない（利用者の範囲を広げないため）。
+	if st, _, b := call("ghu_alice", "PUT", "/v1/settings/repositories/u", map[string]string{"gitforge_ref": "acme/u"}); st != 403 {
+		t.Fatalf("Write のないリポジトリを登録できた：%d %s", st, b)
 	}
 	if st, _, b := call("ghu_alice", "PUT", "/v1/settings/repositories/r", map[string]string{"gitforge_ref": "acme/r"}); st != 200 {
 		t.Fatalf("登録：%d %s", st, b)

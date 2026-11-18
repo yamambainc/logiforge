@@ -12,6 +12,7 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/ids"
@@ -50,6 +51,24 @@ func (s *settingsService) user(ctx context.Context, token string, fresh bool) (p
 		return p, problem(backend.CodeForbidden, "設定は、WebUI でサインインした利用者（user）だけが使える")
 	}
 	return p, nil
+}
+
+// asUser は、設定を c2 にしたとしたら、token の主体が、WebUI のサインインの user のままかを、キャッシュを使わずに確かめる。
+// 設定を変える前に呼ぶ。なぜ：サインインの資格情報や repository の一覧を変えて、変えた本人も含めて、だれも user でなくなると、
+// 設定の画面から戻せないから（design/settings/users.md の「締め出されたとき」）。
+func asUser(ctx context.Context, c2 *settings.Config, token string) (ports.Authenticator, error) {
+	fs, err := setupForge(c2, pullreq.Keyring{}, true, nil)
+	if err != nil {
+		return nil, problem(backend.CodeValidationFailed, "変えたあとの設定で、GitForge につなげない：%v", err)
+	}
+	p, err := fs.auth.Authenticate(ports.WithFresh(ctx), token)
+	if errors.Is(err, ports.ErrUnauthenticated) || err == nil && (p.Kind != ports.PrincipalUser || !p.WebUI) {
+		return nil, problem(backend.CodeValidationFailed, "変えたあとの設定では、あなたが利用者（user）でなくなる。サインインの資格情報か repository の一覧を確かめる")
+	}
+	if err != nil {
+		return nil, problem(backend.CodeValidationFailed, "変えたあとの設定で、あなたが利用者かを確かめられない：%v", err)
+	}
+	return fs.auth, nil
 }
 
 func secretState(set bool, ch map[string]settings.Changed, name string) api.SecretState {
@@ -246,6 +265,29 @@ func (s *settingsService) UpdateGitForge(ctx context.Context, token string, in a
 			}
 		}
 	}
+	// サインインと権限の確かめに使う設定が変わるなら、変えたあとの設定でも、変えた本人が user のままかを確かめる。
+	for _, n := range []string{"github.client_id", "github.client_secret", "github.api_url", "github.web_url",
+		"forgejo.url", "forgejo.org", "forgejo.oauth_client_id", "forgejo.oauth_client_secret"} {
+		if _, ok := v[n]; ok {
+			c2 := c.Clone()
+			c2.Apply(v)
+			if _, err := asUser(ctx, c2, token); err != nil {
+				return api.Settings{}, err
+			}
+			break
+		}
+	}
+	// App の ID か秘密鍵が変わるなら、新しいもので、登録した repository を読めるかを確かめる。
+	if _, idOK := v["github.app_id"]; idOK || v["github.app_private_key"] != "" {
+		c2 := c.Clone()
+		c2.Apply(v)
+		if len(c2.Repositories) > 0 {
+			r := c2.Repositories[0]
+			if err := checkGitHubRepository(ctx, c2, c2.Repositories[1:], r); err != nil {
+				return api.Settings{}, problem(backend.CodeValidationFailed, "新しい App の ID と秘密鍵で、%s を読めない：%s", r.GitForgeRef, backend.AsError(err).Detail)
+			}
+		}
+	}
 	if err := s.db.Put(ctx, s.keys, v, p.Login); err != nil {
 		return api.Settings{}, problem(backend.CodeValidationFailed, "%v", err)
 	}
@@ -310,6 +352,19 @@ func (s *settingsService) RegisterRepository(ctx context.Context, token string, 
 			return api.SetupRepository{}, problem(backend.CodeValidationFailed, "%v", err)
 		}
 	}
+	// 登録できるのは、本人が Write を持つ git リポジトリだけ。なぜ：登録すると、その git リポジトリに Write を持つ人が user になるので、
+	// 利用者の範囲を、本人の権限の外まで広げないため。
+	c2 := c.Clone()
+	c2.Repositories = append(c2.Repositories, r)
+	auth, err := asUser(ctx, c2, token)
+	if err != nil {
+		return api.SetupRepository{}, err
+	}
+	if ok, err := auth.CanWrite(ports.WithFresh(ctx), token, r.Name); err != nil {
+		return api.SetupRepository{}, err
+	} else if !ok {
+		return api.SetupRepository{}, problem(backend.CodeForbidden, "あなたは %s に Write がない。登録できるのは、自分が Write を持つ git リポジトリだけ", r.GitForgeRef)
+	}
 	if err := s.db.RegisterRepository(ctx, r, p.Login); errors.Is(err, settings.ErrRepositoryConflict) {
 		return api.SetupRepository{}, problem(backend.CodeValidationFailed, "%v。外した名前は、前と同じ組でだけ登録し直せる", err)
 	} else if err != nil {
@@ -335,10 +390,25 @@ func (s *settingsService) UnregisterRepository(ctx context.Context, token, name 
 	if err != nil {
 		return err
 	}
-	// GitHub を使う構成では、最後の repository は外さない。外すと、だれも user でなくなり、設定の画面を開けなくなるから
-	// （design/settings/users.md の「締め出されたとき」）。
-	if c.GitForge == gitforgeGitHub && len(c.Repositories) == 1 && c.Repositories[0].Name == name {
-		return problem(backend.CodeValidationFailed, "最後の repository は外せない。外すと、だれも利用者でなくなる。先に、ほかの repository を登録する")
+	// GitHub を使う構成では、外したあとも、外す本人が、残りの repository のどれかに Write を持つことを求める。
+	// なぜ：GitHub の user は、登録した repository の Write で決まるので、外すと、本人（最後の 1 つなら全員）が user でなくなり、
+	// 設定の画面から戻せなくなるから（design/settings/users.md の「締め出されたとき」）。
+	if c.GitForge == gitforgeGitHub {
+		c2 := c.Clone()
+		c2.Repositories = nil
+		for _, r := range c.Repositories {
+			if r.Name != name {
+				c2.Repositories = append(c2.Repositories, r)
+			}
+		}
+		if len(c2.Repositories) == 0 {
+			return problem(backend.CodeValidationFailed, "最後の repository は外せない。外すと、だれも利用者でなくなる。先に、ほかの repository を登録する")
+		}
+		if len(c2.Repositories) < len(c.Repositories) {
+			if _, err := asUser(ctx, c2, token); err != nil {
+				return problem(backend.CodeValidationFailed, "外すと、あなたが利用者でなくなる（残りの repository のどれにも Write がない）")
+			}
+		}
 	}
 	if err := s.db.UnregisterRepository(ctx, name, p.Login); errors.Is(err, settings.ErrRepositoryNotFound) {
 		return problem(backend.CodeNotFound, "repository %q は登録していない", name)

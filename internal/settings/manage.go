@@ -160,3 +160,20 @@ func (d *DB) CreateRecordKey(ctx context.Context, keys Keys) (RecordKeyInfo, err
 	}
 	return RecordKeyInfo{}, fmt.Errorf("settings: 作った記録の鍵 %s を読めない", id)
 }
+
+// Apply は、values（設定の名前と値。Put に渡すもの）を、c に当てる。書く前に、当てたあとの設定で確かめるために使う。
+func (c *Config) Apply(values map[string]string) {
+	for _, f := range fields {
+		if v, ok := values[f.name]; ok {
+			*f.get(c) = v
+		}
+	}
+}
+
+// Clone は、c の写しを返す。repository の一覧と記録の鍵も写す。
+func (c *Config) Clone() *Config {
+	out := *c
+	out.Repositories = append([]Repository(nil), c.Repositories...)
+	out.RecordKeys = append([]RecordKey(nil), c.RecordKeys...)
+	return &out
+}

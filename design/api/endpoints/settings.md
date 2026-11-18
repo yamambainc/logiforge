@@ -26,11 +26,16 @@
 - repository の名前は、[repository](../README.md#repository) の決まりに従う。
 - GitHub を使う構成で repository を登録するとき、GitHub App の installation token で、その GitHub リポジトリを読めることを確かめる。読めなければ `validation_failed` を返し、`detail` に install の URL を書く。
 - Forgejo を使う構成で worker のトークンを置き換えるとき、そのトークンで読めて、書けないことを確かめる（[worker のトークンを確かめる](../../adapters/forgejo.md#worker-のトークンを確かめる)）。
+- 登録できるのは、要求した本人が Write を持つ git リポジトリだけである（本人のトークンで、キャッシュを使わずに確かめる）。そうでなければ `forbidden` を返す。
+  - なぜ：登録すると、その git リポジトリに Write を持つ人が `user` になるので、利用者の範囲を、本人の権限の外まで広げないため。
+- サインインと権限の確かめに使う設定（client_id、client secret、GitForge の URL、organization）を変えるときは、置く前に、変えたあとの設定でも、要求した本人が `user` のままであることを確かめる。そうでなければ `validation_failed` を返す。
+  - なぜ：間違った資格情報を置くと、だれも `user` でなくなり、設定の画面から戻せないから。
+- GitHub App の ID か秘密鍵を変えるときは、置く前に、新しいもので、登録した repository を読めることを確かめる。
 
 ## repository を外したとき
 
-- GitHub を使う構成では、最後の 1 つの repository は外せない（`validation_failed`）。
-  - なぜ：外すと、どの主体も登録した repository に Write を持たず、だれも `user` でなくなるから。設定の画面も開けなくなる（[締め出されたとき](../../settings/users.md#締め出されたとき)）。
+- GitHub を使う構成では、外したあとも、外す本人が、残りの repository のどれかに Write を持つことを求める。そうでなければ `validation_failed` を返す。最後の 1 つは外せない。
+  - なぜ：GitHub の `user` は、登録した repository の Write で決まるので、外すと、本人（最後の 1 つなら全員）が `user` でなくなり、設定の画面から戻せなくなるから（[締め出されたとき](../../settings/users.md#締め出されたとき)）。
 
 - worker は、次に一覧を読み直したときから、その repository を見回らない。
 - 置き場のスナップショットと `keep/` は消さない。
