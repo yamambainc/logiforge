@@ -82,8 +82,11 @@ func BranchSnapshot(ctx context.Context, g *gitx.Repo, base, head string, maxSiz
 type Cache struct {
 	// Dir は、複製を置くディレクトリである。一時的なディスクに、プロセスごとに作る（NewCache）。
 	Dir string
-	// Env は、git に渡す環境変数（読むだけの資格情報の credential helper と、使える転送の方式）である。
+	// Env は、git に渡す環境変数（使える転送の方式など）である。
 	Env []string
+	// Credentials は、repository（gitforge_ref）を git で読むための資格情報の環境変数を返す。git を読む前に、毎回呼ぶ
+	// （GitHub の installation token は切れるので）。nil なら、資格情報を渡さない。
+	Credentials func(ctx context.Context, gitForgeRef string) ([]string, error)
 	// URL は、GitForge の repository の参照から、git の URL を返す。
 	URL         func(gitForgeRef string) string
 	MaxFileSize int64
@@ -145,6 +148,21 @@ func (c *Cache) repo(ctx context.Context, name, gitForgeRef string) (*gitx.Repo,
 	return &gitx.Repo{Dir: dir, Env: c.Env, Prefix: prefix}, nil
 }
 
+// fetch は、資格情報を付けて、GitForge から branches を fetch する。資格情報は、ネットワークを使うここでだけ求める。
+// なぜ：手元の複製だけで読む処理（ReadFiles）を、GitForge の API（installation token の作り直し）に頼らせないため。
+func (c *Cache) fetch(ctx context.Context, g *gitx.Repo, gitForgeRef string, branches ...string) error {
+	if c.Credentials != nil {
+		cred, err := c.Credentials(ctx, gitForgeRef)
+		if err != nil {
+			return fmt.Errorf("%w: git の資格情報：%v", ports.ErrUnavailable, err)
+		}
+		withCred := *g
+		withCred.Env = append(append([]string(nil), g.Env...), cred...)
+		g = &withCred
+	}
+	return g.FetchBranches(ctx, c.URL(gitForgeRef), branches...)
+}
+
 // ReadBranch は、main とブランチを fetch し、ブランチの先頭と main の分かれた点（base）を求め、
 // base からの差分のスナップショットを返す。ブランチがなければ ports.ErrNotFound。
 func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string) (*snapshot.Branch, error) {
@@ -156,7 +174,7 @@ func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string
 	if err != nil {
 		return nil, err
 	}
-	if err := g.FetchBranches(ctx, c.URL(gitForgeRef), "main", branch); err != nil {
+	if err := c.fetch(ctx, g, gitForgeRef, "main", branch); err != nil {
 		if errors.Is(err, gitx.ErrNoRef) {
 			return nil, ports.ErrNotFound
 		}
@@ -208,7 +226,7 @@ func (c *Cache) ReachedMain(ctx context.Context, repo, gitForgeRef, head, scanne
 	if err != nil {
 		return false, err
 	}
-	if err := g.FetchBranches(ctx, c.URL(gitForgeRef), "main"); err != nil {
+	if err := c.fetch(ctx, g, gitForgeRef, "main"); err != nil {
 		return false, fmt.Errorf("%w: git fetch: %v", ports.ErrUnavailable, err)
 	}
 	for _, sha := range []string{head, scanned} {

@@ -410,7 +410,7 @@ func TestForgejo(t *testing.T) {
 	// ---- worker：読むだけのユーザーで、repository を列挙し、git を読む ----
 	st := &store.Dir{Root: t.TempDir()}
 	// テストの Forgejo は http で動くので、http を許す（本番は https だけ）。
-	w := worker.New(worker.Config{Dir: t.TempDir(), GitEnv: append(src.GitEnv(), "GIT_ALLOW_PROTOCOL=http:https:file")}, src, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), GitEnv: []string{"GIT_ALLOW_PROTOCOL=http:https:file"}, GitCredentials: src.GitEnv}, src, st)
 	w.SyncAll(ctx)
 	mustGit(t, alice, "fetch", "-q", "origin")
 	if latest, _ := store.GetLatest(ctx, st, "q"); latest != mustGit(t, alice, "rev-parse", "origin/main") {

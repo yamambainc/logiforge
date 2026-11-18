@@ -1,11 +1,12 @@
 package github
 
 // 実際の GitHub での結合テスト。環境変数がなければ飛ばす。
-// design/adapters/github.md と design/backend/verify.md の「確かめること」を、Logiforge の GitHub App なしで確かめる。
+// design/adapters/github.md と design/backend/verify.md の「確かめること」を確かめる。書くのは、いつも主体のトークンである。
 //
-//	GITHUB_TEST_REPO        試験の repository（owner/name）。空なら、用意から確かめる。用意のあとは、Logiforge の repository として使い続ける
-//	GITHUB_TEST_TOKEN       利用者、opener、reviewer、人として使うトークン（repository の Write。gh のトークンでよい）
-//	GITHUB_TEST_READ_TOKEN  worker の読むだけのトークン。なければ、トークンなしで読む（public の repository だけ）
+//	GITHUB_TEST_REPO          試験の repository（owner/name）。空なら、用意から確かめる。用意のあとは、Logiforge の repository として使い続ける
+//	GITHUB_TEST_TOKEN         利用者、opener、reviewer、人として使うトークン（repository の Write。gh auth login のトークンでよい）
+//	GITHUB_TEST_APP_ID        worker が読むための、読むだけの GitHub App の ID。なければ、トークンなしで読む（public の repository だけ）
+//	GITHUB_TEST_APP_KEY_FILE  その App の秘密鍵（PEM）のファイル
 
 import (
 	"context"
@@ -32,6 +33,7 @@ import (
 type live struct {
 	t                 *testing.T
 	repo, token, read string
+	app               *App
 	cfg               Config
 	keys              pullreq.Keyring
 	a                 *pullreq.Adapter
@@ -45,9 +47,21 @@ func liveEnv(t *testing.T) *live {
 			t.Skipf("%s がない（実際の GitHub での結合テスト）", n)
 		}
 	}
-	l := &live{t: t, repo: os.Getenv("GITHUB_TEST_REPO"), token: os.Getenv("GITHUB_TEST_TOKEN"), read: os.Getenv("GITHUB_TEST_READ_TOKEN")}
+	l := &live{t: t, repo: os.Getenv("GITHUB_TEST_REPO"), token: os.Getenv("GITHUB_TEST_TOKEN")}
 	l.cfg = Config{Repositories: []ports.Repository{{Name: "q", GitForgeRef: l.repo}}, MergeWait: 30 * time.Second}
 	var err error
+	if id := os.Getenv("GITHUB_TEST_APP_ID"); id != "" {
+		key, err := os.ReadFile(os.Getenv("GITHUB_TEST_APP_KEY_FILE"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l.app, err = NewApp(l.cfg, id, key); err != nil {
+			t.Fatal(err)
+		}
+		if l.read, err = l.app.Token(context.Background(), l.repo); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if l.keys, err = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"github-integration-test"}); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +101,11 @@ type verifier struct {
 }
 
 func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
-	return v.b.VerifyMerge(v.src.Context(ctx), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
+	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
+	if err != nil {
+		return ports.MergeVerdict{}, err
+	}
+	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
 }
 
 func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, sig string, added map[string]string) (bool, error) {
@@ -104,7 +122,7 @@ func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, pare
 
 // worker は、読むだけのトークン（なければトークンなし）で、repository を取り込む worker と、その置き場を作る。
 func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
-	src, err := NewWorkerSource(l.cfg, l.read)
+	src, err := NewWorkerSource(l.cfg, l.app)
 	if err != nil {
 		l.t.Fatal(err)
 	}
@@ -116,7 +134,7 @@ func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
 	}
 	forge.Log = snapstore.RecordLog{Store: st}
 	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
-	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitEnv: src.GitEnv(), Verifier: v, Records: snapstore.LogSyncer{Source: src, Keys: pub, Store: st}}, src, st)
+	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Verifier: v, Records: snapstore.LogSyncer{Source: src, Keys: pub, Store: st}}, src, st)
 	return w, st, v
 }
 
@@ -334,4 +352,68 @@ func hasWarning(c snapshot.Commit, rule tree.Rule) bool {
 		}
 	}
 	return false
+}
+
+// TestGitHubLiveApp は、読むだけの GitHub App の installation token を確かめる。GITHUB_TEST_APP_ID がなければ飛ばす。
+// GITHUB_TEST_REPO を private にすると、トークンなしでは読めないことも確かめる。
+func TestGitHubLiveApp(t *testing.T) {
+	l := liveEnv(t)
+	if l.app == nil {
+		t.Skip("GITHUB_TEST_APP_ID がない（読むだけの GitHub App）")
+	}
+	l.setup()
+	ctx := context.Background()
+	src, err := NewWorkerSource(l.cfg, l.app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// git：GitEnv の資格情報で ls-remote できる。
+	env, err := src.GitEnv(ctx, l.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "ls-remote", src.GitURL(l.repo), "refs/heads/main")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_ASKPASS=", "HOME="+t.TempDir()), env...)
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "refs/heads/main") {
+		t.Fatalf("App のトークンで git を読めない：%v %s", err, out)
+	}
+	// REST：RepoID と記録のコメントを読める。
+	if _, err := src.RepoID(ctx, l.repo); err != nil {
+		t.Fatalf("App のトークンで RepoID を読めない：%v", err)
+	}
+	if _, err := src.CommentsSince(ctx, l.repo, time.Time{}); err != nil {
+		t.Fatalf("App のトークンでコメントを読めない：%v", err)
+	}
+	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository、コメント）を読める")
+
+	// 書けない：issue を作ろうとすると断られる。
+	tok, err := src.ReadToken(ctx, l.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp, _ := repoPath(l.repo)
+	err = newClient("", nil).do(ctx, tok, "POST", rp+"/issues", map[string]string{"title": "書けてはいけない"}, nil)
+	if s := statusOf(err); s != http.StatusForbidden && s != http.StatusNotFound {
+		t.Fatalf("App のトークンで issue を作れた、か違う誤り：%v", err)
+	}
+	t.Logf("確かめた：installation token では書けない（%v）", err)
+
+	// private なら、トークンなしでは読めない。
+	var repo struct {
+		Private bool `json:"private"`
+	}
+	if err := newClient("", nil).do(ctx, l.token, "GET", rp, nil, &repo); err != nil {
+		t.Fatal(err)
+	}
+	anon, err := NewWorkerSource(l.cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = anon.CommentsSince(ctx, l.repo, time.Time{})
+	switch {
+	case repo.Private && err == nil:
+		t.Fatal("private をトークンなしで読めた")
+	case repo.Private:
+		t.Logf("確かめた：private のリポジトリは、トークンなしでは読めない（%v）", err)
+	}
 }

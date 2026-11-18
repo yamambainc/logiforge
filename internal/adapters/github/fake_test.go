@@ -5,6 +5,9 @@ package github
 
 import (
 	"cmp"
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -100,6 +103,36 @@ type fakeGitHub struct {
 	// ownTokens は、Logiforge の OAuth App のトークン。
 	ownTokens map[string]bool
 	messages  []string
+	// appKey は、読むだけの GitHub App の公開鍵（App の JWT を確かめる）。appMinted は、作った installation token の数、
+	// appTTL は、その有効な時間（0 なら 1 時間）。appRequests は、installation token を作る要求の中身。
+	appKey      *rsa.PublicKey
+	appMinted   int
+	appTTL      time.Duration
+	appRequests []map[string]any
+}
+
+// appJWT は、Authorization の App の JWT を、appKey で確かめる（署名、iss、期限）。
+func (f *fakeGitHub) appJWT(r *http.Request) bool {
+	parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), ".")
+	if f.appKey == nil || len(parts) != 3 {
+		return false
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+	sum := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if rsa.VerifyPKCS1v15(f.appKey, crypto.SHA256, sum[:], sig) != nil {
+		return false
+	}
+	b, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	var c struct {
+		Iss      string `json:"iss"`
+		Iat, Exp int64
+	}
+	_ = json.Unmarshal(b, &c)
+	now := time.Now().Unix()
+	return c.Iss == "42" && c.Iat <= now && now < c.Exp && c.Exp-c.Iat <= 600
 }
 
 type fakeUser struct {
@@ -221,6 +254,31 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, http.StatusOK, map[string]any{"token": str("access_token")})
+		return
+	}
+	// 読むだけの GitHub App（App の JWT で呼ぶもの）
+	switch {
+	case p == "/repos/acme/study/installation" && r.Method == http.MethodGet:
+		if !f.appJWT(r) {
+			fail(w, http.StatusUnauthorized, "bad jwt")
+			return
+		}
+		write(w, http.StatusOK, map[string]any{"id": 7})
+		return
+	case p == "/app/installations/7/access_tokens" && r.Method == http.MethodPost:
+		if !f.appJWT(r) {
+			fail(w, http.StatusUnauthorized, "bad jwt")
+			return
+		}
+		f.appRequests = append(f.appRequests, in)
+		f.appMinted++
+		tok := fmt.Sprintf("ghs_%d", f.appMinted)
+		f.readable[tok] = true
+		ttl := f.appTTL
+		if ttl == 0 {
+			ttl = time.Hour
+		}
+		write(w, http.StatusCreated, map[string]any{"token": tok, "expires_at": time.Now().Add(ttl).UTC().Format(time.RFC3339)})
 		return
 	}
 	// 主体のトークンで呼ぶもの

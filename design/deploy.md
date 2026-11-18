@@ -119,7 +119,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_WORKER_RECORD_INTERVAL` | | 記録を読んで控えに足す間隔。既定は見回りの間隔。GitHub では `30s`（[記録の控え](backend/verify.md#記録の控え)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
-| `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |
+| `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)）。GitHub を使う構成では `20m` より短くする（[読むだけの GitHub App](adapters/github.md#読むだけの-github-app)） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
 
 ### GitHub を使う構成
@@ -130,13 +130,15 @@ worker（`logiforge worker`）：
 | 名前 | 使う | 秘密 | 中身 |
 |---|---|---|---|
 | `LOGIFORGE_GITHUB_REPOSITORIES` | 両方 | | repository の名前と `owner/name` の組（`名前=owner/name,…`）。owner は複数でもよい（[GitHub アダプタ](adapters/github.md)）。ディレクトリの repository は `名前=owner/name:パス`（[ディレクトリ方式](directory/README.md)） |
-| `LOGIFORGE_GITHUB_READ_TOKEN` | 両方 | ✓ | 読むだけのトークン（fine-grained personal access token の、Contents、Issues、Pull requests、Metadata の Read）。public のリポジトリだけなら、なくてもよい。そのときは、トークンなしで読む（REST の上限は 1 時間に 60 回） |
+| `LOGIFORGE_GITHUB_APP_ID` | 両方 | | 読むだけの GitHub App の App ID（[GitHub アダプタ](adapters/github.md#読むだけの-github-app)）。public のリポジトリだけなら、なくてもよい。そのときは、トークンなしで読む（REST の上限は 1 時間に 60 回） |
+| `LOGIFORGE_GITHUB_APP_PRIVATE_KEY` | 両方 | ✓ | その App の秘密鍵（GitHub が渡す PEM。`_FILE` でファイルから渡す）。`LOGIFORGE_GITHUB_APP_ID` と一緒に置く |
 | `LOGIFORGE_USER_LOGINS` | バックエンド | | `user` とみなす GitHub のアカウント名（`,` で並べる） |
 | `LOGIFORGE_USER_TEAM` | バックエンド | | `user` とみなす team（`org/team の slug`。`,` で並べる） |
 | `LOGIFORGE_GITHUB_API_URL`、`LOGIFORGE_GITHUB_URL` | 両方 | | REST の URL と、画面と git の URL。既定は `https://api.github.com` と `https://github.com` |
 
 - WebUI のサインインには、Logiforge の OAuth App の Client ID と client secret を、`LOGIFORGE_OAUTH_CLIENT_ID` と `LOGIFORGE_OAUTH_CLIENT_SECRET` に渡す。`LOGIFORGE_OAUTH_REDIRECT_URI` は、OAuth App の Authorization callback URL と同じにする。`LOGIFORGE_FORGEJO_PUBLIC_URL` は使わない。
   - バックエンドは、同じ 2 つで、主体のトークンが Logiforge の OAuth App のものかを確かめる。渡さなければ、`user` の主体はいない（[GitHub アダプタ](adapters/github.md) の「認証」）。
+- v0.2.0 の `LOGIFORGE_GITHUB_READ_TOKEN`（personal access token）は使わない。置いたままなら、起動しない。
 - 見回りの間隔は `10s`、記録を読む間隔（`LOGIFORGE_WORKER_RECORD_INTERVAL`）は `30s` を目安にする（[GitHub アダプタ](adapters/github.md) の「見回りの間隔」）。
 
 ## 例：Kubernetes の Pod

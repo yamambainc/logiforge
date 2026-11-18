@@ -5,7 +5,9 @@
 
 ## 構成
 
-- Logiforge は、GitHub に書くための自分のアカウント（GitHub App など）を持たない。GitHub に書くのは、いつも、要求を送った人やエージェントのトークンである（[GitHub アダプタ](../../design/adapters/github.md)）。
+- Logiforge は、GitHub に書くための自分のアカウントを持たない。GitHub に書くのは、いつも、要求を送った人やエージェントのトークンである（[GitHub アダプタ](../../design/adapters/github.md)）。
+  - 読むためだけに、読むだけの GitHub App を使う。worker とバックエンドが、その installation token で repository を読む。
+  - personal access token は使わない。
   - 反映（merge）は、`approve` をした reviewer のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい。反映によるものかは、worker が中身で決める（[反映かの判定](../../design/backend/verify.md)）。
 - repository は、管理者が GitHub に作り、サーバの設定に登録する。登録していない名前では作れない（`repository_not_registered`）。
 - 登録する repository の owner（organization か個人）は、いくつでもよい。
@@ -18,7 +20,7 @@
 | もの | 作る人 | 使い道 |
 |---|---|---|
 | OAuth App | organization の owner | WebUI のサインイン。利用者を `user` とみなすのに使う |
-| 読むだけのトークン | 管理者 | worker と、バックエンドの作業用の git の複製が、repository を読む |
+| 読むだけの GitHub App | organization の owner | worker と、バックエンドの作業用の git の複製が、repository を読む |
 | 署名の秘密（`LOGIFORGE_RECORD_KEYS`） | 管理者 | 記録の署名。バックエンドだけが持つ |
 
 ### OAuth App
@@ -29,10 +31,20 @@ organization の「Settings」→「Developer settings」→「OAuth Apps」で�
 - 作ったら、Client ID と client secret を控える。
 - OAuth App がなくても、CLI（`client`）だけで使える。そのときは、`user` の主体がいないので、WebUI で repository を作ることと、人への依頼に答えることができない。
 
-### 読むだけのトークン
+### 読むだけの GitHub App
 
-- fine-grained personal access token を、Logiforge の repository だけに絞って作る。権限は、Contents、Issues、Pull requests の Read と、Metadata の Read である。
-- public のリポジトリだけなら、なくても動く。そのときは、トークンなしで読む。
+organization の「Settings」→「Developer settings」→「GitHub Apps」→「New GitHub App」で作る。個人のリポジトリなら、個人の「Settings」→「Developer settings」で作る。
+
+- GitHub App name：たとえば `logiforge-reader-acme`。Homepage URL：Logiforge の URL か、この repository の URL
+- Webhook：「Active」を外す
+- Repository permissions：Contents、Issues、Pull requests を Read-only にする（Metadata は Read-only が既定で付く）。ほかは No access のまま。Organization と Account の permissions も No access のまま
+- Where can this GitHub App be installed?：Only on this account
+- 作ったら、App ID を控え、「Private keys」→「Generate a private key」で秘密鍵（`.pem`）を落とす。秘密鍵は、サーバの秘密の置き場に移し、ほかに残さない。
+- 「Install App」で、organization に install する。Repository access は「Only select repositories」にし、Logiforge の repository を選ぶ。
+  - repository を足したら、install の設定でも選び足す。選んでいない repository は、worker が読めない（ログに `App が … に入っていない` と出る）。
+  - 登録する repository の owner が複数なら、App を「Any account」にして、owner ごとに install する。
+    - 「Any account」にすると、App は public になり、だれでも自分のアカウントに install できる。それでも問題はない。App は読むだけで、Logiforge は登録した owner の分しかトークンを作らないから。
+- public のリポジトリだけなら、App がなくても動く。そのときは、トークンなしで読む。
   - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を読むので、ふつうは足りない。試すときだけにする。
 - private のリポジトリでは、要る。
 
@@ -69,7 +81,8 @@ organization の「Settings」→「Developer settings」→「OAuth Apps」で�
 ```sh
 export LOGIFORGE_GITFORGE=github
 export LOGIFORGE_GITHUB_REPOSITORIES=myapp-cache-strategy=acme/myapp-cache-strategy
-export LOGIFORGE_GITHUB_READ_TOKEN_FILE=read_token          # public のリポジトリで試すだけなら、なくてもよい
+export LOGIFORGE_GITHUB_APP_ID=<App ID>                       # public のリポジトリで試すだけなら、この 2 つはなくてもよい
+export LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=app-key.pem
 export LOGIFORGE_RECORD_KEYS="k1=$(openssl rand -hex 20)"
 export LOGIFORGE_RECORD_PUBLIC_KEYS=$(logiforge record-public-keys)
 export LOGIFORGE_STORE_DIR=$PWD/store LOGIFORGE_WORKER_DIR=$PWD/worker
@@ -88,10 +101,12 @@ logiforge serve
 
 - 利用者は、WebUI で、Logiforge の OAuth App でサインインする。`LOGIFORGE_USER_LOGINS` か `LOGIFORGE_USER_TEAM` に入っていれば `user` になる。
 - CLI は `client` として動く。トークンは、[CLI の設計](../../design/cli/README.md) の「認証」に従う。
-  - 人は、gh のトークンでよい。
-  - エージェントは、登録した repository だけに絞った fine-grained personal access token を使う。
+  - 人もエージェントも、`gh auth login` でサインインして得たトークン（OAuth）を使う。スコープ `repo` が要る（`gh auth login` の既定に入っている）。personal access token は使わない。
+  - エージェントの機械用アカウントは、`gh auth login` が出すコードを、そのアカウントでサインインしたブラウザで入れる。
+  - organization が OAuth App のアクセスを制限しているときは、organization の owner が GitHub CLI を許す。
 
 ```sh
+gh auth login --hostname github.com --git-protocol https --web
 gh auth token | logiforge auth login --with-token --host https://logiforge.example.com
 logiforge auth setup-git --url https://github.com
 logiforge repo clone myapp-cache-strategy

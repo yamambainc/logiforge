@@ -37,8 +37,11 @@ type Source interface {
 type Config struct {
 	// Dir は、repository ごとの clone を置く、永続するディレクトリ。ハートビートのファイルも置く。
 	Dir string
-	// GitEnv は、git に渡す環境変数（読むだけの資格情報の credential helper など）。
+	// GitEnv は、git に渡す環境変数（使える転送の方式など）。
 	GitEnv []string
+	// GitCredentials は、repository（gitforge_ref）を git で読むための資格情報の環境変数を返す。git の操作の前に、毎回呼ぶ
+	// （GitHub の installation token は切れるので）。nil なら、資格情報を渡さない。
+	GitCredentials func(ctx context.Context, gitForgeRef string) ([]string, error)
 	// Interval は、見回りの間隔。0 なら 1 秒（design/backend/worker.md の「見回り」）。
 	Interval time.Duration
 	// GitTimeout は、git の操作 1 回の時間の上限。0 なら 10 分。
@@ -315,6 +318,13 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	g, err := w.repo(ctx, r.Name)
 	if err != nil {
 		return err
+	}
+	if w.cfg.GitCredentials != nil {
+		cred, err := w.cfg.GitCredentials(ctx, r.GitForgeRef)
+		if err != nil {
+			return fmt.Errorf("git の資格情報：%w", err)
+		}
+		g.Env = append(append([]string(nil), g.Env...), cred...)
 	}
 	// ディレクトリの repository では、ディレクトリの中だけを読む（design/directory/history.md）。
 	g.Prefix = r.Directory()
