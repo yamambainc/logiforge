@@ -94,6 +94,8 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - worker のユーザーが、organization の team のうち、書ける team（権限が `read` より強いか、`units_map` に `write` があるもの）に入っていない。
   - `GET /orgs/{org}/teams` と `GET /teams/{id}/members` で調べる。どちらも `read:organization` で読める。
   - Forgejo は、team のメンバーの一覧を、その team のメンバーにだけ見せる。403 なら、worker のユーザーはその team にいない。
+- worker のユーザーが、organization の今ある repository のどれにも書けない（個人の collaborator として Write を持たない）。
+  - `GET /orgs/{org}/repos` を全ページ読み、`permissions` の `push` か `admin` が `true` のものがあれば断る。team の調べは、これから作る repository のために残す。
 
 ## 認証
 

@@ -24,11 +24,23 @@ func CheckWorkerToken(ctx context.Context, cfg Config, login, token string) erro
 		return fmt.Errorf("forgejo: worker のトークンで、organization %s を読めない：%w", cfg.Org, err)
 	}
 	probes := []string{"/user/settings"}
-	var repos []struct {
-		Name string `json:"name"`
+	// organization の repository を全部読む。応答には、worker のユーザーの権限が入る。個人の collaborator として
+	// 書ける repository も、ここで見つける（team からは見えないから）。
+	type repo struct {
+		Name        string `json:"name"`
+		Permissions struct {
+			Admin bool `json:"admin"`
+			Push  bool `json:"push"`
+		} `json:"permissions"`
 	}
-	if err := c.do(ctx, token, http.MethodGet, "/orgs/"+url.PathEscape(cfg.Org)+"/repos?limit=1", nil, &repos); err != nil {
+	repos, err := list[repo](ctx, c, token, "/orgs/"+url.PathEscape(cfg.Org)+"/repos")
+	if err != nil {
 		return fmt.Errorf("forgejo: worker のトークンで、organization の repository を読めない：%w", err)
+	}
+	for _, r := range repos {
+		if r.Permissions.Push || r.Permissions.Admin {
+			return fmt.Errorf("%w（worker のユーザー %s が、repository %s に書ける。collaborator から外し、読むだけの team にだけ入れる）", ErrWorkerTokenWrites, login, r.Name)
+		}
 	}
 	if len(repos) > 0 {
 		// organization に repository がまだなければ、この要求は飛ばす。

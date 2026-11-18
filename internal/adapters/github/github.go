@@ -415,6 +415,11 @@ func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
 	return perms[strings.ToLower(git)], nil
 }
 
+// CanCreate は、主体が repository を用意できるかを返す。GitHub では、登録した GitHub リポジトリを人が先に作るので、CanWrite と同じ。
+func (a *Auth) CanCreate(ctx context.Context, token, repo string) (bool, error) {
+	return a.CanWrite(ctx, token, repo)
+}
+
 // permissions は、主体の user access token で読めるリポジトリと、それぞれに push の権限があるかを返す（owner/name は小文字）。
 // user access token で読めるのは、App が install されていて、かつ本人が読めるリポジトリだけである。
 func (a *Auth) permissions(ctx context.Context, token string) (map[string]bool, error) {

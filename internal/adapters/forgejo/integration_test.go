@@ -467,8 +467,14 @@ func TestForgejo(t *testing.T) {
 	if ok, err := auth.CanWrite(ctx, webui, "q"); !ok || err != nil {
 		t.Fatalf("alice は q に書ける：%v %v", ok, err)
 	}
-	if ok, err := auth.CanWrite(ctx, webui, "not-yet"); !ok || err != nil {
+	if ok, err := auth.CanWrite(ctx, webui, "not-yet"); ok || err != nil {
+		t.Fatalf("読めない git リポジトリには、書けるとしない：%v %v", ok, err)
+	}
+	if ok, err := auth.CanCreate(ctx, webui, "not-yet"); !ok || err != nil {
 		t.Fatalf("alice は repository を作れる team にいる：%v %v", ok, err)
+	}
+	if ok, err := auth.CanCreate(ctx, webui, "q"); !ok || err != nil {
+		t.Fatalf("alice は q に書ける：%v %v", ok, err)
 	}
 	for _, tok := range []string{e.tokens["outsider"], "bad-token", e.tokens["reader"]} {
 		if _, err := auth.Authenticate(ctx, tok); !errors.Is(err, ports.ErrUnauthenticated) {

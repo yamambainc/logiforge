@@ -236,6 +236,17 @@ func TestCreateRepositoryExists(t *testing.T) {
 	if _, err := f.b.CreateRepository(ctx, f.caller, "r", "根", ""); code(err) != CodeForbidden {
 		t.Fatalf("client：%v", err)
 	}
+	// 登録していない名前は、権限より先に repository_not_registered にする（Write は、登録した repository にしか持てない）。
+	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser}}
+	if _, err := f.b.CreateRepository(ctx, reader, "unreg-x", "根", ""); code(err) != CodeRepositoryNotRegistered {
+		t.Fatalf("未登録の名前の用意：%v", err)
+	}
+	if _, err := f.b.MigrateRepository(ctx, reader, "unreg-x", "q"); code(err) != CodeRepositoryNotRegistered {
+		t.Fatalf("未登録の名前への移し：%v", err)
+	}
+	if _, err := f.b.CreateRepository(ctx, reader, "r", "根", ""); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user：%v", err)
+	}
 }
 
 var (

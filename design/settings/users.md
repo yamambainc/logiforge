@@ -28,6 +28,7 @@
     - user access token で読めるのは、App が install されていて、かつ本人が読めるリポジトリだけである。そのため、App が install されていないリポジトリでは、`user` にならない。
   - Forgejo：主体のトークンで `GET /user/teams` を呼び、設定した organization の team の権限（`write`、`admin`、`owner`）を見る。repository ごとの操作は、`GET /repos/{owner}/{repo}` の `permissions.push` を見る（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
     - Forgejo の repository を作るときは、organization に repository を作れる team にいることを見る。なぜ：作る前の repository には、権限がないから。
+    - 作るとき以外は、主体のトークンで `GET /repos/{owner}/{repo}` が 404 なら、書けないとみなす。なぜ：主体の team にその repository が入っていないときも、404 になるから。
 
 ## 設定を変えられる人
 

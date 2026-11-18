@@ -9,6 +9,7 @@
 | 主体を確かめる | トークンを受け取り、主体（アカウント名）と、主体の種類（`user` か `client`）と、WebUI のサインインで得たトークンかを返す |
 | repository を読めるか確かめる | 主体が、その repository を読めるかを返す |
 | repository に書けるか確かめる | 主体が、その repository に Write 以上の権限を持つかを返す（[repository ごとの権限](../../settings/users.md#repository-ごとの権限)） |
+| repository を用意できるか確かめる | 書けるか確かめるのと同じ。まだない git リポジトリ（Forgejo で作る前）では、作れるかを返す |
 
 - WebUI のサインインで得たトークンかは、そのトークンが、設定の DB にある、サインインに使うアプリのものかである（[サインイン](../../webui/auth.md#方式)）。
   - 想定用途：CLI のトークン（`gh auth login` のものなど）を持つ主体と分けて、WebUI のサインインをした人だけに許す操作を決めるため（[トークンの出どころ](../../settings/users.md#トークンの出どころ)）。

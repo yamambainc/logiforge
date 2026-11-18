@@ -309,8 +309,20 @@ func audHas(raw json.RawMessage, id string) bool {
 }
 
 // CanWrite は、主体が repository に Write 以上の権限を持つかを返す。ディレクトリの repository では、git リポジトリの権限を見る。
-// まだない repository では、organization に repository を作れる team にいるかを返す（作る前の repository には、権限がないから）。
+// 主体のトークンで git リポジトリを読めなければ（404）、false である。まだないときだけでなく、主体の team に
+// その git リポジトリが入っていないときも 404 になるから。
 func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
+	return a.can(ctx, token, repo, false)
+}
+
+// CanCreate は、主体が repository を用意できるかを返す。git リポジトリがあれば、CanWrite と同じ。
+// なければ（404）、organization に repository を作れる team（コードに書ける）にいるかを返す。作る前の git リポジトリには、権限がないから。
+// 404 が「あるが見えない」ときは、作る要求を Forgejo が断る。
+func (a *Auth) CanCreate(ctx context.Context, token, repo string) (bool, error) {
+	return a.can(ctx, token, repo, true)
+}
+
+func (a *Auth) can(ctx context.Context, token, repo string, create bool) (bool, error) {
 	ref := a.c.cfg.Org + "/" + repo
 	for _, d := range a.c.cfg.Directories {
 		if d.Name == repo {
@@ -322,6 +334,9 @@ func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
 		return false, err
 	}
 	q := "push:" + rp
+	if create {
+		q = "create:" + rp
+	}
 	if !ports.Fresh(ctx) {
 		if v, ok := a.cache.Get(token, q); ok {
 			return v.(bool), nil
@@ -338,6 +353,9 @@ func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
 	case err == nil:
 		ok = r.Permissions.Push || r.Permissions.Admin
 	case statusOf(err) == http.StatusNotFound:
+		if !create {
+			break
+		}
 		teams, err := a.teams(ctx, token)
 		if err != nil {
 			return false, err

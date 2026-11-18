@@ -255,8 +255,11 @@ type Authenticator interface {
 	// CanRead は、Authenticate を通った主体が、repository を読めるかを返す。
 	CanRead(ctx context.Context, token, repo string) (bool, error)
 	// CanWrite は、主体が、repository に Write 以上の権限を持つかを返す（design/settings/users.md の「repository ごとの権限」）。
-	// まだない repository（Forgejo で作る前）では、作れるかを返す。
+	// 主体が読めない git リポジトリでは、false を返す。
 	CanWrite(ctx context.Context, token, repo string) (bool, error)
+	// CanCreate は、主体が repository を用意できるかを返す。git リポジトリがあれば CanWrite と同じ。
+	// まだない git リポジトリ（Forgejo で作る前）では、作れるかを返す。
+	CanCreate(ctx context.Context, token, repo string) (bool, error)
 }
 
 type freshKey struct{}

@@ -143,18 +143,21 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 	if !ids.RepositoryNamePattern.MatchString(name) {
 		return out, fail(CodeValidationFailed, "repository の名前は、小文字の英数字とハイフンで、63 文字以下")
 	}
-	if err := b.requireUserOn(ctx, c, name); err != nil {
-		return out, err
-	}
 	if n := tree.CharCount(statement); n == 0 || n > tree.MaxStatementChars {
 		return out, fail(CodeValidationFailed, "根の主文は 1 字以上 %d 字以下", tree.MaxStatementChars)
 	}
 	ref, err := b.Forge.GitForgeRef(ctx, name)
 	if errors.Is(err, ports.ErrNotRegistered) {
-		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない。管理者が GitHub の repository を作って登録する", name)
+		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない。GitHub リポジトリを作り、設定の画面で登録する", name)
 	}
 	if err != nil {
 		return out, err
+	}
+	// 権限は、登録を確かめたあとに見る。未登録の名前に、forbidden でなく repository_not_registered を返すため。
+	if ok, err := b.Auth.CanCreate(ctx, c.Token, name); err != nil {
+		return out, err
+	} else if !ok {
+		return out, fail(CodeForbidden, "この repository に書く権限（Write）がない")
 	}
 	root := ids.New(ids.Hypothesis)
 	dir := tree.TreeDir + "/" + root

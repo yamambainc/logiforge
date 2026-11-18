@@ -545,14 +545,34 @@ func (t dbTokens) Token(ctx context.Context, gitForgeRef string) (string, error)
 // mintLoop は、worker のための installation token を作り直し続ける（design/adapters/github-app.md の「worker のトークン」）。
 // 5 秒ごとに確かめ、ないか、切れるまでの残りが mintBefore より短いか、絞ったリポジトリが登録と違えば、作り直す。
 func mintLoop(ctx context.Context, db *settings.DB, keys settings.Keys) {
+	const base, max = 5 * time.Second, time.Minute
+	delay := base
+	var lastErr string
+	var lastLog time.Time
 	for {
+		rev, _ := db.Revision(ctx)
 		if err := mintWorkerTokens(ctx, db, keys, time.Now()); err != nil {
-			slog.Error("worker のトークンを作れない。次に作り直す", "err", err)
+			// 失敗したら、1 分まで間隔を倍にする。ログは、誤りが変わったときと、10 分ごとにだけ出す
+			// （App が owner に install されていないときなどに、5 秒ごとに GitHub に問い合わせ、ログを埋めないため）。
+			if msg := err.Error(); msg != lastErr || time.Since(lastLog) >= 10*time.Minute {
+				slog.Error("worker のトークンを作れない。間をおいて作り直す", "err", err, "retry", delay)
+				lastErr, lastLog = msg, time.Now()
+			}
+			delay = min(delay*2, max)
+		} else {
+			delay, lastErr = base, ""
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(5 * time.Second):
+		// 設定が変わったら（repository の登録など）、間隔を待たずに作り直す。
+		for waited := time.Duration(0); waited < delay; waited += base {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(base):
+			}
+			if r, err := db.Revision(ctx); err == nil && r != rev {
+				delay = base
+				break
+			}
 		}
 	}
 }

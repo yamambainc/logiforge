@@ -87,6 +87,10 @@ type fakeForge struct {
 
 func (f *fakeForge) ListRepositories(context.Context) ([]ports.Repository, error) { return nil, nil }
 func (f *fakeForge) GitForgeRef(_ context.Context, name string) (string, error) {
+	// unreg- で始まる名前は、登録していない repository とする（GitHub を使う構成）。
+	if strings.HasPrefix(name, "unreg-") {
+		return "", ports.ErrNotRegistered
+	}
 	return "o/" + name, nil
 }
 func (f *fakeForge) GitURL(ref string) string { return "https://forge.example.com/" + ref + ".git" }
@@ -255,6 +259,9 @@ func (fakeAuth) CanRead(_ context.Context, token, _ string) (bool, error) {
 }
 func (fakeAuth) CanWrite(_ context.Context, token, _ string) (bool, error) {
 	return token != "stranger" && token != "reader", nil
+}
+func (a fakeAuth) CanCreate(ctx context.Context, token, repo string) (bool, error) {
+	return a.CanWrite(ctx, token, repo)
 }
 
 type source struct{ dir string }
