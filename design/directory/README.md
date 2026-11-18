@@ -14,7 +14,7 @@
 
 ## 登録
 
-- 管理者が、設定の画面で、repository の名前と「git リポジトリとディレクトリのパス」の組を、設定の DB に登録する（例：名前 `cache-strategy`、`acme/myapp:logiforge/cache-strategy`。[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)）。
+- 利用者が、設定の画面で、repository の名前と「git リポジトリとディレクトリのパス」の組を、設定の DB に登録する（例：名前 `cache-strategy`、`acme/myapp:logiforge/cache-strategy`。[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)）。
   - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのときは、worker が見つけて、壊れた状態にする。
     - なぜ用意のあとか：用意のコミットは、利用者のトークンで `main` に直接置くから（[履歴](history.md) の「用意のコミット」）。
   - gitforge_ref は、`owner/name:パス` である。GitForge の API と git には、`owner/name` の部分を使う。

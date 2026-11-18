@@ -34,16 +34,16 @@
 - 主体には、次の 2 種類がある。
   - `user`：WebUI を使う利用者
   - `client`：CLI を使う主体（エージェントか人）
-- `user` が使える書き込みは、利用者の 2 つの操作だけである。
+- `user` が使える書き込みは、利用者の次の操作だけである。
   - repository の作成（根の主文を含む）
   - 人への依頼への回答
+  - 設定の変更（設定の API）
 - それ以外の書き込みは、`client` だけが使える。
 - 主体と主体の種類は、[認証](ports/authentication.md) で確かめる。
 - repository を使えるのは、その repository を読める主体だけである。
-- 設定の API は、管理者だけが使える（[管理者](../settings/admins.md)）。
-  - 管理者は、主体の種類とは別に、設定の DB の `admins` で決める。管理者でも、`user` でなければ、`user` の書き込みは使えない。
-  - 管理者とみなすのは、WebUI のサインインで得たトークンを持つ主体だけである（[管理者を確かめる](../settings/admins.md#管理者を確かめる)）。
-  - 管理者でなければ、`forbidden` を返す。
+- repository ごとの `user` の書き込み（repository の作成、人への依頼への回答）は、その repository に Write があるときだけ受け付ける（[repository ごとの権限](../settings/users.md#repository-ごとの権限)）。
+- 設定の API は、`user` だけが使える（[利用者の決め方](../settings/users.md#利用者の決め方)）。
+  - `user` でなければ、`forbidden` を返す。
 - セットアップの API は、主体ではなく、セットアップのコードで守る（[初回のセットアップ](../settings/setup.md#セットアップのコード)）。
 
 ## repository の用意
@@ -78,10 +78,10 @@
 
 ## 状態を持たない
 
-- バックエンドは、木と apply request と人への依頼のデータを保持しない。プロセスのメモリのキャッシュも持たない。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
+- バックエンドは、木と apply request と人への依頼のデータを保持しない。プロセスのメモリのキャッシュは、権限を問い合わせた結果（60 秒）のほかに持たない（[権限のキャッシュ](../settings/users.md#権限のキャッシュ)）。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 - バックエンドが持つ唯一の永続のデータは、設定の DB である（[設定の DB](../settings/database.md)）。
-  - なぜ持つか：repository、利用者、管理者、GitForge とのつなぎ方は、git にも GitForge にも正本がなく、管理者が WebUI から変えるから（[設定](../settings/README.md)）。
+  - なぜ持つか：repository の一覧と GitForge とのつなぎ方は、git にも GitForge にも正本がなく、利用者が WebUI から変えるから（[設定](../settings/README.md)）。
   - 設定の DB は、要求ごとに読み、メモリに保持しない（[設定を読むとき](../settings/README.md#設定を読むとき)）。
     - そのため、同じ設定の DB を読むバックエンドどうしで、設定は食い違わない。
   - 設定の DB の SQLite のファイルは、NFS などで、ほかのノードと共有しない（[DB の種類](../settings/database.md#db-の種類)）。

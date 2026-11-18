@@ -21,7 +21,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | バックエンド（認証） | 要求ごとに、主体のトークンで、主体、team の所属、リポジトリの権限を確かめる | 主体ごとの上限 |
 | バックエンド（GitForge のポートの読み） | 要求ごとに、主体のトークンで、REST で、PR、レビュー、issue、コメントを読む | 主体ごとの上限 |
 | バックエンド（GitForge のポートの書き込み） | 主体のトークンで、REST で、repository の用意、PR の作成・merge・close、レビュー、issue、コメントを書く | 主体ごとの上限 |
-| worker | `git ls-remote` と `git fetch`。反映かの判定で、`main` のコミットごとに、REST で PR とコメントとレビューを読む | 読むだけの App の installation token の上限 |
+| worker | `git ls-remote` と `git fetch`。反映かの判定で、`main` のコミットごとに、REST で PR とコメントとレビューを読む | Logiforge の App の installation の上限 |
 
 - バックエンドは、読んだ結果を保持しない（[状態を持たない](../backend/README.md)）。
 - バックエンドは、GitHub の API のレート制限を避ける仕組み（キャッシュなど）を持たない。回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) に書く。

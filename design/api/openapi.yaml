@@ -35,7 +35,7 @@ tags:
   - name: setup
     description: 初回のセットアップ（セットアップのコードで守る）
   - name: settings
-    description: 設定（管理者だけ）
+    description: 設定（user だけ）
 
 paths:
   /oauth/config:
@@ -202,6 +202,28 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SetupGitHubApp' }
         '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/repository:
+    put:
+      tags: [setup]
+      operationId: setSetupRepository
+      summary: GitHub の構成で、最初の repository を登録する
+      description: |
+        登録の決まりは registerRepository と同じである。GitHub App の installation token で、その GitHub リポジトリを読めなければ validation_failed。
+        Forgejo の構成では validation_failed。セットアップのコードが合わなければ unauthenticated。決まりは ../../design/settings/setup.md の「流れ」に従う。
+      security:
+        - setupCode: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisteredRepository' }
+      responses:
+        '200':
+          description: セットアップの状態
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupState' }
+        '4XX': { $ref: '#/components/responses/Problem' }
   /setup/forgejo:
     put:
       tags: [setup]
@@ -228,7 +250,7 @@ paths:
     post:
       tags: [setup]
       operationId: finishSetup
-      summary: サインインした主体を、最初の管理者と user にし、セットアップを終える
+      summary: サインインした主体を、最初の利用者（user）にし、セットアップを終える
       description: |
         セットアップのコードと、WebUI のサインインで得たトークンの両方を求める。
         トークンが、Logiforge の GitHub App か Forgejo の OAuth2 のアプリケーションのものでなければ unauthenticated。
@@ -248,9 +270,9 @@ paths:
     get:
       tags: [settings]
       operationId: getSettings
-      summary: 設定（管理者だけ。秘密は、置いたかどうかだけ）
+      summary: 設定（user だけ。秘密は、置いたかどうかだけ）
       description: |
-        管理者でなければ forbidden。管理者の確かめ方は ../../design/settings/admins.md の「管理者を確かめる」に従う。
+        user でなければ forbidden。user の決め方は design/settings/users.md の「利用者の決め方」に従う。
         WebUI は、forbidden かどうかで、設定のメニューを出すかを決める。
       responses:
         '200':
@@ -263,7 +285,7 @@ paths:
     patch:
       tags: [settings]
       operationId: updateGitForgeSettings
-      summary: GitForge とのつなぎ方と、見回りの間隔を変える（管理者だけ）
+      summary: GitForge とのつなぎ方と、見回りの間隔を変える（user だけ）
       description: |
         送った項目だけを変える。秘密は、送ったものだけを置き換える。構成（github か forgejo）は変えられない。
         GitHub を使う構成で、git の操作の時間の上限が 20 分以上なら validation_failed（../../design/adapters/github-app.md の「installation token」）。
@@ -290,7 +312,7 @@ paths:
     get:
       tags: [settings]
       operationId: listRegisteredRepositories
-      summary: 登録した repository の一覧（管理者だけ。すべてを返す）
+      summary: 登録した repository の一覧（user だけ。すべてを返す）
       responses:
         '200':
           description: 登録した repository
@@ -310,7 +332,7 @@ paths:
     put:
       tags: [settings]
       operationId: registerRepository
-      summary: repository を登録する（管理者だけ）。同じ名前があれば、gitforge_ref とディレクトリを置き換える
+      summary: repository を登録する（user だけ）。登録済みか、外した名前の gitforge_ref とディレクトリは変えられない（validation_failed）
       description: |
         GitHub を使う構成では、GitHub App の installation token で、その GitHub リポジトリを読めることを確かめる。
         読めなければ validation_failed で、detail に install の URL を書く（../../design/api/endpoints/settings.md）。
@@ -334,78 +356,7 @@ paths:
     delete:
       tags: [settings]
       operationId: unregisterRepository
-      summary: repository を外す（管理者だけ）。置き場のスナップショットと keep/ は消さない
-      responses:
-        '204':
-          description: 外した
-        '4XX': { $ref: '#/components/responses/Problem' }
-  /settings/users:
-    put:
-      tags: [settings]
-      operationId: setUsers
-      summary: user とみなすアカウント名と team の一覧を置き換える（管理者だけ）
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [items]
-              properties:
-                items:
-                  type: array
-                  items: { $ref: '#/components/schemas/UserEntry' }
-      responses:
-        '200':
-          description: 置き換えたあとの一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items, updated_by, updated_at]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/UserEntry' }
-                  updated_by: { type: string }
-                  updated_at: { type: string, format: date-time }
-        '4XX': { $ref: '#/components/responses/Problem' }
-  /settings/admins:
-    get:
-      tags: [settings]
-      operationId: listAdmins
-      summary: 管理者の一覧（管理者だけ）
-      responses:
-        '200':
-          description: 管理者の一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/Admin' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-  /settings/admins/{login}:
-    parameters:
-      - $ref: '#/components/parameters/AdminLogin'
-    put:
-      tags: [settings]
-      operationId: addAdmin
-      summary: 管理者を足す（管理者だけ）。すでにいれば、そのまま返す
-      responses:
-        '200':
-          description: 足した管理者
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Admin' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-    delete:
-      tags: [settings]
-      operationId: removeAdmin
-      summary: 管理者を外す（管理者だけ）。最後の 1 人なら validation_failed
+      summary: repository を外す（user だけ）。置き場のスナップショットと keep/ は消さない
       responses:
         '204':
           description: 外した
@@ -414,7 +365,7 @@ paths:
     get:
       tags: [settings]
       operationId: listRecordKeys
-      summary: 記録の署名の鍵の一覧（管理者だけ。秘密鍵は返さない）
+      summary: 記録の署名の鍵の一覧（user だけ。秘密鍵は返さない）
       responses:
         '200':
           description: 鍵の一覧
@@ -431,7 +382,7 @@ paths:
     post:
       tags: [settings]
       operationId: createRecordKey
-      summary: 新しい記録の署名の鍵を作り、書くときの鍵にする（管理者だけ）。古い鍵の公開鍵は残す
+      summary: 新しい記録の署名の鍵を作り、書くときの鍵にする（user だけ）。古い鍵の公開鍵は残す
       responses:
         '201':
           description: 作った鍵
@@ -1143,12 +1094,6 @@ components:
       description: セットアップのコード。バックエンドが起動したときにログに出す（../../design/settings/setup.md の「セットアップのコード」）
 
   parameters:
-    AdminLogin:
-      name: login
-      in: path
-      required: true
-      description: 管理者の GitForge のアカウント名。大文字と小文字を区別せずに比べる
-      schema: { type: string, minLength: 1 }
     RepositoryName:
       name: repository
       in: path
@@ -1303,7 +1248,7 @@ components:
         write_wait_seconds: { type: number, exclusiveMinimum: 0, description: 書いたものが読む側に出るまで待つ上限。バックエンドが、次の要求から使う（../../design/api/writes.md） }
     Settings:
       type: object
-      required: [gitforge, webui_url, intervals, users, updated_by, updated_at]
+      required: [gitforge, webui_url, intervals, updated_by, updated_at]
       properties:
         gitforge: { $ref: '#/components/schemas/GitForgeKind' }
         webui_url: { type: string, format: uri }
@@ -1330,18 +1275,15 @@ components:
             worker_user: { type: string }
             worker_token: { $ref: '#/components/schemas/SecretState' }
         intervals: { $ref: '#/components/schemas/IntervalSettings' }
-        users:
-          type: array
-          items: { $ref: '#/components/schemas/UserEntry' }
-        updated_by: { type: string, description: 最後に設定を変えた管理者 }
+        updated_by: { type: string, description: 最後に設定を変えた利用者 }
         updated_at: { type: string, format: date-time }
     SecretState:
       type: object
-      description: 秘密の値は返さない。置いてあるかと、最後に変えた管理者と時刻だけを返す（design/settings/secrets.md の「秘密を差し替える」）
+      description: 秘密の値は返さない。置いてあるかと、最後に変えた利用者と時刻だけを返す（design/settings/secrets.md の「秘密を差し替える」）
       required: [set]
       properties:
         set: { type: boolean, description: 置いてあるか }
-        updated_by: { type: [string, 'null'], description: 最後に変えた管理者 }
+        updated_by: { type: [string, 'null'], description: 最後に変えた利用者 }
         updated_at: { type: [string, 'null'], format: date-time }
     RegisteredRepository:
       type: object
@@ -1350,19 +1292,6 @@ components:
         name: { $ref: '#/components/schemas/RepositoryNameValue' }
         gitforge_ref: { type: string }
         directory: { type: string, description: ディレクトリの repository のパス。git リポジトリ全体なら空 }
-    UserEntry:
-      type: object
-      required: [kind, value]
-      properties:
-        kind: { type: string, enum: [login, team] }
-        value: { type: string, description: 'アカウント名か team。大文字と小文字を区別せずに比べる' }
-    Admin:
-      type: object
-      required: [login, added_by, added_at]
-      properties:
-        login: { type: string }
-        added_by: { type: string }
-        added_at: { type: string, format: date-time }
     RecordKey:
       type: object
       required: [key_id, public_key, created_at, primary]
@@ -1463,7 +1392,7 @@ components:
             |---|---|---|
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
             | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない。または、セットアップのコードがない、合わない |
-            | forbidden | 403 | 主体の種類が、その操作を使えない。または、管理者でない主体が設定の API を使おうとした |
+            | forbidden | 403 | 主体の種類が、その操作を使えない。または、user でない主体が設定の API を使おうとした |
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
@@ -1475,7 +1404,7 @@ components:
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | unavailable | 503 | GitForge の git を読めない。少し待って送り直す |
             | snapshot_pending | 503 | 指定したコミットのスナップショットが、まだない（worker が取り込んでいない）。少し待って読み直す |
-            | repository_not_registered | 422 | その名前の repository が、設定の DB に登録されていない。管理者が設定の画面で登録する repository（GitHub リポジトリとディレクトリ）だけで起きる |
+            | repository_not_registered | 422 | その名前の repository が、設定の DB に登録されていない。利用者が設定の画面で登録する repository（GitHub リポジトリとディレクトリ）だけで起きる |
             | setup_required | 503 | セットアップが終わっていない。セットアップの API と /healthz と、構成と client_id を置いたあとのサインインの中継のほかは、これを返す |
             | setup_done | 409 | セットアップが終わったあとに、セットアップの API（getSetup を除く）を呼んだ |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |

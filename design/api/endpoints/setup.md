@@ -1,6 +1,6 @@
 # セットアップの API
 
-管理者が、初回のセットアップで、WebUI から呼ぶ（[セットアップ](../../../docs/webui/setup.md)）。
+サーバを動かす人が、初回のセットアップで、WebUI から呼ぶ（[セットアップ](../../../docs/webui/setup.md)）。
 流れと決まりは、[初回のセットアップ](../../settings/setup.md) に書く。
 
 ## 呼び出し
@@ -12,8 +12,9 @@
 | `PUT /setup/gitforge` | `setSetupGitForge` | 構成（`github` か `forgejo`）を決める |
 | `POST /setup/github/manifest` | `createSetupGitHubManifest` | owner、WebUI の URL、ほかの owner にも install するかを受け取り、manifest と送り先の URL を返す |
 | `POST /setup/github/conversion` | `convertSetupGitHubManifest` | manifest flow の `code` を受け取り、GitHub App を設定の DB に置く。App の slug と install の URL を返す |
+| `PUT /setup/repository` | `setSetupRepository` | GitHub の構成で、最初の repository（名前と `owner/name`、ディレクトリの repository ならパスも）を登録する。App の installation token で読めなければ `validation_failed` |
 | `PUT /setup/forgejo` | `setSetupForgejo` | Forgejo の URL、organization、OAuth2 のアプリケーション、worker のユーザーとトークンを確かめてから置く |
-| `POST /setup/finish` | `finishSetup` | サインインした主体を、最初の管理者と `user` にし、セットアップを終える |
+| `POST /setup/finish` | `finishSetup` | サインインした主体を、最初の利用者にし、セットアップを終える |
 
 ## 認証
 

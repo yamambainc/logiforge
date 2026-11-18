@@ -86,10 +86,9 @@ Forgejo を使う構成では、[認証](../backend/ports/authentication.md) の
 - API は Forgejo のトークンを受け取り、要求ごとに `GET /user` で主体を確かめる。結果を保持しない。
 - team の所属は、主体のトークンで `GET /user/teams` を呼んで確かめる。
 - WebUI のサインインで得たトークンかは、`POST /login/oauth/introspect` を、Logiforge の OAuth2 のアプリケーションの client_id と client secret で呼び、応答の `client_id` で確かめる。
-  - 管理者を確かめるときだけ呼ぶ（[管理者を確かめる](../settings/admins.md#管理者を確かめる)）。
-  - なぜ：Forgejo では、`user` を team で決め、トークンの出どころを問わないから。設定の API だけは、CLI のトークンでは使えないようにする。
-- 主体の種類は、設定した organization の team で決める。
-  - `user`：設定した team（例：`logiforge-users`）に入っている人
+  - なぜ：CLI のトークンを持つ主体を、`user` にしないため（[トークンの出どころ](../settings/users.md#トークンの出どころ)）。
+- 主体の種類は、リポジトリの権限で決める。名簿は持たない（[利用者の決め方](../settings/users.md#利用者の決め方)）。
+  - `user`：Logiforge の OAuth2 のアプリケーションのトークンを持ち、設定した organization の team のどれかで `write`、`admin`、`owner` の権限を持つ人
   - `client`：それ以外の、organization の人とエージェント
   - organization に属さない主体は、`unauthenticated` で受け付けない。
 - すべての主体が、organization のすべての repository を読める。

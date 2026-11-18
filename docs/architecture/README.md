@@ -59,9 +59,9 @@ flowchart TB
 
 ## 設定
 
-- Logiforge の設定（repository の一覧、利用者、GitForge とのつなぎ方）は、Logiforge が持つ。
-- 管理者が、WebUI で設定を変える（[設定](../webui/settings.md)）。サーバを起動し直さない。
-  - なぜ：repository や利用者を足すたびに、サーバを動かす人の手を要らなくするため。
+- Logiforge の設定（repository の一覧、GitForge とのつなぎ方）は、Logiforge が持つ。
+- 利用者が、WebUI で設定を変える（[設定](../webui/settings.md)）。サーバを起動し直さない。
+  - なぜ：repository を足すたびに、サーバを動かす人の手を要らなくするため。
 - サーバを起動するときに渡すのは、設定の置き場所と、秘密を守る鍵と、ホストに結び付くもの（待ち受けるアドレス、ディレクトリ）だけである。
 
 ## 権限

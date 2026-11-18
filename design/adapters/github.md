@@ -53,7 +53,7 @@ merge の要求に GitHub が次のものを返したら、アダプタは反映
 
 1. 管理者が、空の GitHub リポジトリを作る。
 2. 管理者が、利用者とエージェントに、Write の権限を与える。
-3. 管理者が、repository の名前と `owner/name` の組を、設定の画面で登録する（[repository の登録](README.md#repository-の登録)）。この組が、名前の正本である。
+3. 利用者が、repository の名前と `owner/name` の組を、設定の画面で登録する（[repository の登録](README.md#repository-の登録)）。この組が、名前の正本である。
 4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで用意のコミットを置く。
    - 根のコミット：contents API で、根の仮説のファイルを置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。
    - 背景情報があれば、2 つ目のコミット：Git Data API（tree と commit を作り、`main` の ref を進める）で、残りのファイルを 1 つのコミットにまとめる。trailer `Logiforge-Init-Signature:` を付ける。
@@ -68,15 +68,12 @@ GitHub を使う構成では、[認証](../backend/ports/authentication.md) の�
 
 - 主体は、GitHub のアカウント（人と、エージェントの機械用アカウント）である。
 - API は GitHub のトークンを受け取り、要求ごとに `GET /user` で主体を確かめる。結果を保持しない。
-- 利用者と管理者は、WebUI で、Logiforge の GitHub App でサインインする（[サインイン](../webui/auth.md)）。
-- 主体の種類は、管理者が設定の画面で決める（[設定](../settings/README.md)）。
-  - `user` とみなすのは、Logiforge の GitHub App のトークンを持ち、かつ設定に登録した人（GitHub のアカウント名か、organization の team）だけである。
-    - Logiforge の GitHub App のトークンかは、`POST /applications/{client_id}/token` を、App の client_id と client secret で呼んで確かめる。なぜ：ほかのトークン（gh のトークンなど）を持つ主体を、`user` にしないため。
-      - GitHub は、ほかのアプリのトークンには 404 を返す。client secret が違えば 401 を返す。
-    - team の所属は、主体のトークンで `GET /user/teams` を呼んで確かめる。App に Organization の Members の Read が要る（[GitHub App](github-app.md#github-app)）。
-    - アカウント名と team の名前は、大文字と小文字を区別せずに比べる。
+- 利用者は、WebUI で、Logiforge の GitHub App でサインインする（[サインイン](../webui/auth.md)）。
+- 主体の種類は、リポジトリの権限で決める。名簿は持たない（[利用者の決め方](../settings/users.md#利用者の決め方)）。
+  - `user`：Logiforge の GitHub App のトークンを持ち、登録した GitHub リポジトリのどれかに Write 以上の権限がある人
+    - App のトークンかは、`POST /applications/{client_id}/token` を、App の client_id と client secret で呼んで確かめる。GitHub は、ほかのアプリのトークンには 404 を、client secret が違えば 401 を返す。
+    - 権限は、主体のトークンで `GET /user/installations` と `GET /user/installations/{installation_id}/repositories` を呼び、`permissions.push` を見る。
   - それ以外の GitHub のアカウントのトークンは、`client` である。
-  - 管理者も、同じく GitHub App のトークンで確かめる（[管理者を確かめる](../settings/admins.md#管理者を確かめる)）。
 - 読める repository は、主体のトークンで、登録した GitHub リポジトリを読めるかで決める。
   - user access token で読めるのは、App が install されていて、かつその人が読めるリポジトリだけである。
 - どの操作を使えるかの判定は、バックエンドの [認可](../backend/README.md) が行う。

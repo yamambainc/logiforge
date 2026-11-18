@@ -38,7 +38,7 @@
   - なぜ：URL やコマンドの引数にトークンを書くと、プロセスの一覧やログに残るから。
 - worker とバックエンドが git を読む資格情報は、同じ、読むだけの権限のものにする。どちらも、設定の DB から読む（[秘密の暗号化](../settings/secrets.md#秘密ごとの鍵)）。
   - credential helper は、GitForge の URL にだけ設定する。ほかの URL に、トークンを渡さないため。
-  - GitHub：Logiforge の GitHub App の installation token（Read だけ。[installation token](github-app.md#installation-token)）
+  - GitHub：バックエンドが作り、設定の DB に置いた、Read だけの installation token（[worker のトークン](github-app.md#worker-のトークン)）。worker は、App の秘密鍵を持たない
     - installation token は 1 時間で切れるので、git の操作のたびに、そのときのトークンを helper に渡す。
   - Forgejo：`read:repository`、`read:organization`、`read:issue` だけを持つ、worker のためのユーザーのトークン（[Forgejo アダプタ](forgejo.md)）
 

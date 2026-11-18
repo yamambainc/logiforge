@@ -22,7 +22,7 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 15. [差分の重ね表示と過去の時点](overlay.md)：apply request を反映したあとの姿と、過去の `main` の姿
 16. [Markdown と Mermaid の表示](markdown.md)：利用者とエージェントが書く文章の示し方と、図を sandbox の iframe で描くこと
 
-セットアップと設定の画面が従う決まり（設定の DB、管理者）は、[設定](../settings/README.md) に書く。
+セットアップと設定の画面が従う決まり（設定の DB、利用者）は、[設定](../settings/README.md) に書く。
 
 ## WebUI の決まり
 

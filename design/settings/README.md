@@ -7,8 +7,8 @@
 1. このページ：起動時に渡すものと、設定の DB に置くもの
 2. [秘密の暗号化](secrets.md)：秘密ごとの鍵と、worker から隠すもの
 3. [設定の DB](database.md)：DB の種類と、置く表
-4. [初回のセットアップ](setup.md)：使い捨てのコード、GitHub App の作成、最初の管理者
-5. [管理者](admins.md)：設定を変えられる主体
+4. [初回のセットアップ](setup.md)：使い捨てのコード、GitHub App の作成、最初の利用者
+5. [利用者](users.md)：利用者の決め方と、設定を変えられる主体
 
 ## 起動時に渡すもの
 
@@ -23,22 +23,21 @@
 
 ほかの設定は、すべて設定の DB に置く。
 
-- なぜ：repository や利用者を足すたびに、サーバを起動し直さずに済むから。管理者が WebUI から変えられる。
+- なぜ：repository を足すたびに、サーバを起動し直さずに済むから。利用者が WebUI から変えられる。
 
 ## 設定の DB に置くもの
 
 | 設定 | 構成 | 使う | 秘密 |
 |---|---|---|---|
 | 構成（GitHub を使う / Forgejo を使う） | 両方 | 両方 | |
-| GitHub App の ID、client_id、slug、秘密鍵、client secret（[GitHub アダプタ](../adapters/github-app.md#github-app)） | GitHub | 両方 | 秘密鍵と client secret |
+| GitHub App の ID、client_id、slug、秘密鍵、client secret（[GitHub アダプタ](../adapters/github-app.md#github-app)） | GitHub | バックエンド | 秘密鍵と client secret |
+| worker のための installation token と期限（[worker のトークン](../adapters/github-app.md#worker-のトークン)） | GitHub | 両方（バックエンドが書く） | ✓ |
 | GitHub の REST と画面の URL | GitHub | 両方 | |
 | Forgejo の URL（BE から、ブラウザから）、organization | Forgejo | 両方 | |
 | Forgejo の OAuth2 のアプリケーションの client_id と client secret | Forgejo | バックエンド | client secret |
 | worker のユーザーとトークン（[Forgejo アダプタ](../adapters/forgejo.md)） | Forgejo | 両方 | トークン |
 | GitHub リポジトリの repository の一覧（名前と `owner/name`）（[repository の登録](../adapters/README.md#repository-の登録)） | GitHub | 両方 | |
 | ディレクトリの repository の一覧（名前、`owner/name`、パス） | 両方 | 両方 | |
-| `user` とみなすアカウント名と team | 両方 | バックエンド | |
-| 管理者（[管理者](admins.md)） | 両方 | バックエンド | |
 | 記録の署名の秘密鍵（[記録のコメント](../adapters/records.md#記録のコメント)） | 両方 | バックエンド | ✓ |
 | 記録の署名の公開鍵 | 両方 | 両方 | |
 | WebUI の URL（サインインの `redirect_uri` に使う） | 両方 | バックエンド | |
@@ -51,10 +50,12 @@
 ## 設定を読むとき
 
 - バックエンドは、要求ごとに設定の DB を読む。メモリに保持しない。
-  - なぜ：管理者が変えた設定が、次の要求からそのまま効くから。何台並べても、食い違わない（[状態を持たない](../backend/README.md#状態を持たない)）。
+  - なぜ：利用者が変えた設定が、次の要求からそのまま効くから。何台並べても、食い違わない（[状態を持たない](../backend/README.md#状態を持たない)）。
 - worker は、repository の一覧を読み直すたびに、設定の DB を読む（[見回り](../backend/worker/patrol.md)）。
   - 見回りの間隔と git の操作の時間の上限は、読み直したあとの見回りから効く。
-- worker は、設定の DB を読むだけで、書かない。
+- worker は、設定の DB を読むだけで、書かない。OS の権限で、書けないようにする（[設定の DB](database.md#db-の種類)）。
+  - worker が書くもの（ハートビート、スナップショット）は、clone のディレクトリと置き場に書く（[ハートビート](../backend/worker/operation.md#ハートビート)）。
+- バックエンドは、要求のほかに、1 分ごとに worker のトークンを作り直す（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。
 - 設定の DB に、セットアップの終わった記録がなければ、バックエンドは、セットアップの API、サインインの中継、WebUI だけを返す（[セットアップが終わるまでのほかの API](../api/endpoints/setup.md#セットアップが終わるまでのほかの-api)）。worker は、見回りをせずに待つ。
 
 ## バックアップ

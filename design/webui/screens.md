@@ -15,7 +15,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
 | セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
-| 設定 | `/settings?tab=`（`tab` は `repository`、`users`、`admins`、`gitforge`、`record-keys`） |
+| 設定 | `/settings?tab=`（`tab` は `repository`、`gitforge`、`record-keys`） |
 | サインインから戻る先 | `/oauth/callback`（[サインインの流れ](signin-flow.md)） |
 
 ## 画面ごとの API
@@ -74,7 +74,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - ダッシュボードの件数には、単位（件）を添える。
 - 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[すべての画面の決まり](mobile.md#すべての画面の決まり)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
 
-セットアップと設定の画面が使う API は、[セットアップと設定の画面と API](screens-admin.md) に書く。
+セットアップと設定の画面が使う API は、[セットアップと設定の画面と API](screens-setup.md) に書く。
 
 ## WebUI のための API
 

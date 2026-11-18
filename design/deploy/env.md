@@ -25,10 +25,10 @@
 - 置き場を静的ファイルストレージにするときは、`LOGIFORGE_STORE_DIR` のかわりに、ストレージの接続先と鍵を起動時に渡す（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md#設定)）。
 - worker には、`LOGIFORGE_BACKEND_KEY` を渡さない（[秘密の暗号化](../settings/secrets.md#2-つの鍵)）。
 - `logiforge worker-health` には、worker と同じ環境変数を渡す（[ハートビート](../backend/worker/operation.md#ハートビート)）。
-- `logiforge settings` のコマンド（`add-admin`、`rekey`）にも、`LOGIFORGE_DB` を渡す（[管理者](../settings/admins.md)、[鍵を取り替える](../settings/secrets.md#鍵を取り替える)）。
+- `logiforge settings rekey` にも、`LOGIFORGE_DB` を渡す（[鍵を取り替える](../settings/secrets.md#鍵を取り替える)）。
 
 ## 設定の DB に置くもの
 
-上の表のほかの設定は、環境変数では渡さない。設定の DB に置き、管理者が設定の画面で変える。
+上の表のほかの設定は、環境変数では渡さない。設定の DB に置き、利用者が設定の画面で変える。
 
 - 何を置くかは、[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの) に書く。

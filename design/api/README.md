@@ -26,9 +26,8 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - WebUI のサインインの中継（`/v1/oauth/` の下の 2 つ）も、認証を求めない。
   - なぜ：サインインの前に呼ぶから（[サインインの中継](../webui/oauth-relay.md)）。
 - セットアップの API（`/v1/setup` の下）は、トークンではなく、セットアップのコードで守る（[セットアップの API](endpoints/setup.md#認証)）。
-  - なぜ：最初の管理者が決まる前に呼ぶから。
-- 設定の API（`/v1/settings` の下）は、管理者だけが使える（[設定の API](endpoints/settings.md#認証と認可)）。
-  - 管理者のトークンは、WebUI のサインインで得たものに限る（[管理者を確かめる](../settings/admins.md#管理者を確かめる)）。
+  - なぜ：最初の利用者が決まる前に呼ぶから。
+- 設定の API（`/v1/settings` の下）は、`user` だけが使える（[設定の API](endpoints/settings.md#認証と認可)）。
 - セットアップが終わるまで、ほかの API は `setup_required`（503）を返す（[セットアップが終わるまでのほかの API](endpoints/setup.md#セットアップが終わるまでのほかの-api)）。
 
 ## repository

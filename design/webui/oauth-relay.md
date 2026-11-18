@@ -19,13 +19,13 @@ BE は、WebUI のサインインのために、次の 2 つの要求を持つ�
   - client_id と client secret（GitHub App のもの、または Forgejo の OAuth2 のアプリケーションのもの）
   - WebUI の URL。`redirect_uri` は、その `/oauth/callback` である
   - GitHub の画面の URL、または Forgejo の URL（BE から、ブラウザから）
-  - なぜ：管理者が設定の画面で入れ直した client secret が、次の要求から効くようにするため（[設定を読むとき](../settings/README.md#設定を読むとき)）。
+  - なぜ：利用者が設定の画面で入れ直した client secret が、次の要求から効くようにするため（[設定を読むとき](../settings/README.md#設定を読むとき)）。
 - client secret は、バックエンドの鍵で暗号化してある（[秘密の暗号化](../settings/secrets.md)）。
 - Forgejo を使う構成では、authorize の URL を、ブラウザから Forgejo への URL から作る。トークンのエンドポイントは、BE から Forgejo への URL から作る。
   - なぜ 2 つか：BE から Forgejo への URL が、内部の名前で、ブラウザから開けない配置があるから。
 - GitHub を使う構成では、どちらも GitHub の画面の URL から作る。
 - 構成と、その GitForge の client_id がまだ設定の DB になければ、どちらの要求も `setup_required`（503）を返す。
-  - 初回のセットアップのあいだも、それがそろえば、2 つの要求は答える。なぜ：最初の管理者は、セットアップの途中でサインインするから（[初回のセットアップ](../settings/setup.md#流れ)）。
+  - 初回のセットアップのあいだも、それがそろえば、2 つの要求は答える。なぜ：最初の利用者は、セットアップの途中でサインインするから（[初回のセットアップ](../settings/setup.md#流れ)）。
 
 ## 開いたままの代理にしない
 

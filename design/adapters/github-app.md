@@ -10,9 +10,10 @@ Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。
 
 | 使う者 | トークン | 要る権限 |
 |---|---|---|
-| 利用者と管理者（人） | WebUI のサインインで得る、GitHub App の user access token | App の権限と、その人のリポジトリの権限の、両方にあるもの |
+| 利用者（人） | WebUI のサインインで得る、GitHub App の user access token | App の権限と、その人のリポジトリの権限の、両方にあるもの |
 | opener と reviewer（人とエージェント） | `gh auth login`（GitHub CLI の OAuth App）で得たトークン | スコープ `repo`。リポジトリへの Write（ブランチの push、pull request とコメントとレビュー、reviewer は merge） |
-| worker と、バックエンドの作業用の git の複製 | GitHub App の installation token | Contents、Issues、Pull requests、Metadata の Read だけ |
+| worker | バックエンドが作った installation token（[worker のトークン](#worker-のトークン)） | Contents、Issues、Pull requests、Metadata の Read だけ |
+| バックエンドの作業用の git の複製 | GitHub App の installation token | 同じ |
 
 - reviewer に merge の権限が要る。なぜ：反映は、`approve` をした reviewer のトークンで merge するから（[反映の手順](../backend/merge.md)）。
 - opener と reviewer のトークンの決まりは、[CLI の認証](../cli/auth.md) に書く。
@@ -32,12 +33,13 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 | Repository の Issues | Read and write | 利用者が、人への依頼に回答し、issue を閉じる。worker が記録のコメントを読む |
 | Repository の Pull requests | Read | WebUI で apply request を読む。worker が反映かを判定する |
 | Repository の Metadata | Read | GitHub が必ず求める |
-| Organization の Members | Read | バックエンドが、利用者の team の所属を確かめる（[認証](github.md#認証)） |
 
 - Webhook は使わない。反映かの判定は、中身だけで決める（[反映かの判定](../backend/verify/README.md)）。
 - 書く権限は、user access token のためだけにある。installation token には、Read だけを求める（下の「installation token」）。
-  - なぜ 1 つの App にまとめるか：管理者が作り、install し、秘密を守るものを、1 つにするため。
-- 管理者が、App を、登録する GitHub リポジトリの owner（organization か個人）に install し、リポジトリを選ぶ。owner が複数なら、それぞれに install する。
+- App の秘密鍵を読むのは、バックエンドだけである。worker には渡さない（[秘密ごとの鍵](../settings/secrets.md#秘密ごとの鍵)）。
+  - なぜ 1 つの App にまとめるか：作り、install し、秘密を守るものを、1 つにするため。
+- 利用者が、App を、登録する GitHub リポジトリの owner（organization か個人）に install し、リポジトリを選ぶ。owner が複数なら、それぞれに install する。
+  - install には、その owner の管理者の権限が要る。
 - App が owner に install されていないか、権限が足りなければ、GitHub が断る。worker は、その repository の見回りを誤りにする（ログに出す）。
 
 ## installation token
@@ -47,12 +49,26 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 3. `POST /app/installations/{installation_id}/access_tokens` を、`repositories`（その owner の登録したリポジトリの名前）と `permissions`（Contents、Issues、Pull requests、Metadata の Read）を付けて呼ぶ。
    - なぜ絞るか：App の権限と install で選んだリポジトリが広くても、worker のトークンを、登録したリポジトリを読むことだけにするため。
 
-- installation token は、owner ごとに 1 つ持ち、使い回す。切れるまでの残りが 20 分より短くなったら、次に使うときに作り直す。
-  - なぜ 20 分：git の操作 1 回の時間の上限（既定 10 分）のあいだに、切れないようにするため。git は、HTTP の要求を始めるときにだけトークンを使う。
-  - そのため、GitHub を使う構成では、git の操作の時間の上限を 20 分より短くする。長い値は、設定の画面で受け付けない。
-- バックエンドの作業用の複製は、fetch するときにだけトークンを求める。
+- バックエンドの作業用の複製は、fetch するときにだけトークンを作る。切れるまでの残りが 20 分より短くなるまで、使い回す。
 - git には、git の操作のたびに、そのときのトークンを credential helper で渡す（[git アダプタの資格情報](git.md#資格情報)）。
 - REST の上限は、installation ごとに 1 時間に 5,000 回からである。
+
+## worker のトークン
+
+worker は、App の秘密鍵を持たない。バックエンドが作った installation token を、設定の DB から読んで使う。
+
+- バックエンドは、1 分ごとに、登録した repository の owner ごとに、設定の DB の worker のトークンを確かめる。
+  - なければ、または切れるまでの残りが 40 分より短ければ、作り直して、期限と一緒に置く（共有の鍵で暗号化する。[秘密ごとの鍵](../settings/secrets.md#秘密ごとの鍵)）。
+  - repository を登録したときと外したときは、その owner のトークンを、すぐに作り直す。なぜ：トークンを、登録したリポジトリだけに絞るから。
+  - バックエンドが何台かあれば、どれも同じことをする。同じ owner のトークンを 2 台が作っても、どちらも使える。
+- worker は、git の操作と REST を始めるたびに、その owner のトークンを設定の DB から読む。
+  - 切れるまでの残りが 20 分より短ければ、その owner の repository の見回りを飛ばし、ログに出す。次の見回りで、読み直す。
+  - なぜ 20 分：git の操作 1 回の時間の上限（既定 10 分）のあいだに、切れないようにするため。git は、HTTP の要求を始めるときにだけトークンを使う。
+  - そのため、GitHub を使う構成では、git の操作の時間の上限を 20 分より短くする。長い値は、設定の画面で受け付けない。
+- バックエンドが止まると、トークンは作り直されない。
+  - トークンは作ってから 1 時間で切れるので、worker は、バックエンドが止まってから 20〜40 分で見回りを止め、ログに出して待つ。バックエンドが戻れば、次の見回りから続ける。
+  - なぜ受け入れるか：バックエンドが止まっているあいだは、反映も止まるから。止まっているあいだに入った変更は、戻ったあとに順に取り込む。
+- なぜこの形にするか：App を 1 つにしたまま、worker を乗っ取られても、GitHub に書けないようにするため。
 
 ## user access token
 

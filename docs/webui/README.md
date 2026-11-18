@@ -1,7 +1,7 @@
 # WebUI
 
 人間が Logiforge を使う画面の決まりを確かめるときに読む。
-WebUI を使うのは、利用者と管理者である。利用者ができることは、[役割](../roles/README.md) に書く。
+WebUI を使うのは、利用者である。利用者ができることは、[役割](../roles/README.md) に書く。
 
 ## 画面
 
@@ -10,8 +10,8 @@ WebUI を使うのは、利用者と管理者である。利用者ができる�
 - [人への依頼](human-requests.md)：選んだ repository の人への依頼を一覧し、回答する。
 - [apply request と履歴](history.md)：apply request の差分とレビューと、反映したあとの木を見る。過去の時点の木を見る。
 - [ダッシュボード](dashboard.md)：作業の状況を見る。
-- [セットアップ](setup.md)：管理者が、初めて動かしたときに、GitForge とのつなぎ方と最初の管理者を決める。
-- [設定](settings.md)：管理者が、repository、利用者、管理者、GitForge とのつなぎ方を変える。
+- [セットアップ](setup.md)：サーバを動かす人が、初めて動かしたときに、GitForge とのつなぎ方と最初の利用者を決める。
+- [設定](settings.md)：利用者が、repository と GitForge とのつなぎ方を変える。
 
 ## 共通の決まり
 

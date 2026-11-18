@@ -54,18 +54,18 @@
 GitHub の REST の上限は、使うトークンで 2 つに分かれる（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
 
 - 主体ごとの上限：バックエンドは、要求を送った主体のトークンで GitHub を読み書きする。上限は、主体のアカウントごとに 1 時間 5,000 回である。同じアカウントのほかのトークン（`gh auth login` のものなど）と合わせて数える。
-- installation の上限：worker は、App の installation token で読む。上限は、installation（owner）ごとに 1 時間 5,000 回からである（repository と利用者が増えると、12,500 回まで増える）。
+- installation の上限：worker は、バックエンドが作った App の installation token で読む。上限は、installation（owner）ごとに 1 時間 5,000 回からである（repository と利用者が増えると、12,500 回まで増える）。
 
 | 要求 | REST の回数 | 数える上限 |
 |---|---|---|
-| どの要求も（認証） | 3〜4 回（主体、Logiforge の App のトークンかの確かめ、team の所属、リポジトリの権限） | 主体ごと（App のトークンかの確かめは App） |
+| どの要求も（認証） | 2 回（主体、Logiforge の App のトークンかの確かめ）＋ 60 秒に 1 回、installation の数 + 1 回（リポジトリの権限。[権限のキャッシュ](../settings/users.md#権限のキャッシュ)） | 主体ごと（App のトークンかの確かめは App） |
 | 作業の一覧 | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧）＋ open の PR ごとに 1 回（レビュー） | 主体ごと |
 | apply request を読む | 3 回（PR、PR のコメント、レビュー） | 主体ごと |
 | 木のノードを読む | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧） | 主体ごと |
 | 書き込み | 1〜3 回（PR の作成・merge・close、レビュー、コメント、ラベル） | 主体ごと |
 | worker の反映かの判定 | `main` のコミット 1 つに 1 回（`commits/{sha}/pulls`。[重さ](../backend/verify/README.md#重さ)） | installation |
 | worker の記録の控え | repository ごとに、記録を読む間隔ごとに 1 回（`issues/comments?since=`。[記録の控え](../backend/verify/records.md)） | installation |
-| worker の installation token | owner ごとに、token を作り直すたびに 2 回 | App の JWT。installation の上限には数えない |
+| worker の installation token | owner ごとに、バックエンドが作り直すたびに 2 回（20 分ごと） | App の JWT。installation の上限には数えない |
 
 - worker の `ls-remote` と `fetch` は、REST の上限には数えない。git の操作の、乱用を防ぐ制限には数える（[worker](#worker)）。
 - worker の REST は、ほとんどが記録の控えである。

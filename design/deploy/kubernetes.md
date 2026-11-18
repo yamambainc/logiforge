@@ -56,7 +56,7 @@ spec:
       livenessProbe:
         exec: { command: ["logiforge", "worker-health"] }
       volumeMounts:
-        - { name: config, mountPath: /var/lib/logiforge/config }
+        - { name: config, mountPath: /var/lib/logiforge/config, readOnly: true }
         - { name: worker, mountPath: /var/lib/logiforge/worker }
         - { name: store, mountPath: /var/lib/logiforge/store }
         - { name: tmp, mountPath: /tmp }
@@ -88,6 +88,6 @@ spec:
     - バックエンドは、起動のときに、`LOGIFORGE_GIT_CACHE_DIR` の下の古い複製（`workcopy-*`）を消す。そのため、`LOGIFORGE_GIT_CACHE_DIR` は、プロセスごとの場所にする。1 台のマシンで、コンテナに分けずにバックエンドを何台か動かすときは、それぞれに別の場所を渡す。
 - 設定の DB は、タスクの中で共有する永続のボリューム（`logiforge-config`）に置く（[タスクの形](README.md#タスクの形)）。
   - `logiforge-config` は、ブロックのストレージ（`ReadWriteOnce`）にする。NFS などのボリュームにしない（[設定の DB](../settings/database.md#db-の種類)）。
-  - worker も、読み書きでマウントする。なぜ：SQLite は、WAL のモードでは、読むだけで開いても、`-shm` のファイルに書くから。
+  - worker は、読むだけでマウントする。なぜ：worker に設定の DB を書かせないため（[設定の DB](../settings/database.md#db-の種類)）。
 - worker には、Secret のうち共有の鍵（`shared_key`）だけをマウントする（`items`）。バックエンドの鍵を渡さない（[秘密の暗号化](../settings/secrets.md#2-つの鍵)）。
 - worker の `livenessProbe` は、`exec` で `logiforge worker-health` を動かす（[ヘルスチェック](README.md#ヘルスチェック)）。

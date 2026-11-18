@@ -27,9 +27,9 @@
 
 利用者が、WebUI の repository の作成で、「元の repository」を選んで作る。API は、`createRepository` に `migrate_from`（元の repository の名前）を付ける（[openapi.yaml](../api/openapi.yaml)）。根の主文は、渡さない。
 
-1. 管理者が、移す前に、元のリポジトリを GitForge で archive にしておく（読むだけにする）。バックエンドは、利用者のトークンで元のリポジトリを読み、archive になっていなければ断る。
+1. リポジトリの管理者が、移す前に、元のリポジトリを GitForge で archive にしておく（読むだけにする）。バックエンドは、利用者のトークンで元のリポジトリを読み、archive になっていなければ断る。
    - なぜ先に archive にするか：移すあいだに、元の repository の `main` が進まないようにするため。archive のリポジトリには、pull request を作れず、merge もできない。
-   - なぜ管理者が行うか：Logiforge は、GitForge に書くための自分のアカウントを持たず（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）、archive にはリポジトリの管理者の権限が要るから。移す利用者が、その権限を持つとは限らない。
+   - なぜリポジトリの管理者が行うか：Logiforge は、GitForge に書くための自分のアカウントを持たず（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）、archive にはリポジトリの管理者の権限が要るから。移す利用者が、その権限を持つとは限らない。
 2. 元の repository の `main` の先頭のスナップショットから、`tree/` と `artifacts/` のファイルを読み、利用者のトークンで、ディレクトリの下に置く用意のコミットを置く（[履歴](history.md) の「用意のコミット」）。
 3. 送り直しでは、用意のコミットがまだなければ、もう一度置く。
 

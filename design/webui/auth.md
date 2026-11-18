@@ -13,8 +13,8 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 
 | 構成 | サインインに使うアプリ | 作る人 |
 |---|---|---|
-| GitHub を使う | Logiforge の GitHub App（[GitHub App とトークン](../adapters/github-app.md)） | 管理者が、初回のセットアップで manifest flow で作る（[初回のセットアップ](../settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)） |
-| Forgejo を使う | Forgejo の OAuth2 のアプリケーション（confidential client） | 管理者が、Forgejo で作る（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)） |
+| GitHub を使う | Logiforge の GitHub App（[GitHub App とトークン](../adapters/github-app.md)） | サーバを動かす人が、初回のセットアップで manifest flow で作る（[初回のセットアップ](../settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)） |
+| Forgejo を使う | Forgejo の OAuth2 のアプリケーション（confidential client） | サーバを動かす人が、Forgejo で作る（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)） |
 
 - authorize とトークンのエンドポイントは、次のとおり。
   - GitHub：GitHub の画面の URL（既定は `https://github.com`）の `/login/oauth/authorize` と `/login/oauth/access_token`
@@ -43,7 +43,9 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 
 - GitHub App のトークンの権限は、スコープでは決まらない。App の権限と、その人のリポジトリの権限の、両方にあるものになる（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
 - authorize の `scope` には、`offline_access` だけを付ける。
-  - なぜ：App の設定によらず、user access token が 8 時間で切れるようにするため。GitHub は、`offline_access` を付けると、期限つきのトークンとリフレッシュトークンを返す。リフレッシュトークンは、BE が除く。
+  - GitHub は、`offline_access` を付けると、App の設定で期限を切っていても、期限つきの user access token（8 時間）とリフレッシュトークンを返す。リフレッシュトークンは、BE が除く。
+  - なぜ：期限のないトークンは、盗まれたときに、利用者が許可を取り消すまで使えるから。
+- BE は、交換の応答に `expires_in` がなければ、トークンを返さずに `unavailable` を返す。
 - 盗まれたときに書ける範囲は、App が install されていて、その人が書けるリポジトリの、App の権限の中である。
 
 ### Forgejo を使う構成
@@ -84,7 +86,7 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 ## 受け入れた危険
 
 - スクリプトが注入されると、そのページが開いているあいだ、メモリのアクセストークンは読まれ、Logiforge の API がその利用者として使われうる（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
-  - 管理者のトークンなら、設定の API も使われうる（[管理者を確かめる](../settings/admins.md#管理者を確かめる)）。
+  - 設定の API も使われうる（[利用者の決め方](../settings/users.md#利用者の決め方)）。
 - CSP の `default-src 'self'` は、`fetch` や画像で外のオリジンへ送ることを防ぐ。ただし、ページの移動（`location.href` や `window.open` で外の URL を開く）でトークンを外へ送ることは、止めない（[スクリプトの注入への備え](security.md)）。
 - 外へ渡ったときに使えるのは、アクセストークンの寿命（GitHub は 8 時間、Forgejo は 1 時間）までである。リフレッシュトークンはブラウザにないので、それより延びない。
 - トークンを保存しないので、ページを閉じたあとに端末から盗まれることはない。
