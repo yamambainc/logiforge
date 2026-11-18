@@ -10,13 +10,13 @@
    - `--bg` の設定は、再起動のあとも残る。やめるときは `sudo tailscale serve --https=443 off`。
 3. tailnet のだれが届くかは、Tailscale のアクセス制御で絞る。
 
-## OAuth App
+## GitHub App とサインイン
 
-- Authorization callback URL と `LOGIFORGE_OAUTH_REDIRECT_URI` を、`https://<host>.<tailnet>.ts.net/oauth/callback` にする。
-- GitHub は、この URL に自分からつながらない。ブラウザを、この URL にリダイレクトするだけである。そのため、tailnet の中のブラウザなら、サインインできる。
-  - code をトークンに換えるのは、バックエンドから `github.com` への外向きの要求である（[サインインの中継](../../../design/webui/oauth-relay.md)）。
+- セットアップの画面は、`https://<host>.<tailnet>.ts.net/setup` で開く。開いた URL が WebUI の URL になり、GitHub App の callback（`https://<host>.<tailnet>.ts.net/oauth/callback`）になる（[初回のセットアップ](../../../design/settings/setup.md)）。
+  - 名前を変えたときは、設定の画面で WebUI の URL を変え、GitHub の App の設定の画面で callback URL も変える。
+- GitHub は、この URL に自分からつながらない。ブラウザを、この URL にリダイレクトするだけである。そのため、tailnet の中のブラウザなら、App を作れて、サインインできる。
+  - manifest の code と、サインインの code をトークンに換えるのは、バックエンドから `api.github.com` と `github.com` への外向きの要求である（[サインインの中継](../../../design/webui/oauth-relay.md)）。
 - WebUI は、`https://` の名前で開く。tailnet の IP の `http://` で開くと、ブラウザが PKCE の計算（Web Crypto）を許さず、サインインできない。
-- Client ID か client secret が正しくないと、バックエンドは主体のトークンを確かめられず、API が `internal`（500）を返す。ログに `github: 401 Bad credentials` が出たら、この 2 つを見直す。
 
 ## CLI とエージェント
 

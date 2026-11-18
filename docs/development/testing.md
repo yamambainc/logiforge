@@ -24,6 +24,9 @@ kill "$FORGEJO_PID"
   - logiforge をビルドする。
   - `serve` と `worker` を起動する。
   - CLI と API で、利用の流れを通す。
+- 設定は、テストが、起動の前に設定の DB に書く。起動時に渡すのは、DB の場所と 2 つの鍵と、ホストに結び付くものだけである（[環境変数](../../design/deploy/env.md)）。
+  - 初回のセットアップの流れ（ログのコードから最初の利用者まで）は、`TestE2ESetupForgejo` が、セットアップの API で通す（Forgejo の構成だけ）。
+- 利用者 alice のトークンは、テストが Forgejo に登録した OAuth2 のアプリケーションで、WebUI のサインインと同じ流れで得る。エージェントは personal access token を使い、`client` になる（[利用者](../../design/settings/users.md)）。
 
 ```sh
 go test -count=1 -timeout 20m -v ./internal/e2e/

@@ -14,17 +14,26 @@ Forgejo、worker、バックエンドを、手元のコンテナで動かすと�
 
 ```sh
 docker compose build
-scripts/compose-setup.sh        # 初めの 1 回だけ。Forgejo を起動し、organization、team、ユーザー、トークンを作る
+scripts/compose-setup.sh        # 初めの 1 回だけ。鍵を作り、Forgejo に organization、team、ユーザー、OAuth2 のアプリケーションを作り、設定の DB に書く
 docker compose up -d --wait
 ```
 
 - バックエンドの API は、`http://localhost:8080` で待ち受ける。
 - Forgejo は、`http://localhost:3000` で待ち受ける。
 
-## 秘密とトークン
+## 設定と秘密
 
-- 秘密は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。
+- 起動時に渡すのは、設定の DB の場所と 2 つの鍵と、ホストに結び付くものだけである（[compose.yaml](../../compose.yaml)、[環境変数](../../design/deploy/env.md)）。
+- 2 つの鍵は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。worker には、バックエンドの鍵を渡さない。
+- ほかの設定（Forgejo の URL と organization、OAuth2 のアプリケーション、worker のトークン、記録の鍵）は、`scripts/compose-setup.sh` が `logiforge settings load` で設定の DB に書く（[設定のコマンド](../../design/settings/README.md#設定のコマンド)）。
+  - そのため、compose では、セットアップの画面を通らない。
+  - 設定の DB は、ボリューム `config` に置く。worker は、読むだけでマウントする。
+
+## トークン
+
 - 利用者 alice のトークンは、`.compose/alice_token` にある。
+  - WebUI のサインインと同じ流れ（Forgejo の OAuth2 のアプリケーション）で得たトークンである。1 時間で切れる。
+  - なぜ：利用者（`user`）になるのは、WebUI のサインインで得たトークンだけだから。personal access token では `client` になる（[利用者](../../design/settings/users.md)）。
 - エージェントのトークンは、次のファイルにある。
   - opener：`.compose/agent_token`
   - reviewer：`.compose/reviewer_token`
@@ -33,10 +42,10 @@ docker compose up -d --wait
 
 - WebUI は `http://localhost:8080/` で開く。
   - alice とパスワード（`.compose/alice_password`）で Forgejo にログインして、サインインする。
-- CLI で使うときは、次の 2 つを行う。
+- CLI で使うときは、エージェントのトークンで、次の 2 つを行う。CLI の主体は `client` である。
 
 ```sh
-logiforge auth login --with-token --host http://localhost:8080 < .compose/alice_token
+logiforge auth login --with-token --host http://localhost:8080 < .compose/agent_token
 logiforge auth setup-git --url http://localhost:3000 --insecure
 ```
 

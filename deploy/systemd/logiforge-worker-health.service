@@ -6,7 +6,7 @@ After=logiforge-worker.service
 
 [Service]
 Type=oneshot
-# worker-health は、LOGIFORGE_WORKER_DIR と LOGIFORGE_WORKER_INTERVAL を読む。
+# worker-health は、LOGIFORGE_WORKER_DIR と、設定の DB（LOGIFORGE_DB）の見回りの間隔を読む。鍵は要らない。
 EnvironmentFile=/etc/logiforge/logiforge.env
 # root で動かす。worker を起動し直すのに、systemctl が要るから。確かめるのは logiforge のユーザーで行う。
 # worker を止めているあいだ（更新など）は、何もしない。

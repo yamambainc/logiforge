@@ -3,22 +3,20 @@
 [Unit]
 Description=Logiforge backend
 Documentation=https://github.com/yamambainc/logiforge/blob/main/docs/adoption/linux-host/README.md
-# 置き場のディレクトリは、worker のユニットが作る。
-Wants=network-online.target logiforge-worker.service
-After=network-online.target logiforge-worker.service
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=exec
 User=logiforge
 Group=logiforge
 EnvironmentFile=/etc/logiforge/logiforge.env
-# 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
-LoadCredential=github_app_key:/etc/logiforge/secrets/github_app_key.pem
-LoadCredential=record_keys:/etc/logiforge/secrets/record_keys
-LoadCredential=oauth_client_secret:/etc/logiforge/secrets/oauth_client_secret
-Environment=LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=%d/github_app_key
-Environment=LOGIFORGE_RECORD_KEYS_FILE=%d/record_keys
-Environment=LOGIFORGE_OAUTH_CLIENT_SECRET_FILE=%d/oauth_client_secret
+# 鍵は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。バックエンドは 2 つの鍵を持つ。
+# ほかの設定と秘密は、設定の DB に置く（design/settings/README.md）。
+LoadCredential=backend_key:/etc/logiforge/secrets/backend_key
+LoadCredential=shared_key:/etc/logiforge/secrets/shared_key
+Environment=LOGIFORGE_BACKEND_KEY_FILE=%d/backend_key
+Environment=LOGIFORGE_SHARED_KEY_FILE=%d/shared_key
 # tailnet の外から直接届かないように、ループバックだけで待ち受ける。
 Environment=LOGIFORGE_ADDR=127.0.0.1:8080
 # 作業用の git の複製を置く。起動のときに、古い複製を消す（design/deploy/kubernetes.md）。
@@ -27,7 +25,10 @@ ExecStart=/usr/local/bin/logiforge serve
 Restart=on-failure
 RestartSec=5s
 
-# 書ける場所は、作業用の git の複製だけである。置き場（/var/lib/logiforge/store）は、読むだけである（ProtectSystem=strict）。
+# 書ける場所は、設定の DB と、作業用の git の複製だけである。置き場（/var/lib/logiforge/store）は、読むだけである（ProtectSystem=strict）。
+# 3 つのディレクトリは、入れるときに作る（docs/adoption/linux-host/README.md）。
+ReadWritePaths=/var/lib/logiforge/config
+ReadOnlyPaths=/var/lib/logiforge/store
 CacheDirectory=logiforge-serve
 CacheDirectoryMode=0750
 UMask=0027

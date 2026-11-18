@@ -11,16 +11,19 @@ Type=exec
 User=logiforge
 Group=logiforge
 EnvironmentFile=/etc/logiforge/logiforge.env
-# 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
-LoadCredential=github_app_key:/etc/logiforge/secrets/github_app_key.pem
-Environment=LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=%d/github_app_key
+# 鍵は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
+# worker には、共有の鍵だけを渡す。バックエンドの鍵は渡さない（design/settings/secrets.md の「2 つの鍵」）。
+LoadCredential=shared_key:/etc/logiforge/secrets/shared_key
+Environment=LOGIFORGE_SHARED_KEY_FILE=%d/shared_key
 ExecStart=/usr/local/bin/logiforge worker
 Restart=on-failure
 RestartSec=5s
 
 # 書ける場所は、clone と置き場だけである（/var/lib/logiforge/worker、/var/lib/logiforge/store）。
-StateDirectory=logiforge/worker logiforge/store
-StateDirectoryMode=0750
+# 設定の DB は、読むだけである（design/settings/database.md）。バックエンドと同じユーザーで動くので、ファイルの権限でなく、
+# ここで読むだけにする。3 つのディレクトリは、入れるときに作る（docs/adoption/linux-host/README.md）。
+ReadWritePaths=/var/lib/logiforge/worker /var/lib/logiforge/store
+ReadOnlyPaths=/var/lib/logiforge/config
 UMask=0027
 ProtectSystem=strict
 ProtectHome=yes
