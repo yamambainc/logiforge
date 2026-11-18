@@ -24,6 +24,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 | (B) ディレクトリ | Require a pull request before merging の Required reviewers：登録したディレクトリ（例：`logiforge/**`）に、Logiforge の承認の team を 1 人の承認で付ける | Logiforge の reviewer の team（Logiforge で `approve` し、merge する人とエージェント） |
 
 - なぜ 2 つに分けるか：bypass は、そのルールセットのすべての規則に効くから。1 つにまとめると、reviewer の team が、`main` への直接の push と force push もできてしまう。
+- (B) の bypass は、(A) には効かない。reviewer の team の人も、`main` への直接の push と force push はできない。
 - 「Require branches to be up to date before merging」は使わない（[衝突](../backend/merge.md#衝突)）。
 
 Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのいない team にし、リポジトリの Write の権限を与える。
