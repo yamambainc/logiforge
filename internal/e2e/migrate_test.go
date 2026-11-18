@@ -10,7 +10,7 @@ import (
 
 // 別リポジトリ方式から、ディレクトリの repository に移す（design/directory/migrate.md）。
 //   - 元の git リポジトリが archive でなければ、移せない。
-//   - 移すと、移した先は、元の今のスナップショットツリーと同じスナップショットツリーになり、migrated_from を持つ。元は migrated_to を持ち、書けない。
+//   - 移すと、移した先は、元の今のスナップショットツリーと同じになり、migrated_from を持つ。元は migrated_to を持ち、書けない。
 func TestE2EMigrate(t *testing.T) {
 	const project = "proj"
 	w := setupFull(t, func(w *world) []string {

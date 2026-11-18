@@ -44,6 +44,8 @@ Logiforge は、apply request ごとに「レビューの材料」を返す問�
 | `story.inactivate` | そのストーリー | 同じ親仮説のほかの子ストーリー |
 | `verdict.submit`、`node.edit` | その仮説 | その仮説が属するストーリーと同じ親仮説を持つ、ほかのストーリー |
 
+根の仮説への `verdict.submit` と `node.edit` には、兄弟ストーリーはない。根の仮説は、ストーリーに属さないから。
+
 apply request の説明欄は、材料に含めない。
 
 - なぜ：opener の推論がそのまま入り、コンテキストを分けた意味がなくなるから。
