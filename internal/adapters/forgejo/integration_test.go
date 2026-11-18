@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/forgejotest"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/store"
 	"github.com/yamambainc/logiforge/internal/worker"
@@ -42,7 +43,7 @@ func setup(t *testing.T) *env {
 	e.call(admin, "POST", "/orgs", map[string]any{"username": e.org, "visibility": "private"}, nil, 201)
 	// 権限は、design/adapters/forgejo.md の「主体」のとおり。Logiforge に、書き込み主体はない。
 	users := e.team("logiforge-users", map[string]any{"permission": "write", "can_create_org_repo": true,
-		"units_map": map[string]string{"repo.code": "read", "repo.pulls": "write", "repo.issues": "write"}})
+		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}})
 	clients := e.team("agents", map[string]any{"permission": "write",
 		"units_map": map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}})
 	readers := e.team("readers", map[string]any{"permission": "read",
@@ -173,7 +174,17 @@ func TestForgejo(t *testing.T) {
 	// GitForge には、いつも、要求を送った主体のトークンで書く。repository の用意と回答は利用者、ほかはエージェント。
 	ctx := ports.WithToken(context.Background(), e.tokens["agent"])
 	asAlice := ports.WithToken(context.Background(), e.tokens["alice"])
-	cfg := Config{URL: e.url, Org: e.org, UserTeam: "logiforge-users", WorkerLogin: e.login("reader"), MergeWait: 5 * time.Second}
+	// WebUI のサインインのアプリケーション。主体のトークンがこれのものかを、introspect で確かめる。
+	const redirect = "http://127.0.0.1:9/oauth/callback"
+	app, err := forgejotest.CreateApp(e.url, e.admin, "webui-"+e.org, redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := forgejotest.CreateApp(e.url, e.admin, "other-"+e.org, redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{URL: e.url, Org: e.org, ClientID: app.ClientID, ClientSecret: app.ClientSecret, WorkerLogin: e.login("reader"), MergeWait: 5 * time.Second}
 	gf, auth := New(cfg, keys)
 
 	// ---- repository の用意 ----
@@ -426,11 +437,38 @@ func TestForgejo(t *testing.T) {
 	t.Log("確かめた：read:repository、read:organization、read:issue のトークンで、worker が repository を列挙し、credential helper で git を読める")
 
 	// ---- 認証 ----
-	for who, want := range map[string]ports.PrincipalKind{"alice": ports.PrincipalUser, "agent": ports.PrincipalClient} {
-		p, err := auth.Authenticate(ctx, e.tokens[who])
-		if err != nil || p.Kind != want || p.Login != e.login(who) {
-			t.Fatalf("%s: %+v %v", who, p, err)
+	// user は、WebUI のサインインのトークンを持ち、write 以上の team にいる人だけである（design/settings/users.md）。
+	// 同じ alice でも、personal access token（CLI のトークン）や、ほかのアプリケーションのトークンなら client。
+	webui, err := forgejotest.Token(e.url, e.login("alice"), "pw-"+e.login("alice")+"-12345", app, redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherApp, err := forgejotest.Token(e.url, e.login("alice"), "pw-"+e.login("alice")+"-12345", other, redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tok, want := range map[string]ports.Principal{
+		webui:             {Login: e.login("alice"), Kind: ports.PrincipalUser, WebUI: true},
+		otherApp:          {Login: e.login("alice"), Kind: ports.PrincipalClient},
+		e.tokens["alice"]: {Login: e.login("alice"), Kind: ports.PrincipalClient},
+		e.tokens["agent"]: {Login: e.login("agent"), Kind: ports.PrincipalClient},
+	} {
+		if p, err := auth.Authenticate(ctx, tok); err != nil || p != want {
+			t.Fatalf("%+v %v（want %+v）", p, err, want)
 		}
+	}
+	// worker のトークンは、書けないものに限る。
+	if err := CheckWorkerToken(ctx, cfg, e.login("reader"), e.tokens["reader"]); err != nil {
+		t.Fatalf("読むだけのトークンが断られた：%v", err)
+	}
+	if err := CheckWorkerToken(ctx, cfg, e.login("agent"), e.tokens["agent"]); !errors.Is(err, ErrWorkerTokenWrites) {
+		t.Fatalf("書けるトークンが断られない：%v", err)
+	}
+	if ok, err := auth.CanWrite(ctx, webui, "q"); !ok || err != nil {
+		t.Fatalf("alice は q に書ける：%v %v", ok, err)
+	}
+	if ok, err := auth.CanWrite(ctx, webui, "not-yet"); !ok || err != nil {
+		t.Fatalf("alice は repository を作れる team にいる：%v %v", ok, err)
 	}
 	for _, tok := range []string{e.tokens["outsider"], "bad-token", e.tokens["reader"]} {
 		if _, err := auth.Authenticate(ctx, tok); !errors.Is(err, ports.ErrUnauthenticated) {

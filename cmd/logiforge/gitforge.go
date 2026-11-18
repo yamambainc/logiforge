@@ -43,16 +43,6 @@ type forgeSetup struct {
 	webURL, kind string
 }
 
-func splitList(v string) []string {
-	var out []string
-	for _, s := range strings.Split(v, ",") {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 // repoList は、設定の DB の repository の一覧を、アダプタの形（名前=owner/name[:パス],…）にする。dirOnly なら、ディレクトリの repository だけ。
 func repoList(rs []settings.Repository, dirOnly bool) string {
 	var parts []string
@@ -71,9 +61,12 @@ func repoList(rs []settings.Repository, dirOnly bool) string {
 
 // setupForge は、設定の DB の中身から、GitForge のアダプタを作る。keys は、バックエンドでは秘密鍵、worker では公開鍵だけ。
 // serve が true なら、バックエンドの設定（user の主体の決め方）も使う（design/settings/README.md の「設定の DB に置くもの」）。
-func setupForge(c *settings.Config, keys pullreq.Keyring, serve bool) (forgeSetup, error) {
+//
+// GitHub を使う構成では、バックエンドは App で installation token を作る。worker は App の秘密鍵を持たず、tokens（バックエンドが作って
+// 設定の DB に置いたもの）を読む（design/adapters/github-app.md の「worker のトークン」）。
+func setupForge(c *settings.Config, keys pullreq.Keyring, serve bool, tokens github.TokenSource) (forgeSetup, error) {
 	if c.GitForge == gitforgeGitHub {
-		return setupGitHub(c, keys, serve)
+		return setupGitHub(c, keys, serve, tokens)
 	}
 	f := c.Forgejo
 	if f.URL == "" || f.Org == "" || f.WorkerLogin == "" || f.WorkerToken == "" {
@@ -83,16 +76,17 @@ func setupForge(c *settings.Config, keys pullreq.Keyring, serve bool) (forgeSetu
 	if err != nil {
 		return forgeSetup{}, fmt.Errorf("ディレクトリの repository：%w", err)
 	}
-	team := ""
+	cfg := forgejo.Config{URL: f.URL, Org: f.Org, WorkerLogin: f.WorkerLogin, Directories: dirs}
 	if serve {
-		team = f.UserTeam
+		// 主体のトークンが、WebUI のサインインのアプリケーションのものかを、introspect で確かめる（design/settings/users.md）。
+		cfg.ClientID, cfg.ClientSecret = f.OAuthClientID, f.OAuthClientSecret
 	}
-	forge, auth := forgejo.New(forgejo.Config{URL: f.URL, Org: f.Org, UserTeam: team, WorkerLogin: f.WorkerLogin, Directories: dirs}, keys)
+	forge, auth := forgejo.New(cfg, keys)
 	reader := forgejo.NewWorkerSource(forgejo.Config{URL: f.URL, Org: f.Org, Directories: dirs}, f.WorkerLogin, f.WorkerToken)
 	return forgeSetup{forge: forge, auth: auth, reader: reader, webURL: f.URL, kind: gitforgeForgejo}, nil
 }
 
-func setupGitHub(c *settings.Config, keys pullreq.Keyring, serve bool) (forgeSetup, error) {
+func setupGitHub(c *settings.Config, keys pullreq.Keyring, serve bool, tokens github.TokenSource) (forgeSetup, error) {
 	rs, err := github.ParseRepositories(repoList(c.Repositories, false))
 	if err != nil {
 		return forgeSetup{}, err
@@ -100,20 +94,23 @@ func setupGitHub(c *settings.Config, keys pullreq.Keyring, serve bool) (forgeSet
 	g := c.GitHub
 	cfg := github.Config{APIURL: g.APIURL, WebURL: g.WebURL, Repositories: rs}
 	if serve {
-		cfg.UserLogins = splitList(g.UserLogins)
-		cfg.UserTeams = splitList(g.UserTeams)
-		// 主体のトークンが Logiforge のアプリのものかを、WebUI のサインインと同じ資格情報で確かめる。なければ、user の主体はいない。
+		// 主体のトークンが Logiforge の App のものかを、WebUI のサインインと同じ資格情報で確かめる。なければ、user の主体はいない。
 		cfg.ClientID, cfg.ClientSecret = g.ClientID, g.ClientSecret
 	}
 	forge, auth, err := github.New(cfg, keys)
 	if err != nil {
 		return forgeSetup{}, err
 	}
-	app, err := githubApp(cfg, g)
-	if err != nil {
-		return forgeSetup{}, err
+	if serve {
+		app, err := githubApp(cfg, g)
+		if err != nil {
+			return forgeSetup{}, err
+		}
+		if app != nil {
+			tokens = app
+		}
 	}
-	reader, err := github.NewWorkerSource(cfg, app)
+	reader, err := github.NewWorkerSource(cfg, tokens)
 	if err != nil {
 		return forgeSetup{}, err
 	}

@@ -15,7 +15,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | 主体 | 使う者 | 権限 |
 |---|---|---|
 | 読むだけのユーザー | [worker](../backend/worker/README.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository`、`read:organization`（repository を列挙するため）、`read:issue`（記録のコメントを読むため）だけにする。organization が private なら、コード、issue、pull request を読むだけの team に入れる |
-| 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書く |
+| 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書き、WebUI のレビューで merge する。team の権限は、コード、issue、pull request の書き込みにする |
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
 - Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
@@ -81,16 +81,19 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 ## worker のトークンを確かめる
 
-バックエンドは、worker のトークンを置く前に（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)、[設定の API](../api/endpoints/settings.md)）、次のことを確かめる。
+バックエンドは、worker のトークンを置く前に（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)、[設定の API](../api/endpoints/settings.md)、[設定のコマンド](../settings/README.md#設定のコマンド) の `settings load`）、次のことを確かめる。
 
-- そのトークンで、`GET /user` が worker のユーザーを返し、organization を読める。
+- そのトークンで、organization を読める。
+  - `GET /user` は使わない。なぜ：トークンが `read:user` を持たないから。
 - そのトークンで、書くスコープの要る API が 403 になる。
   - 害のない要求を使う。どれも本文を空にして呼ぶ。
     - `PATCH /user/settings`（`write:user`）
     - `POST /repos/{owner}/{repo}/issues`（`write:issue`）。repository は、`GET /orgs/{org}/repos` の最初のものにする。organization に repository がなければ、この要求は飛ばす。
   - Forgejo は、スコープの足りないトークンを、本文を確かめる前に 403 で断る。
-  - 403 なら、書けないとみなす。404 は、どちらともみなさない。それ以外（400、422 など、スコープを通った応答）なら、書けるトークンとみなして断る。
-- worker のユーザーが、organization の team のうち、`read` より強い権限の team に入っていない（`GET /user/teams`）。
+  - 403 なら、書けないとみなす。404 は、どちらともみなさない。それ以外（200、400、422 など、スコープを通った応答）なら、書けるトークンとみなして断る。
+- worker のユーザーが、organization の team のうち、書ける team（権限が `read` より強いか、`units_map` に `write` があるもの）に入っていない。
+  - `GET /orgs/{org}/teams` と `GET /teams/{id}/members` で調べる。どちらも `read:organization` で読める。
+  - Forgejo は、team のメンバーの一覧を、その team のメンバーにだけ見せる。403 なら、worker のユーザーはその team にいない。
 
 ## 認証
 
@@ -104,7 +107,8 @@ Forgejo を使う構成では、[認証](../backend/ports/authentication.md) の
   - personal access token には、`active: false` が返る。
   - なぜ：CLI のトークンを持つ主体を、`user` にしないため（[トークンの出どころ](../settings/users.md#トークンの出どころ)）。
 - 主体の種類は、リポジトリの権限で決める。名簿は持たない（[利用者の決め方](../settings/users.md#利用者の決め方)）。
-  - `user`：Logiforge の OAuth2 のアプリケーションのトークンを持ち、設定した organization の team のどれかで `write`、`admin`、`owner` の権限を持つ人
+  - `user`：Logiforge の OAuth2 のアプリケーションのトークンを持ち、設定した organization の team のどれかで、コードに書ける人（`units_map` の `repo.code` が `write` か、team の権限が `admin` か `owner`）
+    - なぜ team の `permission` だけで決めないか：Forgejo は、team の `permission` を `units_map` から決めるので、コードが `read` で issue と pull request が `write` の team は、`read` になるから。
   - `client`：それ以外の、organization の人とエージェント
   - organization に属さない主体は、`unauthenticated` で受け付けない。
 - すべての主体が、organization のすべての repository を読める。

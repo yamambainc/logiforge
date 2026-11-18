@@ -83,8 +83,10 @@ type fakeGitHub struct {
 	comments []*fakeComment
 	files    map[string]string
 	commits  int
-	// users は、トークンから、ログイン名と team（org/slug）を引く。
+	// users は、トークンから、ログイン名と、リポジトリの権限を引く。
 	users map[string]fakeUser
+	// permCalls は、リポジトリの権限を問い合わせた回数（キャッシュを確かめる）。
+	permCalls int
 	// readable は、トークンごとに読める repository。
 	readable map[string]bool
 	// limited は、次の要求を、制限の応答にする回数。
@@ -137,7 +139,8 @@ func (f *fakeGitHub) appJWT(r *http.Request) bool {
 
 type fakeUser struct {
 	login string
-	teams []string
+	// push は、App が install されていて、push の権限がある GitHub リポジトリ（owner/name）。read は、読めるだけのもの。
+	push, read []string
 	// noMerge なら、merge を 403 で断る（Write の権限がない）。
 	noMerge bool
 }
@@ -292,14 +295,24 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		write(w, http.StatusOK, map[string]string{"login": u.login})
 		return
-	case p == "/user/teams":
-		u := f.users[tok]
-		var ts []map[string]any
-		for _, t := range u.teams {
-			org, slug, _ := strings.Cut(t, "/")
-			ts = append(ts, map[string]any{"slug": slug, "organization": map[string]string{"login": org}})
+	case p == "/user/installations":
+		if _, ok := f.users[tok]; !ok {
+			fail(w, http.StatusUnauthorized, "Bad credentials")
+			return
 		}
-		page(w, r, ts)
+		write(w, http.StatusOK, map[string]any{"total_count": 1, "installations": []map[string]any{{"id": 7}}})
+		return
+	case p == "/user/installations/7/repositories":
+		u := f.users[tok]
+		var rs []map[string]any
+		for _, name := range u.push {
+			rs = append(rs, map[string]any{"full_name": name, "permissions": map[string]bool{"push": true, "pull": true}})
+		}
+		for _, name := range u.read {
+			rs = append(rs, map[string]any{"full_name": name, "permissions": map[string]bool{"push": false, "pull": true}})
+		}
+		f.permCalls++
+		write(w, http.StatusOK, map[string]any{"total_count": len(rs), "repositories": rs})
 		return
 	}
 	// repository は、読める主体のトークンか、public ならトークンなしで読める。書くのは、読める主体だけ。

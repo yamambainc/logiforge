@@ -204,6 +204,11 @@ func TestHumanRequestWrites(t *testing.T) {
 	if _, err := b.AnswerHumanRequest(ctx, agent, "q", hr.ID, "答え", nil); code(err) != CodeForbidden {
 		t.Fatalf("client の回答：%v", err)
 	}
+	// user でも、その repository に Write がなければ、回答できない（design/settings/users.md の「repository ごとの権限」）。
+	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser}}
+	if _, err := b.AnswerHumanRequest(ctx, reader, "q", hr.ID, "答え", nil); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user の回答：%v", err)
+	}
 	files := []AnswerFile{{Kind: "file", Name: "a.txt", ContentBase64: base64.StdEncoding.EncodeToString([]byte("A"))}, {Kind: "link", Name: "論文", URI: "https://example.com/p"}}
 	ans, err := b.AnswerHumanRequest(ctx, user, "q", hr.ID, "答え", files)
 	if err != nil || ans.State != "answered" || len(ans.Answer.Attachments) != 1 || !strings.Contains(ans.Answer.Body, "https://example.com/p") {

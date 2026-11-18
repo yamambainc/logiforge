@@ -28,7 +28,7 @@ func sample() *Config {
 	return &Config{
 		GitForge: GitForgeForgejo,
 		WebUIURL: "http://localhost:8080",
-		Forgejo: ForgejoConfig{URL: "http://forgejo:3000", Org: "acme", UserTeam: "users", WorkerLogin: "reader", WorkerToken: "wtok",
+		Forgejo: ForgejoConfig{URL: "http://forgejo:3000", Org: "acme", WorkerLogin: "reader", WorkerToken: "wtok",
 			OAuthClientID: "cid", OAuthClientSecret: "csecret"},
 		Intervals:    Intervals{Patrol: "1s", List: "10s"},
 		Repositories: []Repository{{Name: "q", GitForgeRef: "acme/app", Directory: "logiforge/q"}},
@@ -278,5 +278,41 @@ func TestShortRecordSecret(t *testing.T) {
 func TestNotReadyIsDistinct(t *testing.T) {
 	if err := (&Config{}).Ready(); !errors.Is(err, ErrNotReady) {
 		t.Fatalf("足りないことが ErrNotReady でない：%v", err)
+	}
+}
+
+// worker のトークンは、共有の鍵で読める。書いても revision は進まない。
+func TestWorkerTokens(t *testing.T) {
+	ctx := context.Background()
+	d, p := openRW(t)
+	keys := testKeys(t)
+	if err := d.Save(ctx, keys, sample(), ""); err != nil {
+		t.Fatal(err)
+	}
+	r0, _ := d.Revision(ctx)
+	exp := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	if err := d.PutWorkerToken(ctx, keys, WorkerToken{Owner: "acme", Token: "ghs_x", ExpiresAt: exp, Repositories: []string{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if r1, _ := d.Revision(ctx); r1 != r0 {
+		t.Fatalf("worker のトークンを書いて revision が進んだ：%d → %d", r0, r1)
+	}
+	ro, err := Open(p, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	got, ok, err := ro.WorkerTokenOf(ctx, Keys{Shared: keys.Shared}, "acme")
+	if err != nil || !ok || got.Token != "ghs_x" || !got.ExpiresAt.Equal(exp) || len(got.Repositories) != 2 {
+		t.Fatalf("worker が読めない：%+v %v %v", got, ok, err)
+	}
+	if _, ok, _ := ro.WorkerTokenOf(ctx, Keys{Shared: keys.Shared}, "other"); ok {
+		t.Fatal("ない owner のトークンがあった")
+	}
+	if err := d.DeleteWorkerTokens(ctx, map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := ro.WorkerTokenOf(ctx, Keys{Shared: keys.Shared}, "acme"); ok {
+		t.Fatal("消したトークンが残っている")
 	}
 }

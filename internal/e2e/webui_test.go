@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/yamambainc/logiforge/internal/settings"
 )
 
 // TestWebUISignIn は、ブラウザで WebUI を開き、Forgejo の OAuth2 でサインインして、repository の一覧から
@@ -34,17 +32,8 @@ func setupWebUI(t *testing.T) (*world, string) {
 	if _, err := os.Stat("../../webui/dist/index.html"); err != nil {
 		t.Skip("webui/dist がない（webui/ で npm run build）")
 	}
-	w := setupWith(t, func(w *world, serveURL string, c *settings.Config) {
-		var app struct {
-			ClientID     string `json:"client_id"`
-			ClientSecret string `json:"client_secret"`
-		}
-		w.forgejoCall(w.admin, "POST", "/user/applications/oauth2", map[string]any{
-			"name": "webui-" + w.org, "redirect_uris": []string{serveURL + "/oauth/callback"}, "confidential_client": true,
-		}, &app, 201)
-		c.WebUIURL = serveURL
-		c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret = app.ClientID, app.ClientSecret
-	})
+	// WebUI のサインインのアプリケーションは、setup が、どのテストでも登録する。
+	w := setup(t)
 	return w, chrome
 }
 

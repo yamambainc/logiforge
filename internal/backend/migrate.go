@@ -61,6 +61,9 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 	if !ids.RepositoryNamePattern.MatchString(name) {
 		return out, fail(CodeValidationFailed, "repository の名前は、小文字の英数字とハイフンで、63 文字以下")
 	}
+	if err := b.requireUserOn(ctx, c, name); err != nil {
+		return out, err
+	}
 	ref, err := b.Forge.GitForgeRef(ctx, name)
 	if errors.Is(err, ports.ErrNotRegistered) {
 		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない", name)

@@ -3,7 +3,9 @@ package forgejo
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -16,7 +18,7 @@ import (
 // New は、Forgejo の GitForge アダプタと認証のアダプタを作る。
 func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth) {
 	c := &client{cfg: cfg}
-	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}, Keys: keys}, &Auth{c}
+	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}, Keys: keys}, &Auth{c: c}
 }
 
 // repos は、organization の repository の列挙と用意である。
@@ -162,11 +164,43 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	return nil
 }
 
-// Auth は、Forgejo のトークンで主体を確かめる（design/adapters/forgejo.md の「認証」）。結果を保持しない。
-type Auth struct{ c *client }
+// Auth は、Forgejo のトークンで主体を確かめる（design/adapters/forgejo.md の「認証」）。
+// 権限を問い合わせた結果だけを、60 秒持つ（design/settings/users.md の「権限のキャッシュ」）。
+type Auth struct {
+	c     *client
+	cache ports.PermCache
+}
 
 var _ ports.Authenticator = (*Auth)(nil)
 
+// orgTeam は、主体の team のうち、設定した organization のものである。
+type orgTeam struct {
+	Name         string            `json:"name"`
+	Permission   string            `json:"permission"`
+	CanCreate    bool              `json:"can_create_org_repo"`
+	UnitsMap     map[string]string `json:"units_map"`
+	Organization struct {
+		Username string `json:"username"`
+	} `json:"organization"`
+}
+
+// writes は、team が、repository のコードに書けるものかである（Write 以上）。
+// Forgejo は、team の permission を units_map から決める。コードが read で、issue と pull request が write の team は、read になる。
+// そのため、コードの単位（repo.code）の write か、team の admin か owner を見る。
+func (t orgTeam) writes() bool {
+	switch t.Permission {
+	case "admin", "owner":
+		return true
+	}
+	return t.UnitsMap["repo.code"] == "write" || (t.UnitsMap == nil && t.Permission == "write")
+}
+
+// Authenticate は、トークンの主体を確かめる。
+//   - user：Logiforge の OAuth2 のアプリケーションのトークンを持ち、設定した organization の team のどれかで、
+//     コードに書ける（repo.code が write か、team が admin か owner）人
+//   - client：それ以外の、organization の人とエージェント
+//
+// organization に属さない主体は、受け付けない。
 func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal, error) {
 	var u user
 	if err := a.c.do(ctx, token, http.MethodGet, "/user", nil, &u); err != nil {
@@ -179,34 +213,145 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 	if a.c.cfg.WorkerLogin != "" && u.Login == a.c.cfg.WorkerLogin {
 		return ports.Principal{}, ports.ErrUnauthenticated
 	}
-	type teamJSON struct {
-		Name         string `json:"name"`
-		Organization struct {
-			Username string `json:"username"`
-		} `json:"organization"`
-	}
-	teams, err := list[teamJSON](ctx, a.c, token, "/user/teams")
+	teams, err := a.teams(ctx, token)
 	if err != nil {
 		return ports.Principal{}, err
 	}
-	member, isUser := false, false
-	for _, t := range teams {
-		if t.Organization.Username != a.c.cfg.Org {
-			continue
-		}
-		member = true
-		if t.Name == a.c.cfg.UserTeam {
-			isUser = true
-		}
-	}
-	if !member {
+	if len(teams) == 0 {
 		return ports.Principal{}, ports.ErrUnauthenticated
 	}
-	kind := ports.PrincipalClient
-	if isUser {
-		kind = ports.PrincipalUser
+	p := ports.Principal{Login: u.Login, Kind: ports.PrincipalClient}
+	if a.c.cfg.ClientID == "" {
+		return p, nil
 	}
-	return ports.Principal{Login: u.Login, Kind: kind}, nil
+	if p.WebUI, err = a.ownToken(ctx, token); err != nil {
+		return ports.Principal{}, err
+	}
+	if !p.WebUI {
+		return p, nil
+	}
+	for _, t := range teams {
+		if t.writes() {
+			p.Kind = ports.PrincipalUser
+			break
+		}
+	}
+	return p, nil
+}
+
+// teams は、主体の team のうち、設定した organization のものを返す。
+func (a *Auth) teams(ctx context.Context, token string) ([]orgTeam, error) {
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, "teams"); ok {
+			return v.([]orgTeam), nil
+		}
+	}
+	all, err := list[orgTeam](ctx, a.c, token, "/user/teams")
+	if err != nil {
+		return nil, err
+	}
+	var out []orgTeam
+	for _, t := range all {
+		if t.Organization.Username == a.c.cfg.Org {
+			out = append(out, t)
+		}
+	}
+	a.cache.Put(token, "teams", out)
+	return out, nil
+}
+
+// ownToken は、トークンが Logiforge の OAuth2 のアプリケーションのものかを、introspect で確かめる。
+// active が true で、かつ aud に client_id があるときだけ、そうだとする。
+// なぜ active だけで決めないか：Forgejo は、ほかのアプリケーションが出したトークンにも active: true を返すから。
+// personal access token には、active: false が返る（design/adapters/forgejo.md の「認証」）。
+func (a *Auth) ownToken(ctx context.Context, token string) (bool, error) {
+	form := url.Values{"token": {token}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.c.cfg.URL, "/")+"/login/oauth/introspect", strings.NewReader(form.Encode()))
+	if err != nil {
+		return false, err
+	}
+	req.SetBasicAuth(a.c.cfg.ClientID, a.c.cfg.ClientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	res, err := a.c.http().Do(req)
+	if err != nil {
+		return false, fmt.Errorf("%w: forgejo: introspect：%v", ports.ErrUnavailable, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("forgejo: introspect が %d を返した（OAuth2 のアプリケーションの client_id と client secret を確かめる）", res.StatusCode)
+	}
+	var out struct {
+		Active bool            `json:"active"`
+		Aud    json.RawMessage `json:"aud"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<16)).Decode(&out); err != nil {
+		return false, fmt.Errorf("forgejo: introspect の応答を読めない：%w", err)
+	}
+	return out.Active && audHas(out.Aud, a.c.cfg.ClientID), nil
+}
+
+// audHas は、aud（文字列か、文字列の配列）に id があるかを返す。
+func audHas(raw json.RawMessage, id string) bool {
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return one == id
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		for _, s := range many {
+			if s == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CanWrite は、主体が repository に Write 以上の権限を持つかを返す。ディレクトリの repository では、git リポジトリの権限を見る。
+// まだない repository では、organization に repository を作れる team にいるかを返す（作る前の repository には、権限がないから）。
+func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
+	ref := a.c.cfg.Org + "/" + repo
+	for _, d := range a.c.cfg.Directories {
+		if d.Name == repo {
+			ref = d.GitForgeRef
+		}
+	}
+	rp, err := repoPath(ref)
+	if err != nil {
+		return false, err
+	}
+	q := "push:" + rp
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, q); ok {
+			return v.(bool), nil
+		}
+	}
+	var r struct {
+		Permissions struct {
+			Admin bool `json:"admin"`
+			Push  bool `json:"push"`
+		} `json:"permissions"`
+	}
+	ok := false
+	switch err := a.c.do(ctx, token, http.MethodGet, rp, nil, &r); {
+	case err == nil:
+		ok = r.Permissions.Push || r.Permissions.Admin
+	case statusOf(err) == http.StatusNotFound:
+		teams, err := a.teams(ctx, token)
+		if err != nil {
+			return false, err
+		}
+		for _, t := range teams {
+			if t.CanCreate && t.writes() {
+				ok = true
+			}
+		}
+	default:
+		return false, err
+	}
+	a.cache.Put(token, q, ok)
+	return ok, nil
 }
 
 // CanRead は、主体が repository を読めるかを返す。Forgejo を使う構成では、organization のすべての主体が、

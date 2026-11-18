@@ -12,14 +12,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
+	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/settings"
 	"github.com/yamambainc/logiforge/internal/store"
 	"github.com/yamambainc/logiforge/internal/version"
@@ -137,6 +141,7 @@ func runServe(ctx context.Context) error {
 		return r.GitEnv(ctx, ref)
 	}
 	defer os.RemoveAll(l.git.Dir)
+	go mintLoop(ctx, db, keys)
 	srv := &http.Server{Addr: addr, Handler: l, ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
@@ -222,7 +227,7 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if err != nil {
 		return nil, nil, err
 	}
-	fs, err := setupForge(c, ring, true)
+	fs, err := setupForge(c, ring, true, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -396,7 +401,11 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 	listInterval := settings.Duration(c.Intervals.List, worker.DefaultListInterval)
 	recordInterval := settings.Duration(c.Intervals.Record, 0)
 	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
-	fs, err := setupForge(c, pub, false)
+	var tokens github.TokenSource
+	if c.GitForge == gitforgeGitHub && c.GitHub.AppID != "" {
+		tokens = dbTokens{db: db, keys: keys}
+	}
+	fs, err := setupForge(c, pub, false, tokens)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -468,6 +477,12 @@ func runSettings(ctx context.Context, args []string) error {
 		if err := dec.Decode(&c); err != nil {
 			return fmt.Errorf("設定の JSON を読めない：%w", err)
 		}
+		// worker に渡すトークンは、書けないものに限る（design/adapters/forgejo.md の「worker のトークンを確かめる」）。
+		if c.GitForge == gitforgeForgejo && c.Forgejo.WorkerToken != "" {
+			if err := forgejo.CheckWorkerToken(ctx, forgejo.Config{URL: c.Forgejo.URL, Org: c.Forgejo.Org}, c.Forgejo.WorkerLogin, c.Forgejo.WorkerToken); err != nil {
+				return err
+			}
+		}
 		return db.Save(ctx, keys, &c, "")
 	case "rekey":
 		fl := flag.NewFlagSet("rekey", flag.ContinueOnError)
@@ -501,4 +516,94 @@ func runSettings(ctx context.Context, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("logiforge settings に %q はない（load か rekey）", args[0])
+}
+
+// dbTokens は、worker が、バックエンドが作って設定の DB に置いた installation token を読むものである。
+type dbTokens struct {
+	db   *settings.DB
+	keys settings.Keys
+}
+
+// Token は、gitForgeRef の owner のトークンを返す。ないか、切れるまでの残りが github.RefreshBefore より短ければ、誤りにする。
+// そのとき、worker は、その repository の見回りを飛ばし、次の見回りで読み直す（design/adapters/github-app.md の「worker のトークン」）。
+func (t dbTokens) Token(ctx context.Context, gitForgeRef string) (string, error) {
+	git, _ := ports.SplitRef(gitForgeRef)
+	owner, _, _ := strings.Cut(git, "/")
+	wt, ok, err := t.db.WorkerTokenOf(ctx, t.keys, owner)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("%w: owner %s の worker のトークンを、バックエンドがまだ作っていない（バックエンドが動いているかを確かめる）", ports.ErrUnavailable, owner)
+	}
+	if left := time.Until(wt.ExpiresAt); left < github.RefreshBefore {
+		return "", fmt.Errorf("%w: owner %s の worker のトークンが、%v で切れる。バックエンドが作り直すのを待つ（バックエンドが動いているかを確かめる）", ports.ErrUnavailable, owner, left.Round(time.Second))
+	}
+	return wt.Token, nil
+}
+
+// mintLoop は、worker のための installation token を作り直し続ける（design/adapters/github-app.md の「worker のトークン」）。
+// 5 秒ごとに確かめ、ないか、切れるまでの残りが mintBefore より短いか、絞ったリポジトリが登録と違えば、作り直す。
+func mintLoop(ctx context.Context, db *settings.DB, keys settings.Keys) {
+	for {
+		if err := mintWorkerTokens(ctx, db, keys, time.Now()); err != nil {
+			slog.Error("worker のトークンを作れない。次に作り直す", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+	}
+}
+
+// mintBefore は、worker のトークンを作り直す、切れるまでの残りの時間である。
+// なぜ 40 分：installation token は 1 時間で切れ、worker は残りが 20 分（github.RefreshBefore）を切ると使わないので、
+// そのあいだの 20 分に作り直せばよいから。バックエンドが止まっても、worker は、そこから 20〜40 分読める。
+const mintBefore = 40 * time.Minute
+
+func mintWorkerTokens(ctx context.Context, db *settings.DB, keys settings.Keys, now time.Time) error {
+	c, err := db.Load(ctx, keys)
+	if err != nil {
+		return err
+	}
+	if c.GitForge != gitforgeGitHub || c.GitHub.AppID == "" || c.GitHub.AppPrivateKey == "" || len(c.Repositories) == 0 {
+		return db.DeleteWorkerTokens(ctx, map[string]bool{})
+	}
+	rs, err := github.ParseRepositories(repoList(c.Repositories, false))
+	if err != nil {
+		return err
+	}
+	cfg := github.Config{APIURL: c.GitHub.APIURL, WebURL: c.GitHub.WebURL, Repositories: rs}
+	app, err := github.NewApp(cfg, c.GitHub.AppID, []byte(c.GitHub.AppPrivateKey))
+	if err != nil {
+		return err
+	}
+	keep := map[string]bool{}
+	var errs []error
+	for owner, names := range app.Owners() {
+		keep[owner] = true
+		t, ok, err := db.WorkerTokenOf(ctx, keys, owner)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if ok && t.ExpiresAt.Sub(now) > mintBefore && slices.Equal(t.Repositories, names) {
+			continue
+		}
+		tok, exp, err := app.Mint(ctx, owner)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := db.PutWorkerToken(ctx, keys, settings.WorkerToken{Owner: owner, Token: tok, ExpiresAt: exp, Repositories: names}); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		slog.Info("worker のトークンを作った", "owner", owner, "expires_at", exp)
+	}
+	if err := db.DeleteWorkerTokens(ctx, keep); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }

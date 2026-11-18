@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yamambainc/logiforge/internal/forgejotest"
 	"github.com/yamambainc/logiforge/internal/settings"
 )
 
@@ -182,7 +183,7 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 		return out.ID
 	}
 	// 権限は、design/adapters/forgejo.md の「主体」のとおり。Logiforge に、書き込み主体はない。
-	users := team("logiforge-users", "write", map[string]string{"repo.code": "read", "repo.pulls": "write", "repo.issues": "write"}, true)
+	users := team("logiforge-users", "write", map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}, true)
 	agents := team("agents", "write", map[string]string{"repo.code": "write", "repo.pulls": "write", "repo.issues": "write"}, false)
 	readers := team("readers", "read", map[string]string{"repo.code": "read", "repo.pulls": "read", "repo.issues": "read"}, false)
 	for name, tm := range map[string]int64{"alice": users, "agent": agents, "reviewer": agents, "reader": readers} {
@@ -202,16 +203,28 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 	// バックエンドも、apply request の作成で、worker と同じ読むだけのユーザーで git を読む。
 	c := &settings.Config{
 		GitForge: settings.GitForgeForgejo,
-		Forgejo: settings.ForgejoConfig{URL: fu, Org: w.org, UserTeam: "logiforge-users",
+		Forgejo: settings.ForgejoConfig{URL: fu, Org: w.org,
 			WorkerLogin: w.login("reader"), WorkerToken: w.tokens["reader"]},
 		Intervals:  settings.Intervals{Patrol: "1s", List: "1s", WaitTimeout: "20s"},
 		RecordKeys: []settings.RecordKey{{ID: "k1", Secret: recordSecret}},
+	}
+	// WebUI のサインインのアプリケーション。利用者（alice）は、このアプリケーションのトークン（WebUI のサインインで得るもの）で、
+	// user になる。personal access token では client である（design/settings/users.md）。
+	serveURL := "http://" + serveAddr
+	app, err := forgejotest.CreateApp(fu, admin, "webui-"+w.org, serveURL+"/oauth/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.WebUIURL = serveURL
+	c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret = app.ClientID, app.ClientSecret
+	if w.tokens["alice"], err = forgejotest.Token(fu, w.login("alice"), "pw-"+w.login("alice")+"-12345", app, serveURL+"/oauth/callback"); err != nil {
+		t.Fatal(err)
 	}
 	if common != nil {
 		common(w, c)
 	}
 	if extra != nil {
-		extra(w, "http://"+serveAddr, c)
+		extra(w, serveURL, c)
 	}
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	backendKey, sharedKey := settings.NewKey(), settings.NewKey()

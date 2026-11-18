@@ -121,6 +121,26 @@ func (a *App) Token(ctx context.Context, gitForgeRef string) (string, error) {
 	return t.token, nil
 }
 
+// Owners は、登録した GitHub リポジトリの owner と、それぞれのリポジトリの名前（owner を除く）を返す。
+func (a *App) Owners() map[string][]string {
+	out := make(map[string][]string, len(a.repos))
+	for o, ns := range a.repos {
+		out[o] = append([]string(nil), ns...)
+	}
+	return out
+}
+
+// Mint は、owner の、登録したリポジトリだけと Read だけに絞った installation token を、新しく作る。
+// バックエンドが、worker のために作るときに使う（design/adapters/github-app.md の「worker のトークン」）。
+func (a *App) Mint(ctx context.Context, owner string) (token string, expires time.Time, err error) {
+	names, ok := a.repos[owner]
+	if !ok {
+		return "", time.Time{}, fmt.Errorf("%w: owner %s", ports.ErrNotRegistered, owner)
+	}
+	t, err := a.mint(ctx, owner, names)
+	return t.token, t.expires, err
+}
+
 // mint は、owner の installation を引き、names だけに絞った、読むだけの installation token を作る。
 func (a *App) mint(ctx context.Context, owner string, names []string) (appToken, error) {
 	jwt, err := a.jwt()

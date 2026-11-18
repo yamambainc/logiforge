@@ -30,6 +30,22 @@ func requireUser(c Caller) error {
 	return nil
 }
 
+// requireUserOn は、主体が user で、かつ repository に Write 以上の権限を持つことを求める
+// （design/settings/users.md の「repository ごとの権限」）。
+func (b *Backend) requireUserOn(ctx context.Context, c Caller, repo string) error {
+	if err := requireUser(c); err != nil {
+		return err
+	}
+	ok, err := b.Auth.CanWrite(ctx, c.Token, repo)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fail(CodeForbidden, "この repository に書く権限（Write）がない")
+	}
+	return nil
+}
+
 func requireClient(c Caller, session string) error {
 	if c.Principal.Kind != ports.PrincipalClient {
 		return fail(CodeForbidden, "この操作は、client だけが使える")
@@ -126,6 +142,9 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 	}
 	if !ids.RepositoryNamePattern.MatchString(name) {
 		return out, fail(CodeValidationFailed, "repository の名前は、小文字の英数字とハイフンで、63 文字以下")
+	}
+	if err := b.requireUserOn(ctx, c, name); err != nil {
+		return out, err
 	}
 	if n := tree.CharCount(statement); n == 0 || n > tree.MaxStatementChars {
 		return out, fail(CodeValidationFailed, "根の主文は 1 字以上 %d 字以下", tree.MaxStatementChars)
@@ -521,7 +540,7 @@ type AnswerFile struct {
 // 送り直しは、回答がすでにあり、本文・回答した利用者・添付が同じなら、成功とする。
 // link の添付は、GitForge に置かず、回答の本文の末尾に書く。
 func (b *Backend) AnswerHumanRequest(ctx context.Context, c Caller, repo, id, body string, files []AnswerFile) (HumanRequest, error) {
-	if err := requireUser(c); err != nil {
+	if err := b.requireUserOn(ctx, c, repo); err != nil {
 		return HumanRequest{}, err
 	}
 	if strings.TrimSpace(body) == "" {

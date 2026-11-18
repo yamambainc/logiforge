@@ -25,8 +25,10 @@ type Config struct {
 	URL string
 	// Org は、repository を置く organization。
 	Org string
-	// UserTeam は、主体の種類を user とみなす team の名前（例：logiforge-users）。
-	UserTeam string
+	// ClientID と ClientSecret は、WebUI のサインインに使う、Logiforge の OAuth2 のアプリケーションの資格情報である。
+	// 主体のトークンが、このアプリケーションのものかを、introspect で確かめる。なければ、どの主体も user とみなさない
+	// （design/settings/users.md の「トークンの出どころ」）。
+	ClientID, ClientSecret string
 	// WorkerLogin は、worker の読むだけのユーザーのログイン名。API の主体としては受け付けない。
 	WorkerLogin string
 	// HTTP は、使う HTTP のクライアント。nil なら、時間の上限（30 秒）を付けたクライアント。

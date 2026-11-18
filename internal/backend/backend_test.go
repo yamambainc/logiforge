@@ -253,6 +253,9 @@ func (fakeAuth) Authenticate(_ context.Context, token string) (ports.Principal, 
 func (fakeAuth) CanRead(_ context.Context, token, _ string) (bool, error) {
 	return token != "stranger", nil
 }
+func (fakeAuth) CanWrite(_ context.Context, token, _ string) (bool, error) {
+	return token != "stranger" && token != "reader", nil
+}
 
 type source struct{ dir string }
 

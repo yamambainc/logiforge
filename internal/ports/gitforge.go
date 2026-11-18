@@ -243,6 +243,9 @@ const (
 type Principal struct {
 	Login string
 	Kind  PrincipalKind
+	// WebUI は、トークンが、WebUI のサインインで得たもの（Logiforge のアプリケーションのもの）かである
+	// （design/settings/users.md の「トークンの出どころ」）。CLI のトークンでは false。
+	WebUI bool
 }
 
 // Authenticator は、認証のポートである（design/backend/ports/authentication.md）。
@@ -251,7 +254,19 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (Principal, error)
 	// CanRead は、Authenticate を通った主体が、repository を読めるかを返す。
 	CanRead(ctx context.Context, token, repo string) (bool, error)
+	// CanWrite は、主体が、repository に Write 以上の権限を持つかを返す（design/settings/users.md の「repository ごとの権限」）。
+	// まだない repository（Forgejo で作る前）では、作れるかを返す。
+	CanWrite(ctx context.Context, token, repo string) (bool, error)
 }
+
+type freshKey struct{}
+
+// WithFresh は、権限のキャッシュを使わずに問い合わせることを、ctx に付ける。設定を変える要求で使う
+// （design/settings/users.md の「権限のキャッシュ」）。
+func WithFresh(ctx context.Context) context.Context { return context.WithValue(ctx, freshKey{}, true) }
+
+// Fresh は、ctx が、キャッシュを使わない問い合わせかを返す。
+func Fresh(ctx context.Context) bool { v, _ := ctx.Value(freshKey{}).(bool); return v }
 
 // 用意のコミットの種類（design/backend/verify/init.md の「用意のコミットの署名」）。
 const (

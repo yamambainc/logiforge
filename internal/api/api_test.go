@@ -55,7 +55,8 @@ func (auth) Authenticate(_ context.Context, token string) (ports.Principal, erro
 	}
 	return ports.Principal{Login: "a", Kind: ports.PrincipalClient}, nil
 }
-func (auth) CanRead(context.Context, string, string) (bool, error) { return true, nil }
+func (auth) CanRead(context.Context, string, string) (bool, error)  { return true, nil }
+func (auth) CanWrite(context.Context, string, string) (bool, error) { return true, nil }
 
 func TestProblems(t *testing.T) {
 	srv := httptest.NewServer(NewHandler(&backend.Backend{Auth: auth{}, Snap: emptySnap{}}, nil))
