@@ -14,6 +14,9 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | 人への依頼 | `/r/{repository}/human-requests?kind=&state=&id=` |
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
+| セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
+| 設定 | `/settings?tab=`（`tab` は `repository`、`users`、`admins`、`gitforge`、`record-keys`） |
+| サインインから戻る先 | `/oauth/callback`（[サインインの流れ](signin-flow.md)） |
 
 ## 画面ごとの API
 
@@ -70,6 +73,8 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
   - 件数の単位は検証結果である。1 つの仮説が、引用元の変わった検証結果を 2 つ持つこともあるので、ビュワーの帯には「検証結果 N 件（仮説 M 個）」と両方を示す。
 - ダッシュボードの件数には、単位（件）を添える。
 - 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[すべての画面の決まり](mobile.md#すべての画面の決まり)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
+
+セットアップと設定の画面が使う API は、[セットアップと設定の画面と API](screens-admin.md) に書く。
 
 ## WebUI のための API
 

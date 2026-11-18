@@ -27,7 +27,8 @@
   - 仕事は、変わった repository の fetch と、スナップショット、ブランチの履歴、`latest` を書くことである。git には書かない。
 - clone は、artifact の中身を含むので、repository ごとに数十 MB から数百 MB である。
   - repository 30 個で、永続するストレージは、数 GB から 10 GB ほどである。
-- worker が repository の一覧を読むのは、10 秒に 1 回の GitForge の API である（[見回り](../backend/worker/patrol.md)）。1 日に 8,640 回である。
+- worker は、10 秒に 1 回、repository の一覧を読み直す（[見回り](../backend/worker/patrol.md)）。1 日に 8,640 回である。
+  - GitHub の構成では、設定の DB から読む。Forgejo の構成では、organization の一覧を Forgejo の API で読み、ディレクトリの repository を設定の DB から読む。
 - 見回りの `git ls-remote` は、repository 30 個 × 1 秒ごとで、1 秒に 30 回、1 日に約 260 万回である。1 回数 KB（ブランチの数による）である。
   - GitForge の API の上限には数えないことが多いが、git の操作の、乱用を防ぐ制限には数える。
   - `ls-remote` 1 回ごとに、GitForge は認証と ref の一覧を返す処理をする。
@@ -50,19 +51,28 @@
 
 ### GitHub アダプタ
 
-App のインストールの上限は、REST が 1 時間 5,000 回である（repository と利用者が増えると、12,500 回まで増える）。
-主体のトークンの上限は、主体ごとに 1 時間 5,000 回である。
+GitHub の REST の上限は、使うトークンで 2 つに分かれる（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
+
+- 主体ごとの上限：バックエンドは、要求を送った主体のトークンで GitHub を読み書きする。上限は、主体のアカウントごとに 1 時間 5,000 回である。同じアカウントのほかのトークン（`gh auth login` のものなど）と合わせて数える。
+- installation の上限：worker は、App の installation token で読む。上限は、installation（owner）ごとに 1 時間 5,000 回からである（repository と利用者が増えると、12,500 回まで増える）。
 
 | 要求 | REST の回数 | 数える上限 |
 |---|---|---|
-| どの要求も（認証） | 2〜3 回（主体、team の所属、リポジトリの権限） | 主体ごと |
-| 作業の一覧 | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧）＋ open の PR ごとに 1 回（レビュー） | App |
-| apply request を読む | 3 回（PR、PR のコメント、レビュー） | App |
-| 木のノードを読む | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧） | App |
-| 書き込み | 1〜3 回（PR の作成・merge・close、レビュー、コメント、ラベル） | App |
-| worker | 0 回（git だけを使う） | なし。git の操作の、乱用を防ぐ制限には数える |
+| どの要求も（認証） | 3〜4 回（主体、Logiforge の App のトークンかの確かめ、team の所属、リポジトリの権限） | 主体ごと（App のトークンかの確かめは App） |
+| 作業の一覧 | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧）＋ open の PR ごとに 1 回（レビュー） | 主体ごと |
+| apply request を読む | 3 回（PR、PR のコメント、レビュー） | 主体ごと |
+| 木のノードを読む | 3 回以上（open の PR と issue の一覧、repository のコメントの一覧） | 主体ごと |
+| 書き込み | 1〜3 回（PR の作成・merge・close、レビュー、コメント、ラベル） | 主体ごと |
+| worker の反映かの判定 | `main` のコミット 1 つに 1 回（`commits/{sha}/pulls`。[重さ](../backend/verify/README.md#重さ)） | installation |
+| worker の記録の控え | repository ごとに、記録を読む間隔ごとに 1 回（`issues/comments?since=`。[記録の控え](../backend/verify/records.md)） | installation |
+| worker の installation token | owner ごとに、token を作り直すたびに 2 回 | App の JWT。installation の上限には数えない |
 
-- open の apply request が 50 件あると、作業の一覧 1 回で、App の REST を 50 回ほど使う。
-  - 外の仕組みが、作業の一覧を repository 10 個について 1 分ごとに読むと、1 時間 3 万回ほどで、上限を超える。
+- worker の `ls-remote` と `fetch` は、REST の上限には数えない。git の操作の、乱用を防ぐ制限には数える（[worker](#worker)）。
+- worker の REST は、ほとんどが記録の控えである。
+  - 記録を読む間隔を 30 秒にすると、repository 1 つで 1 時間 120 回である。1 つの installation で、repository 30 個ほどまで足りる（[見回りの間隔](../adapters/github.md#見回りの間隔)）。
+  - 反映かの判定は、反映の数だけなので、1 日に数十回から 100 回ほどである。
+- open の apply request が 50 件あると、作業の一覧 1 回で、読む主体の REST を 50 回ほど使う。
+  - 外の仕組みが、1 つの主体で、作業の一覧を repository 10 個について 1 分ごとに読むと、1 時間 3 万回ほどで、その主体の上限を超える。
   - 認証は、エージェントが 1 秒ごとに要求すると、主体ごとに 1 時間 7,000〜1 万回で、上限を超える。
-- そのため、多くの人とエージェントが頻繁に読むと、GitHub の API のレート制限に当たる（[GitHub アダプタ](../adapters/github.md)）。
+- そのため、1 つの主体が頻繁に読むと、GitHub の API のレート制限に当たる（[GitHub アダプタ](../adapters/github.md)）。
+  - 主体ごとの上限なので、人とエージェントが増えても、ほかの主体の読みは止まらない。

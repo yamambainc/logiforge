@@ -19,7 +19,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
-// Config は、GitHub アダプタの設定である（design/adapters/settings.md）。
+// Config は、GitHub アダプタの設定である（design/settings/README.md）。
 type Config struct {
 	// APIURL は、REST の URL。空なら https://api.github.com。
 	APIURL string

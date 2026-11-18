@@ -3,7 +3,7 @@
 バックエンドと worker を、Kubernetes で動かすときに読む。
 タスクの形は、[動かし方（コンテナ）](README.md) に従う。
 
-秘密は Secret `logiforge`、置き場と clone は PersistentVolumeClaim に置く例である。
+2 つの鍵は Secret `logiforge`、設定の DB と置き場と clone は PersistentVolumeClaim に置く例である。
 
 ```yaml
 apiVersion: v1
@@ -28,18 +28,16 @@ spec:
         - containerPort: 8080
       env:
         - { name: LOGIFORGE_ADDR, value: "0.0.0.0:8080" }
+        - { name: LOGIFORGE_DB, value: /var/lib/logiforge/config/settings.db }
+        - { name: LOGIFORGE_BACKEND_KEY_FILE, value: /run/secrets/logiforge/backend_key }
+        - { name: LOGIFORGE_SHARED_KEY_FILE, value: /run/secrets/logiforge/shared_key }
         - { name: LOGIFORGE_STORE_DIR, value: /var/lib/logiforge/store }
-        - { name: LOGIFORGE_FORGEJO_URL, value: "https://forgejo.example.com" }
-        - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
-        - { name: LOGIFORGE_USER_TEAM, value: logiforge-users }
-        - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
-        - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
-        - { name: LOGIFORGE_RECORD_KEYS_FILE, value: /run/secrets/logiforge/record_keys }
       livenessProbe:
         httpGet: { path: /healthz, port: 8080 }
       readinessProbe:
         httpGet: { path: /healthz, port: 8080 }
       volumeMounts:
+        - { name: config, mountPath: /var/lib/logiforge/config }
         - { name: store, mountPath: /var/lib/logiforge/store, readOnly: true }
         - { name: tmp, mountPath: /tmp }
         - { name: secrets, mountPath: /run/secrets/logiforge, readOnly: true }
@@ -51,27 +49,31 @@ spec:
         readOnlyRootFilesystem: true
         capabilities: { drop: [ALL] }
       env:
+        - { name: LOGIFORGE_DB, value: /var/lib/logiforge/config/settings.db }
+        - { name: LOGIFORGE_SHARED_KEY_FILE, value: /run/secrets/logiforge/shared_key }
         - { name: LOGIFORGE_WORKER_DIR, value: /var/lib/logiforge/worker }
         - { name: LOGIFORGE_STORE_DIR, value: /var/lib/logiforge/store }
-        - { name: LOGIFORGE_FORGEJO_URL, value: "https://forgejo.example.com" }
-        - { name: LOGIFORGE_FORGEJO_ORG, value: logiforge }
-        - { name: LOGIFORGE_WORKER_LOGIN, value: logiforge-reader }
-        - { name: LOGIFORGE_WORKER_TOKEN_FILE, value: /run/secrets/logiforge/worker_token }
-        - { name: LOGIFORGE_RECORD_PUBLIC_KEYS_FILE, value: /run/secrets/logiforge/record_public_keys }
       livenessProbe:
         exec: { command: ["logiforge", "worker-health"] }
       volumeMounts:
+        - { name: config, mountPath: /var/lib/logiforge/config }
         - { name: worker, mountPath: /var/lib/logiforge/worker }
         - { name: store, mountPath: /var/lib/logiforge/store }
         - { name: tmp, mountPath: /tmp }
-        - { name: secrets, mountPath: /run/secrets/logiforge, readOnly: true }
+        - { name: shared-key, mountPath: /run/secrets/logiforge, readOnly: true }
   volumes:
     - name: worker
       persistentVolumeClaim: { claimName: logiforge-worker }
     - name: store
       persistentVolumeClaim: { claimName: logiforge-store }
+    - name: config
+      persistentVolumeClaim: { claimName: logiforge-config }
     - name: secrets
       secret: { secretName: logiforge }
+    - name: shared-key
+      secret:
+        secretName: logiforge
+        items: [{ key: shared_key, path: shared_key }]
     - name: tmp
       emptyDir: {}
 ```
@@ -84,4 +86,8 @@ spec:
     - 複製を消す仕組みは、作らない。`emptyDir` の大きさの上限（`sizeLimit`）は、目安に余裕を足して決める。
     - 上限を超えると、Pod が作り直される。複製は使い捨てのキャッシュなので、作り直された Pod は、要求ごとに空から clone し直す。そのあいだ、初めての `ar create` が遅くなるだけで、壊れるものはない。
     - バックエンドは、起動のときに、`LOGIFORGE_GIT_CACHE_DIR` の下の古い複製（`workcopy-*`）を消す。そのため、`LOGIFORGE_GIT_CACHE_DIR` は、プロセスごとの場所にする。1 台のマシンで、コンテナに分けずにバックエンドを何台か動かすときは、それぞれに別の場所を渡す。
+- 設定の DB は、タスクの中で共有する永続のボリューム（`logiforge-config`）に置く（[タスクの形](README.md#タスクの形)）。
+  - `logiforge-config` は、ブロックのストレージ（`ReadWriteOnce`）にする。NFS などのボリュームにしない（[設定の DB](../settings/database.md#db-の種類)）。
+  - worker も、読み書きでマウントする。なぜ：SQLite は、WAL のモードでは、読むだけで開いても、`-shm` のファイルに書くから。
+- worker には、Secret のうち共有の鍵（`shared_key`）だけをマウントする（`items`）。バックエンドの鍵を渡さない（[秘密の暗号化](../settings/secrets.md#2-つの鍵)）。
 - worker の `livenessProbe` は、`exec` で `logiforge worker-health` を動かす（[ヘルスチェック](README.md#ヘルスチェック)）。

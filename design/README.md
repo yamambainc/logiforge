@@ -18,9 +18,10 @@ Logiforge のバックエンドを実装するときに読む。
 8. [API](api/README.md)
 9. [CLI](cli/README.md)
 10. [WebUI](webui/README.md)
-11. [動かし方（コンテナ）](deploy/README.md)
-12. [費用と規模の見積もり](estimates/README.md)
-13. [ディレクトリ方式](directory/README.md)
+11. [設定](settings/README.md)
+12. [動かし方（コンテナ）](deploy/README.md)
+13. [費用と規模の見積もり](estimates/README.md)
+14. [ディレクトリ方式](directory/README.md)
 
 ## 用語
 

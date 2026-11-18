@@ -31,7 +31,11 @@ tags:
   - name: history
     description: 履歴とエクスポート
   - name: oauth
-    description: WebUI のサインイン（Forgejo の OAuth2 の中継）
+    description: WebUI のサインイン（GitHub App か Forgejo の OAuth2 の中継）
+  - name: setup
+    description: 初回のセットアップ（セットアップのコードで守る）
+  - name: settings
+    description: 設定（管理者だけ）
 
 paths:
   /oauth/config:
@@ -39,7 +43,11 @@ paths:
       tags: [oauth]
       operationId: getOAuthConfig
       summary: WebUI のサインインに使う OAuth2 の設定
-      description: 認証を求めない。設計は ../../design/webui/auth.md に従う。
+      description: |
+        認証を求めない。設計は ../../design/webui/auth.md と ../../design/webui/oauth-relay.md に従う。
+        GitHub を使う構成では Logiforge の GitHub App の、Forgejo を使う構成では Forgejo の OAuth2 のアプリケーションの値を、設定の DB から読んで返す。
+        authorize_url は、GitHub では GitHub の画面の URL の /login/oauth/authorize、Forgejo ではブラウザから Forgejo への URL の /login/oauth/authorize である。
+        構成と client_id がまだ設定の DB になければ setup_required。
       security: []
       responses:
         '200':
@@ -54,13 +62,15 @@ paths:
                   gitforge: { type: string, enum: [forgejo, github], description: 'サインインする GitForge。画面の文言に使う' }
                   client_id: { type: string }
                   redirect_uri: { type: string, format: uri }
-                  scope: { type: string, description: 'スペースで区切ったスコープ。値は design/webui/auth.md の「スコープ」に書く' }
+                  scope: { type: string, description: 'スペースで区切ったスコープ。GitHub では offline_access だけ。値は design/webui/auth.md の「スコープ」に書く' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+        '5XX': { $ref: '#/components/responses/Problem' }
   /oauth/token:
     post:
       tags: [oauth]
       operationId: exchangeOAuthCode
-      summary: 認可コードをアクセストークンに交換する（BE が client secret を足して Forgejo に中継する）
-      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。決まりは ../../design/webui/oauth-relay.md に従う。Forgejo が拒んだら unauthenticated。
+      summary: 認可コードをアクセストークンに交換する（BE が client secret を足して GitForge に中継する）
+      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。決まりは ../../design/webui/oauth-relay.md に従う。GitForge が拒んだら unauthenticated。
       security: []
       requestBody:
         required: true
@@ -74,11 +84,362 @@ paths:
                 code_verifier: { type: string }
       responses:
         '200':
-          description: Forgejo の応答
+          description: GitForge の応答から、リフレッシュトークンを除いたもの
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OAuthToken' }
         '4XX': { $ref: '#/components/responses/Problem' }
+        '5XX': { $ref: '#/components/responses/Problem' }
+
+  /setup:
+    get:
+      tags: [setup]
+      operationId: getSetup
+      summary: セットアップが終わったか、どの段まで進んだか、選んだ構成
+      description: |
+        認証を求めない。セットアップのコードも求めない。WebUI が、セットアップの画面を出すかを決めるのに使う。
+        セットアップが終わったあとも、done が true の応答を返す。決まりは ../../design/api/endpoints/setup.md に従う。
+      security: []
+      responses:
+        '200':
+          description: セットアップの状態
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupState' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/code:
+    post:
+      tags: [setup]
+      operationId: checkSetupCode
+      summary: セットアップのコードが合うかだけを確かめる
+      description: 合えば 204。合わなければ unauthenticated。セットアップが終わっていれば setup_done。何も置かない。
+      security:
+        - setupCode: []
+      responses:
+        '204': { description: コードが合う }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/gitforge:
+    put:
+      tags: [setup]
+      operationId: setSetupGitForge
+      summary: 構成（github か forgejo）を決める
+      description: セットアップのコードが合わなければ unauthenticated。セットアップが終わっていれば setup_done。
+      security:
+        - setupCode: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gitforge]
+              properties:
+                gitforge: { $ref: '#/components/schemas/GitForgeKind' }
+      responses:
+        '200':
+          description: セットアップの状態
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupState' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/github/manifest:
+    post:
+      tags: [setup]
+      operationId: createSetupGitHubManifest
+      summary: GitHub App の manifest と、manifest を送る先の URL を返す
+      description: |
+        manifest の中身は ../../design/settings/setup.md の「GitHub を使う構成：App を manifest flow で作る」に従う。
+        受け取った WebUI の URL は、設定の DB に置く。構成が github でなければ validation_failed。
+      security:
+        - setupCode: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, owner_kind, webui_url, public]
+              properties:
+                owner: { type: string, description: App を作る organization かアカウントの名前 }
+                owner_kind: { type: string, enum: [organization, user] }
+                webui_url: { type: string, format: uri, description: WebUI の URL。redirect_uri と manifest の URL の元になる }
+                public: { type: boolean, description: ほかの owner にも install するなら true }
+      responses:
+        '200':
+          description: manifest と送り先
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [manifest, post_url]
+                properties:
+                  manifest: { type: object, description: GitHub に送る manifest（JSON） }
+                  post_url: { type: string, format: uri, description: manifest をフォームで送る GitHub の URL }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/github/conversion:
+    post:
+      tags: [setup]
+      operationId: convertSetupGitHubManifest
+      summary: manifest flow の code を GitHub App に換え、設定の DB に置く
+      description: |
+        BE が POST /app-manifests/{code}/conversions を呼び、App の ID、slug、client_id、client secret、秘密鍵を置く（../../design/settings/setup.md）。
+        code が切れているか正しくなければ validation_failed。そのときは createSetupGitHubManifest からやり直す。
+      security:
+        - setupCode: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: 作った App
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupGitHubApp' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/forgejo:
+    put:
+      tags: [setup]
+      operationId: setSetupForgejo
+      summary: Forgejo の URL、organization、OAuth2 のアプリケーション、worker のユーザーとトークンを確かめてから置く
+      description: |
+        置く前に、worker のトークンで、そのユーザーと organization を読めることを確かめる。読めなければ validation_failed（../../design/settings/setup.md の「Forgejo を使う構成」）。
+        構成が forgejo でなければ validation_failed。
+      security:
+        - setupCode: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgejoSettingsInput' }
+      responses:
+        '200':
+          description: セットアップの状態
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupState' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /setup/finish:
+    post:
+      tags: [setup]
+      operationId: finishSetup
+      summary: サインインした主体を、最初の管理者と user にし、セットアップを終える
+      description: |
+        セットアップのコードと、WebUI のサインインで得たトークンの両方を求める。
+        トークンが、Logiforge の GitHub App か Forgejo の OAuth2 のアプリケーションのものでなければ unauthenticated。
+        記録の署名の鍵がなければ、1 つ作る（../../design/settings/setup.md の「流れ」）。
+      security:
+        - setupCode: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: セットアップの状態（done は true）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupState' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      summary: 設定（管理者だけ。秘密は、置いたかどうかだけ）
+      description: |
+        管理者でなければ forbidden。管理者の確かめ方は ../../design/settings/admins.md の「管理者を確かめる」に従う。
+        WebUI は、forbidden かどうかで、設定のメニューを出すかを決める。
+      responses:
+        '200':
+          description: 設定
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/gitforge:
+    patch:
+      tags: [settings]
+      operationId: updateGitForgeSettings
+      summary: GitForge とのつなぎ方と、見回りの間隔を変える（管理者だけ）
+      description: |
+        送った項目だけを変える。秘密は、送ったものだけを置き換える。構成（github か forgejo）は変えられない。
+        GitHub を使う構成で、git の操作の時間の上限が 20 分以上なら validation_failed（../../design/adapters/github-app.md の「installation token」）。
+        Forgejo を使う構成で worker のトークンを置き換えるときは、そのトークンで worker のユーザーと organization を読めることを確かめる。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webui_url: { type: string, format: uri }
+                github: { $ref: '#/components/schemas/GitHubSettingsInput' }
+                forgejo: { $ref: '#/components/schemas/ForgejoSettingsInput' }
+                intervals: { $ref: '#/components/schemas/IntervalSettings' }
+      responses:
+        '200':
+          description: 変えたあとの設定
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/repositories:
+    get:
+      tags: [settings]
+      operationId: listRegisteredRepositories
+      summary: 登録した repository の一覧（管理者だけ。すべてを返す）
+      responses:
+        '200':
+          description: 登録した repository
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RegisteredRepository' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/repositories/{repository}:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    put:
+      tags: [settings]
+      operationId: registerRepository
+      summary: repository を登録する（管理者だけ）。同じ名前があれば、gitforge_ref とディレクトリを置き換える
+      description: |
+        GitHub を使う構成では、GitHub App の installation token で、その GitHub リポジトリを読めることを確かめる。
+        読めなければ validation_failed で、detail に install の URL を書く（../../design/api/endpoints/settings.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gitforge_ref]
+              properties:
+                gitforge_ref: { type: string, description: 'GitHub では owner/name' }
+                directory: { type: string, description: ディレクトリの repository の、git リポジトリの中のパス。git リポジトリ全体なら渡さない }
+      responses:
+        '200':
+          description: 登録した repository
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisteredRepository' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [settings]
+      operationId: unregisterRepository
+      summary: repository を外す（管理者だけ）。置き場のスナップショットと keep/ は消さない
+      responses:
+        '204':
+          description: 外した
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/users:
+    put:
+      tags: [settings]
+      operationId: setUsers
+      summary: user とみなすアカウント名と team の一覧を置き換える（管理者だけ）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/UserEntry' }
+      responses:
+        '200':
+          description: 置き換えたあとの一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, updated_by, updated_at]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/UserEntry' }
+                  updated_by: { type: string }
+                  updated_at: { type: string, format: date-time }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/admins:
+    get:
+      tags: [settings]
+      operationId: listAdmins
+      summary: 管理者の一覧（管理者だけ）
+      responses:
+        '200':
+          description: 管理者の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Admin' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/admins/{login}:
+    parameters:
+      - $ref: '#/components/parameters/AdminLogin'
+    put:
+      tags: [settings]
+      operationId: addAdmin
+      summary: 管理者を足す（管理者だけ）。すでにいれば、そのまま返す
+      responses:
+        '200':
+          description: 足した管理者
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Admin' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [settings]
+      operationId: removeAdmin
+      summary: 管理者を外す（管理者だけ）。最後の 1 人なら validation_failed
+      responses:
+        '204':
+          description: 外した
+        '4XX': { $ref: '#/components/responses/Problem' }
+  /settings/record-keys:
+    get:
+      tags: [settings]
+      operationId: listRecordKeys
+      summary: 記録の署名の鍵の一覧（管理者だけ。秘密鍵は返さない）
+      responses:
+        '200':
+          description: 鍵の一覧
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordKey' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [settings]
+      operationId: createRecordKey
+      summary: 新しい記録の署名の鍵を作り、書くときの鍵にする（管理者だけ）。古い鍵の公開鍵は残す
+      responses:
+        '201':
+          description: 作った鍵
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecordKey' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories:
     get:
       tags: [repository]
@@ -775,8 +1136,19 @@ components:
       type: http
       scheme: bearer
       description: 主体（user または client）を示すトークン
+    setupCode:
+      type: apiKey
+      in: header
+      name: Logiforge-Setup-Code
+      description: セットアップのコード。バックエンドが起動したときにログに出す（../../design/settings/setup.md の「セットアップのコード」）
 
   parameters:
+    AdminLogin:
+      name: login
+      in: path
+      required: true
+      description: 管理者の GitForge のアカウント名。大文字と小文字を区別せずに比べる
+      schema: { type: string, minLength: 1 }
     RepositoryName:
       name: repository
       in: path
@@ -870,6 +1242,127 @@ components:
         access_token: { type: string }
         token_type: { type: string }
         expires_in: { type: integer, description: アクセストークンの寿命（秒） }
+    GitForgeKind:
+      type: string
+      enum: [github, forgejo]
+    SetupState:
+      type: object
+      required: [done, step, gitforge]
+      properties:
+        done: { type: boolean, description: セットアップが終わったか }
+        step:
+          type: [string, 'null']
+          enum: [gitforge, github_app, forgejo, signin, null]
+          description: 次に進める段。github_app は App の作成、signin は（GitHub なら install と）サインイン。終わっていれば null
+        gitforge:
+          oneOf:
+            - $ref: '#/components/schemas/GitForgeKind'
+            - type: 'null'
+          description: 選んだ構成。まだ選んでいなければ null
+        github_app:
+          oneOf:
+            - $ref: '#/components/schemas/SetupGitHubApp'
+            - type: 'null'
+          description: GitHub を使う構成で、App を作ったあとなら、その App。続きから install の段を示すのに使う
+    SetupGitHubApp:
+      type: object
+      required: [slug, install_url]
+      properties:
+        slug: { type: string }
+        install_url: { type: string, format: uri, description: App を owner に install する GitHub の画面 }
+    GitHubSettingsInput:
+      type: object
+      description: GitHub App とつなぐ設定。秘密は書くときだけ受け取る（../../design/settings/README.md）
+      properties:
+        app_id: { type: integer }
+        client_id: { type: string }
+        slug: { type: string }
+        private_key: { type: string, writeOnly: true, description: PEM }
+        client_secret: { type: string, writeOnly: true }
+        api_url: { type: string, format: uri, description: GitHub の REST の URL }
+        web_url: { type: string, format: uri, description: GitHub の画面の URL。サインインの authorize とトークンのエンドポイントの元 }
+    ForgejoSettingsInput:
+      type: object
+      description: Forgejo とつなぐ設定。setSetupForgejo ではすべて必須で、updateGitForgeSettings では送った項目だけを変える
+      properties:
+        url: { type: string, format: uri, description: BE から Forgejo への URL }
+        public_url: { type: string, format: uri, description: ブラウザから Forgejo への URL。渡さなければ url と同じ }
+        organization: { type: string }
+        client_id: { type: string, description: OAuth2 のアプリケーションの client_id }
+        client_secret: { type: string, writeOnly: true }
+        worker_user: { type: string }
+        worker_token: { type: string, writeOnly: true, description: 'read:repository、read:organization、read:issue' }
+    IntervalSettings:
+      type: object
+      description: 見回りの間隔、一覧を読み直す間隔、記録を読む間隔、git の操作の時間の上限は ../../design/backend/worker/patrol.md に従い、worker が次に一覧を読み直したときから効く
+      properties:
+        patrol_seconds: { type: number, exclusiveMinimum: 0, description: 見回りの間隔 }
+        list_seconds: { type: number, exclusiveMinimum: 0, description: repository の一覧を読み直す間隔 }
+        records_seconds: { type: number, exclusiveMinimum: 0, description: 記録を読む間隔 }
+        git_timeout_seconds: { type: number, exclusiveMinimum: 0, description: git の操作の時間の上限 }
+        write_wait_seconds: { type: number, exclusiveMinimum: 0, description: 書いたものが読む側に出るまで待つ上限。バックエンドが、次の要求から使う（../../design/api/writes.md） }
+    Settings:
+      type: object
+      required: [gitforge, webui_url, intervals, users, updated_by, updated_at]
+      properties:
+        gitforge: { $ref: '#/components/schemas/GitForgeKind' }
+        webui_url: { type: string, format: uri }
+        github:
+          type: [object, 'null']
+          description: GitHub を使う構成のときだけ
+          properties:
+            app_id: { type: integer }
+            client_id: { type: string }
+            slug: { type: string }
+            api_url: { type: string, format: uri }
+            web_url: { type: string, format: uri }
+            private_key_set: { type: boolean }
+            client_secret_set: { type: boolean }
+        forgejo:
+          type: [object, 'null']
+          description: Forgejo を使う構成のときだけ
+          properties:
+            url: { type: string, format: uri }
+            public_url: { type: string, format: uri }
+            organization: { type: string }
+            client_id: { type: string }
+            client_secret_set: { type: boolean }
+            worker_user: { type: string }
+            worker_token_set: { type: boolean }
+        intervals: { $ref: '#/components/schemas/IntervalSettings' }
+        users:
+          type: array
+          items: { $ref: '#/components/schemas/UserEntry' }
+        updated_by: { type: string, description: 最後に設定を変えた管理者 }
+        updated_at: { type: string, format: date-time }
+    RegisteredRepository:
+      type: object
+      required: [name, gitforge_ref]
+      properties:
+        name: { $ref: '#/components/schemas/RepositoryNameValue' }
+        gitforge_ref: { type: string }
+        directory: { type: string, description: ディレクトリの repository のパス。git リポジトリ全体なら空 }
+    UserEntry:
+      type: object
+      required: [kind, value]
+      properties:
+        kind: { type: string, enum: [login, team] }
+        value: { type: string, description: 'アカウント名か team。大文字と小文字を区別せずに比べる' }
+    Admin:
+      type: object
+      required: [login, added_by, added_at]
+      properties:
+        login: { type: string }
+        added_by: { type: string }
+        added_at: { type: string, format: date-time }
+    RecordKey:
+      type: object
+      required: [key_id, public_key, created_at, primary]
+      properties:
+        key_id: { type: string }
+        public_key: { type: string }
+        created_at: { type: string, format: date-time }
+        primary: { type: boolean, description: 書くときの鍵か }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
@@ -961,8 +1454,8 @@ components:
             | code | status | 意味 |
             |---|---|---|
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
-            | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない |
-            | forbidden | 403 | 主体の種類が、その操作を使えない |
+            | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない。または、セットアップのコードがない、合わない |
+            | forbidden | 403 | 主体の種類が、その操作を使えない。または、管理者でない主体が設定の API を使おうとした |
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
@@ -974,9 +1467,11 @@ components:
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | unavailable | 503 | GitForge の git を読めない。少し待って送り直す |
             | snapshot_pending | 503 | 指定したコミットのスナップショットが、まだない（worker が取り込んでいない）。少し待って読み直す |
-            | repository_not_registered | 422 | その名前の repository が、サーバの設定に登録されていない。repository の登録をサーバの設定で行う構成だけで起きる |
+            | repository_not_registered | 422 | その名前の repository が、設定の DB に登録されていない。管理者が設定の画面で登録する repository（GitHub リポジトリとディレクトリ）だけで起きる |
+            | setup_required | 503 | セットアップが終わっていない。セットアップの API と /healthz と、構成と client_id を置いたあとのサインインの中継のほかは、これを返す |
+            | setup_done | 409 | セットアップが終わったあとに、セットアップの API（getSetup を除く）を呼んだ |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, internal]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, internal]
 
     Tree:
       type: object
