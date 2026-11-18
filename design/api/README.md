@@ -55,7 +55,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 ## 反映したあとの木
 
 - 木の概要、木のノード、ノードの詳細は、`apply_request` で open の apply request を指定できる。
-  - その apply request を反映したあとの木を返す（[向き先に重ねる](../backend/snapshot/branch.md#向き先に重ねる)）。
+  - その apply request を反映したあとの、向き先に重ねたスナップショットツリーを返す（[向き先に重ねる](../backend/snapshot/branch.md#向き先に重ねる)）。
   - `commit` と同時には指定できない。
 - 向き先が `main` で、重ねられなければ、`overlay_conflict`（409）を返す。
   - `detail` に、衝突したパスを書く。

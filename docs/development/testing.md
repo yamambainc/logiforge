@@ -36,7 +36,7 @@ go test -count=1 -timeout 20m -v ./internal/e2e/
 - 先に WebUI をビルドしておく（[WebUI のビルド](webui.md)）。
 - スクリーンショットは、`LOGIFORGE_E2E_OUT` のディレクトリに書く。
 
-## 大きな木の取り込み
+## 大きなスナップショットツリーの取り込み
 
-- 大きめの木の取り込みの時間は、`E2E_LARGE_COMMITS` を付けたときだけ測る。
+- 大きめのスナップショットツリーの取り込みの時間は、`E2E_LARGE_COMMITS` を付けたときだけ測る。
 - `E2E_LARGE_COMMITS` は、main のコミットの数である（例：300）。
