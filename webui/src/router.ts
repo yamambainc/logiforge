@@ -22,17 +22,26 @@ export function useLocation(): URL {
 
 /** repository の中の画面（design/webui/screens.md の「URL」） */
 export type RepoScreen = 'dashboard' | 'tree' | 'human-requests' | 'apply-requests';
-export type Route = { name: 'repositories' } | { name: RepoScreen; repo: string } | { name: 'callback' } | { name: 'unknown' };
+/** 設定の画面のタブ（docs/webui/settings.md の「タブ」） */
+export type SettingsTab = 'repository' | 'gitforge' | 'record-keys';
+export const SETTINGS_TABS: SettingsTab[] = ['repository', 'gitforge', 'record-keys'];
+export type Route = { name: 'repositories' } | { name: RepoScreen; repo: string } | { name: 'settings'; tab: SettingsTab } | { name: 'callback' } | { name: 'unknown' };
 
 const SCREENS: Record<string, RepoScreen> = { '': 'dashboard', tree: 'tree', 'human-requests': 'human-requests', 'apply-requests': 'apply-requests' };
 
-export function match(path: string): Route {
+export function match(path: string, search = ''): Route {
   // セットアップが終わったあとの /setup は、repository の一覧を出す（design/webui/screens-setup.md）
   if (path === '/' || path === '' || path === '/setup') return { name: 'repositories' };
   if (path === '/oauth/callback') return { name: 'callback' };
+  // タブは ?tab= に持つ。ないか、知らない値なら repository のタブ
+  if (path === '/settings' || path === '/settings/') {
+    const t = new URLSearchParams(search).get('tab') as SettingsTab | null;
+    return { name: 'settings', tab: t && SETTINGS_TABS.includes(t) ? t : 'repository' };
+  }
   const m = path.match(/^\/r\/([a-z0-9][a-z0-9-]{0,62})(?:\/([a-z-]+))?\/?$/);
   if (m && (m[2] ?? '') in SCREENS) return { name: SCREENS[m[2] ?? ''], repo: m[1] };
   return { name: 'unknown' };
 }
 
 export const screenPath = (repo: string, s: RepoScreen) => `/r/${repo}${s === 'dashboard' ? '' : '/' + s}`;
+export const settingsPath = (tab: SettingsTab) => `/settings?tab=${tab}`;

@@ -22,6 +22,8 @@ type Options struct {
 	WebUI fs.FS
 	// Setup は、/v1/setup の下の API（SetupHandler）である。nil なら、not_found。
 	Setup http.Handler
+	// Settings は、/v1/settings の下の API（SettingsHandler）である。セットアップが終わったあとだけ配る。
+	Settings http.Handler
 	// SetupFormAction は、セットアップの画面（/setup の下）から、フォームを送ってよい先のオリジンである（GitHub の画面）。
 	// manifest flow で、manifest をフォームで GitHub に送るため（design/settings/setup.md）。空なら足さない。
 	SetupFormAction string
@@ -46,6 +48,10 @@ func NewServer(b *backend.Backend, log *slog.Logger, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", api)
 	mux.Handle("/healthz", api)
+	if opt.Settings != nil {
+		mux.Handle("/v1/settings", opt.Settings)
+		mux.Handle("/v1/settings/", opt.Settings)
+	}
 	mountCommon(mux, opt)
 	return withHeaders(withGzip(mux))
 }

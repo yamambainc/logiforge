@@ -32,7 +32,7 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 		case r.Method == "POST" && strings.HasPrefix(p, "/app-manifests/"):
 			w.WriteHeader(404)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-		case r.Method == "GET" && p == "/repos/acme/q/installation":
+		case r.Method == "GET" && (p == "/repos/acme/q/installation" || p == "/repos/acme/r/installation"):
 			if !*installed {
 				w.WriteHeader(404)
 				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
@@ -42,7 +42,7 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 		case r.Method == "POST" && p == "/app/installations/1/access_tokens":
 			w.WriteHeader(201)
 			_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_read", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
-		case r.Method == "GET" && p == "/repos/acme/q" && tok == "ghs_read":
+		case r.Method == "GET" && (p == "/repos/acme/q" || p == "/repos/acme/r") && tok == "ghs_read":
 			_, _ = w.Write([]byte(`{"id":7,"full_name":"acme/q"}`))
 		case r.Method == "POST" && p == "/applications/Iv1.cid/token":
 			var in map[string]string
@@ -145,6 +145,7 @@ func TestSetupGitHub(t *testing.T) {
 	want(call("POST", "/v1/setup/code", code, "", nil), 204, "コード")
 	// ほかの API は、setup_required。
 	want(call("GET", "/v1/repositories", "", "", nil), 503, "セットアップの前の API")
+	want(call("GET", "/v1/settings", "", "", nil), 503, "セットアップの前の設定の API")
 
 	r = call("PUT", "/v1/setup/gitforge", code, "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
 	want(r, 200, "構成")
@@ -201,6 +202,8 @@ func TestSetupGitHub(t *testing.T) {
 	if r := call("GET", "/v1/setup", "", "", nil); r.body["done"] != true {
 		t.Fatalf("終わったあとの getSetup：%v", r.body)
 	}
+	// 終わったら、設定の API が使える（セットアップの前は setup_required）。
+	want(call("GET", "/v1/settings", "", "ghu_alice", nil), 200, "セットアップのあとの getSettings")
 	c, err := db.Load(t.Context(), keys)
 	if err != nil || len(c.RecordKeys) != 1 || c.Ready() != nil {
 		t.Fatalf("記録の鍵：%v %v", c, err)

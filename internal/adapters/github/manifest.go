@@ -128,3 +128,9 @@ func (a *App) CanReadRepository(ctx context.Context, gitForgeRef string) error {
 	rp, _ := ports.SplitRef(gitForgeRef)
 	return a.c.do(ctx, tok, http.MethodGet, "/repos/"+rp, nil, nil)
 }
+
+// CheckPrivateKey は、App の秘密鍵が、読める PEM の RSA の鍵かを確かめる。
+func CheckPrivateKey(pemKey []byte) error {
+	_, err := parseRSAKey(pemKey)
+	return err
+}

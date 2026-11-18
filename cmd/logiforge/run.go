@@ -251,7 +251,8 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}
-	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup}), fs.reader, nil
+	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth}, slog.Default())
+	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup, Settings: st}), fs.reader, nil
 }
 
 // setupOptions は、セットアップが終わるまでに配るものである。

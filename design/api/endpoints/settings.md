@@ -17,7 +17,8 @@
 
 ## 認証と認可
 
-- どれも、主体が `user` であることを求める（[利用者の決め方](../../settings/users.md#利用者の決め方)）。`user` でなければ `forbidden`（403）を返す。
+- どれも、主体が、WebUI のサインインのトークンの `user` であることを求める（[利用者の決め方](../../settings/users.md#利用者の決め方)、[トークンの出どころ](../../settings/users.md#トークンの出どころ)）。そうでなければ `forbidden`（403）を返す。
+  - 書く呼び出しは、権限のキャッシュを使わずに確かめる（[権限のキャッシュ](../../settings/users.md#権限のキャッシュ)）。
 - 書く呼び出しは、変えた利用者と時刻を残す（[記録](../../settings/users.md#記録)）。
 
 ## 確かめること
@@ -27,6 +28,9 @@
 - Forgejo を使う構成で worker のトークンを置き換えるとき、そのトークンで読めて、書けないことを確かめる（[worker のトークンを確かめる](../../adapters/forgejo.md#worker-のトークンを確かめる)）。
 
 ## repository を外したとき
+
+- GitHub を使う構成では、最後の 1 つの repository は外せない（`validation_failed`）。
+  - なぜ：外すと、どの主体も登録した repository に Write を持たず、だれも `user` でなくなるから。設定の画面も開けなくなる（[締め出されたとき](../../settings/users.md#締め出されたとき)）。
 
 - worker は、次に一覧を読み直したときから、その repository を見回らない。
 - 置き場のスナップショットと `keep/` は消さない。

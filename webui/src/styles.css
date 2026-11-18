@@ -568,3 +568,21 @@ ul.counts li b small { font-size: 12px; font-weight: 400; color: var(--sub); }
 .setup-form code { font-family: var(--mono); background: var(--u-bg); padding: 1px 5px; border-radius: 4px; user-select: all; }
 .setup-step .form-error { margin-top: 8px; line-height: 1.6; }
 .setup a.btn { display: inline-block; text-decoration: none; color: inherit; }
+/* 設定の画面（docs/webui/settings.md） */
+.settings { display: flex; flex-direction: column; gap: 16px; }
+.settings .page-head { margin-bottom: 8px; flex-wrap: wrap; }
+.settings .card .page-head h2 { margin: 0; }
+.settings-form { max-width: 640px; }
+.settings-form h2 { margin: 12px 0 0; }
+.settings-form h2:first-child { margin-top: 0; }
+.settings-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.settings-list li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; min-height: 44px; }
+.settings-list li + li { border-top: 1px solid var(--line-2); }
+.settings-list .btn { margin-top: 0; }
+.settings-list .strong { font-weight: 700; font-size: 13px; }
+.settings-updated { font-size: 12px; margin: 0; }
+.secret { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line-2); }
+.secret-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+ol.steps { margin: 0; padding-left: 20px; color: var(--sub); }
+.badge-primary { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--t-bg); color: var(--t-fg); }
+.topbar > .tab { height: 100%; }
