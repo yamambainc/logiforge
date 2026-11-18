@@ -135,6 +135,7 @@ paths:
               required: [gitforge]
               properties:
                 gitforge: { $ref: '#/components/schemas/GitForgeKind' }
+                webui_url: { type: string, format: uri, description: WebUI の URL（ブラウザの今のオリジン）。サインインの redirect_uri の元になる。GitHub の構成では、createSetupGitHubManifest でも置く }
       responses:
         '200':
           description: セットアップの状態

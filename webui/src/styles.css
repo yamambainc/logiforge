@@ -548,3 +548,23 @@ ul.counts li b small { font-size: 12px; font-weight: 400; color: var(--sub); }
 .mermaid-frame { position: fixed; left: -10000px; top: 0; width: 1000px; height: 800px; border: 0; visibility: hidden; }
 /* 詳細のパネルの節の見出し（.d-sec h3）の形を、Markdown の見出しに持ち込まない */
 .md h3, .md h4, .md h5, .md h6 { color: var(--text); font-weight: 700; letter-spacing: normal; text-transform: none; display: block; }
+/* セットアップの画面（docs/webui/setup.md） */
+.setup { min-height: 100dvh; background: var(--bg); padding: 24px 16px; display: flex; justify-content: center; }
+.setup-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; max-width: 640px; width: 100%; box-shadow: 0 4px 20px rgba(20, 30, 50, .06); align-self: flex-start; }
+.setup-title { font-size: 18px; margin: 0 0 16px; }
+.setup-step { border-top: 1px solid var(--line-2); padding: 14px 0; }
+.setup-step h2 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.setup-step.off { opacity: .45; }
+.setup-step fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.setup-done { font-size: 11px; font-weight: 600; color: var(--t-fg); }
+.setup-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.setup-row .btn { margin-top: 0; }
+.setup-row .form-error { flex-basis: 100%; }
+.setup-row > input, .setup-form input:not([type=radio]):not([type=checkbox]) { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
+.setup-row > input { flex: 1; min-width: 200px; font-family: var(--mono); }
+.setup-form { display: flex; flex-direction: column; gap: 10px; }
+.setup-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--sub); }
+.setup-form label.check, .setup-row label { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.setup-form code { font-family: var(--mono); background: var(--u-bg); padding: 1px 5px; border-radius: 4px; user-select: all; }
+.setup-step .form-error { margin-top: 8px; line-height: 1.6; }
+.setup a.btn { display: inline-block; text-decoration: none; color: inherit; }

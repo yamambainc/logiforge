@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,6 +57,26 @@ type world struct {
 	// workerEnv と stopWorker は、worker を止めて、また動かすために持つ。
 	workerEnv  []string
 	stopWorker func()
+	// logs は、動かしたサブコマンドのログである（名前ごと）。
+	logs map[string]*lockedBuffer
+}
+
+// lockedBuffer は、サブコマンドが書くあいだにも読めるバッファである。
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func (w *world) login(name string) string { return w.org + name }
@@ -119,8 +140,12 @@ func (w *world) token(login string, scopes []string) string {
 func (w *world) start(name string, env []string, args ...string) func() {
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), env...)
-	var log bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &log, &log
+	log := &lockedBuffer{}
+	cmd.Stdout, cmd.Stderr = log, log
+	if w.logs == nil {
+		w.logs = map[string]*lockedBuffer{}
+	}
+	w.logs[name] = log
 	if err := cmd.Start(); err != nil {
 		w.t.Fatal(err)
 	}
@@ -228,7 +253,10 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 	}
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	backendKey, sharedKey := settings.NewKey(), settings.NewKey()
-	w.writeSettings(dbPath, backendKey, sharedKey, c)
+	// 記録の鍵がなければ、設定の DB に書かない。セットアップの API で入れる（setup_test.go）。
+	if len(c.RecordKeys) > 0 {
+		w.writeSettings(dbPath, backendKey, sharedKey, c)
+	}
 	baseEnv := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_DB=" + dbPath, "LOGIFORGE_SHARED_KEY=" + sharedKey,
 		"LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
 	// worker には、バックエンドの鍵を渡さない（design/settings/secrets.md の「2 つの鍵」）。

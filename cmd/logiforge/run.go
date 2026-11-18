@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,7 +122,12 @@ func runServe(ctx context.Context) error {
 	if cacheDir == "" {
 		cacheDir = filepath.Join(os.TempDir(), "logiforge-git")
 	}
+	if err := logSetupCode(ctx, db); err != nil {
+		return err
+	}
 	l := &liveServer{db: db, keys: keys, store: &store.Dir{Root: storeDir}}
+	// セットアップの API は、版ごとに作り直さない。送り元ごとの回数の上限を、版が変わっても続けるため。
+	l.setup = api.SetupHandler(&setupService{db: db, keys: keys, store: l.store}, slog.Default())
 	// 作業用の複製は、使い捨てのキャッシュである。設定が変わっても、作り直さずに使い続ける。URL と資格情報は、今の設定のものを使う。
 	// 設定がそろっていないときや、読みに失敗したあとは、reader がない。そのときは、空の URL と誤りにして、git を呼ばせない。
 	l.git, err = workcopy.NewCache(cacheDir, gitEnv, func(ref string) string {
@@ -163,6 +169,7 @@ type liveServer struct {
 	keys  settings.Keys
 	store *store.Dir
 	git   *workcopy.Cache
+	setup http.Handler
 
 	mu   sync.Mutex
 	rev  int64
@@ -201,8 +208,15 @@ func (l *liveServer) current(ctx context.Context) (http.Handler, error) {
 	switch {
 	case errors.Is(err, settings.ErrNotReady):
 		// 設定が足りなければ、設定が書かれるまで setup_required にする。前の版の設定では動かし続けない。
+		// セットアップの API と WebUI と、置いたあとならサインインの中継は配る（design/api/endpoints/setup.md）。
 		slog.Warn("設定がそろっていない", "revision", rev, "err", err)
-		h, read = api.SetupRequired(err.Error()), nil
+		var opt api.Options
+		if opt, err = l.setupOptions(ctx); err != nil {
+			slog.Error("設定の DB の中身を読めない。次の要求で読み直す", "revision", rev, "err", err)
+			l.h, l.read = nil, nil
+			return nil, err
+		}
+		h, read = api.SetupRequired(settings.ErrNotReady.Error(), opt), nil
 	case err != nil:
 		// 読みの失敗（ロックの待ちの上限、I/O の誤り、書きかけのジャーナル）や、形の誤りは、覚えない。次の要求で読み直す。
 		slog.Error("設定の DB の中身から、バックエンドを作れない。次の要求で読み直す", "revision", rev, "err", err)
@@ -237,21 +251,45 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}
-	oauth := oauthOf(c, fs)
-	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauth, WebUI: webui.Dist()}), fs.reader, nil
+	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup}), fs.reader, nil
+}
+
+// setupOptions は、セットアップが終わるまでに配るものである。
+func (l *liveServer) setupOptions(ctx context.Context) (api.Options, error) {
+	c, err := l.db.Load(ctx, l.keys)
+	if err != nil {
+		return api.Options{}, err
+	}
+	web := c.GitHub.WebURL
+	if web == "" {
+		web = github.DefaultWebURL
+	}
+	return api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup, SetupFormAction: originOf(web)}, nil
+}
+
+// originOf は、URL のオリジン（scheme://host）である。
+func originOf(v string) string {
+	u, err := url.Parse(v)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // oauthOf は、WebUI のサインインの中継の設定を作る（design/webui/oauth-relay.md）。client_id がなければ nil（中継を動かさない）。
-func oauthOf(c *settings.Config, fs forgeSetup) *api.OAuth {
-	id, secret, public := c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret, c.Forgejo.PublicURL
+func oauthOf(c *settings.Config) *api.OAuth {
+	id, secret, public, web := c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret, c.Forgejo.PublicURL, c.Forgejo.URL
 	if c.GitForge == gitforgeGitHub {
-		id, secret, public = c.GitHub.ClientID, c.GitHub.ClientSecret, ""
+		id, secret, public, web = c.GitHub.ClientID, c.GitHub.ClientSecret, "", c.GitHub.WebURL
+		if web == "" {
+			web = github.DefaultWebURL
+		}
 	}
-	if id == "" || secret == "" || c.WebUIURL == "" {
+	if c.GitForge == "" || id == "" || secret == "" || c.WebUIURL == "" {
 		return nil
 	}
-	return &api.OAuth{ForgejoURL: fs.webURL, PublicURL: public, ClientID: id, ClientSecret: secret,
-		RedirectURI: trimSlash(c.WebUIURL) + "/oauth/callback", GitForge: fs.kind}
+	return &api.OAuth{ForgejoURL: trimSlash(web), PublicURL: public, ClientID: id, ClientSecret: secret,
+		RedirectURI: trimSlash(c.WebUIURL) + "/oauth/callback", GitForge: c.GitForge}
 }
 
 func trimSlash(s string) string {

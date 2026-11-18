@@ -20,6 +20,11 @@ type Options struct {
 	OAuth *OAuth
 	// WebUI は、ビルドした WebUI（index.html と assets/）である。nil なら、WebUI を配らない。
 	WebUI fs.FS
+	// Setup は、/v1/setup の下の API（SetupHandler）である。nil なら、not_found。
+	Setup http.Handler
+	// SetupFormAction は、セットアップの画面（/setup の下）から、フォームを送ってよい先のオリジンである（GitHub の画面）。
+	// manifest flow で、manifest をフォームで GitHub に送るため（design/settings/setup.md）。空なら足さない。
+	SetupFormAction string
 }
 
 // WebUICSP は、WebUI の応答に付ける CSP である（design/webui/security.md）。
@@ -41,14 +46,23 @@ func NewServer(b *backend.Backend, log *slog.Logger, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", api)
 	mux.Handle("/healthz", api)
+	mountCommon(mux, opt)
+	return withHeaders(withGzip(mux))
+}
+
+// mountCommon は、セットアップの前もあとも配るもの（セットアップの API、サインインの中継、WebUI）を mux に付ける。
+func mountCommon(mux *http.ServeMux, opt Options) {
+	if opt.Setup != nil {
+		mux.Handle("/v1/setup", opt.Setup)
+		mux.Handle("/v1/setup/", opt.Setup)
+	}
 	if o := opt.OAuth; o != nil {
 		mux.HandleFunc("GET /v1/oauth/config", o.config)
 		mux.HandleFunc("POST /v1/oauth/token", o.token)
 	}
 	if opt.WebUI != nil {
-		mux.Handle("/", webUI(opt.WebUI))
+		mux.Handle("/", webUI(opt.WebUI, opt.SetupFormAction))
 	}
-	return withHeaders(withGzip(mux))
 }
 
 // withHeaders は、すべての応答に X-Content-Type-Options: nosniff を付ける。
@@ -61,7 +75,7 @@ func withHeaders(h http.Handler) http.Handler {
 
 // webUI は、ビルドした WebUI を配る。ファイルがなければ、index.html を返す（SPA の画面のパス）。
 // ハッシュ付きの assets/ は immutable で長くキャッシュさせ、index.html はキャッシュさせない（design/webui/stack.md の「配り方」）。
-func webUI(root fs.FS) http.Handler {
+func webUI(root fs.FS, setupFormAction string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -71,6 +85,9 @@ func webUI(root fs.FS) http.Handler {
 		h.Set("Content-Security-Policy", WebUICSP)
 		h.Set("Referrer-Policy", "no-referrer")
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if setupFormAction != "" && (name == "setup" || strings.HasPrefix(name, "setup/")) {
+			h.Set("Content-Security-Policy", strings.Replace(WebUICSP, "form-action 'self'", "form-action 'self' "+setupFormAction, 1))
+		}
 		if name == mermaidPage {
 			h.Set("Content-Security-Policy", MermaidCSP)
 		}

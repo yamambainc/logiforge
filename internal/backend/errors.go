@@ -28,6 +28,8 @@ const (
 	CodeRepositoryNotRegistered Code = "repository_not_registered"
 	// CodeSetupRequired は、初回のセットアップが終わっていないことである（design/api/endpoints/setup.md）。
 	CodeSetupRequired Code = "setup_required"
+	// CodeSetupDone は、セットアップが終わったあとに、セットアップの API を呼んだことである。
+	CodeSetupDone Code = "setup_done"
 	// CodeInternal は、バックエンドの内部の誤りである。詳しいことは、ログにだけ書く。
 	CodeInternal Code = "internal"
 )
