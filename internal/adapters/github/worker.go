@@ -14,23 +14,30 @@ import (
 // WorkerSource は、worker が読む repository の一覧と git の URL と資格情報である（design/adapters/git.md）。
 // 一覧は設定から引き、GitHub に問い合わせない。
 //
-// 読むトークンは、読むだけの GitHub App の installation token である（App）。App が nil なら、トークンなしで読む（public のリポジトリだけ）。
+// 読むトークンは、Read に絞った installation token である。tokens が nil なら、トークンなしで読む（public のリポジトリだけ）。
 // そのときの REST の上限は、1 時間に 60 回である（design/adapters/github.md）。
 type WorkerSource struct {
 	cfg Config
 	c   *client
-	app *App
+	app TokenSource
 }
 
-// NewWorkerSource は、worker のための WorkerSource を作る。app は nil でもよい（public のリポジトリだけを読むとき）。
-func NewWorkerSource(cfg Config, app *App) (*WorkerSource, error) {
+// TokenSource は、gitForgeRef を読む、Read に絞った installation token を返すものである。
+// バックエンドでは App が作る。worker では、バックエンドが作って設定の DB に置いたものを読む
+// （design/adapters/github-app.md の「worker のトークン」）。
+type TokenSource interface {
+	Token(ctx context.Context, gitForgeRef string) (string, error)
+}
+
+// NewWorkerSource は、WorkerSource を作る。tokens は nil でもよい（public のリポジトリだけを読むとき）。
+func NewWorkerSource(cfg Config, tokens TokenSource) (*WorkerSource, error) {
 	if len(cfg.Repositories) == 0 {
 		return nil, errors.New("github: repository が 1 つも登録されていない")
 	}
 	if err := cfg.check(); err != nil {
 		return nil, err
 	}
-	return &WorkerSource{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP), app: app}, nil
+	return &WorkerSource{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP), app: tokens}, nil
 }
 
 // ReadToken は、gitForgeRef を読むトークンを返す。App がなければ空（トークンなしで読む）。

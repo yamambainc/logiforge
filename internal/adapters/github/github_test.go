@@ -239,38 +239,54 @@ func TestRateLimitRetry(t *testing.T) {
 func TestAuthenticate(t *testing.T) {
 	ctx := context.Background()
 	f, _, auth := newTestAdapter(t)
-	auth.f.cfg.UserLogins = []string{"Carol"}
-	auth.f.cfg.UserTeams = []string{"acme/Logiforge-Users"}
 	auth.f.cfg.ClientID, auth.f.cfg.ClientSecret = "cid", "csecret"
-	for _, tok := range []string{"gho_alice", "gho_bob", "gho_carol"} {
+	for _, tok := range []string{"ghu_alice", "ghu_bob", "ghu_carol"} {
 		f.ownTokens[tok] = true
 	}
-	// ほかのトークン（登録した人のもの）は、client。
-	f.users["gho_dave_other_app"] = fakeUser{login: "carol"}
-	f.users["gho_alice"] = fakeUser{login: "alice", teams: []string{"acme/logiforge-users"}}
-	f.users["ghp_alice"] = fakeUser{login: "alice", teams: []string{"acme/logiforge-users"}}
-	f.users["gho_bob"] = fakeUser{login: "bob", teams: []string{"acme/other", "other/logiforge-users"}}
-	f.users["gho_carol"] = fakeUser{login: "carol"}
-	for tok, want := range map[string]ports.PrincipalKind{"gho_alice": ports.PrincipalUser, "ghp_alice": ports.PrincipalClient, "gho_bob": ports.PrincipalClient, "gho_carol": ports.PrincipalUser, "gho_dave_other_app": ports.PrincipalClient} {
+	// user：Logiforge の App のトークンで、登録した GitHub リポジトリに push できる人。
+	f.users["ghu_alice"] = fakeUser{login: "alice", push: []string{"ACME/Study"}}
+	// 同じ人でも、ほかのトークン（gh のトークン）なら client。
+	f.users["gho_alice"] = fakeUser{login: "alice", push: []string{"acme/study"}}
+	// 読めるだけの人、登録していないリポジトリにだけ書ける人は、client。
+	f.users["ghu_bob"] = fakeUser{login: "bob", read: []string{"acme/study"}}
+	f.users["ghu_carol"] = fakeUser{login: "carol", push: []string{"acme/other"}}
+	want := map[string]struct {
+		kind  ports.PrincipalKind
+		webui bool
+	}{"ghu_alice": {ports.PrincipalUser, true}, "gho_alice": {ports.PrincipalClient, false}, "ghu_bob": {ports.PrincipalClient, true}, "ghu_carol": {ports.PrincipalClient, true}}
+	for tok, w := range want {
 		p, err := auth.Authenticate(ctx, tok)
-		if err != nil || p.Kind != want {
-			t.Errorf("%s：%+v %v（want %s）", tok, p, err, want)
+		if err != nil || p.Kind != w.kind || p.WebUI != w.webui {
+			t.Errorf("%s：%+v %v（want %+v）", tok, p, err, w)
 		}
 	}
-	for _, tok := range []string{"nope"} {
-		if _, err := auth.Authenticate(ctx, tok); !errors.Is(err, ports.ErrUnauthenticated) {
-			t.Errorf("%s：%v", tok, err)
-		}
+	if _, err := auth.Authenticate(ctx, "nope"); !errors.Is(err, ports.ErrUnauthenticated) {
+		t.Errorf("nope：%v", err)
 	}
-	f.readable["gho_alice"] = true
-	if ok, err := auth.CanRead(ctx, "gho_alice", "study"); !ok || err != nil {
+	if ok, err := auth.CanWrite(ctx, "ghu_alice", "study"); !ok || err != nil {
+		t.Errorf("alice は study に書ける：%v %v", ok, err)
+	}
+	if ok, _ := auth.CanWrite(ctx, "ghu_bob", "study"); ok {
+		t.Error("bob は読めるだけなのに、書けるとされた")
+	}
+	if ok, _ := auth.CanWrite(ctx, "ghu_alice", "other"); ok {
+		t.Error("登録していない repository に書けるとされた")
+	}
+	// 権限は 60 秒持つ。WithFresh なら、問い合わせ直す。
+	n := f.permCalls
+	if _, err := auth.CanWrite(ctx, "ghu_alice", "study"); err != nil || f.permCalls != n {
+		t.Errorf("キャッシュを使っていない：%d → %d", n, f.permCalls)
+	}
+	f.users["ghu_alice"] = fakeUser{login: "alice", read: []string{"acme/study"}}
+	if ok, _ := auth.CanWrite(ports.WithFresh(ctx), "ghu_alice", "study"); ok || f.permCalls == n {
+		t.Errorf("WithFresh で問い合わせ直していない：%v %d", ok, f.permCalls)
+	}
+	f.readable["ghu_alice"] = true
+	if ok, err := auth.CanRead(ctx, "ghu_alice", "study"); !ok || err != nil {
 		t.Errorf("読める：%v %v", ok, err)
 	}
-	if ok, _ := auth.CanRead(ctx, "gho_bob", "study"); ok {
+	if ok, _ := auth.CanRead(ctx, "ghu_bob", "study"); ok {
 		t.Error("読めない主体が読めた")
-	}
-	if ok, _ := auth.CanRead(ctx, "gho_alice", "other"); ok {
-		t.Error("登録していない repository が読めた")
 	}
 }
 

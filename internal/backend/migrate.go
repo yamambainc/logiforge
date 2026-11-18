@@ -68,6 +68,9 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 	if err != nil {
 		return out, err
 	}
+	if err := b.requireUserOn(ctx, c, name); err != nil {
+		return out, err
+	}
 	if _, dir := ports.SplitRef(ref); dir == "" {
 		return out, fail(CodeValidationFailed, "移した先 %s は、ディレクトリの repository として登録されていない", name)
 	}

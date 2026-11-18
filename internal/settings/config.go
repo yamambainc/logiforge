@@ -42,7 +42,6 @@ var fields = []field{
 	{"forgejo.url", plain, func(c *Config) *string { return &c.Forgejo.URL }},
 	{"forgejo.public_url", plain, func(c *Config) *string { return &c.Forgejo.PublicURL }},
 	{"forgejo.org", plain, func(c *Config) *string { return &c.Forgejo.Org }},
-	{"forgejo.user_team", plain, func(c *Config) *string { return &c.Forgejo.UserTeam }},
 	{"forgejo.worker_login", plain, func(c *Config) *string { return &c.Forgejo.WorkerLogin }},
 	{"forgejo.worker_token", shared, func(c *Config) *string { return &c.Forgejo.WorkerToken }},
 	{"forgejo.oauth_client_id", plain, func(c *Config) *string { return &c.Forgejo.OAuthClientID }},
@@ -50,12 +49,11 @@ var fields = []field{
 	{"github.api_url", plain, func(c *Config) *string { return &c.GitHub.APIURL }},
 	{"github.web_url", plain, func(c *Config) *string { return &c.GitHub.WebURL }},
 	{"github.app_id", plain, func(c *Config) *string { return &c.GitHub.AppID }},
-	// App の秘密鍵は、worker も installation token を作るのに読む。バックエンドだけが作る形は、次の PR で入れる。
-	{"github.app_private_key", shared, func(c *Config) *string { return &c.GitHub.AppPrivateKey }},
+	// App の秘密鍵は、バックエンドだけが読む。worker には、バックエンドが Read に絞って作った installation token だけを渡す
+	// （design/adapters/github-app.md の「worker のトークン」）。
+	{"github.app_private_key", backendOnly, func(c *Config) *string { return &c.GitHub.AppPrivateKey }},
 	{"github.client_id", plain, func(c *Config) *string { return &c.GitHub.ClientID }},
 	{"github.client_secret", backendOnly, func(c *Config) *string { return &c.GitHub.ClientSecret }},
-	{"github.user_logins", plain, func(c *Config) *string { return &c.GitHub.UserLogins }},
-	{"github.user_teams", plain, func(c *Config) *string { return &c.GitHub.UserTeams }},
 	{"interval.patrol", plain, func(c *Config) *string { return &c.Intervals.Patrol }},
 	{"interval.list", plain, func(c *Config) *string { return &c.Intervals.List }},
 	{"interval.record", plain, func(c *Config) *string { return &c.Intervals.Record }},
@@ -82,14 +80,13 @@ type ForgejoConfig struct {
 	URL               string `json:"url,omitempty"`
 	PublicURL         string `json:"public_url,omitempty"`
 	Org               string `json:"org,omitempty"`
-	UserTeam          string `json:"user_team,omitempty"`
 	WorkerLogin       string `json:"worker_login,omitempty"`
 	WorkerToken       string `json:"worker_token,omitempty"`
 	OAuthClientID     string `json:"oauth_client_id,omitempty"`
 	OAuthClientSecret string `json:"oauth_client_secret,omitempty"`
 }
 
-// GitHubConfig は、GitHub を使う構成の設定である。UserLogins と UserTeams は「,」で並べる。
+// GitHubConfig は、GitHub を使う構成の設定である。
 type GitHubConfig struct {
 	APIURL        string `json:"api_url,omitempty"`
 	WebURL        string `json:"web_url,omitempty"`
@@ -97,8 +94,6 @@ type GitHubConfig struct {
 	AppPrivateKey string `json:"app_private_key,omitempty"`
 	ClientID      string `json:"client_id,omitempty"`
 	ClientSecret  string `json:"client_secret,omitempty"`
-	UserLogins    string `json:"user_logins,omitempty"`
-	UserTeams     string `json:"user_teams,omitempty"`
 }
 
 // Intervals は、時間の長さの設定である（time.ParseDuration の形）。空なら既定。

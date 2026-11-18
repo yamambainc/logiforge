@@ -4,12 +4,16 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yamambainc/logiforge/internal/adapters/github"
 	"github.com/yamambainc/logiforge/internal/ports"
@@ -97,7 +101,7 @@ func TestSettingsLoad(t *testing.T) {
 	t.Setenv(envBackendKey, bk)
 	t.Setenv(envSharedKey, sk)
 	p := filepath.Join(dir, "c.json")
-	if err := os.WriteFile(p, []byte(`{"gitforge":"forgejo","forgejo":{"url":"http://f","org":"o","worker_login":"r","worker_token":"t","oauth_client_id":"i","oauth_client_secret":"s"},"record_keys":[{"id":"k1","secret":"0123456789abcdef0123456789abcdef-test"}]}`), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(`{"gitforge":"github","github":{"app_id":"42","app_private_key":"pem","client_id":"i","client_secret":"s"},"repositories":[{"name":"q","gitforge_ref":"acme/q"}],"record_keys":[{"id":"k1","secret":"0123456789abcdef0123456789abcdef-test"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := runSettings(t.Context(), []string{"load", p}); err != nil {
@@ -116,7 +120,7 @@ func TestSettingsLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Forgejo.WorkerToken != "t" || c.Forgejo.OAuthClientSecret != "" || c.Ready() != nil {
+	if c.GitHub.ClientID != "i" || c.GitHub.ClientSecret != "" || c.GitHub.AppPrivateKey != "" || c.Ready() != nil {
 		t.Fatalf("worker が読んだ設定：%+v %v", c, c.Ready())
 	}
 }
@@ -162,5 +166,89 @@ func TestLiveServerReloads(t *testing.T) {
 	}
 	if rec := get("/v1/repositories"); strings.Contains(rec.Body.String(), "setup_required") {
 		t.Fatalf("設定を書いたあとも setup_required：%d %s", rec.Code, rec.Body)
+	}
+}
+
+// バックエンドは、worker のための installation token を作って設定の DB に置く。残りが長ければ作り直さず、
+// 登録したリポジトリが変われば作り直す。worker は、それを読むだけで、切れそうなら使わない。
+func TestMintWorkerTokens(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	minted, ttl := 0, time.Hour
+	var lastRepos []any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/installation"):
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case r.Method == "POST" && r.URL.Path == "/app/installations/1/access_tokens":
+			var in map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			if p, _ := in["permissions"].(map[string]any); p["contents"] != "read" {
+				t.Errorf("Read に絞っていない：%v", in)
+			}
+			lastRepos, _ = in["repositories"].([]any)
+			minted++
+			w.WriteHeader(201)
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": fmt.Sprintf("ghs_%d", minted), "expires_at": time.Now().Add(ttl).UTC().Format(time.RFC3339)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	db, err := settings.Open(filepath.Join(t.TempDir(), "s.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	bk, _ := settings.ParseKey(settings.NewKey())
+	sk, _ := settings.ParseKey(settings.NewKey())
+	keys := settings.Keys{Backend: bk, Shared: sk}
+	c := &settings.Config{GitForge: settings.GitForgeGitHub, GitHub: settings.GitHubConfig{APIURL: srv.URL, AppID: "42", AppPrivateKey: pemKey},
+		Repositories: []settings.Repository{{Name: "q", GitForgeRef: "acme/q"}},
+		RecordKeys:   []settings.RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef"}}}
+	if err := db.Save(t.Context(), keys, c, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := mintWorkerTokens(t.Context(), db, keys, time.Now()); err != nil || minted != 1 {
+		t.Fatalf("作らない：%d %v", minted, err)
+	}
+	// worker は、共有の鍵だけで読む。App の秘密鍵は読めない。
+	w, err := db.Load(t.Context(), settings.Keys{Shared: sk})
+	if err != nil || w.GitHub.AppPrivateKey != "" {
+		t.Fatalf("worker が App の秘密鍵を読めた：%v", err)
+	}
+	src := dbTokens{db: db, keys: settings.Keys{Shared: sk}}
+	if tok, err := src.Token(t.Context(), "acme/q"); err != nil || tok != "ghs_1" {
+		t.Fatalf("worker が読めない：%q %v", tok, err)
+	}
+	if err := mintWorkerTokens(t.Context(), db, keys, time.Now()); err != nil || minted != 1 {
+		t.Fatalf("残りが長いのに作り直した：%d %v", minted, err)
+	}
+	// 残りが 40 分を切ったら、作り直す。
+	if err := mintWorkerTokens(t.Context(), db, keys, time.Now().Add(25*time.Minute)); err != nil || minted != 2 {
+		t.Fatalf("残りが短いのに作り直さない：%d %v", minted, err)
+	}
+	// 登録したリポジトリが変わったら、すぐ作り直す。
+	c.Repositories = append(c.Repositories, settings.Repository{Name: "r", GitForgeRef: "acme/r"})
+	if err := db.Save(t.Context(), keys, c, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := mintWorkerTokens(t.Context(), db, keys, time.Now()); err != nil || minted != 3 || len(lastRepos) != 2 {
+		t.Fatalf("登録が変わっても作り直さない：%d %v %v", minted, lastRepos, err)
+	}
+	// 切れそうなトークンは、worker が使わない。
+	ttl = 10 * time.Minute
+	c.Repositories = c.Repositories[:1]
+	if err := db.Save(t.Context(), keys, c, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := mintWorkerTokens(t.Context(), db, keys, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.Token(t.Context(), "acme/q"); err == nil {
+		t.Fatal("切れそうなトークンを使った")
 	}
 }

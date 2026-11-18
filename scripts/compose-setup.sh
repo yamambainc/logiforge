@@ -40,9 +40,9 @@ team() { # team <name> <permission> <units_map> <can_create_org_repo>。team の
   call POST /orgs/logiforge/teams "{\"name\":\"$1\",\"permission\":\"$2\",\"units_map\":$3,\"includes_all_repositories\":true,\"can_create_org_repo\":$4}" |
     grep -o '"id":[0-9]*' | head -1 | cut -d: -f2
 }
-# 利用者は repository を作り、issue と pull request にコメントを書く。エージェント（opener と reviewer）は、コード、issue、
-# pull request を書き、reviewer は merge する（design/adapters/forgejo.md の「主体」）。Logiforge に、書き込み主体はない。
-users=$(team logiforge-users write '{"repo.code":"read","repo.pulls":"write","repo.issues":"write"}' true)
+# 利用者とエージェント（opener と reviewer）は、コード、issue、pull request を書き、reviewer と利用者は merge する
+# （design/adapters/forgejo.md の「主体」）。Logiforge に、書き込み主体はない。
+users=$(team logiforge-users write '{"repo.code":"write","repo.pulls":"write","repo.issues":"write"}' true)
 agents=$(team agents write '{"repo.code":"write","repo.pulls":"write","repo.issues":"write"}' false)
 readers=$(team readers read '{"repo.code":"read","repo.pulls":"read","repo.issues":"read"}' false)
 
@@ -53,8 +53,7 @@ user() { # user <login> <team の id> <scopes>。トークンを返す
 }
 # worker は、読むだけのトークンを使う。
 worker_token=$(user logiforge-reader "$readers" read:repository,read:organization,read:issue)
-user alice "$users" all >.compose/alice_token
-chmod 600 .compose/alice_token
+user alice "$users" all >/dev/null
 # エージェントの主体。CLI で、ブランチの push、apply request とレビューに使う。
 user agent "$agents" all >.compose/agent_token
 user reviewer "$agents" all >.compose/reviewer_token
@@ -71,6 +70,34 @@ app=$(call POST /user/applications/oauth2 '{"name":"logiforge-webui","redirect_u
 client_id=$(echo "$app" | grep -o '"client_id":"[^"]*"' | cut -d'"' -f4)
 client_secret=$(echo "$app" | grep -o '"client_secret":"[^"]*"' | cut -d'"' -f4)
 
+# alice のトークンは、WebUI のサインインと同じ流れで得る。利用者（user）は、WebUI のサインインのトークンを持つ人だけだから
+# （design/settings/users.md）。personal access token は、client になる。トークンは 1 時間で切れる。
+oauth_token() {
+  local web=http://localhost:3000 redirect=http://localhost:8080/oauth/callback jar hdr verifier challenge loc code
+  jar=$(mktemp) hdr=$(mktemp)
+  curl -fsS -c "$jar" -b "$jar" -o /dev/null "$web/user/login"
+  curl -sS -c "$jar" -b "$jar" -o /dev/null --data-urlencode user_name=alice --data-urlencode "password=$alicepw" "$web/user/login"
+  verifier=$(rand)$(rand)
+  challenge=$(printf %s "$verifier" | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '=\n')
+  page=$(curl -sS -c "$jar" -b "$jar" -D "$hdr" -G "$web/login/oauth/authorize" --data-urlencode "client_id=$client_id" \
+    --data-urlencode "redirect_uri=$redirect" -d response_type=code -d state=s -d "code_challenge=$challenge" -d code_challenge_method=S256)
+  if ! grep -qi '^location:' "$hdr"; then
+    # 初めてなので、同意の画面が出る。画面の hidden の欄をそのまま送り、許す。
+    args=()
+    while read -r f; do args+=(--data-urlencode "$f"); done < <(printf %s "$page" | grep -o 'name="[^"]*" value="[^"]*"' | sed -E 's/name="([^"]*)" value="([^"]*)"/\1=\2/')
+    curl -sS -c "$jar" -b "$jar" -D "$hdr" -o /dev/null "${args[@]}" -d granted=true "$web/login/oauth/grant"
+  fi
+  loc=$(grep -i '^location:' "$hdr" | tr -d '\r' | cut -d' ' -f2)
+  code=$(printf %s "$loc" | sed -nE 's/.*[?&]code=([^&]*).*/\1/p')
+  curl -fsS -d grant_type=authorization_code --data-urlencode "client_id=$client_id" --data-urlencode "client_secret=$client_secret" \
+    --data-urlencode "code=$code" --data-urlencode "redirect_uri=$redirect" --data-urlencode "code_verifier=$verifier" \
+    -H 'Accept: application/json' "$web/login/oauth/access_token" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4
+  rm -f "$jar" "$hdr"
+}
+oauth_token >.compose/alice_token
+chmod 600 .compose/alice_token
+test -s .compose/alice_token
+
 # 設定を、設定の DB に書く（初回のセットアップのかわり。design/settings/README.md）。
 docker compose run -T --rm --no-deps backend settings load - <<JSON
 {
@@ -79,7 +106,6 @@ docker compose run -T --rm --no-deps backend settings load - <<JSON
   "forgejo": {
     "url": "http://localhost:3000",
     "org": "logiforge",
-    "user_team": "logiforge-users",
     "worker_login": "logiforge-reader",
     "worker_token": "$worker_token",
     "oauth_client_id": "$client_id",
@@ -92,5 +118,5 @@ JSON
 # setup に使った admin のトークン（scope は all）は、もう要らないので消す。
 curl -fsS -X DELETE -u "logiforge-admin:$adminpw" "$api/users/logiforge-admin/tokens/setup" >/dev/null
 echo "用意した。次に docker compose up -d --wait で、worker とバックエンドを動かす。"
-echo "利用者 alice のトークンは .compose/alice_token に、エージェントのトークンは .compose/agent_token と .compose/reviewer_token にある。"
+echo "利用者 alice の WebUI のトークン（1 時間で切れる）は .compose/alice_token に、エージェントのトークンは .compose/agent_token と .compose/reviewer_token にある。"
 echo "WebUI は http://localhost:8080/ で、alice とパスワード（.compose/alice_password）でサインインする。"

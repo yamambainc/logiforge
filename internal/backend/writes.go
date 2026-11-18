@@ -30,6 +30,22 @@ func requireUser(c Caller) error {
 	return nil
 }
 
+// requireUserOn は、主体が user で、かつ repository に Write 以上の権限を持つことを求める
+// （design/settings/users.md の「repository ごとの権限」）。
+func (b *Backend) requireUserOn(ctx context.Context, c Caller, repo string) error {
+	if err := requireUser(c); err != nil {
+		return err
+	}
+	ok, err := b.Auth.CanWrite(ctx, c.Token, repo)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fail(CodeForbidden, "この repository に書く権限（Write）がない")
+	}
+	return nil
+}
+
 func requireClient(c Caller, session string) error {
 	if c.Principal.Kind != ports.PrincipalClient {
 		return fail(CodeForbidden, "この操作は、client だけが使える")
@@ -132,10 +148,16 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 	}
 	ref, err := b.Forge.GitForgeRef(ctx, name)
 	if errors.Is(err, ports.ErrNotRegistered) {
-		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない。管理者が GitHub の repository を作って登録する", name)
+		return out, fail(CodeRepositoryNotRegistered, "repository %q は、サーバの設定に登録されていない。GitHub リポジトリを作り、設定の画面で登録する", name)
 	}
 	if err != nil {
 		return out, err
+	}
+	// 権限は、登録を確かめたあとに見る。未登録の名前に、forbidden でなく repository_not_registered を返すため。
+	if ok, err := b.Auth.CanCreate(ctx, c.Token, name); err != nil {
+		return out, err
+	} else if !ok {
+		return out, fail(CodeForbidden, "この repository に書く権限（Write）がない")
 	}
 	root := ids.New(ids.Hypothesis)
 	dir := tree.TreeDir + "/" + root
@@ -521,7 +543,7 @@ type AnswerFile struct {
 // 送り直しは、回答がすでにあり、本文・回答した利用者・添付が同じなら、成功とする。
 // link の添付は、GitForge に置かず、回答の本文の末尾に書く。
 func (b *Backend) AnswerHumanRequest(ctx context.Context, c Caller, repo, id, body string, files []AnswerFile) (HumanRequest, error) {
-	if err := requireUser(c); err != nil {
+	if err := b.requireUserOn(ctx, c, repo); err != nil {
 		return HumanRequest{}, err
 	}
 	if strings.TrimSpace(body) == "" {

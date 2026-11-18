@@ -204,6 +204,11 @@ func TestHumanRequestWrites(t *testing.T) {
 	if _, err := b.AnswerHumanRequest(ctx, agent, "q", hr.ID, "答え", nil); code(err) != CodeForbidden {
 		t.Fatalf("client の回答：%v", err)
 	}
+	// user でも、その repository に Write がなければ、回答できない（design/settings/users.md の「repository ごとの権限」）。
+	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser}}
+	if _, err := b.AnswerHumanRequest(ctx, reader, "q", hr.ID, "答え", nil); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user の回答：%v", err)
+	}
 	files := []AnswerFile{{Kind: "file", Name: "a.txt", ContentBase64: base64.StdEncoding.EncodeToString([]byte("A"))}, {Kind: "link", Name: "論文", URI: "https://example.com/p"}}
 	ans, err := b.AnswerHumanRequest(ctx, user, "q", hr.ID, "答え", files)
 	if err != nil || ans.State != "answered" || len(ans.Answer.Attachments) != 1 || !strings.Contains(ans.Answer.Body, "https://example.com/p") {
@@ -230,6 +235,17 @@ func TestCreateRepositoryExists(t *testing.T) {
 	}
 	if _, err := f.b.CreateRepository(ctx, f.caller, "r", "根", ""); code(err) != CodeForbidden {
 		t.Fatalf("client：%v", err)
+	}
+	// 登録していない名前は、権限より先に repository_not_registered にする（Write は、登録した repository にしか持てない）。
+	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser}}
+	if _, err := f.b.CreateRepository(ctx, reader, "unreg-x", "根", ""); code(err) != CodeRepositoryNotRegistered {
+		t.Fatalf("未登録の名前の用意：%v", err)
+	}
+	if _, err := f.b.MigrateRepository(ctx, reader, "unreg-x", "q"); code(err) != CodeRepositoryNotRegistered {
+		t.Fatalf("未登録の名前への移し：%v", err)
+	}
+	if _, err := f.b.CreateRepository(ctx, reader, "r", "根", ""); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user：%v", err)
 	}
 }
 

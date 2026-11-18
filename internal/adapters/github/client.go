@@ -236,3 +236,32 @@ func repoPath(ref string) (string, error) {
 
 // gitRef は、gitforge_ref の、git リポジトリの参照（ディレクトリのパスを除いたもの）である。
 func gitRef(ref string) string { g, _ := ports.SplitRef(ref); return g }
+
+// listIn は、{"<key>": [...]} の形で返す一覧（/user/installations など）を、すべてのページについて読む。
+func listIn[T any](ctx context.Context, c *client, token, path, key string) ([]T, error) {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	next := path + sep + "per_page=100"
+	var all []T
+	for next != "" {
+		var page map[string]json.RawMessage
+		h, err := c.doHeader(ctx, token, http.MethodGet, next, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		var items []T
+		if raw, ok := page[key]; ok {
+			if err := json.Unmarshal(raw, &items); err != nil {
+				return nil, err
+			}
+		}
+		all = append(all, items...)
+		next = ""
+		if m := nextLink.FindStringSubmatch(h.Get("Link")); m != nil {
+			next = m[1]
+		}
+	}
+	return all, nil
+}

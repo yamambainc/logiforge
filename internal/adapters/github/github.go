@@ -27,11 +27,8 @@ type Config struct {
 	WebURL string
 	// Repositories は、repository の名前と `owner/name` の組。名前の正本である（design/adapters/README.md の「repository の登録」）。
 	Repositories []ports.Repository
-	// UserLogins と UserTeams は、user とみなす GitHub のアカウント名と、organization の team（`org/team の slug`）。
-	UserLogins []string
-	UserTeams  []string
-	// ClientID と ClientSecret は、Logiforge の OAuth App の資格情報。主体のトークンが、この OAuth App のものかを確かめる。
-	// なければ、どの主体も user とみなさない。
+	// ClientID と ClientSecret は、Logiforge の GitHub App の資格情報。主体のトークンが、この App のものかを確かめる。
+	// なければ、どの主体も user とみなさない（design/settings/users.md の「トークンの出どころ」）。
 	ClientID, ClientSecret string
 	// HTTP は、使う HTTP のクライアント。nil なら、時間の上限（30 秒）を付けたクライアント。
 	HTTP *http.Client
@@ -64,7 +61,7 @@ func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth, error) {
 		return nil, nil, err
 	}
 	f := &forge{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP), keys: keys}
-	return &pullreq.Adapter{Repos: repos{f}, API: api{f}, Keys: keys}, &Auth{f}, nil
+	return &pullreq.Adapter{Repos: repos{f}, API: api{f}, Keys: keys}, &Auth{f: f}, nil
 }
 
 func (c Config) check() error {
@@ -79,11 +76,6 @@ func (c Config) check() error {
 		seen[r.Name] = true
 		if _, err := repoPath(r.GitForgeRef); err != nil {
 			return err
-		}
-	}
-	for _, t := range c.UserTeams {
-		if org, slug, ok := strings.Cut(t, "/"); !ok || org == "" || slug == "" {
-			return fmt.Errorf("github: team は org/slug の形で書く: %q", t)
 		}
 	}
 	return nil
@@ -358,13 +350,17 @@ func escapePath(p string) string {
 	return strings.Join(parts, "/")
 }
 
-// Auth は、GitHub のトークンで主体を確かめる（design/adapters/github.md の「認証」）。結果を保持しない。
-type Auth struct{ f *forge }
+// Auth は、GitHub のトークンで主体を確かめる（design/adapters/github.md の「認証」）。
+// リポジトリの権限を問い合わせた結果だけを、60 秒持つ（design/settings/users.md の「権限のキャッシュ」）。
+type Auth struct {
+	f     *forge
+	cache ports.PermCache
+}
 
 var _ ports.Authenticator = (*Auth)(nil)
 
 // Authenticate は、トークンの主体を確かめる。GitHub への問い合わせは、主体のトークンで行う。
-//   - user：Logiforge の OAuth App のトークンを持ち、設定に登録したアカウント名か team にいる人
+//   - user：Logiforge の GitHub App のトークンを持ち、登録した GitHub リポジトリのどれかに Write 以上の権限がある人
 //   - client：それ以外の、GitHub のアカウント（gh の CLI のトークン、機械用アカウントなど）
 func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal, error) {
 	var u user
@@ -381,57 +377,86 @@ func (a *Auth) Authenticate(ctx context.Context, token string) (ports.Principal,
 	if a.f.cfg.ClientID == "" {
 		return p, nil
 	}
-	registered, err := a.registered(ctx, token, u.Login)
-	if err != nil || !registered {
-		return p, err
-	}
-	// Logiforge の OAuth App のトークンかを、OAuth App の資格情報で確かめる。
+	// Logiforge の App のトークンかを、App の資格情報で確かめる。
 	// なぜ：ほかのトークン（gh のトークンなど）を持つ主体（エージェントなど）を、user にしないため。
 	ours, err := a.ownToken(ctx, token)
 	if err != nil {
 		return ports.Principal{}, err
 	}
-	if ours {
-		p.Kind = ports.PrincipalUser
+	if !ours {
+		return p, nil
+	}
+	p.WebUI = true
+	perms, err := a.permissions(ctx, token)
+	if err != nil {
+		return ports.Principal{}, err
+	}
+	for _, r := range a.f.cfg.Repositories {
+		git, _ := ports.SplitRef(r.GitForgeRef)
+		if perms[strings.ToLower(git)] {
+			p.Kind = ports.PrincipalUser
+			break
+		}
 	}
 	return p, nil
 }
 
-// registered は、主体が、設定に登録したアカウント名か team にいるかを返す。GitHub の名前は、大文字と小文字を区別しない。
-func (a *Auth) registered(ctx context.Context, token, login string) (bool, error) {
-	for _, l := range a.f.cfg.UserLogins {
-		if strings.EqualFold(l, login) {
-			return true, nil
-		}
-	}
-	if len(a.f.cfg.UserTeams) == 0 {
+// CanWrite は、主体が、登録した repository の GitHub リポジトリに Write 以上の権限を持つかを返す。
+func (a *Auth) CanWrite(ctx context.Context, token, repo string) (bool, error) {
+	ref, err := lookup(a.f.cfg.Repositories, repo)
+	if err != nil {
 		return false, nil
 	}
-	type teamJSON struct {
-		Slug         string `json:"slug"`
-		Organization struct {
-			Login string `json:"login"`
-		} `json:"organization"`
-	}
-	teams, err := list[teamJSON](ctx, a.f.c, token, "/user/teams")
+	perms, err := a.permissions(ctx, token)
 	if err != nil {
-		if s := statusOf(err); s == http.StatusForbidden || s == http.StatusNotFound {
-			// トークンに read:org がなければ、team は読めない。user とはみなさない。
-			return false, nil
-		}
 		return false, err
 	}
-	for _, t := range teams {
-		for _, want := range a.f.cfg.UserTeams {
-			if strings.EqualFold(want, t.Organization.Login+"/"+t.Slug) {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
+	git, _ := ports.SplitRef(ref)
+	return perms[strings.ToLower(git)], nil
 }
 
-// ownToken は、トークンが Logiforge の OAuth App のものかを、POST /applications/{client_id}/token で確かめる。
+// CanCreate は、主体が repository を用意できるかを返す。GitHub では、登録した GitHub リポジトリを人が先に作るので、CanWrite と同じ。
+func (a *Auth) CanCreate(ctx context.Context, token, repo string) (bool, error) {
+	return a.CanWrite(ctx, token, repo)
+}
+
+// permissions は、主体の user access token で読めるリポジトリと、それぞれに push の権限があるかを返す（owner/name は小文字）。
+// user access token で読めるのは、App が install されていて、かつ本人が読めるリポジトリだけである。
+func (a *Auth) permissions(ctx context.Context, token string) (map[string]bool, error) {
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, "push"); ok {
+			return v.(map[string]bool), nil
+		}
+	}
+	type installation struct {
+		ID int64 `json:"id"`
+	}
+	type repo struct {
+		FullName    string `json:"full_name"`
+		Permissions struct {
+			Admin bool `json:"admin"`
+			Push  bool `json:"push"`
+		} `json:"permissions"`
+	}
+	insts, err := listIn[installation](ctx, a.f.c, token, "/user/installations", "installations")
+	if err != nil {
+		return nil, err
+	}
+	perms := map[string]bool{}
+	for _, in := range insts {
+		rs, err := listIn[repo](ctx, a.f.c, token, fmt.Sprintf("/user/installations/%d/repositories", in.ID), "repositories")
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rs {
+			perms[strings.ToLower(r.FullName)] = r.Permissions.Push || r.Permissions.Admin
+		}
+	}
+	a.cache.Put(token, "push", perms)
+	return perms, nil
+}
+
+// ownToken は、トークンが Logiforge の GitHub App のものかを、POST /applications/{client_id}/token で確かめる。
 func (a *Auth) ownToken(ctx context.Context, token string) (bool, error) {
 	basic := basicPrefix + base64.StdEncoding.EncodeToString([]byte(a.f.cfg.ClientID+":"+a.f.cfg.ClientSecret))
 	err := a.f.c.do(ctx, basic, http.MethodPost, "/applications/"+url.PathEscape(a.f.cfg.ClientID)+"/token", map[string]string{"access_token": token}, nil)
