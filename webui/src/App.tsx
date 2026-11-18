@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { getAuth, subscribe, signOut } from './auth';
+import { getAuth, isVerified, onVerified, subscribe, signOut } from './auth';
 import { match, navigate, settingsPath, useLocation } from './router';
 import { SignIn } from './screens/SignIn';
 import { useMobile } from './hooks';
@@ -18,8 +18,13 @@ export function App() {
   const loc = useLocation();
   const mobile = useMobile();
   const access = useSettingsAccess();
-  // サインインしたら、設定を開けるかを確かめる。forbidden ならメニューに出さない（design/webui/screens-setup.md の「設定」）
-  useEffect(() => { if (auth.kind === 'signed-in') void loadAccess(); }, [auth.kind]);
+  // サインインしたら、設定を開けるかを確かめる。forbidden ならメニューに出さない（design/webui/screens-setup.md の「設定」）。
+  // API がトークンを 1 度受け付けてから確かめる。なぜ：organization にいない人などで、最初の要求と並べて 401 をもう 1 つ出さないため。
+  useEffect(() => {
+    if (auth.kind !== 'signed-in') return;
+    if (isVerified()) { void loadAccess(); return; }
+    return onVerified(() => { void loadAccess(); });
+  }, [auth.kind]);
   if (auth.kind === 'starting') return <div className="loading">サインインしています…</div>;
   if (auth.kind === 'signed-out') return <SignIn reason={auth.reason} />;
   const route = match(loc.pathname, loc.search);

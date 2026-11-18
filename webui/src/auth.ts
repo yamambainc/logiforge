@@ -149,8 +149,23 @@ export function signOut() {
   set({ kind: 'signed-out', reason: 'signed-out' });
 }
 
+const verifiedListeners = new Set<() => void>();
+
 /** API がアクセストークンを受け付けた。 */
-export function markVerified() { verified = true; }
+export function markVerified() {
+  if (verified) return;
+  verified = true;
+  verifiedListeners.forEach((f) => f());
+}
+
+/** このアクセストークンで、API が 1 度は成功したか */
+export const isVerified = () => verified;
+
+/** API が、今のアクセストークンを初めて受け付けたときに f を呼ぶ。戻り値で、やめる。 */
+export function onVerified(f: () => void): () => void {
+  verifiedListeners.add(f);
+  return () => { verifiedListeners.delete(f); };
+}
 
 /** API が 401 を返した。1 度は成功したあとなら authorize に行き直し、まだなら organization にいないと示す。 */
 export function onUnauthorized() {
