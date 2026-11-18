@@ -437,3 +437,40 @@ func TestReviewBeforeSnapshot(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// user（WebUI）も、その repository に Write があればレビューでき、approve で反映する。プロンプトのリビジョンは - を記録する。
+// Write のない user は forbidden。作った本人なら opened_by_caller。
+func TestUserReview(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	b := f.b
+	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
+	alice := Caller{Token: "alice", Principal: ports.Principal{Login: "alice", Kind: ports.PrincipalUser, WebUI: true}}
+	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser, WebUI: true}}
+	f.branch("u", "s3", verdictFile(dH2, "v-8888888888", false))
+	created, err := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "u", Session: "s3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.waitVersion(t, created)
+	id := created.Value.ID
+	if got, _ := b.GetApplyRequest(ctx, agent, "q", id); !got.OpenedByCaller {
+		t.Fatal("作った本人に opened_by_caller がない")
+	}
+	if got, _ := b.GetApplyRequest(ctx, alice, "q", id); got.OpenedByCaller {
+		t.Fatal("ほかの人に opened_by_caller がある")
+	}
+	if _, err := b.ReviewApplyRequest(ctx, reader, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Session: "w1"}); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user：%v", err)
+	}
+	if _, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeSessionRequired {
+		t.Fatalf("セッションなし：%v", err)
+	}
+	ok, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, Session: "w1"})
+	if err != nil || ok.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("user の approve：%+v %v", ok.Value.ApplyRequest, err)
+	}
+	if ok.Value.Review.PromptRevision != UserPromptRevision || ok.Value.Review.Reviewer != "alice" {
+		t.Fatalf("user のレビューの記録：%+v", ok.Value.Review)
+	}
+}

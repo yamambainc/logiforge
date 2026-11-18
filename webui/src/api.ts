@@ -1,6 +1,6 @@
 // BE の API を呼ぶ（design/api/openapi.yaml）。アクセストークンを付け、401 をサインインに渡す。
 import { getAuth, markVerified, onUnauthorized } from './auth';
-import type { Node } from './model';
+import type { Hypothesis, Node, Story } from './model';
 
 export class Problem extends Error {
   constructor(public status: number, public code: string, public detail: string) {
@@ -140,12 +140,34 @@ export interface ApplyRequest {
   reviews?: Review[];
   merge_failures?: { commit: string; reason: string; detail: string }[];
   awaiting?: 'review' | 'fix' | null; closed_reason?: string | null; warnings?: string[]; merged_commit?: string | null;
+  /** 要求を送った主体が、この apply request を作った主体と同じか。approve の前に示す（design/settings/users.md の「WebUI からのレビュー」） */
+  opened_by_caller?: boolean;
 }
 export const listOpenApplyRequests = (repo: string) => listAll<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests?state=open`);
 /** apply request の一覧の 1 ページ（50 個）。「もっと読む」で、next_cursor から続きを読む */
 export const listApplyRequestsPage = (repo: string, state: string, cursor: string | null) =>
   call<Page<ApplyRequest>>(`/repositories/${enc(repo)}/apply-requests?limit=50${state ? '&state=' + enc(state) : ''}${cursor ? '&cursor=' + enc(cursor) : ''}`);
 export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}`);
+
+// --- レビュー（design/webui/screens.md の「apply request と履歴」） ---
+
+/** レビューの材料（getReviewMaterial）。説明欄は含まない（docs/apply-request/review.md の「レビューの材料」） */
+export interface ReviewMaterial {
+  apply_request_id: string; commit: string;
+  repair?: { kind: 'repair.revert' | 'repair.accept'; last_good_commit: string; main_commit: string; changes: { path: string; status: 'added' | 'modified' | 'deleted'; before?: string; after?: string }[] };
+  operations: Operation[]; targets: Node[]; ancestors: Hypothesis[]; siblings: Story[];
+  citations: { citation: Citation; nodes?: Node[]; artifact?: Artifact }[];
+}
+export const getReviewMaterial = (repo: string, id: string) => call<ReviewMaterial>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/review-material`);
+
+export type ReviewKind = Review['kind'];
+/** レビューを付ける。commit は、画面で示した先頭のコミット。user（WebUI）は prompt_revision を送らない */
+export const reviewApplyRequest = (repo: string, id: string, sessionId: string, r: { kind: ReviewKind; commit: string; body: string }) =>
+  call<{ review: Review; apply_request: ApplyRequest }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Logiforge-Session-Id': sessionId },
+    body: JSON.stringify(r.body ? { kind: r.kind, commit: r.commit, body: r.body } : { kind: r.kind, commit: r.commit }),
+  });
 
 export interface MainCommit { number: number; commit: string; committed_at: string; apply_request_id: string | null }
 export const listCommits = (repo: string, cursor?: string | null) =>

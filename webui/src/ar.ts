@@ -22,6 +22,7 @@ export const STATE: Record<string, string> = { open: 'open', merged: '反映済�
 export const AWAITING: Record<string, string> = { review: 'レビュー待ち', fix: '修正待ち' };
 export const FAILURE: Record<string, string> = {
   stale_target: '対象ノードが先に変わった', invariant_violation: '決まりに沿わない', conflict: 'git の衝突', snapshot_pending: '取り込み中で確かめられなかった',
+  repository_broken: 'repository が壊れていて、直すための apply request でないものは反映できない', merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
 };
 
 /** 一覧の 1 行の見出し。説明の最初の行、なければブランチ */

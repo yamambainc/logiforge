@@ -227,8 +227,10 @@ type ApplyRequest struct {
 	Kind   string `json:"kind"`
 	Branch string `json:"branch"`
 	// Target は、向き先（pull request の base のブランチ）である。main でなければ、Logiforge は検査も反映もしない。
-	Target            string         `json:"target"`
-	State             string         `json:"state"`
+	Target string `json:"target"`
+	State  string `json:"state"`
+	// OpenedByCaller は、要求を送った主体が、この apply request を作った主体と同じかである。WebUI は、approve の前に示す。
+	OpenedByCaller    bool           `json:"opened_by_caller"`
 	HeadCommit        string         `json:"head_commit"`
 	HeadCommits       []HeadCommit   `json:"head_commits"`
 	Description       string         `json:"description,omitempty"`

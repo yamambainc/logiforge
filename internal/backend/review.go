@@ -17,6 +17,9 @@ import (
 const chainBrokenDetail = "レビューの鎖が切れている（数えないレビューがある）ので、この apply request には、レビューも反映もできない。" +
 	"opener は、この apply request を close し、同じブランチから apply request を作り直す"
 
+// UserPromptRevision は、user（WebUI）のレビューの記録に書く、プロンプトのリビジョンである（design/api/endpoints/apply-request/review.md）。
+const UserPromptRevision = "-"
+
 // NewReview は、レビューの要求である。
 type NewReview struct {
 	Kind           string
@@ -36,7 +39,17 @@ type ReviewResult struct {
 // 反映に失敗しても、エラーにはしない。応答の apply_request.merge_failures に理由が入る。
 func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id string, n NewReview) (Written[ReviewResult], error) {
 	var out Written[ReviewResult]
-	if err := requireClient(c, n.Session); err != nil {
+	// client と、その repository に Write がある user が使える（design/settings/users.md の「WebUI からのレビュー」）。
+	if c.Principal.Kind == ports.PrincipalUser {
+		if err := requireSession(n.Session); err != nil {
+			return out, err
+		}
+		if err := b.requireUserOn(ctx, c, repo); err != nil {
+			return out, err
+		}
+		// user（WebUI）のレビューには、プロンプトのリビジョンがない。記録には - を書く。
+		n.PromptRevision = UserPromptRevision
+	} else if err := requireClient(c, n.Session); err != nil {
 		return out, err
 	}
 	kind := ports.ReviewKind(n.Kind)
