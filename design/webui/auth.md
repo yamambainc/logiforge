@@ -87,6 +87,7 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 ## 受け入れた危険
 
 - スクリプトが注入されると、そのページが開いているあいだ、メモリのアクセストークンは読まれ、Logiforge の API がその利用者として使われうる（スナップショットツリーを読む、人への依頼に回答する、repository を作る）。
+  - apply request を approve して、merge することも使われうる。盗まれた WebUI のトークンでできることの中で、いちばん大きい（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
   - 設定の API も使われうる（[利用者の決め方](../settings/users.md#利用者の決め方)）。
 - CSP の `default-src 'self'` は、`fetch` や画像で外のオリジンへ送ることを防ぐ。ただし、ページの移動（`location.href` や `window.open` で外の URL を開く）でトークンを外へ送ることは、止めない（[スクリプトの注入への備え](security.md)）。
 - 外へ渡ったときに使えるのは、アクセストークンの寿命（GitHub は 8 時間、Forgejo は 1 時間）までである。リフレッシュトークンはブラウザにないので、それより延びない。

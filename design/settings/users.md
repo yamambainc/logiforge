@@ -33,7 +33,8 @@
 
 - 登録した repository のどれかに Write がある `user` は、設定も変えられる。
 - そのため、登録した repository に Write を配ることは、Logiforge の設定を変える権限も渡すことになる。Write は、信頼できる人にだけ配る。
-- エージェントの機械用アカウントは、WebUI でサインインしない。機械用アカウントが持つのは CLI のトークンで、設定の API は CLI のトークンを断る（[トークンの出どころ](#トークンの出どころ)）。
+- エージェントの機械用アカウントは、WebUI でサインインしない。これは運用の決まりである。Logiforge は、機械用アカウントかを見分けない。
+  - 機械用アカウントが持つのは CLI のトークンで、設定の API は CLI のトークンを断る（[トークンの出どころ](#トークンの出どころ)）。
 - 誰が、いつ、どの設定を変えたかは、記録に残る（[記録](#記録)）。
 
 ## WebUI からのレビュー
@@ -42,6 +43,8 @@
   - approve で反映の条件を満たしたら、同じ要求の中で反映する（[反映の手順](../backend/merge.md)）。
 - 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
 - その repository に Write がなければ、`forbidden` を返す。
+- WebUI は、approve の前に、CLI の reviewer と同じレビューの材料（`getReviewMaterial`）を示す。自分が作った apply request なら、そのことも示す（[apply request と履歴](../../docs/webui/history.md)）。
+- 人については、セッションの分離は、文脈の分離を保証しない（[保証の範囲](../../docs/apply-request/review.md#保証の範囲)）。
 
 ## トークンの出どころ
 

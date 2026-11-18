@@ -1682,6 +1682,9 @@ components:
             向き先（pull request の base のブランチ）。Logiforge が作るものは main。
             main でなければ、Logiforge は検査も反映もしない。operations は空で、作業の一覧に出ない（../../design/backend/apply-request/target.md の「向き先」）
         state: { $ref: '#/components/schemas/ApplyRequestState' }
+        opened_by_caller:
+          type: boolean
+          description: 要求を送った主体が、この apply request を作った主体と同じか。WebUI は、approve の前に示す（../../design/settings/users.md の「WebUI からのレビュー」）
         head_commit:
           $ref: '#/components/schemas/Commit'
           description: ブランチの今の先頭のコミット。レビューと反映は、このコミットを SHA で指す

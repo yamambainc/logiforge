@@ -52,6 +52,8 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
+- レビューの材料：`getReviewMaterial`。レビューの欄に示す。説明欄は示さない。
+- 自分が作ったか：`getApplyRequest` の `opened_by_caller`。`true` なら、approve の前に示す。
 - レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
   - `Logiforge-Session-Id` は、タブごとに乱数で作り、`sessionStorage` に置く（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
   - 応答の `apply_request` で、反映したか、反映の失敗の理由を示す。
