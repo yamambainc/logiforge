@@ -79,6 +79,16 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - `GET /repos/{owner}/{repo}/issues/comments?since=` は、編集されたコメントも返す。`updated_at` は、編集の時刻になる。
 - コメントを読むには、`read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 になる。
 
+## worker のトークンを確かめる
+
+バックエンドは、worker のトークンを置く前に（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)、[設定の API](../api/endpoints/settings.md)）、次のことを確かめる。
+
+- そのトークンで、`GET /user` が worker のユーザーを返し、organization を読める。
+- そのトークンで、書くスコープの要る API が 403 になる。
+  - 害のない要求を使う：`PATCH /user/settings`（`write:user`）と、`POST /repos/{owner}/{repo}/issues`（`write:issue`）を、本文を空にして呼ぶ。
+  - Forgejo は、スコープの足りないトークンを、本文を確かめる前に 403 で断る。403 でなければ、書けるトークンとみなす。
+- worker のユーザーが、organization の team のうち、`read` より強い権限の team に入っていない（`GET /user/teams`）。
+
 ## 認証
 
 Forgejo を使う構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。

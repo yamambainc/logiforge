@@ -24,7 +24,7 @@
 
 - repository の名前は、[repository](../README.md#repository) の決まりに従う。
 - GitHub を使う構成で repository を登録するとき、GitHub App の installation token で、その GitHub リポジトリを読めることを確かめる。読めなければ `validation_failed` を返し、`detail` に install の URL を書く。
-- Forgejo を使う構成で worker のトークンを置き換えるとき、そのトークンで worker のユーザーと organization を読めることを確かめる。
+- Forgejo を使う構成で worker のトークンを置き換えるとき、そのトークンで読めて、書けないことを確かめる（[worker のトークンを確かめる](../../adapters/forgejo.md#worker-のトークンを確かめる)）。
 
 ## repository を外したとき
 

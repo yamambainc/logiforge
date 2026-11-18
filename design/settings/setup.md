@@ -78,5 +78,5 @@ manifest の中身：
 1. サーバを動かす人が、Forgejo の URL（BE から、ブラウザから）と organization を入れる。
 2. サーバを動かす人が、Forgejo で OAuth2 のアプリケーション（confidential client）を作り、client_id と client secret を入れる。
    - 画面は、登録する `redirect_uri`（WebUI の `/oauth/callback`）を示す。
-3. サーバを動かす人が、worker のユーザーとトークン（`read:repository`、`read:organization`、`read:issue`）を入れる（[Forgejo アダプタ](../adapters/forgejo.md)）。
+3. サーバを動かす人が、worker のユーザーとトークン（`read:repository`、`read:organization`、`read:issue`）を入れる。worker のユーザーは、organization の読むだけの team にだけ入れる（[worker のトークンを確かめる](../adapters/forgejo.md#worker-のトークンを確かめる)）。
 4. BE は、置く前に、トークンでそのユーザーと organization を読めることを確かめる。読めなければ `validation_failed` を返す。

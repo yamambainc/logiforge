@@ -19,6 +19,9 @@
 
 - repository ごとの `user` の操作は、主体がその repository に Write 以上の権限を持つときだけ受け付ける。持たなければ `forbidden`（403）を返す。
   - 操作：人への依頼に回答する、repository を作る。
+  - 設定の API も、`user` であることを求める（[設定の API](../api/endpoints/settings.md)）。
+- 読む操作は、`user` でも `client` でも、主体がその repository を読めれば受け付ける（[認可](../backend/README.md#認可)）。
+- `client` の書き込み（apply request、レビュー、人への依頼の起票）は、GitForge の権限で決まる。Logiforge は、主体のトークンで書くので、GitForge が断れば断る（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
   - ディレクトリの repository では、そのディレクトリを置いた git リポジトリの権限を見る。
 - 構成ごとの確かめ方：
   - GitHub：主体のトークンで `GET /user/installations` と `GET /user/installations/{installation_id}/repositories` を呼び、登録した GitHub リポジトリの `permissions.push` を見る（[GitHub アダプタの認証](../adapters/github.md#認証)）。

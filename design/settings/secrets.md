@@ -38,6 +38,9 @@
   - worker は、バックエンドが Read に絞って作ったトークンだけを読む（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。
 - Forgejo の worker のトークンは、バックエンドと worker の両方が読む。worker は git と API を読むのに、バックエンドは作業用の git の複製に fetch するのに使う。
   - worker に渡してよい理由：スコープが `read:repository`、`read:organization`、`read:issue` だけで、書けないから（[Forgejo アダプタ](../adapters/forgejo.md)）。
+  - 書けないことは、2 つで守る。
+    - バックエンドは、置く前に、そのトークンで書けないことを確かめる（[Forgejo の worker のトークンを確かめる](../adapters/forgejo.md#worker-のトークンを確かめる)）。書ければ、`validation_failed` を返し、置かない。
+    - worker のユーザーは、organization で、読むだけの権限の team にだけ入れる。なぜ：スコープの確かめが漏れても、ユーザーの権限で書けないようにするため。
 - そのため、worker が読める秘密では、GitForge に書けない。
 - client secret は、サインインの中継と、トークンが Logiforge のものかの確かめに使う。worker は使わない（[サインインの中継](../webui/oauth-relay.md)）。
 
