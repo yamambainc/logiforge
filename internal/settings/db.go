@@ -45,7 +45,7 @@ func Open(path string, readOnly bool) (*DB, error) {
 		q.Add("_pragma", "journal_mode(DELETE)")
 		q.Add("_pragma", "synchronous(FULL)")
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Opaque: url.PathEscape(path), RawQuery: q.Encode()}).String())
 	if err != nil {
 		return nil, err
 	}

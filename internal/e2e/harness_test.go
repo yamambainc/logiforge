@@ -154,7 +154,7 @@ func (w *world) restartWorker() {
 }
 
 // recordSecret は、記録の署名の秘密である。worker には、ここから作った公開鍵だけを渡す。
-const recordSecret = "e2e-secret"
+const recordSecret = "e2e-secret-0123456789abcdef0123456789"
 
 // setup は、Forgejo に organization と主体を作り、serve と worker を動かす。
 func setup(t *testing.T) *world { return setupWith(t, nil) }

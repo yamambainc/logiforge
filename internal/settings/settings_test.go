@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,7 @@ func sample() *Config {
 			OAuthClientID: "cid", OAuthClientSecret: "csecret"},
 		Intervals:    Intervals{Patrol: "1s", List: "10s"},
 		Repositories: []Repository{{Name: "q", GitForgeRef: "acme/app", Directory: "logiforge/q"}},
-		RecordKeys:   []RecordKey{{ID: "k1", Secret: "s1"}},
+		RecordKeys:   []RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef-test"}},
 	}
 }
 
@@ -224,5 +225,58 @@ func TestEmptyDBForWorker(t *testing.T) {
 	}
 	if c.Ready() == nil {
 		t.Fatal("空の設定が、そろっているとされた")
+	}
+}
+
+// 読むだけの接続は、SQLite の側でも書けない（Go の確かめを通らずに、直接書こうとしても断られる）。
+func TestReadOnlyConnectionCannotWrite(t *testing.T) {
+	ctx := context.Background()
+	d, p := openRW(t)
+	if err := d.Save(ctx, testKeys(t), sample(), ""); err != nil {
+		t.Fatal(err)
+	}
+	ro, err := Open(p, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	if _, err := ro.db.ExecContext(ctx, `INSERT INTO settings (name, value, updated_at) VALUES ('x', 'y', 'z')`); err == nil {
+		t.Fatal("読むだけの接続で、SQLite に書けた")
+	}
+	if _, err := ro.db.ExecContext(ctx, `UPDATE record_keys SET public_key = 'x'`); err == nil {
+		t.Fatal("読むだけの接続で、記録の公開鍵を書き換えられた")
+	}
+}
+
+// パスに ? や # があっても開ける（URI の中で、パスとして扱う）。
+func TestPathWithSpecialCharacters(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a?b#c d.db")
+	d, err := Open(p, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Save(context.Background(), testKeys(t), sample(), ""); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("そのパスに作られていない：%v", err)
+	}
+}
+
+// 記録の鍵の secret は、短い文字列を断る。
+func TestShortRecordSecret(t *testing.T) {
+	d, _ := openRW(t)
+	c := sample()
+	c.RecordKeys = []RecordKey{{ID: "k1", Secret: "short"}}
+	if err := d.Save(context.Background(), testKeys(t), c, ""); err == nil {
+		t.Fatal("短い secret で、記録の鍵を作れた")
+	}
+}
+
+// 設定が足りないことは、ErrNotReady で見分けられる。
+func TestNotReadyIsDistinct(t *testing.T) {
+	if err := (&Config{}).Ready(); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("足りないことが ErrNotReady でない：%v", err)
 	}
 }

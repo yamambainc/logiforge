@@ -60,6 +60,10 @@ func openSettings(backend bool) (*settings.DB, settings.Keys, error) {
 		if keys.Backend, err = read(envBackendKey); err != nil {
 			return nil, keys, err
 		}
+		// 2 つの鍵が同じなら、worker が共有の鍵で、バックエンドだけの秘密を読める（design/settings/secrets.md の「2 つの鍵」）。
+		if keys.Backend.ID() == keys.Shared.ID() {
+			return nil, keys, fmt.Errorf("%s と %s が同じである。別の乱数にする", envBackendKey, envSharedKey)
+		}
 	} else if os.Getenv(envBackendKey) != "" || os.Getenv(envBackendKey+"_FILE") != "" {
 		// worker に、バックエンドの鍵を渡さない（design/settings/secrets.md の「2 つの鍵」）。
 		return nil, keys, fmt.Errorf("worker に %s を渡さない。記録の署名の秘密鍵と、GitHub App の client secret を、worker から隠すため", envBackendKey)
@@ -159,7 +163,7 @@ func (l *liveServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h, err := l.current(r.Context())
 	if err != nil {
 		slog.Error("設定の DB を読めない", "err", err)
-		http.Error(w, "設定の DB を読めない", http.StatusServiceUnavailable)
+		api.Unavailable("設定の DB を読めない。少し待って送り直す").ServeHTTP(w, r)
 		return
 	}
 	h.ServeHTTP(w, r)
@@ -177,11 +181,17 @@ func (l *liveServer) current(ctx context.Context) (http.Handler, error) {
 		return l.h, nil
 	}
 	h, read, err := l.build(ctx)
-	if err != nil {
-		// 設定が正しくなければ、setup_required にする。前の版の設定では動かし続けない。
-		slog.Error("設定の DB の中身から、バックエンドを作れない", "revision", rev, "err", err)
+	switch {
+	case errors.Is(err, settings.ErrNotReady):
+		// 設定が足りなければ、設定が書かれるまで setup_required にする。前の版の設定では動かし続けない。
+		slog.Warn("設定がそろっていない", "revision", rev, "err", err)
 		h, read = api.SetupRequired(err.Error()), nil
-	} else {
+	case err != nil:
+		// 読みの失敗（ロックの待ちの上限、I/O の誤り、書きかけのジャーナル）や、形の誤りは、覚えない。次の要求で読み直す。
+		slog.Error("設定の DB の中身から、バックエンドを作れない。次の要求で読み直す", "revision", rev, "err", err)
+		l.h, l.read = nil, nil
+		return nil, err
+	default:
 		slog.Info("設定の DB を読んだ", "revision", rev)
 	}
 	l.rev, l.h, l.read = rev, h, read
@@ -285,9 +295,18 @@ func runWorker(ctx context.Context) error {
 			continue
 		}
 		w, listInterval, err := buildWorker(ctx, db, keys, dir, gitEnv, st)
-		if err != nil {
+		switch {
+		case errors.Is(err, settings.ErrNotReady):
 			slog.Warn("設定がそろうまで、見回りをせずに待つ", "err", err)
 			if !waitChange(ctx, db, rev, time.Second, dir) {
+				return ctx.Err()
+			}
+			continue
+		case err != nil:
+			// 読みの失敗（ロックの待ちの上限、I/O の誤り、バックエンドが書く途中で落ちたときのジャーナル）は、
+			// 設定が変わらなくても、間をおいて読み直す。バックエンドが次に開けば、ジャーナルは戻る。
+			slog.Error("設定の DB を読めない、または中身から worker を作れない。待って読み直す", "err", err)
+			if !wait(ctx, 5*time.Second, dir) {
 				return ctx.Err()
 			}
 			continue

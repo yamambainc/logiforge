@@ -502,3 +502,10 @@ func SetupRequired(detail string) http.Handler {
 	})
 	return withHeaders(mux)
 }
+
+// Unavailable は、unavailable（503）を返すハンドラーである。設定の DB を一時的に読めないときに使う。
+func Unavailable(detail string) http.Handler {
+	return withHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeProblem(w, &backend.Error{Code: backend.CodeUnavailable, Detail: detail})
+	}))
+}

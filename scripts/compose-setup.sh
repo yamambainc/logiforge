@@ -20,6 +20,7 @@ chmod 700 .compose "$dir"
 # 設定の DB の秘密を暗号化する 2 つの鍵（32 バイトの乱数の base64。design/settings/secrets.md）。
 head -c 32 /dev/urandom | base64 >"$dir/backend_key"
 head -c 32 /dev/urandom | base64 >"$dir/shared_key"
+# 644 なので、このホストのほかのユーザーも鍵を読める。開発のための compose だけの形である。本番では、鍵を DB と別の場所に、読める人を絞って置く（design/settings/secrets.md の「鍵を置く場所」）。
 chmod 644 "$dir"/*
 
 docker compose up -d --wait forgejo

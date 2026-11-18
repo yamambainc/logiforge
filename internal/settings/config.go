@@ -244,7 +244,9 @@ func loadRecordKeys(ctx context.Context, tx *sql.Tx, backend *Key) ([]RecordKey,
 	return out, rows.Err()
 }
 
-// Save は、c を設定の DB に書く。空の値は、その設定を消す。by は、書いた主体（コマンドなら空でもよい）。
+// Save は、c を設定の DB に書く。渡した設定の全体で置き換える。空の値は、その設定を消す。by は、書いた主体（コマンドなら空でもよい）。
+// `logiforge settings load` のためのものである。設定の API からは使わない。
+// なぜ：API と画面は秘密を返さないので、読んだものを書き直すと、秘密が消えるから。API には、送った項目だけを置き換える書き方を別に作る。
 // repository の一覧は、c にあるものを足し（同じ名前なら同じ組であることを確かめる）、c にないものは外す。
 // 記録の鍵は、足すだけで、消さない（それまでの記録を確かめるため）。
 func (d *DB) Save(ctx context.Context, keys Keys, c *Config, by string) error {
@@ -345,6 +347,9 @@ func dirSuffix(d string) string {
 	return ":" + d
 }
 
+// minSecretLen は、記録の鍵の secret の短さの下限（バイト）である。
+const minSecretLen = 32
+
 // saveRecordKeys は、まだない記録の鍵を足す。先頭の鍵を、書くときの鍵にする。
 func saveRecordKeys(ctx context.Context, tx *sql.Tx, backend *Key, ks []RecordKey, at string) error {
 	if len(ks) == 0 {
@@ -356,6 +361,10 @@ func saveRecordKeys(ctx context.Context, tx *sql.Tx, backend *Key, ks []RecordKe
 	for i, k := range ks {
 		seed := k.Seed
 		if len(seed) == 0 && k.Secret != "" {
+			// 短い文字列から作ると、弱い鍵になる。32 バイト以上に限る。
+			if len(k.Secret) < minSecretLen {
+				return fmt.Errorf("settings: 記録の鍵 %s の secret は、%d バイト以上の乱数にする", k.ID, minSecretLen)
+			}
 			h := sha256.Sum256([]byte(k.Secret))
 			seed = h[:]
 		}
@@ -414,7 +423,11 @@ func (c *Config) check() error {
 	return nil
 }
 
-// Ready は、セットアップが終わり、動かせる設定がそろっているかである。そろっていなければ、足りないものを返す。
+// ErrNotReady は、設定が足りない（初回のセットアップが終わっていない）ことである。
+// 読みの失敗（ロックの待ちの上限、I/O の誤り）とは分ける。足りないときは、設定が書かれるまで待つ。読みの失敗は、やり直す。
+var ErrNotReady = errors.New("初回のセットアップが終わっていない")
+
+// Ready は、セットアップが終わり、動かせる設定がそろっているかである。そろっていなければ、ErrNotReady を包んで、足りないものを返す。
 func (c *Config) Ready() error {
 	var miss []string
 	switch c.GitForge {
@@ -438,5 +451,5 @@ func (c *Config) Ready() error {
 		return nil
 	}
 	sort.Strings(miss)
-	return fmt.Errorf("設定の DB に、%s がない（初回のセットアップが終わっていない）", strings.Join(miss, "、"))
+	return fmt.Errorf("%w：設定の DB に、%s がない", ErrNotReady, strings.Join(miss, "、"))
 }
