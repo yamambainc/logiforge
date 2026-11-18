@@ -143,15 +143,15 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	src := fs.reader
-	gitEnv := src.GitEnv()
-	if gitEnv, err = allowProtocol(gitEnv); err != nil {
+	gitEnv, err := allowProtocol(nil)
+	if err != nil {
 		return err
 	}
 	st := &store.Dir{Root: cfg.storeDir}
 	fs.forge.Log = snapstore.RecordLog{Store: st}
-	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, token: fs.readToken, keys: pub, ids: src}
+	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
 	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
-	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
+	w := worker.New(worker.Config{Dir: cfg.dir, GitEnv: gitEnv, GitCredentials: src.GitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
 		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
 	slog.Info("worker を始めた", "version", version.Get().Version, "interval", interval, "git_timeout", gitTimeout)
 	return w.Run(ctx)
@@ -159,17 +159,14 @@ func runWorker(ctx context.Context) error {
 
 // verifier は、worker の反映かの判定を、バックエンドの規則で、worker のトークンで行う。
 type verifier struct {
-	b     *backend.Backend
-	token string
-	keys  pullreq.Keyring
-	ids   interface {
-		RepoID(ctx context.Context, gitForgeRef string) (string, error)
-	}
+	b    *backend.Backend
+	src  readSource
+	keys pullreq.Keyring
 }
 
 // VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify.md の「用意のコミットの署名」）。
 func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error) {
-	id, err := v.ids.RepoID(ctx, r.GitForgeRef)
+	id, err := v.src.RepoID(ctx, r.GitForgeRef)
 	if err != nil {
 		return false, err
 	}
@@ -181,7 +178,11 @@ func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, pare
 }
 
 func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
-	return v.b.VerifyMerge(ports.WithToken(ctx, v.token), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
+	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
+	if err != nil {
+		return ports.MergeVerdict{}, err
+	}
+	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
 }
 
 // workerHealth は、worker のハートビートを確かめる（`logiforge worker-health`）。worker と同じ環境変数を読む。
@@ -336,7 +337,7 @@ func runServe(ctx context.Context) error {
 	forge.Log = snapstore.RecordLog{Store: st}
 	// apply request の作成で git を読む、作業用の複製。worker と同じ、読むだけのトークンで読む。
 	reader := fs.reader
-	gitEnv, err := allowProtocol(reader.GitEnv())
+	gitEnv, err := allowProtocol(nil)
 	if err != nil {
 		return err
 	}
@@ -348,6 +349,7 @@ func runServe(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("作業用の git の複製の置き場を作れない：%w", err)
 	}
+	git.Credentials = reader.GitEnv
 	// 作業用の複製は、使い捨てのキャッシュである。止まるときに消す。
 	defer os.RemoveAll(git.Dir)
 	b := &backend.Backend{Forge: forge, Auth: auth, Snap: &snapstore.Adapter{Store: st}, Git: git}

@@ -13,10 +13,10 @@ User=logiforge
 Group=logiforge
 EnvironmentFile=/etc/logiforge/logiforge.env
 # 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
-LoadCredential=read_token:/etc/logiforge/secrets/read_token
+LoadCredential=github_app_key:/etc/logiforge/secrets/github_app_key.pem
 LoadCredential=record_keys:/etc/logiforge/secrets/record_keys
 LoadCredential=oauth_client_secret:/etc/logiforge/secrets/oauth_client_secret
-Environment=LOGIFORGE_GITHUB_READ_TOKEN_FILE=%d/read_token
+Environment=LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=%d/github_app_key
 Environment=LOGIFORGE_RECORD_KEYS_FILE=%d/record_keys
 Environment=LOGIFORGE_OAUTH_CLIENT_SECRET_FILE=%d/oauth_client_secret
 # tailnet の外から直接届かないように、ループバックだけで待ち受ける。

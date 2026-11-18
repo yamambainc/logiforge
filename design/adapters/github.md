@@ -6,20 +6,46 @@ Forgejo アダプタと共通のところ（pull request の対応、レビュ�
 
 ## アカウントとトークン
 
-Logiforge は、GitHub に書くための自分のアカウント（GitHub App など）を持たない。GitHub に書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+Logiforge は、GitHub に書くための自分のアカウント（書き込み主体）を持たない。GitHub に書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+読むためだけに、読むだけの GitHub App を持つ（下の「読むだけの GitHub App」）。personal access token は使わない。
 
 | 使う者 | トークン | 要る権限 |
 |---|---|---|
 | 利用者（人） | WebUI のサインインで得る、Logiforge の OAuth App のトークン | リポジトリへの Write（repository の用意、回答のコメント） |
-| opener と reviewer（人とエージェント） | gh のトークンか、fine-grained personal access token | リポジトリへの Write（ブランチの push、pull request とコメントとレビュー、reviewer は merge） |
-| worker と、バックエンドの作業用の git の複製 | 読むだけのトークン（fine-grained personal access token）。public のリポジトリだけなら、トークンなしでもよい | Contents、Issues、Pull requests の Read だけ |
+| opener と reviewer（人とエージェント） | `gh auth login`（GitHub CLI の OAuth App）で得たトークン | スコープ `repo`。リポジトリへの Write（ブランチの push、pull request とコメントとレビュー、reviewer は merge） |
+| worker と、バックエンドの作業用の git の複製 | 読むだけの GitHub App の installation token。public のリポジトリだけなら、トークンなしでもよい | Contents、Issues、Pull requests、Metadata の Read だけ |
 
 - reviewer に merge の権限が要る。なぜ：反映は、`approve` をした reviewer のトークンで merge するから（[反映の手順](../backend/merge.md)）。
-- worker の読むだけのトークンは、public のリポジトリだけなら、なくてもよい。そのときは、git も REST も、トークンなしで読む。
-  - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を何回も読むので、ふつうは足りない（[反映かの判定](../backend/verify.md) の「重さ」）。試すときだけにし、続けて使うときはトークンを置く。
+- opener と reviewer のトークン：
+  - `gh auth login` で、ブラウザか device flow でサインインして得る。エージェントの機械用アカウントも、そのアカウントでサインインしたブラウザで、device flow のコードを入れて得る。`gh auth token` で取り出し、CLI に渡す（[CLI の認証](../cli/README.md#認証)）。
+  - スコープは `repo` が要る。なぜ：push と、pull request とコメントとレビューと merge を、このトークンで書くから。`GET /user` は、スコープなしで呼べる。`gh auth login` の既定のスコープ（`repo`、`read:org`、`gist`）に入っている。
+  - `repo` は、そのアカウントが書けるすべてのリポジトリに及ぶ。範囲は広いが、受け入れる。なぜ：OAuth のスコープは、リポジトリごとに絞れないから。絞りたいときは、Logiforge のためだけの機械用アカウントを作り、登録した repository にだけ Write を与える。
+  - organization が OAuth App のアクセスを制限しているときは、organization の owner が GitHub CLI を許す。
+  - `gh auth login --with-token` で personal access token を gh に入れたものは使わない。
+  - Logiforge の OAuth App のトークンを CLI に使っても動く。そのとき、`LOGIFORGE_USER_LOGINS` か `LOGIFORGE_USER_TEAM` に入る人は `user` になる（下の「認証」）。CLI に、Logiforge の OAuth App でサインインする手順は持たない。
+- worker の読むトークンは、public のリポジトリだけなら、なくてもよい。そのときは、git も REST も、トークンなしで読む。
+  - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を何回も読むので、ふつうは足りない（[反映かの判定](../backend/verify.md) の「重さ」）。試すときだけにし、続けて使うときは App を置く。
   - private のリポジトリでは、要る。
 - Issues の Read は、記録のコメント（`issues/comments`）を読むのに使う（[記録の控え](../backend/verify.md#記録の控え)）。
-- 読むだけのトークンは、サーバの設定に置く（[設定と秘密情報](README.md)）。
+- App の ID と秘密鍵は、サーバの設定に置く（[設定と秘密情報](README.md)）。
+
+### 読むだけの GitHub App
+
+worker と、バックエンドの作業用の git の複製は、読むだけの GitHub App の installation token で読む。
+
+- App は書かない。権限は、Repository permissions の Contents、Issues、Pull requests、Metadata の Read だけにする。Webhook は使わない。
+  - 反映かの判定は、中身だけで決める（[反映かの判定](../backend/verify.md)）。App は判定に関わらない。前になくした「書き込み主体としての App」とは違う。
+- なぜ App か：personal access token は、人のアカウントに結び付き、その人が組織を離れると止まり、期限を人が更新するから。App の installation token は、人に結び付かず、1 時間で切れ、そのたびに作り直すので、漏れても長くは使えない。
+- 管理者が、App を作り、登録する repository の owner（organization か個人）に install し、登録する GitHub リポジトリを選ぶ。owner が複数なら、それぞれに install する。
+- installation token の作り方：
+  1. App の ID と秘密鍵で、JWT（RS256、10 分より短い）を作る。
+  2. owner の installation を、`GET /repos/{owner}/{repo}/installation`（その owner の登録したリポジトリのどれか）で引く。
+  3. `POST /app/installations/{installation_id}/access_tokens` を、`repositories`（その owner の登録したリポジトリの名前）と `permissions`（上の 4 つの Read）を付けて呼ぶ。なぜ絞るか：install で選んだリポジトリが広くても、トークンを登録したリポジトリと読む権限だけにするため。
+- installation token は、owner ごとに 1 つ持ち、使い回す。切れるまでの残りが 20 分より短くなったら、次に使うときに作り直す。
+  - なぜ 20 分：git の操作 1 回の時間の上限（既定 10 分）のあいだに、切れないようにするため。
+  - git には、git の操作のたびに、そのときのトークンを credential helper で渡す（[git アダプタ](git.md) の「資格情報」）。
+- App が owner に install されていないか、権限が足りなければ、GitHub が断る。worker は、その repository の見回りを誤りにする（ログに出す）。
+- REST の上限は、installation ごとに 1 時間に 5,000 回からである。
 
 ## 見回りの間隔
 
@@ -80,7 +106,7 @@ GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub
 
 ## 確かめたこと
 
-実際の GitHub（public のリポジトリ `yamambainc/logiforge-github-adapter-test-init3`）で、Logiforge の GitHub App も OAuth App もなしに、次のことを確かめた（`internal/adapters/github` の結合テスト `TestGitHubLive`）。
+実際の GitHub（public のリポジトリ `yamambainc/logiforge-github-adapter-test-init3`）で、Logiforge の OAuth App も読むだけの App もなしに、次のことを確かめた（`internal/adapters/github` の結合テスト `TestGitHubLive`）。
 
 | 項目 | 結果 |
 |---|---|
@@ -105,5 +131,5 @@ GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub
 
 - WebUI の画面からのサインイン（authorize から callback まで）。BE の中継は、偽の code で GitHub が交換を断るところまで確かめた。
 - private のリポジトリと、`main` を守るルールセットを掛けたリポジトリでの、反映と、守る設定に断られる操作。GitHub Free の organization では、private のリポジトリに守る設定を掛けられないので、確かめられない。
-- fine-grained personal access token の、上の権限だけで、worker とエージェントが動くこと。
+- 読むだけの GitHub App の installation token で、worker とバックエンドの作業用の複製が、git と REST を読めること。偽の GitHub でだけ確かめた（JWT、installation の引き方、トークンの絞り方、作り直し）。
 - merge の権限のない reviewer の merge を、GitHub がどう断るか。アダプタは、403 を `merge_forbidden` にする（制限の 403 は、待ってやり直し、権限がないことにしない）。偽の GitHub でだけ確かめた。

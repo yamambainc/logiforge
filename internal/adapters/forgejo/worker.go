@@ -38,9 +38,12 @@ func (s *WorkerSource) GitURL(gitForgeRef string) string {
 	return strings.TrimRight(s.c.cfg.URL, "/") + "/" + gitRef(gitForgeRef) + ".git"
 }
 
+// ReadToken は、読むだけのユーザーのトークンを返す。repository によらない。
+func (s *WorkerSource) ReadToken(context.Context, string) (string, error) { return s.Token, nil }
+
 // GitEnv は、git に資格情報を渡す環境変数を返す。トークンは、コマンドの引数や設定ファイルに書かず、
-// credential helper が環境変数から読む（design/adapters/git.md の「資格情報」）。
-func (s *WorkerSource) GitEnv() []string {
+// credential helper が環境変数から読む（design/adapters/git.md の「資格情報」）。repository によらない。
+func (s *WorkerSource) GitEnv(context.Context, string) ([]string, error) {
 	return []string{
 		"GIT_CONFIG_COUNT=1",
 		// helper は、Forgejo の URL にだけ使う。ほかの URL に、トークンを渡さないため。
@@ -48,7 +51,7 @@ func (s *WorkerSource) GitEnv() []string {
 		`GIT_CONFIG_VALUE_0=!f() { if [ "$1" = get ]; then echo username="$LOGIFORGE_GIT_USERNAME"; echo password="$LOGIFORGE_GIT_PASSWORD"; fi; }; f`,
 		"LOGIFORGE_GIT_USERNAME=" + s.Login,
 		"LOGIFORGE_GIT_PASSWORD=" + s.Token,
-	}
+	}, nil
 }
 
 // RepoID は、記録の署名の場所に使う、repository の id を返す。

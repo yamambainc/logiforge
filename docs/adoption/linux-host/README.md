@@ -34,7 +34,7 @@ flowchart LR
 
 ## 入れる
 
-1. Releases から linux のバイナリを取り、`/usr/local/bin/logiforge` に置く（取り方は [README](../../../README.md#インストール)）。GitHub を使う構成は v0.2.0 からである。
+1. Releases から linux のバイナリを取り、`/usr/local/bin/logiforge` に置く（取り方は [README](../../../README.md#インストール)）。GitHub を使う構成は v0.2.0 から、読むだけの GitHub App は v0.3.0 からである。
 2. git を入れる（例：`apt install git`）。worker とバックエンドが使う。
 3. 専用のユーザーを作る。ログインはさせない。
 
@@ -48,15 +48,15 @@ sudo useradd --system --home-dir /var/lib/logiforge --no-create-home --shell /us
 | ファイル | 持ち主と権限 | 中身 |
 |---|---|---|
 | `/etc/logiforge/logiforge.env` | root、`0644` | 秘密でない設定。見本は [logiforge.env.example](../../../deploy/systemd/logiforge.env.example) |
-| `/etc/logiforge/secrets/read_token` | root、`0600` | 読むだけのトークン（[用意するもの](../github.md#用意するもの)） |
+| `/etc/logiforge/secrets/github_app_key.pem` | root、`0600` | 読むだけの GitHub App の秘密鍵（[用意するもの](../github.md#用意するもの)） |
 | `/etc/logiforge/secrets/record_keys` | root、`0600` | 署名の秘密（`k1=<秘密>`）。バックエンドだけが読む |
 | `/etc/logiforge/secrets/oauth_client_secret` | root、`0600` | OAuth App の client secret |
 
 ```sh
 sudo install -d -m 0700 /etc/logiforge/secrets
 sudo install -m 0644 deploy/systemd/logiforge.env.example /etc/logiforge/logiforge.env   # 開いて、値を書き換える
+sudo install -m 0600 <ダウンロードした>.private-key.pem /etc/logiforge/secrets/github_app_key.pem   # 置いたら、ダウンロードしたものは消す
 # 秘密は、標準入力から貼る（シェルの履歴に残さない）
-sudo sh -c 'umask 077; cat > /etc/logiforge/secrets/read_token'
 sudo sh -c 'umask 077; cat > /etc/logiforge/secrets/oauth_client_secret'
 sudo sh -c 'umask 077; echo "k1=$(openssl rand -hex 20)" > /etc/logiforge/secrets/record_keys'
 sudo env LOGIFORGE_RECORD_KEYS_FILE=/etc/logiforge/secrets/record_keys logiforge record-public-keys

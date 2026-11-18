@@ -12,8 +12,8 @@ User=logiforge
 Group=logiforge
 EnvironmentFile=/etc/logiforge/logiforge.env
 # 秘密は、/etc/logiforge/secrets/ のファイルを systemd が写したものを、_FILE で渡す。
-LoadCredential=read_token:/etc/logiforge/secrets/read_token
-Environment=LOGIFORGE_GITHUB_READ_TOKEN_FILE=%d/read_token
+LoadCredential=github_app_key:/etc/logiforge/secrets/github_app_key.pem
+Environment=LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=%d/github_app_key
 ExecStart=/usr/local/bin/logiforge worker
 Restart=on-failure
 RestartSec=5s

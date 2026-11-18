@@ -2,9 +2,14 @@ package github
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -269,21 +274,37 @@ func TestAuthenticate(t *testing.T) {
 	}
 }
 
-// worker は、読むだけのトークンがあれば、それで git と REST を読む。なければ、トークンなしで読む（public のリポジトリ）。
+// worker は、読むだけの GitHub App があれば、その installation token で git と REST を読む。なければ、トークンなしで読む（public のリポジトリ）。
 func TestWorkerSource(t *testing.T) {
 	ctx := context.Background()
 	f := newFakeGitHub(t)
-	f.readable["tok-reader"] = true
-	s, err := NewWorkerSource(f.config(), "tok-reader")
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env := strings.Join(s.GitEnv(), "\n"); !strings.Contains(env, "credential.https://github.example.helper") {
+	f.appKey = &key.PublicKey
+	pemKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	app, err := NewApp(f.config(), "42", pemKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewWorkerSource(f.config(), app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitEnv := func(s *WorkerSource) []string {
+		env, err := s.GitEnv(ctx, fakeRepo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return env
+	}
+	if env := strings.Join(gitEnv(s), "\n"); !strings.Contains(env, "credential.https://github.example.helper") {
 		t.Fatalf("helper の URL が違う：%s", env)
 	}
 	fill := func(s *WorkerSource, url string) string {
 		cmd := exec.Command("git", "credential", "fill")
-		cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_ASKPASS=", "SSH_ASKPASS=", "HOME="+t.TempDir()), s.GitEnv()...)
+		cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_ASKPASS=", "SSH_ASKPASS=", "HOME="+t.TempDir()), gitEnv(s)...)
 		cmd.Stdin = strings.NewReader("url=" + url + "\n\n")
 		out, _ := cmd.Output()
 		for _, l := range strings.Split(string(out), "\n") {
@@ -293,7 +314,7 @@ func TestWorkerSource(t *testing.T) {
 		}
 		return ""
 	}
-	if got := fill(s, "https://github.example/acme/study.git"); got != "tok-reader" {
+	if got := fill(s, "https://github.example/acme/study.git"); got != "ghs_1" {
 		t.Errorf("GitHub の URL：%q", got)
 	}
 	if got := fill(s, "https://elsewhere.example/acme/x.git"); got != "" {
@@ -302,13 +323,42 @@ func TestWorkerSource(t *testing.T) {
 	if id, err := s.RepoID(ctx, fakeRepo); err != nil || id != "github:R_x" {
 		t.Fatalf("RepoID：%q %v", id, err)
 	}
-	// トークンなし：git の資格情報を渡さず、public なら REST も読める。private なら読めない。
-	anon, err := NewWorkerSource(f.config(), "")
+	// 有効な間は使い回す。登録したリポジトリだけと、読む権限だけを求める。
+	if f.appMinted != 1 {
+		t.Fatalf("installation token を %d 回作った", f.appMinted)
+	}
+	req := f.appRequests[0]
+	if fmt.Sprint(req["repositories"]) != "[study]" || fmt.Sprint(req["permissions"]) != "map[contents:read issues:read metadata:read pull_requests:read]" {
+		t.Fatalf("installation token の要求：%v", req)
+	}
+	// 切れる前（残りが refreshBefore より短い）なら、作り直す。
+	app.tokens[fakeOwner] = appToken{token: "ghs_1", expires: time.Now().Add(refreshBefore - time.Minute)}
+	if tok, err := s.ReadToken(ctx, fakeRepo); err != nil || tok != "ghs_2" {
+		t.Fatalf("作り直していない：%q %v", tok, err)
+	}
+	// 登録していない owner のトークンは作らない。
+	if _, err := s.ReadToken(ctx, "other/x"); err == nil {
+		t.Fatal("登録していない owner のトークンを作った")
+	}
+	// 違う鍵の App は断られる。
+	other, _ := rsa.GenerateKey(rand.Reader, 2048)
+	bad, err := NewApp(f.config(), "42", pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(other)}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(anon.GitEnv()) != 0 {
-		t.Fatalf("トークンなしなのに GitEnv：%v", anon.GitEnv())
+	if _, err := bad.Token(ctx, fakeRepo); err == nil {
+		t.Fatal("違う鍵の JWT が通った")
+	}
+	if _, err := NewApp(f.config(), "42", []byte("not a key")); err == nil {
+		t.Fatal("PEM でない鍵を受け入れた")
+	}
+	// トークンなし：git の資格情報を渡さず、public なら REST も読める。private なら読めない。
+	anon, err := NewWorkerSource(f.config(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env := gitEnv(anon); len(env) != 0 {
+		t.Fatalf("トークンなしなのに GitEnv：%v", env)
 	}
 	if _, err := anon.CommentsSince(ctx, fakeRepo, time.Time{}); err != nil {
 		t.Fatalf("public をトークンなしで読めない：%v", err)
@@ -316,6 +366,9 @@ func TestWorkerSource(t *testing.T) {
 	f.private = true
 	if _, err := anon.CommentsSince(ctx, fakeRepo, time.Time{}); err == nil {
 		t.Fatal("private をトークンなしで読めた")
+	}
+	if _, err := s.CommentsSince(ctx, fakeRepo, time.Time{}); err != nil {
+		t.Fatalf("private を App で読めない：%v", err)
 	}
 }
 
