@@ -50,6 +50,10 @@ func requireClient(c Caller, session string) error {
 	if c.Principal.Kind != ports.PrincipalClient {
 		return fail(CodeForbidden, "この操作は、client だけが使える")
 	}
+	return requireSession(session)
+}
+
+func requireSession(session string) error {
 	if session == "" {
 		return fail(CodeSessionRequired, "Logiforge-Session-Id がない")
 	}

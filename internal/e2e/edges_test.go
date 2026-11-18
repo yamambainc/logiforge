@@ -68,6 +68,29 @@ func TestE2EEdges(t *testing.T) {
 		t.Log("conflict（重ねられない）は、同じファイルの変化が対象ノードの変化として先に stale_target で見つかるので、この流れでは起きない。git の衝突の道は、internal/backend の単体テストで確かめた")
 	})
 
+	// ---- WebUI のレビュー：利用者（alice）が、WebUI のサインインのトークンで approve し、本人のトークンで反映する ----
+	t.Run("WebUI のレビュー", func(t *testing.T) {
+		agent.branch("w")
+		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("w.md", "w の背景\n"))
+		agent.commitPush("w", "w")
+		z := agent.create("w")
+		path := "/repositories/q/apply-requests/" + z.ID
+		code, b := w.call("alice", "GET", path, nil)
+		var got struct {
+			OpenedByCaller bool `json:"opened_by_caller"`
+		}
+		if _ = json.Unmarshal(b, &got); code != 200 || got.OpenedByCaller {
+			t.Fatalf("alice の getApplyRequest：%d %s", code, b)
+		}
+		if code, b := w.call("alice", "POST", path+"/reviews", map[string]string{"kind": "comment", "commit": z.HeadCommit, "body": "見ました"}, "Logiforge-Session-Id", "webui-1"); code != 201 {
+			t.Fatalf("alice の comment：%d %s", code, b)
+		}
+		code, b = w.call("alice", "POST", path+"/reviews", map[string]string{"kind": "approve", "commit": z.HeadCommit}, "Logiforge-Session-Id", "webui-1")
+		if code != 201 || !strings.Contains(string(b), `"state":"merged"`) {
+			t.Fatalf("alice の approve：%d %s", code, b)
+		}
+	})
+
 	// ---- approve の直前に push された：version_conflict。新しい版をレビューし直せば、反映できる ----
 	t.Run("approve の直前の push", func(t *testing.T) {
 		agent.session = "s-a2"
