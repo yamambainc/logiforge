@@ -72,14 +72,23 @@ GitHub に固有のところだけを書く。
 
 - GitHub は、merge のすぐあとに、`GET /repos/{owner}/{repo}/commits/{sha}/pulls` で空の一覧を返すことがある。
   - そのため、worker は、pull request が見つからないコミットを、すぐには反映によらないものと決めない（[反映かの判定](../backend/verify/README.md)）。
-- merge の要求に GitHub が 403 を返したら、アダプタは反映の失敗 `merge_forbidden` にする（[反映の手順](../backend/merge.md)）。
-  - レート制限による 403 は、`merge_forbidden` にしない。待ってやり直す（[GitHub での main の守りと制約](github-main.md)）。
-
 - 根の仮説に背景情報があるときは、根のコミットのあとに、2 つ目のコミットで足す（[repository を用意する](#repository-を用意する)）。
   - 2 つ目のコミットには、`Logiforge-Init-Signature:` を付ける（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
   - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えず（409）、contents API は 1 回に 1 つのファイルしか書けないから。
 - 登録する repository の owner（organization かユーザー）は、いくつでもよい。
 - public のリポジトリでも、private のリポジトリでも使える。GitHub Free の private のリポジトリでは、`main` を守る設定が使えないので、守る設定なしで使う（[main を守る](pull-requests.md#main-を守る)）。
+
+### merge を断られたとき
+
+merge の要求に GitHub が次のものを返したら、アダプタは反映の失敗 `merge_forbidden` にする（[反映の手順](../backend/merge.md)）。
+
+- 403。主体に merge の権限がない（Write がない、トークンの権限が足りない）。
+  - レート制限による 403 は、`merge_forbidden` にしない。待ってやり直す（[GitHub での main の守りと制約](github-main.md)）。
+- 405 で、応答が `Repository rule violations found` のもの。ルールセットが、この主体の merge を断った。
+  - 例：ディレクトリの守りの (B) の bypass にいない人が、ディレクトリを変える PR を merge した（[main の守り（ディレクトリ方式）](../directory/main.md#github-の守る設定)）。リポジトリの管理者でも同じである。
+  - 応答には、`Waiting on required approvals from <承認の team>` も付く。
+  - なぜ待たないか：待っても、断られることは変わらないから。
+- ほかの 405 は、`merge_forbidden` にしない。pull request を読み直し、衝突や先頭のコミットの変化として扱う。
 
 ## repository を用意する
 

@@ -20,7 +20,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 
 | ルールセット | Rules | Bypass list |
 |---|---|---|
-| (A) main の基本 | Require a pull request before merging、Block force pushes | だれも入れない |
+| (A) main の基本 | git リポジトリ全体の repository と同じ（[main への書き込みを守る](../adapters/github-main.md#main-への書き込みを守る)） | だれも入れない |
 | (B) ディレクトリ | Require a pull request before merging の Required reviewers：登録したディレクトリ（例：`logiforge/**`）に、Logiforge の承認の team を 1 人の承認で付ける | Logiforge の reviewer の team（Logiforge で `approve` し、merge する人とエージェント） |
 
 - なぜ 2 つに分けるか：bypass は、そのルールセットのすべての規則に効くから。1 つにまとめると、reviewer の team が、`main` への直接の push と force push もできてしまう。
@@ -42,9 +42,7 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
   - ディレクトリの中のファイルを外へ rename する PR
   - ディレクトリを消す PR
   - 外のファイルをディレクトリの中へ移す PR
-- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は 405 で断る。リポジトリの管理者でも同じである。
-  - 応答は `Repository rule violations found` と `Waiting on required approvals from <承認の team>` である。
-  - アダプタは、これを反映の失敗 `merge_forbidden` にする。
+- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は断る。アダプタは、これを反映の失敗 `merge_forbidden` にする（[GitHub アダプタ](../adapters/github.md#merge-を断られたとき) の「merge を断られたとき」）。
 
 ## Forgejo の守る設定
 

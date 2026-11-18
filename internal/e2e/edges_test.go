@@ -102,7 +102,7 @@ func TestE2EEdges(t *testing.T) {
 		})
 	})
 
-	// ---- worker が止まっているとき：読むのは止まる前の木、作成は unavailable。動かし直せば追いつく ----
+	// ---- worker が止まっているとき：読むのは止まる前のスナップショットツリー、作成は unavailable。動かし直せば追いつく ----
 	t.Run("worker の停止", func(t *testing.T) {
 		var before struct {
 			Commit string `json:"commit"`
@@ -129,7 +129,7 @@ func TestE2EEdges(t *testing.T) {
 		}
 		agent.must(&after, "tree", "view")
 		if after.Commit != before.Commit {
-			t.Fatalf("止まる前の木が読めない：%s %s", before.Commit, after.Commit)
+			t.Fatalf("止まる前のスナップショットツリーが読めない：%s %s", before.Commit, after.Commit)
 		}
 		// apply request の作成は、worker を待たない。バックエンドが git を読んで検査するので、worker が止まっていても作れる。
 		code, out := agent.cli("", "ar", "create", "--branch", "s", "--json")

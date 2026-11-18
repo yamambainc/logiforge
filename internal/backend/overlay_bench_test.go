@@ -12,7 +12,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// 向き先が main でない apply request を、ノード 4,000 個の木で重ねて読む時間を測る（issue #36。目安は 1 回で約 1 秒）。
+// 向き先が main でない apply request を、ノード 4,000 個のスナップショットツリーで重ねて読む時間を測る（issue #36。目安は 1 回で約 1 秒）。
 //
 //	LOGIFORGE_BENCH_OVERLAY=1 go test ./internal/backend/ -run TestBenchOverlayBranch -v
 func TestBenchOverlayBranch(t *testing.T) {

@@ -26,8 +26,7 @@
 - 先頭のコミットのスナップショットは、worker がブランチを取り込んでから、読む側に出る。
   - それまで、そのコミットへのレビューは `snapshot_pending` になる。クライアントは、少し待って送り直す。
 - 利用者がブランチに push した新しい先頭のコミットは、worker が次に見回ったときに、読む側に出る（[先頭のコミット](../backend/apply-request/README.md#先頭のコミット)）。
-- worker が止まっていても、apply request の作成はできる。
-  - ただし、先頭のコミットのスナップショットができないので、レビューは `snapshot_pending` のままになる。
+- worker が止まっているときの振る舞いは、[worker が止まっているとき](../backend/worker/operation.md#worker-が止まっているとき) に書く。
 - GitForge の git を読めないと、apply request の作成は `unavailable` を返す。クライアントは、少し待ってから送り直す。
 
 ### snapshot_pending を返す時点

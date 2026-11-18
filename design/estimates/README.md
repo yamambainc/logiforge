@@ -33,7 +33,8 @@
   - `ls-remote` 1 回ごとに、GitForge は認証と ref の一覧を返す処理をする。
   - GitHub を使う構成では、間隔を長めにする（[見回りの間隔](../adapters/github.md#見回りの間隔)）。
   - 間隔を 1 秒にするのは、push と書き込みが読む側に出るまでの遅れを短くするためである（[見回り](../backend/worker/patrol.md)）。GitForge の制限に当たるなら、間隔を延ばす。延ばした分だけ、書き込みの API の応答が遅くなる。
-- バックエンドは clone を作らないので、書き込みのたびの clone はない。
+- バックエンドは、repository ごとに、作業用の git の複製を持つ（[作業用の git の複製](../backend/apply-request/create.md#作業用の-git-の複製)）。
+  - clone は、プロセスごと、repository ごとに 1 度だけである。そのあとの要求では fetch だけをするので、書き込みのたびの clone はない。
 
 ## 読む量と費用
 

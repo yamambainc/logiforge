@@ -373,7 +373,7 @@ func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, id, kind
 	return out, err
 }
 
-// baseFiles は、ブランチの base の木のファイルを返す。置き場に木があればそれを使い、なければ作業用の複製から読む。
+// baseFiles は、ブランチの base の木のファイルを返す。置き場にスナップショットツリーがあればそれを使い、なければ作業用の複製から読む。
 // worker の取り込みを待たないためである。
 func (b *Backend) baseFiles(ctx context.Context, repo, ref, base string) (tree.Files, error) {
 	m, err := b.Snap.Main(ctx, repo, base)

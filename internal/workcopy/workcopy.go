@@ -197,7 +197,7 @@ func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string
 }
 
 // ReadFiles は、複製から、コミット sha の木のファイルを読む。ReadBranch で fetch したコミットだけを読める。
-// 置き場に base の木がないときに、バックエンドが base の木を読むのに使う。
+// 置き場に base のスナップショットツリーがないときに、バックエンドが base の木を読むのに使う。
 func (c *Cache) ReadFiles(ctx context.Context, repo, gitForgeRef, sha string) (tree.Files, error) {
 	defer c.lock(repo)()
 	g, err := c.repo(ctx, repo, gitForgeRef)

@@ -14,7 +14,7 @@ import (
 type At struct {
 	// Commit は、読むコミットの SHA。main のコミットか、ブランチのスナップショットがあるブランチのコミット。
 	Commit string
-	// ApplyRequest は、反映したあとの木を読む、open の apply request の識別子。Commit と同時には指定できない。
+	// ApplyRequest は、反映したあとのスナップショットツリーを読む、open の apply request の識別子。Commit と同時には指定できない。
 	ApplyRequest string
 }
 
@@ -111,7 +111,7 @@ func (b *Backend) commitAt(ctx context.Context, repo, revision string) (*view, e
 }
 
 // branchView は、ブランチのコミットのスナップショットツリーを、読むたびに作る（design/backend/snapshot/branch.md の
-// 「ブランチのコミットのスナップショットツリー」）。base の main の木に、ブランチの差分を重ねる。置き場には置かない。
+// 「ブランチのコミットのスナップショットツリー」）。base の main のスナップショットツリーに、ブランチの差分を重ねる。置き場には置かない。
 func (b *Backend) branchView(ctx context.Context, repo, revision string) (*view, error) {
 	br, err := b.Snap.Branch(ctx, repo, revision)
 	if errors.Is(err, ports.ErrNotFound) {

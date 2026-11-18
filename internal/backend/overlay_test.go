@@ -15,7 +15,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// apply_request を付けた読みは、open の apply request の差分を、今の main に重ねた、反映したあとの木を返す
+// apply_request を付けた読みは、open の apply request の差分を、今の main に重ねた、反映したあとのスナップショットツリーを返す
 // （design/backend/snapshot/branch.md の「向き先に重ねる」）。
 func TestReadAfterApplyRequest(t *testing.T) {
 	ctx := context.Background()
@@ -40,7 +40,7 @@ func TestReadAfterApplyRequest(t *testing.T) {
 		}
 	}
 	if !slices.Contains(ids, S2) || !slices.Contains(ids, H3) {
-		t.Fatalf("反映したあとの木に、新しいノードがない：%v", ids)
+		t.Fatalf("反映したあとのスナップショットツリーに、新しいノードがない：%v", ids)
 	}
 	// H2 は、子のストーリーができるので、葉でなくなる。
 	h2, err := b.GetNode(ctx, c, "q", H2, at)
@@ -70,7 +70,7 @@ func TestReadAfterApplyRequest(t *testing.T) {
 		}
 	}
 	if _, err := b.GetNode(ctx, c, "q", "h-0000000099", at); code(err) != CodeNotFound {
-		t.Fatalf("反映したあとの木にないノード：%v", err)
+		t.Fatalf("反映したあとのスナップショットツリーにないノード：%v", err)
 	}
 
 	// 先頭のコミットのスナップショットがまだなければ、snapshot_pending。
@@ -109,7 +109,7 @@ func TestTargetNotMain(t *testing.T) {
 	}
 	// 木の読みは、向き先のブランチに重ねる。向き先のブランチがまだ取り込まれていなければ、snapshot_pending。
 	if _, err := b.GetTree(ctx, c, "q", At{ApplyRequest: "apr_2"}); code(err) != CodeSnapshotPending {
-		t.Fatalf("反映したあとの木：%v", err)
+		t.Fatalf("反映したあとのスナップショットツリー：%v", err)
 	}
 	w, err := b.ListWork(ctx, c, "q", WorkQuery{})
 	if err != nil {

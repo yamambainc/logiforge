@@ -43,7 +43,9 @@ flowchart TB
 - エージェントと外の仕組みは CLI を、人（利用者）は WebUI を使う。どれもクライアントではなく、クライアントを使う側である。
 - Logiforge のプロセスは、バックエンドと [worker](backend/worker/README.md) の 2 つである。どちらも同じバイナリで、別のコンテナで動く（[動かし方](deploy/README.md)）。
   - バックエンドと worker は、互いを呼ばない。worker は git を見回って置き場に書き、バックエンドは置き場を読むだけである（[worker](backend/worker/README.md)）。
-  - バックエンドは、apply request の作成のときだけ、作業用の git の複製から GitForge の git を読んで検査する（[作業用の git の複製](backend/apply-request/create.md#作業用の-git-の複製)）。
+  - バックエンドが作業用の git の複製から GitForge の git を読むのは、次のときだけである（[作業用の git の複製](backend/apply-request/create.md#作業用の-git-の複製)）。
+    - apply request の作成で、ブランチを検査するとき
+    - ディレクトリの repository の反映で、worker が `main` に追いついたかを確かめるとき（[反映の順番](directory/main.md#反映の順番)）
   - 図の GitForge アダプタから GitForge への線（「API と git の読み」）は、GitForge の API の呼び出しと、この git の読みの両方を表す。git の URL と、読むだけの資格情報は、GitForge アダプタが渡す。
   - worker は、GitForge の git を読み、スナップショットを静的ファイルストレージに書く。git には書かない。
 - 外のサービスは、構成ごとに使うものが決まる（[組み合わせ](adapters/README.md)）。

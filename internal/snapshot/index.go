@@ -269,7 +269,7 @@ func BuildSnapshotTree(files tree.Files, x *Index) *SnapshotTree {
 }
 
 // BuildSnapshotTreeOf は、組み立て済みの木 t（files から tree.Build で作ったもの）から、スナップショットツリーを作る。
-// 木を組み立て直さないので、呼ぶ側も t を使うとき（バックエンドの、反映したあとの木）に使う。
+// 木を組み立て直さないので、呼ぶ側も t を使うとき（バックエンドの、反映したあとのスナップショットツリー）に使う。
 func BuildSnapshotTreeOf(t *tree.Tree, files tree.Files, x *Index) *SnapshotTree {
 	x.prune(files)
 	vals := tree.Compute(t)

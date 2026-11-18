@@ -75,7 +75,7 @@ flowchart TB
 
 - どちらの構成でも、バックエンドはデータを保持しない（[状態を持たない](../backend/README.md)）。
 - worker の clone と、置き場の多くは、正本ではない。失っても、worker が git から作り直す。そのため、バックアップは要らない。
-- ただし、置き場の `keep/` には、git から作り直せないもの（ブランチの履歴、記録の控え、壊れていることの記録など）がある。そのため、`keep/` だけはバックアップを取る（[スナップショットの置き場](../backend/ports/snapshot-store.md)）。
+- ただし、置き場の `keep/` は、git から作り直せないものを持つので、バックアップを取る。`keep/` に何を置くかは、[スナップショットの置き場](../backend/ports/snapshot-store.md) に書く。
 
 ## repository の登録
 

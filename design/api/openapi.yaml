@@ -54,7 +54,7 @@ paths:
                   gitforge: { type: string, enum: [forgejo, github], description: 'サインインする GitForge。画面の文言に使う' }
                   client_id: { type: string }
                   redirect_uri: { type: string, format: uri }
-                  scope: { type: string, description: 'スペースで区切ったスコープ（read:user read:organization）' }
+                  scope: { type: string, description: 'スペースで区切ったスコープ。値は design/webui/auth.md の「スコープ」に書く' }
   /oauth/token:
     post:
       tags: [oauth]
@@ -206,7 +206,7 @@ paths:
       description: |
         `root` を指定すると、そのノードを根とする部分木だけを返す。
         `commit` を指定すると、その main のコミットの木を返す。
-        `apply_request` を指定すると、その apply request を反映したあとの木を返す。
+        `apply_request` を指定すると、その apply request を反映したあとのスナップショットツリーを返す。
       parameters:
         - $ref: '#/components/parameters/Commit'
         - $ref: '#/components/parameters/ApplyRequestView'
@@ -810,13 +810,13 @@ components:
       in: query
       description: >-
         open の apply request の識別子。指定すると、その先頭のコミットの差分を、向き先の今の先頭のスナップショットツリーに重ねた、
-        反映したあとの木を返す（../../design/backend/snapshot/branch.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
+        反映したあとのスナップショットツリーを返す（../../design/backend/snapshot/branch.md の「向き先に重ねる」）。応答の commit は、重ねた向き先のコミットである。
         向き先が main なら、今の先頭は latest である。向き先が main でなければ、向き先のブランチの履歴の最後のコミットである。このとき、Logiforge は検査しないので、値は決まりに沿っているかを確かめていない。
         commit と同時には指定できない（validation_failed）。
         向き先が main で、重ねられなければ overlay_conflict を返す。向き先が main でなければ、衝突は判定しない（差分が変えたパスは先頭のファイル、ほかは向き先のファイルを使う）。先頭のコミットか、向き先の今の先頭のスナップショットがまだなければ snapshot_pending、open でなければ not_open を返す。
         向き先のブランチが消えていれば、not_found を返す。
         その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、not_found を返す。
-        getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとの木に、そのノードがないからである。
+        getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとのスナップショットツリーに、そのノードがないからである。
       schema: { type: string, pattern: '^apr_' }
     Cursor:
       name: cursor
