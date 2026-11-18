@@ -11,6 +11,7 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/github"
 	"github.com/yamambainc/logiforge/internal/ports"
+	"github.com/yamambainc/logiforge/internal/settings"
 )
 
 func TestEnvFile(t *testing.T) {
@@ -56,33 +57,63 @@ func TestEnvFile(t *testing.T) {
 	}
 }
 
-// 読むだけの GitHub App は、ID と秘密鍵の両方か、どちらもなし（トークンなし）。personal access token の設定は断る。
+// GitHub App は、ID と秘密鍵の両方か、どちらもなし（トークンなし）。
 func TestGitHubApp(t *testing.T) {
 	cfg := github.Config{Repositories: []ports.Repository{{Name: "q", GitForgeRef: "acme/q"}}}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := filepath.Join(t.TempDir(), "app.pem")
-	if err := os.WriteFile(p, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, n := range []string{"LOGIFORGE_GITHUB_READ_TOKEN", "LOGIFORGE_GITHUB_READ_TOKEN_FILE", "LOGIFORGE_GITHUB_APP_ID", "LOGIFORGE_GITHUB_APP_ID_FILE", "LOGIFORGE_GITHUB_APP_PRIVATE_KEY", "LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE"} {
-		t.Setenv(n, "")
-	}
-	if app, err := githubApp(cfg); err != nil || app != nil {
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	if app, err := githubApp(cfg, settings.GitHubConfig{}); err != nil || app != nil {
 		t.Fatalf("どちらもないとき：%v %v", app, err)
 	}
-	t.Setenv("LOGIFORGE_GITHUB_APP_ID", "42")
-	if _, err := githubApp(cfg); err == nil {
+	if _, err := githubApp(cfg, settings.GitHubConfig{AppID: "42"}); err == nil {
 		t.Error("秘密鍵がないのに、誤りにならない")
 	}
-	t.Setenv("LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE", p)
-	if app, err := githubApp(cfg); err != nil || app == nil {
-		t.Fatalf("ID と秘密鍵のファイルから作れない：%v", err)
+	if app, err := githubApp(cfg, settings.GitHubConfig{AppID: "42", AppPrivateKey: pemKey}); err != nil || app == nil {
+		t.Fatalf("ID と秘密鍵から作れない：%v", err)
 	}
-	t.Setenv("LOGIFORGE_GITHUB_READ_TOKEN", "github_pat_x")
-	if _, err := githubApp(cfg); err == nil {
-		t.Error("LOGIFORGE_GITHUB_READ_TOKEN を断らない")
+}
+
+// worker には、バックエンドの鍵を渡さない。渡されたら、起動しない。
+func TestWorkerRefusesBackendKey(t *testing.T) {
+	t.Setenv(envDB, filepath.Join(t.TempDir(), "s.db"))
+	t.Setenv(envSharedKey, settings.NewKey())
+	t.Setenv(envBackendKey, settings.NewKey())
+	if _, _, err := openSettings(false); err == nil {
+		t.Fatal("worker が、バックエンドの鍵を受け取った")
+	}
+}
+
+// settings load は、JSON の設定を設定の DB に書く。秘密は暗号化し、worker の鍵では、バックエンドだけの秘密を読めない。
+func TestSettingsLoad(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(envDB, filepath.Join(dir, "s.db"))
+	bk, sk := settings.NewKey(), settings.NewKey()
+	t.Setenv(envBackendKey, bk)
+	t.Setenv(envSharedKey, sk)
+	p := filepath.Join(dir, "c.json")
+	if err := os.WriteFile(p, []byte(`{"gitforge":"forgejo","forgejo":{"url":"http://f","org":"o","worker_login":"r","worker_token":"t","oauth_client_id":"i","oauth_client_secret":"s"},"record_keys":[{"id":"k1","secret":"x"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runSettings(t.Context(), []string{"load", p}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runSettings(t.Context(), []string{"load", filepath.Join(dir, "none.json")}); err == nil {
+		t.Fatal("ないファイルを読めた")
+	}
+	t.Setenv(envBackendKey, "")
+	db, keys, err := openSettings(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	c, err := db.Load(t.Context(), keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Forgejo.WorkerToken != "t" || c.Forgejo.OAuthClientSecret != "" || c.Ready() != nil {
+		t.Fatalf("worker が読んだ設定：%+v %v", c, c.Ready())
 	}
 }

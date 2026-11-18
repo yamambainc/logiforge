@@ -29,7 +29,7 @@ FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34
 # worker は git を使う。credential helper は sh で動く（alpine の sh を使う）。
 RUN apk add --no-cache git \
  && adduser -D -H -u 10001 -h /var/lib/logiforge logiforge \
- && mkdir -p /var/lib/logiforge/worker /var/lib/logiforge/store \
+ && mkdir -p /var/lib/logiforge/worker /var/lib/logiforge/store /var/lib/logiforge/config \
  && chown -R 10001:10001 /var/lib/logiforge
 COPY --from=build /out/logiforge /usr/local/bin/logiforge
 # root では動かさない。

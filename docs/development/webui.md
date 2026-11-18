@@ -24,7 +24,5 @@ npm run dev         # 開発。/v1 は手元の serve（127.0.0.1:8080）に渡�
 
 ## サインイン
 
-- サインインには、`serve` に次の環境変数を渡す（[サインイン](../../design/webui/auth.md)）。
-  - `LOGIFORGE_OAUTH_CLIENT_ID`
-  - `LOGIFORGE_OAUTH_CLIENT_SECRET`
-  - `LOGIFORGE_OAUTH_REDIRECT_URI`
+- サインインには、設定の DB に、サインインに使うアプリケーションの client_id と client secret と、WebUI の URL を置く（[設定](../../design/settings/README.md)、[サインイン](../../design/webui/auth.md)）。
+  - compose では、`scripts/compose-setup.sh` が置く（[compose で動かす](compose.md)）。

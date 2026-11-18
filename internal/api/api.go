@@ -30,6 +30,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeTooLarge:                http.StatusRequestEntityTooLarge,
 	backend.CodeRepositoryExists:        http.StatusConflict,
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
+	backend.CodeSetupRequired:           http.StatusServiceUnavailable,
 	backend.CodeSnapshotPending:         http.StatusServiceUnavailable,
 	backend.CodeRepositoryNotRegistered: http.StatusUnprocessableEntity,
 	backend.CodeInternal:                http.StatusInternalServerError,
@@ -489,4 +490,15 @@ func (s *server) getRepairFiles(ctx context.Context, c backend.Caller, r *http.R
 func readsTree(pattern string) bool {
 	return strings.HasSuffix(pattern, "/{repository}") || strings.Contains(pattern, "/tree") ||
 		strings.Contains(pattern, "/nodes/") || strings.Contains(pattern, "/verdicts/")
+}
+
+// SetupRequired は、初回のセットアップが終わるまでのハンドラーである。/healthz のほかは、setup_required（503）を返す。
+// なぜ /healthz を通すか：ヘルスチェックで、起動し直され続けないようにするため（design/api/endpoints/setup.md）。
+func SetupRequired(detail string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", healthz)
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeProblem(w, &backend.Error{Code: backend.CodeSetupRequired, Detail: detail})
+	})
+	return withHeaders(mux)
 }

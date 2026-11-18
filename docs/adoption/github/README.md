@@ -51,8 +51,6 @@ export LOGIFORGE_GITFORGE=github
 export LOGIFORGE_GITHUB_REPOSITORIES=myapp-cache-strategy=acme/myapp-cache-strategy
 export LOGIFORGE_GITHUB_APP_ID=<App ID>                       # public のリポジトリで試すだけなら、この 2 つはなくてもよい
 export LOGIFORGE_GITHUB_APP_PRIVATE_KEY_FILE=app-key.pem
-export LOGIFORGE_RECORD_KEYS="k1=$(openssl rand -hex 20)"
-export LOGIFORGE_RECORD_PUBLIC_KEYS=$(logiforge record-public-keys)
 export LOGIFORGE_STORE_DIR=$PWD/store LOGIFORGE_WORKER_DIR=$PWD/worker
 export LOGIFORGE_WORKER_INTERVAL=10s LOGIFORGE_WORKER_RECORD_INTERVAL=30s
 logiforge worker &

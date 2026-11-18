@@ -19,9 +19,6 @@ sudo install -m 0644 deploy/systemd/logiforge.env.example /etc/logiforge/logifor
 sudo install -m 0600 <ダウンロードした>.private-key.pem /etc/logiforge/secrets/github_app_key.pem   # 置いたら、ダウンロードしたものは消す
 # 秘密は、標準入力から貼る（シェルの履歴に残さない）
 sudo sh -c 'umask 077; cat > /etc/logiforge/secrets/oauth_client_secret'
-sudo sh -c 'umask 077; echo "k1=$(openssl rand -hex 20)" > /etc/logiforge/secrets/record_keys'
-sudo env LOGIFORGE_RECORD_KEYS_FILE=/etc/logiforge/secrets/record_keys logiforge record-public-keys
-# 出力を、logiforge.env の LOGIFORGE_RECORD_PUBLIC_KEYS に書く
 ```
 
 ## 秘密の渡し方

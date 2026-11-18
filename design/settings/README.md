@@ -58,6 +58,21 @@
 - バックエンドは、要求のほかに、1 分ごとに worker のトークンを作り直す（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。
 - 設定の DB に、セットアップの終わった記録がなければ、バックエンドは、セットアップの API、サインインの中継、WebUI だけを返す（[セットアップが終わるまでのほかの API](../api/endpoints/setup.md#セットアップが終わるまでのほかの-api)）。worker は、見回りをせずに待つ。
 
+## 設定のコマンド
+
+サーバを動かす人が、設定の DB を直接書くコマンドである。どれも、`LOGIFORGE_DB` と 2 つの鍵を求める（[環境変数](../deploy/env.md)）。
+
+| コマンド | すること |
+|---|---|
+| `logiforge settings load <ファイル>` | JSON の設定を、設定の DB に書く。`-` なら標準入力から読む |
+| `logiforge settings rekey --old-backend-key-file <ファイル> --old-shared-key-file <ファイル>` | すべての秘密を、新しい鍵で暗号化し直す（[鍵を取り替える](secrets.md#鍵を取り替える)） |
+
+- `settings load` の用途は、サーバを動かす人が、テストや compose で、セットアップの画面を使わずに設定を入れることである。
+  - JSON の項目は、[設定の DB に置くもの](#設定の-db-に置くもの) と同じである。形は、実装の `internal/settings` の `Config` が正本である。
+  - 書くのは、渡した設定の全体である。JSON にない設定は消す。repository は、JSON にないものを外す。記録の鍵は、足すだけで消さない。
+  - 登録した repository の名前と `owner/name` とディレクトリは、変えられない（[repository を外したとき](../api/endpoints/settings.md#repository-を外したとき)）。
+- どちらのコマンドも、ほかの人は使えない。なぜ：設定の DB のファイルと、バックエンドの鍵が要り、それを持つのはサーバを動かす人だけだから。
+
 ## バックアップ
 
 - 設定の DB は、バックアップを取る。
