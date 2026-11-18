@@ -37,11 +37,12 @@
 - `user` が使える書き込みは、利用者の次の操作だけである。
   - repository の作成（根の主文を含む）
   - 人への依頼への回答
+  - apply request のレビュー（approve なら反映まで。[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）
   - 設定の変更（設定の API）
 - それ以外の書き込みは、`client` だけが使える。
 - 主体と主体の種類は、[認証](ports/authentication.md) で確かめる。
 - repository を使えるのは、その repository を読める主体だけである。
-- repository ごとの `user` の書き込み（repository の作成、人への依頼への回答）は、その repository に Write があるときだけ受け付ける（[repository ごとの権限](../settings/users.md#repository-ごとの権限)）。
+- repository ごとの `user` の書き込み（repository の作成、人への依頼への回答、レビュー）は、その repository に Write があるときだけ受け付ける（[repository ごとの権限](../settings/users.md#repository-ごとの権限)）。
 - 設定の API は、`user` だけが使える（[利用者の決め方](../settings/users.md#利用者の決め方)）。
   - `user` でなければ、`forbidden` を返す。
 - セットアップの API は、主体ではなく、セットアップのコードで守る（[初回のセットアップ](../settings/setup.md#セットアップのコード)）。

@@ -40,7 +40,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 
 ## セッション ID
 
-- `client` の書き込みには、`Logiforge-Session-Id` ヘッダーを必ず付ける。
+- `client` の書き込みと、`user` のレビューには、`Logiforge-Session-Id` ヘッダーを必ず付ける。
   - 値は、クライアントが決める文字列（128 文字以下）である。
   - なぜ：差分を書いたセッションと reviewer のセッションが別であることを確かめるため（[保証の範囲](../../docs/apply-request/review.md)）。
 - バックエンドは、ヘッダーのセッション ID を、レビューと close と人への依頼に記録する。

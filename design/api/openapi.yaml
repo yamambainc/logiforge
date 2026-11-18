@@ -770,8 +770,9 @@ paths:
     post:
       tags: [apply-request]
       operationId: reviewApplyRequest
-      summary: レビューを付ける（client だけ。差分を書いたどのセッションとも別のセッション）
+      summary: レビューを付ける（client と、その repository に Write がある user。差分を書いたどのセッションとも別のセッション）
       description: |
+        user（WebUI）は、WebUI のサインインで得たトークンで呼ぶ。その repository に Write がなければ forbidden（../../design/settings/users.md の「WebUI からのレビュー」）。
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
         反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
         先頭のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
@@ -796,7 +797,7 @@ paths:
                 body: { type: string }
                 prompt_revision:
                   type: string
-                  description: 使ったプロンプトのリビジョン。approve では必須
+                  description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない（記録には - を書く）
       responses:
         '201':
           description: 付けたレビューと、その後の apply request

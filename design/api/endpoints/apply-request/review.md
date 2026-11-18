@@ -1,7 +1,7 @@
 # apply request をレビューする
 
-reviewer が、論理レビューの結果を付けるときに、CLI から呼ぶ。
-外の仕組みに起動された reviewer が、レビューの材料を読んだあとに、CLI から使う。
+reviewer が、論理レビューの結果を付けるときに、CLI か WebUI から呼ぶ。
+外の仕組みに起動された reviewer は、レビューの材料を読んだあとに、CLI から使う。利用者は、apply request と履歴の画面から使う（[WebUI からのレビュー](../../../settings/users.md#webui-からのレビュー)）。
 
 ## 呼び出し
 
@@ -12,6 +12,9 @@ reviewer が、論理レビューの結果を付けるときに、CLI から呼�
 
 - approve、request_changes、comment のどれかを付ける。
 - レビューした先頭のコミットと、使ったプロンプトのリビジョンを記録する。
+  - `user`（WebUI）のレビューには、プロンプトのリビジョンがない。記録には `-` を書く。
+- `client` も `user` も呼べる。`user` は、その repository に Write があるときだけ受け付ける。
+- どちらも、`Logiforge-Session-Id` を求める。WebUI は、ブラウザのタブごとに乱数で作り、`sessionStorage` に置く。
 - approve で反映の条件を満たしたら、この呼び出しの中で反映する。
 - 反映に失敗しても、エラーにはせず、失敗の理由を記録する。
 

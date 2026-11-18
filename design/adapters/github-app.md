@@ -29,9 +29,9 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 
 | 権限 | 値 | 使う者と理由 |
 |---|---|---|
-| Repository の Contents | Read and write | 利用者が repository を用意する（contents API と Git Data API）。worker が git を読む |
+| Repository の Contents | Read and write | 利用者が repository を用意する（contents API と Git Data API）。利用者が、WebUI のレビューの approve で、pull request を merge する（merge は Contents の write が要る）。worker が git を読む |
 | Repository の Issues | Read and write | 利用者が、人への依頼に回答し、issue を閉じる。worker が記録のコメントを読む |
-| Repository の Pull requests | Read | WebUI で apply request を読む。worker が反映かを判定する |
+| Repository の Pull requests | Read and write | 利用者が、WebUI のレビューで、pull request に記録のコメントを書く（pull request へのコメントは、Pull requests の write が要る）。WebUI で apply request を読む。worker が反映かを判定する |
 | Repository の Metadata | Read | GitHub が必ず求める |
 
 - Webhook は使わない。反映かの判定は、中身だけで決める（[反映かの判定](../backend/verify/README.md)）。

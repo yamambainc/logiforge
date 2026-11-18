@@ -52,6 +52,9 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
+- レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
+  - `Logiforge-Session-Id` は、タブごとに乱数で作り、`sessionStorage` に置く（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
+  - 応答の `apply_request` で、反映したか、反映の失敗の理由を示す。
   - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、`created_at` の順に示し、書いた人（`reviewer`）と時刻を添える。
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。

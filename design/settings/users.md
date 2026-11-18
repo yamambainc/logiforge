@@ -18,7 +18,7 @@
 ## repository ごとの権限
 
 - repository ごとの `user` の操作は、主体がその repository に Write 以上の権限を持つときだけ受け付ける。持たなければ `forbidden`（403）を返す。
-  - 操作：人への依頼に回答する、repository を作る。
+  - 操作：人への依頼に回答する、repository を作る、apply request をレビューする（approve なら反映まで。[WebUI からのレビュー](#webui-からのレビュー)）。
   - 設定の API も、`user` であることを求める（[設定の API](../api/endpoints/settings.md)）。
 - 読む操作は、`user` でも `client` でも、主体がその repository を読めれば受け付ける（[認可](../backend/README.md#認可)）。
 - `client` の書き込み（apply request、レビュー、人への依頼の起票）は、GitForge の権限で決まる。Logiforge は、主体のトークンで書くので、GitForge が断れば断る（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
@@ -28,6 +28,20 @@
     - user access token で読めるのは、App が install されていて、かつ本人が読めるリポジトリだけである。そのため、App が install されていないリポジトリでは、`user` にならない。
   - Forgejo：主体のトークンで `GET /user/teams` を呼び、設定した organization の team の権限（`write`、`admin`、`owner`）を見る。repository ごとの操作は、`GET /repos/{owner}/{repo}` の `permissions.push` を見る（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
     - Forgejo の repository を作るときは、organization に repository を作れる team にいることを見る。なぜ：作る前の repository には、権限がないから。
+
+## 設定を変えられる人
+
+- 登録した repository のどれかに Write がある `user` は、設定も変えられる。
+- そのため、登録した repository に Write を配ることは、Logiforge の設定を変える権限も渡すことになる。Write は、信頼できる人にだけ配る。
+- エージェントの機械用アカウントは、WebUI でサインインしない。機械用アカウントが持つのは CLI のトークンで、設定の API は CLI のトークンを断る（[トークンの出どころ](#トークンの出どころ)）。
+- 誰が、いつ、どの設定を変えたかは、記録に残る（[記録](#記録)）。
+
+## WebUI からのレビュー
+
+- `user` は、WebUI で、apply request をレビューできる。CLI のレビューと同じ API と、同じ意味である（[apply request をレビューする](../api/endpoints/apply-request/review.md)）。
+  - approve で反映の条件を満たしたら、同じ要求の中で反映する（[反映の手順](../backend/merge.md)）。
+- 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
+- その repository に Write がなければ、`forbidden` を返す。
 
 ## トークンの出どころ
 
@@ -55,3 +69,8 @@
 
 - 設定を変えたら、変えた利用者と時刻を、その行に残す（`updated_by`、`updated_at`）。
 - バックエンドは、設定を変えるたびに、変えた設定の名前と利用者を、ログに出す。秘密の値は出さない。
+
+## 対応しないこと
+
+- 設定を変えられる人を、`user` の中でさらに絞ること。
+  - なぜ：Logiforge は、利用者と設定を変える人を区別しないから。区別するには、名簿か、GitForge のより強い権限（organization の owner など）が要る。どちらも使わず、権限の正本を、登録した repository の Write の 1 つにするため。

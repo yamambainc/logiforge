@@ -33,11 +33,12 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 | [apply request と履歴](../../docs/webui/history.md) | 一覧と、差分とレビュー | [一覧を読む](endpoints/apply-request/list.md)、[詳細を読む](endpoints/apply-request/get.md) |
 | apply request と履歴 | 過去の時点の木 | [main のコミットの一覧を読む](endpoints/commit/list.md)、[木のノードを読む](endpoints/tree/list-nodes.md)（`commit` を指定する） |
 | apply request と履歴 | 反映したあとのスナップショットツリー | [木のノードを読む](endpoints/tree/list-nodes.md)、[ノードの詳細を読む](endpoints/node/get.md)（どちらも `apply_request` を指定する） |
+| apply request と履歴 | apply request のレビュー（approve なら反映まで） | [apply request をレビューする](endpoints/apply-request/review.md) |
 | [ダッシュボード](../../docs/webui/dashboard.md) | 根の値と、作業の終わりの判定 | [作業の終わりを判定する](endpoints/tree/completion.md) |
 | ダッシュボード | 種類ごとの着手できる作業の件数 | [着手できる作業を読む](endpoints/work/list.md) |
 
 ## WebUI に置かない操作
 
 - WebUI は、`user` のトークンで API を使う。
-- `user` は、apply request を作る API と、レビューする API を使えない（[認可](../backend/README.md#認可)）。
-- そのため、WebUI からは、木の変更も `approve` もできない（[反映の条件](../../docs/apply-request/review.md)）。
+- `user` は、apply request を作る API と、更新する API と、close する API を使えない（[認可](../backend/README.md#認可)）。
+- WebUI からは、木を変えない。apply request のレビュー（approve と反映を含む）はできる（[反映の条件](../../docs/apply-request/review.md)）。

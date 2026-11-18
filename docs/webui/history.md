@@ -18,6 +18,8 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 |                              | レビュー                         |
 |                              |  reviewer: request_changes ...   |
 |                              |  opener:   修正しました ...      |
+|                              | [approve] [request_changes]      |
+|                              | [comment]  本文 [            ]   |
 +------------------------------+----------------------------------+
 ```
 
@@ -29,7 +31,10 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
   - レビュー。だれが、いつ書いたかも示す。
     - 議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。
-- WebUI からは、apply request を審査しない（[反映の条件](../apply-request/review.md)）。
+- open の apply request は、その repository に書ける利用者が、この画面でレビューできる（[反映の条件](../apply-request/review.md)）。
+  - レビューは、approve、request_changes、comment のどれかと、本文である。
+  - approve の前に、レビューする先頭のコミットと、反映したあとの木を示す。押したら、確かめてから送る。
+  - approve で反映の条件を満たしたら、そのまま反映する。反映できなかったら、その理由を示す。
 
 ## 反映したあとの木
 
