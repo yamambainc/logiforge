@@ -353,3 +353,67 @@ func hasWarning(c snapshot.Commit, rule tree.Rule) bool {
 	}
 	return false
 }
+
+// TestGitHubLiveApp は、読むだけの GitHub App の installation token を確かめる。GITHUB_TEST_APP_ID がなければ飛ばす。
+// GITHUB_TEST_REPO を private にすると、トークンなしでは読めないことも確かめる。
+func TestGitHubLiveApp(t *testing.T) {
+	l := liveEnv(t)
+	if l.app == nil {
+		t.Skip("GITHUB_TEST_APP_ID がない（読むだけの GitHub App）")
+	}
+	l.setup()
+	ctx := context.Background()
+	src, err := NewWorkerSource(l.cfg, l.app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// git：GitEnv の資格情報で ls-remote できる。
+	env, err := src.GitEnv(ctx, l.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "ls-remote", src.GitURL(l.repo), "refs/heads/main")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_ASKPASS=", "HOME="+t.TempDir()), env...)
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "refs/heads/main") {
+		t.Fatalf("App のトークンで git を読めない：%v %s", err, out)
+	}
+	// REST：RepoID と記録のコメントを読める。
+	if _, err := src.RepoID(ctx, l.repo); err != nil {
+		t.Fatalf("App のトークンで RepoID を読めない：%v", err)
+	}
+	if _, err := src.CommentsSince(ctx, l.repo, time.Time{}); err != nil {
+		t.Fatalf("App のトークンでコメントを読めない：%v", err)
+	}
+	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository、コメント）を読める")
+
+	// 書けない：issue を作ろうとすると断られる。
+	tok, err := src.ReadToken(ctx, l.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp, _ := repoPath(l.repo)
+	err = newClient("", nil).do(ctx, tok, "POST", rp+"/issues", map[string]string{"title": "書けてはいけない"}, nil)
+	if s := statusOf(err); s != http.StatusForbidden && s != http.StatusNotFound {
+		t.Fatalf("App のトークンで issue を作れた、か違う誤り：%v", err)
+	}
+	t.Logf("確かめた：installation token では書けない（%v）", err)
+
+	// private なら、トークンなしでは読めない。
+	var repo struct {
+		Private bool `json:"private"`
+	}
+	if err := newClient("", nil).do(ctx, l.token, "GET", rp, nil, &repo); err != nil {
+		t.Fatal(err)
+	}
+	anon, err := NewWorkerSource(l.cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = anon.CommentsSince(ctx, l.repo, time.Time{})
+	switch {
+	case repo.Private && err == nil:
+		t.Fatal("private をトークンなしで読めた")
+	case repo.Private:
+		t.Logf("確かめた：private のリポジトリは、トークンなしでは読めない（%v）", err)
+	}
+}

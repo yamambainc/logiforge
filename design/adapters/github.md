@@ -129,9 +129,18 @@ GitHub での `main` の守り方と、GitHub の制約への対処は、[GitHub
 | OAuth App のトークンを持つが、`LOGIFORGE_USER_LOGINS` に入れていないアカウント | `client`。403 |
 | `POST /applications/{client_id}/token` に、ほかのトークンを渡す / 違う secret で呼ぶ | 404 / 401 |
 
+試験用の読むだけの GitHub App（`logiforge-reader-yamambainc`。Contents、Issues、Pull requests、Metadata の Read、webhook なし）を、private のリポジトリ `yamambainc/logiforge-app-test-private` に install して、次のことも確かめた（2026-11-18、結合テスト `TestGitHubLive` と `TestGitHubLiveApp`）。
+
+| 項目 | 結果 |
+|---|---|
+| App の ID と秘密鍵から、installation token を作れるか（JWT、`GET /repos/{owner}/{repo}/installation`、`repositories` と `permissions` で絞った `access_tokens`） | 作れる |
+| worker が、installation token で、private のリポジトリを git と REST で読み、`TestGitHubLive` の判定（用意、reviewer の merge、人の merge、request_changes のあとの merge）を同じに出すか | 出す |
+| installation token で書けるか（issue の作成） | 書けない。403（`Resource not accessible by integration`） |
+| private のリポジトリを、トークンなしで読めるか | 読めない（404） |
+
 まだ確かめていないことは、次のとおりである。
 
 - WebUI の画面からのサインイン（authorize から callback まで）。BE の中継は、偽の code で GitHub が交換を断るところまで確かめた。
 - private のリポジトリと、`main` を守るルールセットを掛けたリポジトリでの、反映と、守る設定に断られる操作。GitHub Free の organization では、private のリポジトリに守る設定を掛けられないので、確かめられない。
-- 読むだけの GitHub App の installation token で、worker とバックエンドの作業用の複製が、git と REST を読めること。偽の GitHub でだけ確かめた（JWT、installation の引き方、トークンの絞り方、作り直し）。
+- installation token の作り直し（切れるまで 20 分を切ったとき）と、バックエンドの作業用の複製が App で読むこと。偽の GitHub でだけ確かめた。
 - merge の権限のない reviewer の merge を、GitHub がどう断るか。アダプタは、403 を `merge_forbidden` にする（制限の 403 は、待ってやり直し、権限がないことにしない）。偽の GitHub でだけ確かめた。
