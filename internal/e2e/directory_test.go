@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/settings"
 )
 
 // ディレクトリ方式（design/directory/）：プロジェクトのリポジトリの中の 2 つのディレクトリを、別々の repository として運用する。
@@ -16,9 +18,9 @@ import (
 //   - 人が、apply request でない PR でディレクトリを変えて merge すると、そのディレクトリの repository だけが壊れる。
 func TestE2EDirectory(t *testing.T) {
 	const project = "proj"
-	w := setupFull(t, func(w *world) []string {
+	w := setupFull(t, func(w *world, c *settings.Config) {
 		ref := w.org + "/" + project
-		return []string{"LOGIFORGE_DIRECTORIES=cache=" + ref + ":logiforge/cache,index=" + ref + ":logiforge/index"}
+		c.Repositories = []settings.Repository{{Name: "cache", GitForgeRef: ref, Directory: "logiforge/cache"}, {Name: "index", GitForgeRef: ref, Directory: "logiforge/index"}}
 	}, nil)
 	ref := w.org + "/" + project
 	// 管理者が、コードのあるプロジェクトのリポジトリを作り、利用者に Write を与える。

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dir=.compose/secrets
-if [ -e "$dir/worker_token" ] && [ -s "$dir/worker_token" ]; then
+if [ -s "$dir/shared_key" ]; then
   echo "$dir はもうある。作り直すときは、docker compose down -v と rm -rf .compose をしてから動かす" >&2
   exit 1
 fi
@@ -17,12 +17,10 @@ rand() { od -An -tx1 -N20 /dev/urandom | tr -d ' \n'; }
 # コンテナのユーザー（uid 10001）が読めるよう、ファイルは 644、ディレクトリは 700 にする。
 mkdir -p "$dir"
 chmod 700 .compose "$dir"
-echo "k1=$(rand)" >"$dir/record_keys"
-# worker に渡す公開鍵は、秘密から logiforge record-public-keys で作る（イメージは docker compose build で作ってある）。
-docker run --rm -e LOGIFORGE_RECORD_KEYS="$(cat "$dir/record_keys")" logiforge:local record-public-keys >"$dir/record_public_keys"
-: >"$dir/worker_token"
-: >"$dir/oauth_client_id"
-: >"$dir/oauth_client_secret"
+# 設定の DB の秘密を暗号化する 2 つの鍵（32 バイトの乱数の base64。design/settings/secrets.md）。
+head -c 32 /dev/urandom | base64 >"$dir/backend_key"
+head -c 32 /dev/urandom | base64 >"$dir/shared_key"
+# 644 なので、このホストのほかのユーザーも鍵を読める。開発のための compose だけの形である。本番では、鍵を DB と別の場所に、読める人を絞って置く（design/settings/secrets.md の「鍵を置く場所」）。
 chmod 644 "$dir"/*
 
 docker compose up -d --wait forgejo
@@ -54,7 +52,7 @@ user() { # user <login> <team の id> <scopes>。トークンを返す
   fj admin user generate-access-token --username "$1" --token-name logiforge --scopes "$3" --raw
 }
 # worker は、読むだけのトークンを使う。
-user logiforge-reader "$readers" read:repository,read:organization,read:issue >"$dir/worker_token"
+worker_token=$(user logiforge-reader "$readers" read:repository,read:organization,read:issue)
 user alice "$users" all >.compose/alice_token
 chmod 600 .compose/alice_token
 # エージェントの主体。CLI で、ブランチの push、apply request とレビューに使う。
@@ -68,10 +66,28 @@ echo "$alicepw" >.compose/alice_password
 chmod 600 .compose/alice_password
 
 # WebUI のサインインに使う OAuth2 のアプリケーション（confidential client）を登録する（design/webui/auth.md）。
-# redirect_uri は、compose.yaml の LOGIFORGE_OAUTH_REDIRECT_URI と完全に一致させる。
+# redirect_uri は、設定の webui_url に /oauth/callback を足したものと完全に一致させる。
 app=$(call POST /user/applications/oauth2 '{"name":"logiforge-webui","redirect_uris":["http://localhost:8080/oauth/callback"],"confidential_client":true}')
-echo "$app" | grep -o '"client_id":"[^"]*"' | cut -d'"' -f4 >"$dir/oauth_client_id"
-echo "$app" | grep -o '"client_secret":"[^"]*"' | cut -d'"' -f4 >"$dir/oauth_client_secret"
+client_id=$(echo "$app" | grep -o '"client_id":"[^"]*"' | cut -d'"' -f4)
+client_secret=$(echo "$app" | grep -o '"client_secret":"[^"]*"' | cut -d'"' -f4)
+
+# 設定を、設定の DB に書く（初回のセットアップのかわり。design/settings/README.md）。
+docker compose run -T --rm --no-deps backend settings load - <<JSON
+{
+  "gitforge": "forgejo",
+  "webui_url": "http://localhost:8080",
+  "forgejo": {
+    "url": "http://localhost:3000",
+    "org": "logiforge",
+    "user_team": "logiforge-users",
+    "worker_login": "logiforge-reader",
+    "worker_token": "$worker_token",
+    "oauth_client_id": "$client_id",
+    "oauth_client_secret": "$client_secret"
+  },
+  "record_keys": [{"id": "k1", "secret": "$(rand)"}]
+}
+JSON
 
 # setup に使った admin のトークン（scope は all）は、もう要らないので消す。
 curl -fsS -X DELETE -u "logiforge-admin:$adminpw" "$api/users/logiforge-admin/tokens/setup" >/dev/null

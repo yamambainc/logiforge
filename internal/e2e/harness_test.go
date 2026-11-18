@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/settings"
 )
 
 var bin string // ビルドした logiforge
@@ -154,19 +154,19 @@ func (w *world) restartWorker() {
 }
 
 // recordSecret は、記録の署名の秘密である。worker には、ここから作った公開鍵だけを渡す。
-const recordSecret = "e2e-secret"
+const recordSecret = "e2e-secret-0123456789abcdef0123456789"
 
 // setup は、Forgejo に organization と主体を作り、serve と worker を動かす。
 func setup(t *testing.T) *world { return setupWith(t, nil) }
 
-// setupWith は、setup と同じだが、serve を動かす前に extra を呼び、返った環境変数を serve に足す。
+// setupWith は、setup と同じだが、serve を動かす前に extra を呼び、設定の DB に書く設定を足させる。
 // extra は、serve の URL（/v1 の手前まで）を受け取る。
-func setupWith(t *testing.T, extra func(w *world, serveURL string) []string) *world {
+func setupWith(t *testing.T, extra func(w *world, serveURL string, c *settings.Config)) *world {
 	return setupFull(t, nil, extra)
 }
 
-// setupFull は、setupWith と同じだが、serve と worker の両方に足す環境変数を、common で返す（organization を作ったあとに呼ぶ）。
-func setupFull(t *testing.T, common func(w *world) []string, extra func(w *world, serveURL string) []string) *world {
+// setupFull は、setupWith と同じだが、organization を作ったあとに common を呼び、設定の DB に書く設定を足させる。
+func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra func(w *world, serveURL string, c *settings.Config)) *world {
 	fu, admin := os.Getenv("FORGEJO_URL"), os.Getenv("FORGEJO_ADMIN_TOKEN")
 	if fu == "" || admin == "" {
 		t.Skip("FORGEJO_URL と FORGEJO_ADMIN_TOKEN がない（scripts/forgejo-test.sh で Forgejo を起動する）")
@@ -198,27 +198,31 @@ func setupFull(t *testing.T, common func(w *world) []string, extra func(w *world
 
 	w.storeDir = t.TempDir()
 	serveAddr := freePort(t)
+	// 設定は、設定の DB に置く（design/settings/README.md）。起動時に渡すのは、DB の場所と鍵と、ホストに結び付くものだけである。
 	// バックエンドも、apply request の作成で、worker と同じ読むだけのユーザーで git を読む。
-	baseEnv := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_FORGEJO_URL=" + fu, "LOGIFORGE_FORGEJO_ORG=" + w.org,
-		"LOGIFORGE_WORKER_LOGIN=" + w.login("reader"), "LOGIFORGE_WORKER_TOKEN=" + w.tokens["reader"], "LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
+	c := &settings.Config{
+		GitForge: settings.GitForgeForgejo,
+		Forgejo: settings.ForgejoConfig{URL: fu, Org: w.org, UserTeam: "logiforge-users",
+			WorkerLogin: w.login("reader"), WorkerToken: w.tokens["reader"]},
+		Intervals:  settings.Intervals{Patrol: "1s", List: "1s", WaitTimeout: "20s"},
+		RecordKeys: []settings.RecordKey{{ID: "k1", Secret: recordSecret}},
+	}
 	if common != nil {
-		// 下で serve と worker の両方が append するので、容量を切り詰めて、互いに書き換えないようにする。
-		baseEnv = slices.Clip(append(baseEnv, common(w)...))
+		common(w, c)
 	}
-	ring, err := pullreq.KeyringFromSecrets([]string{"k1"}, []string{recordSecret})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.workerEnv = append(baseEnv, "LOGIFORGE_WORKER_DIR="+t.TempDir(), "LOGIFORGE_WORKER_INTERVAL=1s", "LOGIFORGE_WORKER_LIST_INTERVAL=1s",
-		"LOGIFORGE_RECORD_PUBLIC_KEYS="+ring.FormatPublicKeys())
-	w.stopWorker = w.start("worker", w.workerEnv, "worker")
-	var more []string
 	if extra != nil {
-		more = extra(w, "http://"+serveAddr)
+		extra(w, "http://"+serveAddr, c)
 	}
-	w.start("serve", append(append(baseEnv, more...), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_USER_TEAM=logiforge-users",
-		"LOGIFORGE_RECORD_KEYS=k1="+recordSecret,
-		"LOGIFORGE_WAIT_TIMEOUT=20s", "LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	backendKey, sharedKey := settings.NewKey(), settings.NewKey()
+	w.writeSettings(dbPath, backendKey, sharedKey, c)
+	baseEnv := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_DB=" + dbPath, "LOGIFORGE_SHARED_KEY=" + sharedKey,
+		"LOGIFORGE_GIT_ALLOW_PROTOCOL=http:https:file"}
+	// worker には、バックエンドの鍵を渡さない（design/settings/secrets.md の「2 つの鍵」）。
+	w.workerEnv = append(slices.Clip(baseEnv), "LOGIFORGE_WORKER_DIR="+t.TempDir())
+	w.stopWorker = w.start("worker", w.workerEnv, "worker")
+	w.start("serve", append(slices.Clip(baseEnv), "LOGIFORGE_ADDR="+serveAddr, "LOGIFORGE_BACKEND_KEY="+backendKey,
+		"LOGIFORGE_GIT_CACHE_DIR="+t.TempDir()), "serve")
 	w.api = "http://" + serveAddr
 	w.eventually("serve が起動する", 20*time.Second, func() bool {
 		res, err := http.Get(w.api + "/v1/repositories")
@@ -370,3 +374,24 @@ func (u *user) loginAndClone(repo string) {
 
 var _ = context.Background
 var _ = url.PathEscape
+
+// writeSettings は、設定の DB に c を書く。設定の画面のかわりである。
+func (w *world) writeSettings(path, backendKey, sharedKey string, c *settings.Config) {
+	w.t.Helper()
+	bk, err := settings.ParseKey(backendKey)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	sk, err := settings.ParseKey(sharedKey)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	db, err := settings.Open(path, false)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Save(context.Background(), settings.Keys{Backend: bk, Shared: sk}, c, "e2e"); err != nil {
+		w.t.Fatal(err)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yamambainc/logiforge/internal/settings"
 )
 
 // 別リポジトリ方式から、ディレクトリの repository に移す（design/directory/migrate.md）。
@@ -13,8 +15,8 @@ import (
 //   - 移すと、移した先は、元の今のスナップショットツリーと同じになり、migrated_from を持つ。元は migrated_to を持ち、書けない。
 func TestE2EMigrate(t *testing.T) {
 	const project = "proj"
-	w := setupFull(t, func(w *world) []string {
-		return []string{"LOGIFORGE_DIRECTORIES=moved=" + w.org + "/" + project + ":logiforge/moved"}
+	w := setupFull(t, func(w *world, c *settings.Config) {
+		c.Repositories = []settings.Repository{{Name: "moved", GitForgeRef: w.org + "/" + project, Directory: "logiforge/moved"}}
 	}, nil)
 	ref := w.org + "/" + project
 	w.forgejoCall(w.admin, "POST", "/orgs/"+w.org+"/repos", map[string]any{"name": project, "auto_init": true, "default_branch": "main", "private": true}, nil, 201)
