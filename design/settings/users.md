@@ -50,7 +50,7 @@
 
 - WebUI のサインインで得たトークンかは、構成ごとに確かめる。
   - GitHub：`POST /applications/{client_id}/token` を、Logiforge の GitHub App の client_id と client secret で呼ぶ（[GitHub アダプタの認証](../adapters/github.md#認証)）。
-  - Forgejo：`POST /login/oauth/introspect` を、Logiforge の OAuth2 のアプリケーションの client_id と client secret で呼ぶ（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
+  - Forgejo：`POST /login/oauth/introspect` を、Logiforge の OAuth2 のアプリケーションの client_id と client secret で呼び、`active` と `aud` で確かめる（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
 - なぜ確かめるか：CLI のトークン（`gh auth login` のものなど）を盗まれても、設定を変えたり、`user` の書き込みをしたりできないようにするため。CLI の主体は、いつも `client` である。
 
 ## 権限のキャッシュ
