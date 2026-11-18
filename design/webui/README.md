@@ -6,11 +6,11 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 ## 読む順
 
 1. [技術と配り方](stack.md)：フレームワーク、ビルド、BE と同じコンテナからの配り方
-2. [サインイン](auth.md)：GitForge の OAuth2 でのサインインと、トークンの持ち方
-3. [サインインの流れ](signin-flow.md)：authorize から戻るまでと、サインインの画面を出すとき
+2. [サインイン](auth.md)：GitHub App か Forgejo の OAuth2 でのサインインと、トークンの持ち方
+3. [サインインの流れ](signin-flow.md)：セットアップの画面を先に出すとき、authorize から戻るまで、サインインの画面を出すとき
 4. [サインインの中継](oauth-relay.md)：BE がトークンの交換を中継する要求と、その決まり
 5. [スクリプトの注入への備えと、ファイルの開き方](security.md)：応答のヘッダーと、文字やファイルの示し方
-6. [画面と API](screens.md)：5 つの画面が、どの API を使うか。WebUI のための API
+6. [画面と API](screens.md)：7 つの画面（セットアップと設定を含む）が、どの API を使うか。WebUI のための API
 7. [スナップショットツリーのビュワー](snapshot-tree-viewer.md)：ノード 4,000 個でも使える作りと、表示の決まり
 8. [ビュワーの検索と絞り込み](viewer-search.md)：検索、絞り込み、一致の示し方
 9. [ここから見る](view-from-here.md)：あるノードを表示の根にして、その下だけを示す
@@ -21,6 +21,8 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 14. [モバイルの表示](mobile.md)：幅 767 px 以下のレイアウトと、タッチ操作の決まり
 15. [差分の重ね表示と過去の時点](overlay.md)：apply request を反映したあとの姿と、過去の `main` の姿
 16. [Markdown と Mermaid の表示](markdown.md)：利用者とエージェントが書く文章の示し方と、図を sandbox の iframe で描くこと
+
+セットアップと設定の画面が従う決まり（設定の DB、利用者）は、[設定](../settings/README.md) に書く。
 
 ## WebUI の決まり
 

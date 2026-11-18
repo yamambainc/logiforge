@@ -30,7 +30,7 @@ pull request と issue の対応は、[GitForge アダプタの共通の書き�
 - 回答済みかどうかは、`answer` の記録があるかで決める。「回答は 1 回だけ」の判定は、バックエンドが行う。
   - 回答を書いたら、バックエンドは issue を閉じる。issue の状態は、回答済みかの判定に使わない。
 - すべての記録のコメントの trailer の最後に、`Logiforge-Record-Signature:` を書く。
-  - 値は、`<鍵の ID>:<Ed25519 の署名>` である。署名は、記録を置いた場所（repository の、GitForge の中で変わらない識別子と、pull request か issue の番号）と、本文とほかの trailer に対して作る。秘密鍵はバックエンドの設定に置き、公開鍵はバックエンドと worker の設定に置く（[設定と秘密情報](settings.md)）。
+  - 値は、`<鍵の ID>:<Ed25519 の署名>` である。署名は、記録を置いた場所（repository の、GitForge の中で変わらない識別子と、pull request か issue の番号）と、本文とほかの trailer に対して作る。秘密鍵と公開鍵は、設定の DB に置く。秘密鍵は、バックエンドだけが読める（[秘密の暗号化](../settings/secrets.md#秘密ごとの鍵)）。
   - なぜ署名か：worker が、公開鍵だけで記録を確かめられるから。worker に、記録を作れる鍵を持たせない（[反映かの判定](../backend/verify/README.md)）。
   - repository の識別子は、Forgejo では repository の id、GitHub では node_id である。名前（gitforge_ref）は使わない。
     - なぜ：repository の名前を変えたり、別の organization に移したりしても、記録が壊れないようにするため。

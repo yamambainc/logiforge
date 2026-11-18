@@ -9,6 +9,11 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 
 - WebUI のサインインの中継（[サインインの中継](../../webui/oauth-relay.md)）→ `GET /oauth/config`、`POST /oauth/token`
 
+## セットアップと設定（WebUI）
+
+- [セットアップの API](setup.md) → `/setup` の下
+- [設定の API](settings.md) → `/settings` の下
+
 ## repository
 
 - [repository の一覧を読む](repository/list.md) → `GET /repositories`

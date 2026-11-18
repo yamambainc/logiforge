@@ -92,7 +92,7 @@ func env(name string) (string, error) {
 	return v, nil
 }
 
-// runWorker は、worker を動かす。設定は、環境変数で受け取る（design/adapters/settings.md）。
+// runWorker は、worker を動かす。設定は、環境変数で受け取る（design/settings/README.md）。
 // worker は、どのポートでも待ち受けない。見回りの間隔ごとに git を見て、置き場に書く（design/backend/worker/README.md）。
 //
 //	LOGIFORGE_WORKER_DIR       clone とハートビートを置く、永続するディレクトリ
@@ -307,7 +307,7 @@ func recordPublicKeys() error {
 	return nil
 }
 
-// runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/adapters/settings.md）。
+// runServe は、バックエンドの API を動かす。設定は、環境変数で受け取る（design/settings/README.md）。
 //
 //	LOGIFORGE_ADDR             待ち受けるアドレス（既定は 127.0.0.1:8080）
 //	LOGIFORGE_STORE_DIR        置き場（手元のディレクトリ。読むだけ）

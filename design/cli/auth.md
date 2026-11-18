@@ -27,7 +27,7 @@ CLI の全体は、[CLI](README.md) に書く。
   - なぜ：バックエンドが、主体のトークンで、pull request、記録のコメント、レビューを書き、reviewer のトークンで merge するから（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
   - git の push も、同じトークンで行う。
 - `repo` は、そのアカウントが書けるすべてのリポジトリに及ぶ。
-  - 範囲を絞りたいエージェントは、Logiforge のためだけの機械用アカウントにする（[GitHub アダプタのアカウントとトークン](../adapters/github.md#アカウントとトークン)）。
+  - 範囲を絞りたいエージェントは、Logiforge のためだけの機械用アカウントにする（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
 
 ## 置き場所
 

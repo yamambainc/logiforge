@@ -19,7 +19,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
-// Config は、Forgejo アダプタの設定である（design/adapters/settings.md）。
+// Config は、Forgejo アダプタの設定である（design/settings/README.md）。
 type Config struct {
 	// URL は、Forgejo の URL（例：https://forgejo.example.com）。
 	URL string

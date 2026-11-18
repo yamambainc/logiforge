@@ -21,10 +21,14 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - 主体の確かめ方は、[認証](../backend/ports/authentication.md) に書く。
 - どの主体がどの操作を使えるかは、[認可](../backend/README.md#認可) に書く。
 - この API は、トークンを発行しない。
-  - WebUI のために、Forgejo の OAuth2 の交換を中継するだけである（[サインインの中継](../webui/oauth-relay.md)）。
+  - WebUI のために、GitForge の OAuth2 の交換を中継するだけである。GitHub を使う構成では Logiforge の GitHub App、Forgejo を使う構成では Forgejo の OAuth2 のアプリケーションの交換である（[サインインの中継](../webui/oauth-relay.md)）。
 - ヘルスチェックの `GET /healthz` だけは、`/v1` の外に置き、認証を求めない（[ヘルスチェック](../deploy/README.md#ヘルスチェック)）。
 - WebUI のサインインの中継（`/v1/oauth/` の下の 2 つ）も、認証を求めない。
   - なぜ：サインインの前に呼ぶから（[サインインの中継](../webui/oauth-relay.md)）。
+- セットアップの API（`/v1/setup` の下）は、トークンではなく、セットアップのコードで守る（[セットアップの API](endpoints/setup.md#認証)）。
+  - なぜ：最初の利用者が決まる前に呼ぶから。
+- 設定の API（`/v1/settings` の下）は、`user` だけが使える（[設定の API](endpoints/settings.md#認証と認可)）。
+- セットアップが終わるまで、ほかの API は `setup_required`（503）を返す（[セットアップが終わるまでのほかの API](endpoints/setup.md#セットアップが終わるまでのほかの-api)）。
 
 ## repository
 
@@ -36,7 +40,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 
 ## セッション ID
 
-- `client` の書き込みには、`Logiforge-Session-Id` ヘッダーを必ず付ける。
+- `client` の書き込みと、`user` のレビューには、`Logiforge-Session-Id` ヘッダーを必ず付ける。
   - 値は、クライアントが決める文字列（128 文字以下）である。
   - なぜ：差分を書いたセッションと reviewer のセッションが別であることを確かめるため（[保証の範囲](../../docs/apply-request/review.md)）。
 - バックエンドは、ヘッダーのセッション ID を、レビューと close と人への依頼に記録する。

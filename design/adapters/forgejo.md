@@ -19,7 +19,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
 - Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
-- worker のユーザーのトークンは、設定に置く（[設定と秘密情報](settings.md)）。
+- worker のユーザーとトークンは、設定の DB に置く（[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)、[秘密の暗号化](../settings/secrets.md)）。
 - 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体の記録のコメントを編集し、消し、pull request を close できる。
   - 編集は署名で見つけ、worker の控えに残る記録は、消されても判定に使う（[信頼の境界](pull-requests.md#信頼の境界)）。
 
@@ -79,14 +79,32 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - `GET /repos/{owner}/{repo}/issues/comments?since=` は、編集されたコメントも返す。`updated_at` は、編集の時刻になる。
 - コメントを読むには、`read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 になる。
 
+## worker のトークンを確かめる
+
+バックエンドは、worker のトークンを置く前に（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)、[設定の API](../api/endpoints/settings.md)）、次のことを確かめる。
+
+- そのトークンで、`GET /user` が worker のユーザーを返し、organization を読める。
+- そのトークンで、書くスコープの要る API が 403 になる。
+  - 害のない要求を使う。どれも本文を空にして呼ぶ。
+    - `PATCH /user/settings`（`write:user`）
+    - `POST /repos/{owner}/{repo}/issues`（`write:issue`）。repository は、`GET /orgs/{org}/repos` の最初のものにする。organization に repository がなければ、この要求は飛ばす。
+  - Forgejo は、スコープの足りないトークンを、本文を確かめる前に 403 で断る。
+  - 403 なら、書けないとみなす。404 は、どちらともみなさない。それ以外（400、422 など、スコープを通った応答）なら、書けるトークンとみなして断る。
+- worker のユーザーが、organization の team のうち、`read` より強い権限の team に入っていない（`GET /user/teams`）。
+
 ## 認証
 
 Forgejo を使う構成では、[認証](../backend/ports/authentication.md) のポートも、このアダプタが実装する。
 
 - API は Forgejo のトークンを受け取り、要求ごとに `GET /user` で主体を確かめる。結果を保持しない。
 - team の所属は、主体のトークンで `GET /user/teams` を呼んで確かめる。
-- 主体の種類は、設定した organization の team で決める。
-  - `user`：設定した team（例：`logiforge-users`）に入っている人
+- WebUI のサインインで得たトークンかは、`POST /login/oauth/introspect` を、Logiforge の OAuth2 のアプリケーションの client_id と client secret で呼んで確かめる。
+  - 応答の `active` が `true` で、かつ `aud` に Logiforge の client_id があるときだけ、WebUI のサインインのトークンとみなす。
+  - なぜ `active` だけで決めないか：Forgejo は、ほかのアプリケーションが出したトークンにも `active: true` を返すから。どのアプリケーションのトークンかは、`aud` に入る。
+  - personal access token には、`active: false` が返る。
+  - なぜ：CLI のトークンを持つ主体を、`user` にしないため（[トークンの出どころ](../settings/users.md#トークンの出どころ)）。
+- 主体の種類は、リポジトリの権限で決める。名簿は持たない（[利用者の決め方](../settings/users.md#利用者の決め方)）。
+  - `user`：Logiforge の OAuth2 のアプリケーションのトークンを持ち、設定した organization の team のどれかで `write`、`admin`、`owner` の権限を持つ人
   - `client`：それ以外の、organization の人とエージェント
   - organization に属さない主体は、`unauthenticated` で受け付けない。
 - すべての主体が、organization のすべての repository を読める。

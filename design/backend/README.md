@@ -34,12 +34,18 @@
 - 主体には、次の 2 種類がある。
   - `user`：WebUI を使う利用者
   - `client`：CLI を使う主体（エージェントか人）
-- `user` が使える書き込みは、利用者の 2 つの操作だけである。
+- `user` が使える書き込みは、利用者の次の操作だけである。
   - repository の作成（根の主文を含む）
   - 人への依頼への回答
+  - apply request のレビュー（approve なら反映まで。[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）
+  - 設定の変更（設定の API）
 - それ以外の書き込みは、`client` だけが使える。
 - 主体と主体の種類は、[認証](ports/authentication.md) で確かめる。
 - repository を使えるのは、その repository を読める主体だけである。
+- repository ごとの `user` の書き込み（repository の作成、人への依頼への回答、レビュー）は、その repository に Write があるときだけ受け付ける（[repository ごとの権限](../settings/users.md#repository-ごとの権限)）。
+- 設定の API は、`user` だけが使える（[利用者の決め方](../settings/users.md#利用者の決め方)）。
+  - `user` でなければ、`forbidden` を返す。
+- セットアップの API は、主体ではなく、セットアップのコードで守る（[初回のセットアップ](../settings/setup.md#セットアップのコード)）。
 
 ## repository の用意
 
@@ -73,8 +79,14 @@
 
 ## 状態を持たない
 
-- バックエンドは、データを保持しない。永続のデータも、プロセスのメモリのキャッシュも持たない。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
+- バックエンドは、木と apply request と人への依頼のデータを保持しない。プロセスのメモリのキャッシュは、権限を問い合わせた結果（60 秒）のほかに持たない（[権限のキャッシュ](../settings/users.md#権限のキャッシュ)）。
+  - 要求のほかにする仕事は、worker のトークンを 1 分ごとに作り直すことだけである（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
+- バックエンドが持つ唯一の永続のデータは、設定の DB である（[設定の DB](../settings/database.md)）。
+  - なぜ持つか：repository の一覧と GitForge とのつなぎ方は、git にも GitForge にも正本がなく、利用者が WebUI から変えるから（[設定](../settings/README.md)）。
+  - 設定の DB は、要求ごとに読み、メモリに保持しない（[設定を読むとき](../settings/README.md#設定を読むとき)）。
+    - そのため、同じ設定の DB を読むバックエンドどうしで、設定は食い違わない。
+  - 設定の DB の SQLite のファイルは、NFS などで、ほかのノードと共有しない（[DB の種類](../settings/database.md#db-の種類)）。
   - apply request の作成のために、作業用の git の複製を一時的なディスクに持つ。これは使い捨てのキャッシュで、正本ではない（[作業用の git の複製](apply-request/create.md#作業用の-git-の複製)）。
   - 作業用の git の複製は、プロセスの間で共有しないので、何台並べても互いに影響しない。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request](apply-request/README.md)）。

@@ -57,6 +57,13 @@ flowchart TB
 
 - 複数の主体が同時に apply request を出しても、不変条件が常に成り立つ（[反映](../apply-request/README.md)）。
 
+## 設定
+
+- Logiforge の設定（repository の一覧、GitForge とのつなぎ方）は、Logiforge が持つ。
+- 利用者が、WebUI で設定を変える（[設定](../webui/settings.md)）。サーバを起動し直さない。
+  - なぜ：repository を足すたびに、サーバを動かす人の手を要らなくするため。
+- サーバを起動するときに渡すのは、設定の置き場所と、秘密を守る鍵と、ホストに結び付くもの（待ち受けるアドレス、ディレクトリ）だけである。
+
 ## 権限
 
 - 役割（opener、reviewer、利用者）ごとに、使える操作を分ける（[役割](../roles/README.md)）。

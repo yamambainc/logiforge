@@ -10,8 +10,9 @@
 | GitForge | repository の用意、提案（pull request）の作成・反映・close、レビュー、人への依頼 | [GitForge](gitforge.md) |
 | スナップショットの置き場 | スナップショットとブランチの履歴を読む（書くのは worker） | [スナップショットの置き場](snapshot-store.md) |
 | 認証 | API の要求を送った主体 | [認証](authentication.md) |
+| 設定の DB | 設定を読み書きする（worker は読むだけ） | [設定](../../settings/README.md) |
 
-- バックエンドは、データを保持しない。そのため、サーバの状態のポートはない（[状態を持たない](../README.md#状態を持たない)）。
+- バックエンドが持つ永続のデータは、設定の DB だけである。木と、やりとりの状態のポートはない（[状態を持たない](../README.md#状態を持たない)）。
 - git に書くのは、GitForge のポートの「repository を用意する」と「反映する」だけである（[状態を持たない](../README.md#状態を持たない)）。
 - [worker](../worker/README.md) は、ポートにしない。バックエンドは、worker を呼ばない。worker が書いた置き場を、スナップショットの置き場のポートで読むだけである。
 - apply request の作成で git を読む作業用の複製も、ポートにしない（[作業用の git の複製](../apply-request/create.md#作業用の-git-の複製)）。

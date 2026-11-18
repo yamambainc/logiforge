@@ -42,7 +42,7 @@ apply request と人への依頼は、GitHub の pull request と issue にな�
 
 ## Logiforge を動かす
 
-- タスクの形は、[動かし方（コンテナ）](../../../design/deploy/README.md) に従う。環境変数は、[GitHub を使う構成](../../../design/deploy/env.md#github-を使う構成) の表に従う。
+- タスクの形は、[動かし方（コンテナ）](../../../design/deploy/README.md) に従う。環境変数は、[GitHub を使う構成](../../../design/deploy/env.md) の表に従う。
 - 1 台の Linux のマシンに systemd で置き、Tailscale で公開する手順は、[1 台の Linux に置く](../linux-host/README.md) に書く。
 - 手元で試すときは、バイナリで、worker とバックエンドを動かせる。
 
@@ -63,7 +63,7 @@ export LOGIFORGE_OAUTH_REDIRECT_URI=http://localhost:8080/oauth/callback
 logiforge serve
 ```
 
-- `LOGIFORGE_RECORD_KEYS` は、作ったら控えて、変えない。worker には、公開鍵（`LOGIFORGE_RECORD_PUBLIC_KEYS`）だけを渡す（[設定と秘密情報](../../../design/adapters/settings.md)）。
+- `LOGIFORGE_RECORD_KEYS` は、作ったら控えて、変えない。worker には、公開鍵（`LOGIFORGE_RECORD_PUBLIC_KEYS`）だけを渡す（[設定](../../../design/settings/README.md)）。
 
 ## 利用者とエージェント
 

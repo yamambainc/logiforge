@@ -14,10 +14,9 @@
 
 ## 登録
 
-- 管理者が、サーバの設定に、repository の名前と「git リポジトリとディレクトリのパス」の組を登録する（例：`cache-strategy=acme/myapp:logiforge/cache-strategy`）。
+- 利用者が、設定の画面で、repository の名前と「git リポジトリとディレクトリのパス」の組を、設定の DB に登録する（例：名前 `cache-strategy`、`acme/myapp:logiforge/cache-strategy`。[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)）。
   - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのときは、worker が見つけて、壊れた状態にする。
     - なぜ用意のあとか：用意のコミットは、利用者のトークンで `main` に直接置くから（[履歴](history.md) の「用意のコミット」）。
-  - 設定の形は、構成の設定と同じく環境変数に置く（[動かし方](../deploy/README.md)）。Forgejo は `LOGIFORGE_DIRECTORIES`、GitHub は `LOGIFORGE_GITHUB_REPOSITORIES` に、`名前=owner/name:パス` で書く。
   - gitforge_ref は、`owner/name:パス` である。GitForge の API と git には、`owner/name` の部分を使う。
   - Forgejo では、ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）を、git リポジトリ全体の repository としては数えない。
   - なぜ Logiforge の側か：プロジェクトのリポジトリに設定のファイルを置くと、コードの PR でディレクトリを足したり外したりでき、apply request を通らずに repository の範囲が変わるから。
