@@ -331,8 +331,8 @@ func TestWorkerSource(t *testing.T) {
 	if fmt.Sprint(req["repositories"]) != "[study]" || fmt.Sprint(req["permissions"]) != "map[contents:read issues:read metadata:read pull_requests:read]" {
 		t.Fatalf("installation token の要求：%v", req)
 	}
-	// 切れる前（残りが refreshBefore より短い）なら、作り直す。
-	app.tokens[fakeOwner] = appToken{token: "ghs_1", expires: time.Now().Add(refreshBefore - time.Minute)}
+	// 切れる前（残りが RefreshBefore より短い）なら、作り直す。
+	app.tokens[fakeOwner] = appToken{token: "ghs_1", expires: time.Now().Add(RefreshBefore - time.Minute)}
 	if tok, err := s.ReadToken(ctx, fakeRepo); err != nil || tok != "ghs_2" {
 		t.Fatalf("作り直していない：%q %v", tok, err)
 	}

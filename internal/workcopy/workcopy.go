@@ -145,15 +145,22 @@ func (c *Cache) repo(ctx context.Context, name, gitForgeRef string) (*gitx.Repo,
 		return nil, err
 	}
 	_, prefix := ports.SplitRef(gitForgeRef)
-	env := c.Env
+	return &gitx.Repo{Dir: dir, Env: c.Env, Prefix: prefix}, nil
+}
+
+// fetch は、資格情報を付けて、GitForge から branches を fetch する。資格情報は、ネットワークを使うここでだけ求める。
+// なぜ：手元の複製だけで読む処理（ReadFiles）を、GitForge の API（installation token の作り直し）に頼らせないため。
+func (c *Cache) fetch(ctx context.Context, g *gitx.Repo, gitForgeRef string, branches ...string) error {
 	if c.Credentials != nil {
 		cred, err := c.Credentials(ctx, gitForgeRef)
 		if err != nil {
-			return nil, fmt.Errorf("git の資格情報：%w", err)
+			return fmt.Errorf("%w: git の資格情報：%v", ports.ErrUnavailable, err)
 		}
-		env = append(append([]string(nil), env...), cred...)
+		withCred := *g
+		withCred.Env = append(append([]string(nil), g.Env...), cred...)
+		g = &withCred
 	}
-	return &gitx.Repo{Dir: dir, Env: env, Prefix: prefix}, nil
+	return g.FetchBranches(ctx, c.URL(gitForgeRef), branches...)
 }
 
 // ReadBranch は、main とブランチを fetch し、ブランチの先頭と main の分かれた点（base）を求め、
@@ -167,7 +174,7 @@ func (c *Cache) ReadBranch(ctx context.Context, repo, gitForgeRef, branch string
 	if err != nil {
 		return nil, err
 	}
-	if err := g.FetchBranches(ctx, c.URL(gitForgeRef), "main", branch); err != nil {
+	if err := c.fetch(ctx, g, gitForgeRef, "main", branch); err != nil {
 		if errors.Is(err, gitx.ErrNoRef) {
 			return nil, ports.ErrNotFound
 		}
@@ -219,7 +226,7 @@ func (c *Cache) ReachedMain(ctx context.Context, repo, gitForgeRef, head, scanne
 	if err != nil {
 		return false, err
 	}
-	if err := g.FetchBranches(ctx, c.URL(gitForgeRef), "main"); err != nil {
+	if err := c.fetch(ctx, g, gitForgeRef, "main"); err != nil {
 		return false, fmt.Errorf("%w: git fetch: %v", ports.ErrUnavailable, err)
 	}
 	for _, sha := range []string{head, scanned} {

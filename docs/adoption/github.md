@@ -43,6 +43,7 @@ organization の「Settings」→「Developer settings」→「GitHub Apps」→
 - 「Install App」で、organization に install する。Repository access は「Only select repositories」にし、Logiforge の repository を選ぶ。
   - repository を足したら、install の設定でも選び足す。選んでいない repository は、worker が読めない（ログに `App が … に入っていない` と出る）。
   - 登録する repository の owner が複数なら、App を「Any account」にして、owner ごとに install する。
+    - 「Any account」にすると、App は public になり、だれでも自分のアカウントに install できる。それでも問題はない。App は読むだけで、Logiforge は登録した owner の分しかトークンを作らないから。
 - public のリポジトリだけなら、App がなくても動く。そのときは、トークンなしで読む。
   - ただし、トークンのない要求の上限は、1 時間に 60 回（送り元の IP ごと）である。反映かの判定で、`main` のコミットごとに REST を読むので、ふつうは足りない。試すときだけにする。
 - private のリポジトリでは、要る。

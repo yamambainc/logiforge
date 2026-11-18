@@ -119,7 +119,7 @@ worker（`logiforge worker`）：
 | `LOGIFORGE_WORKER_RECORD_INTERVAL` | | 記録を読んで控えに足す間隔。既定は見回りの間隔。GitHub では `30s`（[記録の控え](backend/verify.md#記録の控え)） |
 | `LOGIFORGE_WORKER_INTERVAL` | | 見回りの間隔。既定は `1s`（[見回り](backend/worker.md#見回り)） |
 | `LOGIFORGE_WORKER_LIST_INTERVAL` | | repository の一覧を読み直す間隔。既定は `10s`（[見回り](backend/worker.md#見回り)） |
-| `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)） |
+| `LOGIFORGE_GIT_TIMEOUT` | | git の操作 1 回の時間の上限。既定は `10m`（[すること](backend/worker.md#すること)）。GitHub を使う構成では `20m` より短くする（[読むだけの GitHub App](adapters/github.md#読むだけの-github-app)） |
 | `LOGIFORGE_GIT_ALLOW_PROTOCOL` | | git で使える転送の方式。既定は `https:file`。`http` は、テストのときだけ足す |
 
 ### GitHub を使う構成

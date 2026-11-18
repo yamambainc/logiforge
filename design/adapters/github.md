@@ -42,7 +42,9 @@ worker と、バックエンドの作業用の git の複製は、読むだけ�
   2. owner の installation を、`GET /repos/{owner}/{repo}/installation`（その owner の登録したリポジトリのどれか）で引く。
   3. `POST /app/installations/{installation_id}/access_tokens` を、`repositories`（その owner の登録したリポジトリの名前）と `permissions`（上の 4 つの Read）を付けて呼ぶ。なぜ絞るか：install で選んだリポジトリが広くても、トークンを登録したリポジトリと読む権限だけにするため。
 - installation token は、owner ごとに 1 つ持ち、使い回す。切れるまでの残りが 20 分より短くなったら、次に使うときに作り直す。
-  - なぜ 20 分：git の操作 1 回の時間の上限（既定 10 分）のあいだに、切れないようにするため。
+  - なぜ 20 分：git の操作 1 回の時間の上限（既定 10 分）のあいだに、切れないようにするため。git は、HTTP の要求を始めるときにだけトークンを使うので、見回りの `ls-remote` のあとの `fetch` を始めるときに、まだ残っていればよい。
+  - そのため、GitHub を使う構成では、`LOGIFORGE_GIT_TIMEOUT` を 20 分より短くする。長くすると、worker は起動しない。
+  - バックエンドの作業用の複製は、fetch するときにだけトークンを求める。手元の複製だけで読むときは、GitHub の API が落ちていても読める。
   - git には、git の操作のたびに、そのときのトークンを credential helper で渡す（[git アダプタ](git.md) の「資格情報」）。
 - App が owner に install されていないか、権限が足りなければ、GitHub が断る。worker は、その repository の見回りを誤りにする（ログに出す）。
 - REST の上限は、installation ごとに 1 時間に 5,000 回からである。

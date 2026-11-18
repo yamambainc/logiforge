@@ -26,7 +26,7 @@ import (
 //
 // App の ID と秘密鍵から JWT を作り、installation token を作る。installation token は、owner（organization か個人）ごとに 1 つで、
 // 登録した repository だけと、読む権限（Contents、Issues、Pull requests、Metadata の Read）だけに絞って作る。
-// 有効な間は使い回し、切れる前（残りが refreshBefore より短くなったら）に作り直す。
+// 有効な間は使い回し、切れる前（残りが RefreshBefore より短くなったら）に作り直す。
 type App struct {
 	id    string
 	key   *rsa.PrivateKey
@@ -43,9 +43,10 @@ type appToken struct {
 	expires time.Time
 }
 
-// refreshBefore は、installation token を作り直す、切れるまでの残りの時間である。
+// RefreshBefore は、installation token を作り直す、切れるまでの残りの時間である。
 // installation token は 1 時間で切れる。git の操作 1 回の時間の上限（既定 10 分）より長く残しておく。
-const refreshBefore = 20 * time.Minute
+// そのため、App を使う worker は、git の操作の時間の上限をこれより短くする（cmd/logiforge が起動のときに確かめる）。
+const RefreshBefore = 20 * time.Minute
 
 // appPermissions は、installation token に求める権限である。App にこれより狭い権限しかなければ、GitHub が断る（422）。
 var appPermissions = map[string]string{"contents": "read", "issues": "read", "pull_requests": "read", "metadata": "read"}
@@ -109,7 +110,7 @@ func (a *App) Token(ctx context.Context, gitForgeRef string) (string, error) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if t, ok := a.tokens[owner]; ok && t.expires.Sub(a.now()) > refreshBefore {
+	if t, ok := a.tokens[owner]; ok && t.expires.Sub(a.now()) > RefreshBefore {
 		return t.token, nil
 	}
 	t, err := a.mint(ctx, owner, names)

@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yamambainc/logiforge/internal/adapters/github"
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
 	"github.com/yamambainc/logiforge/internal/api"
@@ -143,6 +144,11 @@ func runWorker(ctx context.Context) error {
 		return err
 	}
 	src := fs.reader
+	// installation token は、切れるまで github.RefreshBefore より長く残っているときだけ使い回す。
+	// git の操作がそれより長くかかると、ls-remote のあとの fetch を始めるときに切れているおそれがある。
+	if fs.kind == gitforgeGitHub && gitTimeout >= github.RefreshBefore {
+		return fmt.Errorf("LOGIFORGE_GIT_TIMEOUT（%v）は、GitHub を使う構成では %v より短くする（読むだけの App の installation token が、git の操作のあいだに切れないように）", gitTimeout, github.RefreshBefore)
+	}
 	gitEnv, err := allowProtocol(nil)
 	if err != nil {
 		return err
