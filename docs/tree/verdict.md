@@ -66,7 +66,8 @@ artifact の扱いは、次のとおり。
 
 引用できるのは、同じ repository の中のものだけである。
 
-- ほかの repository から移した repository では、移す前に書いた引用は、元の repository のコミットを指したまま読める。新しく書く引用は、移した先のものだけを指す（[別リポジトリ方式から移す](../../design/directory/migrate.md)）。
+- ほかの repository から移した repository では、移す前に書いた引用は、元の repository のコミットを指したまま読める（[別リポジトリ方式から移す](../../design/directory/migrate.md)）。
+- 移した repository で新しく書く引用は、移した先のものだけを指す。
 
 ## 流用
 

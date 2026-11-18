@@ -13,7 +13,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// ページング（design/api/README.md の「ページング」）。
+// ページング（design/api/paging.md）。
 const (
 	DefaultLimit = 50
 	MaxLimit     = 200
@@ -244,7 +244,7 @@ func (b *Backend) verdict(ctx context.Context, v *view, tv *tree.Verdict) (Verdi
 }
 
 // addedIn は、検証結果のファイル p が加わったコミットと、その反映の apply request を返す。
-// worker がスナップショットツリーのファイルに書いた値を使うので、置き場を読まない（design/backend/snapshot.md の「ノードを変えたコミット」）。
+// worker がスナップショットツリーのファイルに書いた値を使うので、置き場を読まない（design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 func (b *Backend) addedIn(_ context.Context, v *view, node, p string) (string, string, error) {
 	n := v.main.SnapshotTree.Nodes[node]
 	if n == nil {
@@ -536,7 +536,7 @@ func (b *Backend) GetAnswerAttachment(ctx context.Context, c Caller, repo, id, s
 	return data, err
 }
 
-// ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「足す API」）。
+// ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「WebUI のための API」）。
 // カーソルは、次に読むコミットの number である。main の並びの索引とコミットの記録から引く。
 func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string, limit int) (Page[MainCommit], error) {
 	limit, err := CheckLimit(limit)

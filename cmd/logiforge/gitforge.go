@@ -163,7 +163,7 @@ func setupGitHub(keys pullreq.Keyring, serve bool) (forgeSetup, error) {
 // 置いたままなら、気づかずにトークンなしで動かないよう、誤りにする。
 func githubApp(cfg github.Config) (*github.App, error) {
 	if os.Getenv("LOGIFORGE_GITHUB_READ_TOKEN") != "" || os.Getenv("LOGIFORGE_GITHUB_READ_TOKEN_FILE") != "" {
-		return nil, fmt.Errorf("LOGIFORGE_GITHUB_READ_TOKEN は使わなくなった。読むだけの GitHub App（LOGIFORGE_GITHUB_APP_ID と LOGIFORGE_GITHUB_APP_PRIVATE_KEY）に置き換える（docs/adoption/github.md）")
+		return nil, fmt.Errorf("LOGIFORGE_GITHUB_READ_TOKEN は使わなくなった。読むだけの GitHub App（LOGIFORGE_GITHUB_APP_ID と LOGIFORGE_GITHUB_APP_PRIVATE_KEY）に置き換える（docs/adoption/github/apps.md）")
 	}
 	id, err := optEnv("LOGIFORGE_GITHUB_APP_ID")
 	if err != nil {

@@ -19,7 +19,7 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 const TrailerInit = "Logiforge-Init"
 
 // TrailerInitSignature は、repository の用意の 2 つ目のコミット（GitHub で背景情報を置く）の署名の trailer である
-// （design/backend/verify.md の「repository の用意のコミット」）。
+// （design/backend/verify/init.md の「repository の用意のコミット」）。
 const TrailerInitSignature = "Logiforge-Init-Signature"
 
 // TrailerMigratedFrom は、別リポジトリ方式から移したときの、用意のコミットの trailer である（design/directory/migrate.md）。
@@ -41,7 +41,7 @@ const MaxInitCommits = 2
 // BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。
 // 親から変わったパスは、親のスナップショットツリーのファイルと比べて求める。新しく破れた不変条件も、親と比べて警告にする。
-// worker は、Index と BuildSnapshotTree で、コミットを 1 つずつ取り込む（design/backend/worker.md）。これは、その 1 コミット分をまとめたものである。
+// worker は、Index と BuildSnapshotTree で、コミットを 1 つずつ取り込む（design/backend/worker/README.md）。これは、その 1 コミット分をまとめたものである。
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	x := NewIndex()
 	var parentFiles tree.Files
@@ -90,7 +90,7 @@ func BuildBranch(baseSHA string, deltas []Delta, head tree.Files, info CommitInf
 }
 
 // SubtreeChangedAfter は、nodeID のノードか、その子孫のどれかが、number より大きい番号の main のコミットで変わったかを返す。
-// 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot.md の「ノードを変えたコミット」）。
+// 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 // ノードがこのスナップショットツリーになければ、変わったものとみなす。
 func (t *SnapshotTree) SubtreeChangedAfter(nodeID string, number int) bool {
 	if _, ok := t.Nodes[nodeID]; !ok {
@@ -188,7 +188,7 @@ func Overlay(base tree.Files, d Diff) (head tree.Files, conflicts []string, err 
 }
 
 // Apply は、base に差分 d を、衝突を判定せずに重ねる。差分が変えたパスは d のファイルを、ほかのパスは base のファイルを使う
-// （design/backend/snapshot.md の「向き先に重ねる」の、向き先が main でないとき。「ブランチのコミットのスナップショットツリー」でも使う）。
+// （design/backend/snapshot/branch.md の「向き先に重ねる」の、向き先が main でないとき。「ブランチのコミットのスナップショットツリー」でも使う）。
 func Apply(base tree.Files, d Diff) (tree.Files, error) {
 	head := make(tree.Files, len(base))
 	for p, f := range base {

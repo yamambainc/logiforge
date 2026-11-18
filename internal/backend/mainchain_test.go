@@ -14,7 +14,7 @@ import (
 )
 
 // main が短く書き換えられたあと、main の並びの索引に古い SHA が残っていても、並びにあると判定しない
-// （design/backend/snapshot.md の「コミットの記録から引くもの」）。
+// （design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
 func TestMainNumberAfterShortRewrite(t *testing.T) {
 	ctx := context.Background()
 	r := &remote{t: t, dir: t.TempDir()}

@@ -159,7 +159,7 @@ jobs:
           if-no-files-found: ignore
 
   container:
-    # イメージをビルドし、compose で Forgejo、worker、バックエンドを動かして、つながることを確かめる（design/deploy.md）。
+    # イメージをビルドし、compose で Forgejo、worker、バックエンドを動かして、つながることを確かめる（design/deploy/README.md）。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

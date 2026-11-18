@@ -15,7 +15,6 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 - ディレクトリ方式の決まりは、[ディレクトリ方式](../../design/directory/README.md) に書く。
 - ディレクトリ方式は、GitHub と Forgejo のどちらの構成でも使える。`main` を守る設定は勧めるが、なくても使える。守る設定がないときは、反映によらない変更を Logiforge があとから見つける（[main の守り](../../design/directory/main.md)）。
-- それまでは、別リポジトリ方式で始める（[導入](separate-repository.md)）。コードは、検証結果から SHA 付きで引用する。
 - 別リポジトリ方式の repository は、あとでディレクトリ方式に移せる（[別リポジトリ方式から移す](../../design/directory/migrate.md)）。
   - 移すのは、移す時点のスナップショットツリーだけである。履歴、apply request、人への依頼は、元の repository に残り、元の repository は読むだけになる。
   - 移す前に、open の apply request と人への依頼を片付けておく。
@@ -29,7 +28,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 置き方：ディレクトリ方式
 
-- 今は使えない。それまでの始め方は、[ML の実験のリポジトリ](#ml-の実験のリポジトリで問いを立てながらコードを書く) と同じである。
+- 決まりは、[ML の実験のリポジトリ](#ml-の実験のリポジトリで問いを立てながらコードを書く) と同じである。
 
 ## 1 つのプロジェクトのための調査を、コードと分けて進める
 
@@ -46,7 +45,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 - 結論を使う各リポジトリは、それぞれの都合のよい時点で、結論を取り込む。
 - 各リポジトリの中で、取り込んだ結論のファイルを、コードと並べて読める。
 
-置き方：subtree 方式（[導入](subtree.md)）。リポジトリの中で読む必要がなければ、別リポジトリ方式でよい。
+置き方：subtree 方式（[導入](subtree/README.md)）。リポジトリの中で読む必要がなければ、別リポジトリ方式でよい。
 
 ## 非公開で検証し、結論だけを公開する
 
@@ -54,9 +53,9 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 - 公開のリポジトリには、反映された結論のファイルだけを取り込む。
 - 公開のリポジトリを読む人は、Logiforge を読む権限が要らない。
 
-置き方：subtree 方式（[導入](subtree.md)）
+置き方：subtree 方式（[導入](subtree/README.md)）
 
-- Logiforge の repository を GitHub に置くときも、private のリポジトリにできる。GitHub Free の organization でもよい（[Logiforge の repository を GitHub に置く](github.md)）。
+- Logiforge の repository を GitHub に置くときも、private のリポジトリにできる。GitHub Free の organization でもよい（[Logiforge の repository を GitHub に置く](github/README.md)）。
 
 ## 結論を、ライブラリのように版を固定して使う
 
@@ -64,7 +63,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 - 結論が新しくなっても、プロジェクトの側が取り込むまでは変わらない。
 - 取り込みは、プロジェクトの PR で行う。ほかの依存の更新と同じく、差分を見て merge する。
 
-置き方：subtree 方式（[導入](subtree.md)）。中身をリポジトリに入れず、SHA だけを固定するなら、submodule（[subtree 方式の導入](subtree.md#別案submodule)）。
+置き方：subtree 方式（[導入](subtree/README.md)）。中身をリポジトリに入れず、SHA だけを固定するなら、submodule（[subtree 方式の導入](subtree/README.md#別案submodule)）。
 
 ## プロジェクトとは関係なく、問いだけを扱う
 
@@ -73,7 +72,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 
 置き方：別リポジトリ方式（[導入](separate-repository.md)）。「プロジェクトとつなぐ」の手順は要らない。
 
-## 付録：置き方
+## 置き方の比較
 
 | 置き方 | スナップショットツリーの正本 | プロジェクトのリポジトリに置くもの |
 |---|---|---|
@@ -82,8 +81,7 @@ GitHub にある既存のプロジェクトで Logiforge を使い始めると�
 | ディレクトリ方式 | プロジェクトのリポジトリの中のディレクトリ | スナップショットツリーそのもの |
 
 - どの置き方でも、apply request を通らない変更は、スナップショットツリーに入れない（[apply request](../apply-request/README.md)）。
-- 導入の手順は、使える置き方（別リポジトリ方式と subtree 方式）だけを書く。
 - 導入の手順：
   1. [別リポジトリ方式の導入](separate-repository.md)
-     - Logiforge の repository を GitHub に置くときは、[Logiforge の repository を GitHub に置く](github.md) も読む。
-  2. [subtree 方式の導入](subtree.md)（別リポジトリ方式の導入を済ませてから）
+     - Logiforge の repository を GitHub に置くときは、[Logiforge の repository を GitHub に置く](github/README.md) も読む。
+  2. [subtree 方式の導入](subtree/README.md)（別リポジトリ方式の導入を済ませてから）

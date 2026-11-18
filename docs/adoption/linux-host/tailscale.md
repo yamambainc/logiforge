@@ -26,4 +26,4 @@
 gh auth token | logiforge auth login --with-token --host https://<host>.<tailnet>.ts.net
 ```
 
-- トークンの選び方は、[利用者とエージェント](../github.md#利用者とエージェント) に従う。
+- トークンの選び方は、[利用者とエージェント](../github/README.md#利用者とエージェント) に従う。

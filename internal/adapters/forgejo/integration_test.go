@@ -286,7 +286,7 @@ func TestForgejo(t *testing.T) {
 	if got, _ := gf.GetApplyRequest(ctx, ref, "apr_1"); got.State != ports.StateMerged || got.MergedRevision != sha {
 		t.Fatalf("state: %v merged: %s", got.State, got.MergedRevision)
 	}
-	// worker の読むだけのトークンで、merge のコミットから、反映した apply request を引ける（design/backend/verify.md の「GitForge の API」）。
+	// worker の読むだけのトークンで、merge のコミットから、反映した apply request を引ける（design/backend/verify/README.md の「GitForge の API」）。
 	// merge のすぐあとは引けないことがあるので、少し待つ。
 	reader := ports.WithToken(context.Background(), e.tokens["reader"])
 	var byMerge ports.ApplyRequest

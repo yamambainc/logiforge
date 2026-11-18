@@ -1,6 +1,6 @@
 // repository の中の画面の切り替え（design/webui/mobile.md の「すべての画面の決まり」）。
 // デスクトップは上の帯のタブ、モバイルは下のタブ（片手の親指で届く位置）。
-// タブは、4 段目の画面ができるたびに足し、4 つ（ツリー、依頼、AR、状況）にする（design/webui/first-release.md）。
+// タブは、4 段目の画面ができるたびに足し、4 つ（ツリー、依頼、AR、状況）にする（design/webui/mobile.md の「すべての画面の決まり」）。
 import { navigate, screenPath, type RepoScreen } from './router';
 
 const TABS: { key: RepoScreen; label: string; short: string; icon: React.ReactNode }[] = [

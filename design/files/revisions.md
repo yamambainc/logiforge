@@ -4,9 +4,11 @@
 
 ## main のコミット
 
-- 要件の各時点は、`main` ブランチの first-parent の並びにあるコミットである。SHA で指す。
+- 要件の各時点は、`main` ブランチの first-parent の並びにあるコミットである。
+  - 各時点は、コミットの SHA で指す。
 - apply request が 1 件反映されるたびに、`main` に 1 つのコミットができる（[反映の手順](../backend/merge.md)）。
-  - 反映は、GitForge の pull request の squash merge である。1 つの apply request の変更は、すべて同じコミットで反映される。
+  - 反映は、GitForge の pull request の squash merge である。
+  - そのため、1 つの apply request の変更は、すべて同じコミットで反映される。
 - コミットの順番は、first-parent の並びで決まる。
 
 ## 引用で固定するコミット
@@ -32,13 +34,18 @@
 | `Logiforge-Repository:` | repository の名前。ディレクトリの repository だけに書く（[ディレクトリ方式の履歴](../directory/history.md)） |
 | `Logiforge-Migrated-From:` | 元の repository の名前と、移したコミットの SHA。別リポジトリ方式から移した用意のコミットだけに書く（[別リポジトリ方式から移す](../directory/migrate.md)） |
 
-- trailer の名前（`Logiforge-Version:` など）は、git の履歴に残る永続する形なので、前の呼び名（版、リビジョン）のまま残している。値は、どれもコミットの SHA である。
-- `Logiforge-Version:` の数は、反映した先頭のコミットの、先頭のコミットの一覧の中の位置である。API には出さない。
+- trailer の名前は変えない。
+  - なぜ：git の履歴に残る、永続する形だから。
+- `Logiforge-Version:` は、名前に Version とあるが、反映した先頭のコミットを指す。
+  - 位置の数は、API には出さない。
 - 最初のコミットは、`Logiforge-Apply-Request:` を持たない。
-- 反映によるコミットかは、trailer でなく、中身（元の pull request の記録とレビュー、差分を重ねた木）で決める（[反映かの判定](../backend/verify.md)）。
+- 反映によるコミットかは、trailer でなく、中身（元の pull request の記録とレビュー、差分を重ねた木）で決める（[反映かの判定](../backend/verify/README.md)）。
   - なぜ：`main` を守る設定は求めないので、trailer はだれでも書けるから。
-  - 署名は付けない。なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。人が GitForge の画面で merge して trailer がなくても、反映によるコミットになる。
-- ディレクトリの repository では、版はディレクトリを変えたコミットだけで、反映かの判定もそのコミットにだけ行う（[ディレクトリ方式の履歴](../directory/history.md)）。
+- trailer に署名は付けない。
+  - なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。
+  - 人が GitForge の画面で merge して trailer がなくても、反映によるコミットになる。
+- ディレクトリの repository では、版はディレクトリを変えたコミットだけである（[ディレクトリ方式の履歴](../directory/history.md)）。
+  - 反映かの判定も、そのコミットにだけ行う。
 
 ## セッション
 

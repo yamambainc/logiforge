@@ -33,7 +33,7 @@ type Repo struct {
 	// このディレクトリの中のものだけを、パスからディレクトリを除いて返す。外の変化は、DiffAll で別に返す。
 	Prefix string
 	// Timeout は、git の操作 1 回の時間の上限である。0 なら上限を付けない。
-	// 超えたら、git を止めて、ErrTimeout を包んだ誤りを返す（design/backend/worker.md の「すること」）。
+	// 超えたら、git を止めて、ErrTimeout を包んだ誤りを返す（design/backend/worker/patrol.md の「すること」）。
 	Timeout time.Duration
 }
 
@@ -133,7 +133,7 @@ func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, 
 }
 
 // Fetch は、リモートのブランチを手元の refs/remotes/origin/ に、pull request の最後の先頭のコミットを refs/remotes/pull/ に取ってくる。
-// 消えたブランチは消す。pull request の先頭のコミットは、ブランチが消えたあとも、反映の重なりを確かめるのに使う（design/backend/worker.md）。
+// 消えたブランチは消す。pull request の先頭のコミットは、ブランチが消えたあとも、反映の重なりを確かめるのに使う（design/backend/worker/patrol.md の「コミットの警告」）。
 func (r *Repo) Fetch(ctx context.Context, remote string) error {
 	_, err := r.run(ctx, nil, "fetch", "--quiet", "--prune", "--no-tags", "--end-of-options", remote,
 		"+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/pull/*")
@@ -266,7 +266,7 @@ func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
 }
 
 // ReadFiles は、コミットの木のファイルをすべて読む。
-// 普通のファイルでないものと、maxSize を超えるものは、中身を読まない（design/backend/worker.md）。
+// 普通のファイルでないものと、maxSize を超えるものは、中身を読まない（design/backend/worker/patrol.md の「すること」）。
 func (r *Repo) ReadFiles(ctx context.Context, rev string, maxSize int64) (tree.Files, error) {
 	return r.readFiles(ctx, rev, maxSize)
 }

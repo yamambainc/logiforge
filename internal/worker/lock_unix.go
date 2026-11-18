@@ -11,7 +11,7 @@ import (
 )
 
 // Lock は、clone のディレクトリに排他のロックファイルを取る。取れなければ ErrAlreadyRunning を返す。
-// worker は 1 つだけ動かす（design/backend/worker.md）。起動のときに呼び、止まるまで持ち続ける。
+// worker は 1 つだけ動かす（design/backend/worker/operation.md の「worker を 1 つだけ動かす」）。起動のときに呼び、止まるまで持ち続ける。
 func Lock(dir string) (release func(), err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err

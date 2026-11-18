@@ -5,7 +5,7 @@ BE の、WebUI のサインインのための要求を実装するときに読�
 
 ## 要求
 
-BE は、WebUI のサインインのために、次の 2 つを足す。どちらも認証を求めず、状態を持たない。
+BE は、WebUI のサインインのために、次の 2 つの要求を持つ。どちらも認証を求めず、状態を持たない。
 
 | 要求 | すること |
 |---|---|
@@ -25,8 +25,8 @@ BE は、WebUI のサインインのために、次の 2 つを足す。どち�
 
 - Forgejo が交換を拒んだら（code が正しくない、使い済み、PKCE が合わない）、BE は `unauthenticated`（401）を返す。
 - Forgejo につながらないとき、または Forgejo が 5xx を返したときは、`unavailable`（503）を返す。WebUI は、「しばらくしてから、もう一度サインインしてください」と示す。
-- authorize の URL は、ブラウザから Forgejo への URL（`LOGIFORGE_FORGEJO_PUBLIC_URL`。既定は `LOGIFORGE_FORGEJO_URL`）から作る。トークンのエンドポイントは、BE から Forgejo への URL から作る（[環境変数と秘密](../deploy.md#環境変数と秘密)）。
+- authorize の URL は、ブラウザから Forgejo への URL（`LOGIFORGE_FORGEJO_PUBLIC_URL`。既定は `LOGIFORGE_FORGEJO_URL`）から作る。トークンのエンドポイントは、BE から Forgejo への URL から作る（[環境変数と秘密](../deploy/env.md)）。
 - BE は、受け取った code とトークンをログに書かない。
 - 詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig` と `exchangeOAuthCode` に書く。
-- `client_id`、client secret、`redirect_uri` は、環境変数で渡す（[環境変数と秘密](../deploy.md#環境変数と秘密)）。
+- `client_id`、client secret、`redirect_uri` は、環境変数で渡す（[環境変数と秘密](../deploy/env.md)）。
 - OAuth2 のアプリケーションは、管理者が Forgejo で登録する（confidential client）。

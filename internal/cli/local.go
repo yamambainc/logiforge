@@ -138,7 +138,7 @@ func (a *App) authSetupGit(ctx context.Context, args []string) error {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// authGitCredential は、git の credential helper の「get」に答える。パスワードにトークンを入れる（design/cli/README.md の「認証」）。
+// authGitCredential は、git の credential helper の「get」に答える。パスワードにトークンを入れる（design/cli/auth.md の「git の credential helper」）。
 func (a *App) authGitCredential(_ context.Context, args []string) error {
 	if len(args) != 1 || args[0] != "get" {
 		return nil // store と erase は、何もしない

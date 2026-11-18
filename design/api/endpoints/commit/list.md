@@ -12,7 +12,7 @@
 - worker が取り込んだ `main` のコミットを、新しい順に返す。
 - 各コミットの番号、SHA、時刻、反映した apply request を返す。
 - 反映した apply request は、コミットの記録の trailer `Logiforge-Apply-Request:` から引く（[main のコミットと記録](../../../files/revisions.md)）。
-- `main` の並びの索引と、コミットの記録から引く。GitForge には問い合わせない（[コミットの記録から引くもの](../../../backend/snapshot.md#コミットの記録から引くもの)）。
+- `main` の並びの索引と、コミットの記録から引く。GitForge には問い合わせない（[コミットの記録から引くもの](../../../backend/snapshot/main.md#コミットの記録から引くもの)）。
 - 一覧はページに分けて返す。カーソルは、次に読むコミットの番号である。
 
 ## 関係する要件

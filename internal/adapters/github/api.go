@@ -273,7 +273,7 @@ func (a api) ListRepoComments(ctx context.Context, repo string) ([]pullreq.Comme
 	return out, nil
 }
 
-// MergedPull は、sha を merge のコミットにした、merge 済みで向き先が main の pull request を返す（design/backend/verify.md の「GitForge の API」）。
+// MergedPull は、sha を merge のコミットにした、merge 済みで向き先が main の pull request を返す（design/backend/verify/README.md の「GitForge の API」）。
 // GET /commits/{sha}/pulls は、そのコミットを含む pull request を返す。merge のコミットが sha のものだけを選ぶ。
 func (a api) MergedPull(ctx context.Context, repo, sha string) (pullreq.Pull, bool, error) {
 	rp, err := repoPath(repo)

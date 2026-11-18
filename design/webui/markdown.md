@@ -20,12 +20,11 @@
 - GFM（表、取り消し線、自動リンク、チェックリスト）を示す（`remark-gfm`）。
 - リンクは、`http:` と `https:` と、同じオリジンのパス（`/` で始まり、`//` でないもの）と、ページの中（`#` で始まるもの）だけにする。ほかは、リンクにせず文字として示す。
   - 外へのリンクは、新しいタブで開き、`rel="noopener noreferrer"` を付ける。
-  - URL は `new URL()` で読んで `protocol` を確かめる。添付のリンクと同じ決まりである（[ファイルの開き方](security.md#ファイルの開き方)）。
+  - URL は `new URL()` で読んで `protocol` を確かめる。添付のリンクと同じ決まりである（[人への依頼](screens.md#人への依頼)）。
 - 画像は、埋め込まない。「画像：代わりの文」のリンクにする。
   - なぜ：外のオリジンの画像を読みに行くと、読んだことが外に知られるから。CSP の `img-src` も、外のオリジンを許していない。
-  - 案：同じ repository の artifact を指す画像（png、jpeg、gif、webp）だけは、`getArtifact` で読んで、blob の `<img>` で示せる。要るかどうかは、使ってみて決める。
-- コードは、色付けをしない。
-  - 案：色付けのライブラリは、言語の定義を含めると大きい。レポートのコードは短いことが多いので、まず等幅だけで示す。
+- コードは、色付けをしない。等幅だけで示す。
+  - なぜ：色付けのライブラリは、言語の定義を含めると大きいから。レポートのコードは短いことが多い。
 - 表とコードと図は、はみ出す分を横のスクロールで見る。モバイルでも、画面は横に広がらない。
 - Markdown の部分（`react-markdown` と `remark-gfm`）は、示すときだけ読み込む（gzip で約 50 KB）。読み込むまでは、元の文字列を、改行を保って示す。
 - 組み立てに失敗したら（思わない入力など）、元の文字列を示す（React の error boundary）。
@@ -53,7 +52,7 @@
 
 ## CSP
 
-Mermaid は、描く途中で、インラインの `style` を使う。今の CSP（`style-src 'self'`）のままでは、図の大きさを測れず、正しく描けないことを確かめた（headless Chrome）。次の 2 つを比べ、1 を選んだ。
+Mermaid は、描く途中で、インラインの `style` を使う。アプリの CSP（`style-src 'self'`）のままでは、図の大きさを測れず、正しく描けない。次の 2 つを比べ、1 を選んだ。
 
 | 案 | 中身 | 選ばなかった理由 |
 |---|---|---|
@@ -63,14 +62,11 @@ Mermaid は、描く途中で、インラインの `style` を使う。今の CS
 - `/mermaid.html` の CSP：`default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts`
   - `sandbox allow-scripts`：この URL を直接開かれても、iframe の外でも、オパークなオリジンで動く。アプリのオリジンのストレージに触れない。
   - `connect-src` は `'none'` なので、iframe の中から通信はできない。
-- アプリの CSP には、`frame-src 'self'` を足す。
-- `assets/` の応答に、`Access-Control-Allow-Origin: *` を付ける。
-  - なぜ：iframe の中の文書はオパークなオリジンなので、同じサーバのモジュールのスクリプトでも、別のオリジンへの要求（CORS）として読むから。
-  - なぜ `*` でよいか：`assets/` には、ビルドした JS と CSS しかなく、だれが読んでもよい。トークンや利用者のデータは含まない。`Authorization` も Cookie も使わない要求である。
+- アプリの CSP の `frame-src 'self'` と、`assets/` の `Access-Control-Allow-Origin: *` は、[スクリプトの注入への備え](security.md#スクリプトの注入への備え) に書く。
 
 ## 大きさ
 
-ビルドで測った（gzip）。どれも、最初の読み込み（約 95 KB）には入らない。
+大きさは gzip である。どれも、最初の読み込み（約 95 KB）には入らない。
 
 | 部分 | 大きさ | 読み込むとき |
 |---|---|---|

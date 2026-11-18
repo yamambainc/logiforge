@@ -1,24 +1,24 @@
 # GitForge
 
-バックエンドが、repository、提案（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるために読む。
+バックエンドが、repository、提案（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるときに読む。
 このポートを実装するのが、GitForge アダプタである（[アダプタ](../../adapters/README.md)）。
 
 GitForge は、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
-バックエンドは、読む操作を要求ごとに呼ぶ。結果を保持しない（[状態を持たない](../README.md)）。
+バックエンドは、読む操作を要求ごとに呼ぶ。結果を保持しない（[状態を持たない](../README.md#状態を持たない)）。
 
 ## repository
 
 - repository を列挙する。名前と gitforge_ref の組を返す。
 - 名前から gitforge_ref を求める。
 - repository を用意する。git リポジトリを作り（作れる GitForge だけ）、根の仮説を入れた最初のコミットを `main` に置く。
-  - `main` がすでにあれば、そのことがわかる形で失敗する（[repository の用意](../README.md)）。
+  - `main` がすでにあれば、そのことがわかる形で失敗する（[repository の用意](../README.md#repository-の用意)）。
   - バックエンドは、gitforge_ref と、最初のコミットに入れるファイルを渡す。
 - `main` の先頭を読む。GitForge の今の `main` の SHA を返す。反映の前に、worker が追いついているかを確かめるのに使う（[反映の手順](../merge.md)）。
 - ほかの操作は、どれも repository を指定して行う。
 
 ## 提案
 
-提案（apply request）は、GitForge の pull request である（[apply request と pull request](../apply-request.md)）。
+提案（apply request）は、GitForge の pull request である（[apply request と pull request](../apply-request/README.md)）。
 
 - 提案を作る。識別子、説明欄、ブランチ、作ったときの先頭のコミットを渡す。
   - そのブランチに open の提案がすでにあれば、そのことがわかる形で失敗する。

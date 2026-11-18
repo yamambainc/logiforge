@@ -15,7 +15,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
-// 記録のコメントの trailer（design/adapters/pull-requests.md の「記録のコメント」）。
+// 記録のコメントの trailer（design/adapters/records.md の「記録のコメント」）。
 const (
 	KeyRecord        = "Logiforge-Record"
 	KeyMac           = "Logiforge-Record-Signature"
@@ -81,7 +81,7 @@ func (r Record) All(key string) []string {
 	return out
 }
 
-// Keyring は、記録の署名の鍵（Ed25519）である（design/adapters/pull-requests.md の「記録のコメント」）。
+// Keyring は、記録の署名の鍵（Ed25519）である（design/adapters/records.md の「記録のコメント」）。
 // 書くときは Current の秘密鍵を使い、確かめるときは鍵の ID で公開鍵を選ぶ。
 // 鍵を取り替えるときは、新しい鍵を Current にし、古い鍵の公開鍵も Public に残す。
 // worker は、公開鍵だけを持つ（Private は空）。記録を作れない。
@@ -249,7 +249,7 @@ type InitFile struct {
 	SHA256 string
 }
 
-// InitScope は、用意のコミットの署名の、ファイルのほかの欄である（design/backend/verify.md の「用意のコミットの署名」）。
+// InitScope は、用意のコミットの署名の、ファイルのほかの欄である（design/backend/verify/init.md の「用意のコミットの署名」）。
 type InitScope struct {
 	// Kind は、用意のコミットの種類（ports.InitRoot か ports.InitSecond）。
 	Kind string
@@ -308,7 +308,7 @@ func (k Keyring) VerifyInit(at InitScope, files []InitFile, value string) error 
 }
 
 // InitMessage は、repository の用意のコミットのメッセージに、trailer Logiforge-Init-Signature: を足す
-// （design/backend/verify.md の「用意のコミットの署名」）。files は、そのコミットで加えるファイルである。
+// （design/backend/verify/init.md の「用意のコミットの署名」）。files は、そのコミットで加えるファイルである。
 func (k Keyring) InitMessage(message string, at InitScope, files []ports.File) (string, error) {
 	signed := make([]InitFile, 0, len(files))
 	for _, f := range files {

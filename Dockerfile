@@ -1,5 +1,5 @@
 # Logiforge のイメージ。中身は logiforge のバイナリ（WebUI を含む）と git だけである。
-# コンテナごとに、コマンドを変える（logiforge serve、logiforge worker）。動かし方は design/deploy.md に書く。
+# コンテナごとに、コマンドを変える（logiforge serve、logiforge worker）。動かし方は design/deploy/README.md に書く。
 # base は digest で固定する。上げるときは、タグと digest を一緒に書き換える。
 
 # WebUI をビルドする（design/webui/stack.md の「配り方」）。出力は webui/dist/ で、Go の段が embed する。

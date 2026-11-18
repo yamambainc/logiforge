@@ -19,7 +19,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 
 ### [repository の一覧](../../docs/webui/repositories.md)
 
-- 一覧：`listRepositories`。根の主文は、`Repository` の `root_statement` を使う（[足す API](#足す-api)）。
+- 一覧：`listRepositories`。根の主文は、`Repository` の `root_statement` を使う（[WebUI のための API](#webui-のための-api)）。
 - 作成：`createRepository`。応答の `Logiforge-Pending-Commit` があれば、スナップショットツリーが出るまで、ビュワーで「取り込み中」と示す（[書いた直後の読み](../api/writes.md)、[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
 
 ### [スナップショットツリーのビュワー](../../docs/webui/tree-viewer.md)
@@ -53,33 +53,33 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
 - 反映したあとの姿：ビュワーを `?apply_request=` で開く（[差分の重ね表示](overlay.md#差分の重ね表示)）。
-- 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[足す API](#足す-api)）。
+- 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[WebUI のための API](#webui-のための-api)）。
   - 画面の「main の履歴」で、新しい 50 個ずつ示し、「もっと読む」で続きを読む。
 - 反映済みの apply request は、「反映した時点を見る」で、`merged_commit` のビュワーを開く。
 - 差分の操作の対象は、ビュワーへのリンク（`?node=`）で示す。
 - 作業としての絞り込み（`work=review_waiting`、`work=fix_waiting`）は、`listWork` のその種類の `subject_id` に入る apply request だけを示す。ダッシュボードの件数から、この絞り込みで開く。
 - URL は `/r/{repository}/apply-requests?view=&state=&id=&work=`（`view` は、apply request か `commits`）。
-- ダッシュボードの「引用元が変化した検証結果」は、ビュワーを `f=cited` で開く。`listWork` の `citation_changed` の `node_id`（検証結果を持つ仮説）だけを示す。
-  - 件数の単位は検証結果である。1 つの仮説が、引用元の変わった検証結果を 2 つ持つこともあるので、ビュワーの帯には「検証結果 N 件（仮説 M 個）」と両方を示す。
-- ダッシュボードの件数には、単位（件）を添える。
 
 ### [ダッシュボード](../../docs/webui/dashboard.md)
 
 - 根の値と作業の終わりの判定：`getCompletion`。
 - 種類ごとの着手できる作業の件数：`listWork` を `limit=1` で呼び、応答の `counts`（ページに関わらない、種類ごとの全体の件数）を使う。
   - 件数は、open の apply request が対象にしているノードの作業を数えない（`include_claimed` を付けない）。作業の一覧と同じ数え方である。
-- 件数を押すと、その作業の一覧へ行く。未決の葉と要再検討は、作業と同じ定義の絞り込みでビュワーを開く（`f=leaf`、`f=nr-work`）。件数と、ビュワーの一致の数は同じになる。レビュー待ちと修正待ちは apply request の一覧、回答済みの依頼は人への依頼の一覧、引用元が変化した検証結果はビュワーの絞り込みに、それぞれの画面ができたらつなぐ。
+- 件数を押すと、その作業の一覧へ行く。未決の葉と要再検討は、作業と同じ定義の絞り込みでビュワーを開く（`f=leaf`、`f=nr-work`）。件数と、ビュワーの一致の数は同じになる。レビュー待ちと修正待ちは apply request の一覧、回答済みの依頼は人への依頼の一覧、引用元が変化した検証結果はビュワーの絞り込みにつなぐ。
+- ダッシュボードの「引用元が変化した検証結果」は、ビュワーを `f=cited` で開く。`listWork` の `citation_changed` の `node_id`（検証結果を持つ仮説）だけを示す。
+  - 件数の単位は検証結果である。1 つの仮説が、引用元の変わった検証結果を 2 つ持つこともあるので、ビュワーの帯には「検証結果 N 件（仮説 M 個）」と両方を示す。
+- ダッシュボードの件数には、単位（件）を添える。
 - 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[すべての画面の決まり](mobile.md#すべての画面の決まり)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
 
-## 足す API
+## WebUI のための API
 
-WebUI のために、次の 2 つを API に足す。どれも、BE がすでに持つものを返すだけである。
+API は、WebUI のために次の 2 つを持つ。どれも、BE が持つものを返すだけである。
 
-| 足すもの | 返すもの | 使う画面 | 元 |
+| もの | 返すもの | 使う画面 | 元 |
 |---|---|---|---|
-| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの記録（[スナップショット](../backend/snapshot.md)） |
+| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの記録（[スナップショット](../backend/snapshot/README.md)） |
 | `Repository` の `root_statement` | 根の仮説の主文 | repository の一覧 | 今の `main` のスナップショットツリー |
 
 - `listCommits` の `apply_request_id` は、コミットの記録の trailer `Logiforge-Apply-Request:` の値である（[main のコミットと記録](../files/revisions.md)）。ない（反映によらないコミット）なら null である。
-- `listCommits` のページングは、ほかの一覧と同じくカーソルで分ける。カーソルは、次に読むコミットの `number` である（[ページング](../api/README.md#ページング)）。
-- なぜ `root_statement` を足すか：足さないと、一覧の行ごとに `getNode` を呼ぶことになるから。
+- `listCommits` のページングは、ほかの一覧と同じくカーソルで分ける。カーソルは、次に読むコミットの `number` である（[ページング](../api/paging.md)）。
+- なぜ `root_statement` を持つか：持たないと、一覧の行ごとに `getNode` を呼ぶことになるから。

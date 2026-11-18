@@ -39,5 +39,5 @@ API が、CLI と WebUI の要件を満たしているかを確かめるとき�
 ## WebUI に置かない操作
 
 - WebUI は、`user` のトークンで API を使う。
-- `user` は、apply request を作る API と、レビューする API を使えない（[認可](../backend/README.md)）。
-  - そのため、WebUI からは、木の変更も `approve` もできない（[反映の条件](../../docs/apply-request/review.md)）。
+- `user` は、apply request を作る API と、レビューする API を使えない（[認可](../backend/README.md#認可)）。
+- そのため、WebUI からは、木の変更も `approve` もできない（[反映の条件](../../docs/apply-request/review.md)）。

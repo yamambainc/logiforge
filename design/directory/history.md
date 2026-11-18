@@ -1,7 +1,7 @@
 # 履歴（ディレクトリ方式）
 
 ディレクトリの repository で、スナップショットツリーの版をどう数え、worker が何を記録するかを確かめるときに読む。
-git リポジトリ全体の repository の決まりは、[main のコミットと記録](../files/revisions.md) と [スナップショット](../backend/snapshot.md) に書く。
+git リポジトリ全体の repository の決まりは、[main のコミットと記録](../files/revisions.md) と [スナップショット](../backend/snapshot/README.md) に書く。
 
 ## 版
 
@@ -20,7 +20,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
   - Forgejo：`POST /repos/{owner}/{repo}/contents` で、ディレクトリのファイルを 1 つのコミットにまとめて置く。
   - なぜ pull request にしないか：用意のコミットは、元の apply request がないので、反映かの判定の「apply request の反映のコミット」にならないから。署名で、用意のコミットと決める（下の「反映かの判定」）。
 - 用意のコミットのメッセージに、`Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。`Logiforge-Apply-Request:` は付けない。
-  - 署名の形は、[反映かの判定](../backend/verify.md) の「用意のコミットの署名」の、種類 `init-directory` である。ディレクトリのパスと、移したときは `Logiforge-Migrated-From:` の値も含める（[別リポジトリ方式から移す](migrate.md)）。
+  - 署名の形は、[用意のコミットの署名](../backend/verify/init.md#用意のコミットの署名) の、種類 `init-directory` である。ディレクトリのパスと、移したときは `Logiforge-Migrated-From:` の値も含める（[別リポジトリ方式から移す](migrate.md)）。
   - なぜ 1 つ前のコミットを含めないか：ディレクトリの repository では、1 つ前のコミットはコードのコミットで、Forgejo の contents API では、置く前に決められないから。署名を使い回せないことは、版の 1 番であること（そのディレクトリを変えた前のコミットがないこと）で守る。
 - 用意のコミットは、そのディレクトリの版の 1 番である。
   - そのディレクトリを変えた、前のコミットがあってはいけない。あれば、用意を断る（`repository_exists`）。
@@ -35,12 +35,12 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 ## 反映かの判定
 
-版ごとに（そのディレクトリを変えた `main` のコミット C ごとに）、反映によるものかを、中身だけで決める。決め方は、git リポジトリ全体の repository と同じで（[反映かの判定](../backend/verify.md)）、比べる範囲がディレクトリの中になる。P は、C の 1 つ前の `main` のコミット（git の first-parent）である。1 つ前の版ではない。
+版ごとに（そのディレクトリを変えた `main` のコミット C ごとに）、反映によるものかを、中身だけで決める。決め方は、git リポジトリ全体の repository と同じで（[反映かの判定](../backend/verify/README.md)）、比べる範囲がディレクトリの中になる。P は、C の 1 つ前の `main` のコミット（git の first-parent）である。1 つ前の版ではない。
 
 次のどちらかなら、反映によるものである。
 
 - 用意のコミット：版の 1 番で、`Logiforge-Init:` と `Logiforge-Init-Signature:` があり、種類 `init-directory` の署名が合い、C の変更がそのディレクトリにファイルを加えることだけである。
-- apply request の反映のコミット：[反映かの判定](../backend/verify.md) の「apply request の反映のコミット」の 1〜6 を、次のように読み替えて満たす。
+- apply request の反映のコミット：[反映かの判定](../backend/verify/README.md) の「apply request の反映のコミット」の 1〜6 を、次のように読み替えて満たす。
   - 3：控えの `apply_request` の記録の `Logiforge-Repository:` が、この repository のディレクトリのパスである。
   - 5：P の木のディレクトリの中に、H の差分を重ね、重ねた木のディレクトリの中が、C の木のディレクトリの中と同じである。
   - 6：差分の検査に、差分がディレクトリの中だけであること（`outside_directory`）を含める。
@@ -73,14 +73,14 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 ## worker
 
 - worker は、git リポジトリ全体の repository と同じく、repository ごとに 1 つの clone を持ち、repository ごとに見回る。同じ git リポジトリのディレクトリの repository が 2 つあれば、clone も 2 つになる。
-  - なぜ git リポジトリごとにまとめないか：repository ごとのロックと見回りを、そのまま使えるから。clone が増えるのは、ディレクトリの repository の数だけで、ディスクのほかの費用は変わらない。まとめるのは、clone の大きさが問題になってからにする。
+  - なぜ git リポジトリごとにまとめないか：repository ごとのロックと見回りを、そのまま使えるから。clone が増えるのは、ディレクトリの repository の数だけで、ディスクのほかの費用は変わらない。
 - `main` の新しいコミットごとに、`git diff-tree` の変わったパスで、そのディレクトリを変えたかを決める。変えたコミットだけを、版にする。
   - 版の差分とファイルは、パスからディレクトリを除いて、ディレクトリを根として扱う。そのため、スナップショットツリー、差分の検査、重ねる計算は、git リポジトリ全体の repository と同じものを使う。
 - repository ごとに、置き場に `scanned` を置く。worker が読み終えた、git の `main` の先頭の SHA である。
-  - `latest` は、今までどおり、いちばん新しい版の SHA である。
+  - `latest` は、git リポジトリ全体の repository と同じく、いちばん新しい版の SHA である。
   - バックエンドは、GitForge の `main` に worker が追いついたかを、`scanned` で決める（[main の守り](main.md) の「反映の順番」）。
   - `scanned` は、その SHA までの版を置き終えてから書く。
-- 新しい版の `parent` が今の `latest` であるときだけ、`latest` を書く（[latest](../backend/snapshot.md#latest) と同じ。比べる相手が、git の親でなく 1 つ前の版になるだけである）。
+- 新しい版の `parent` が今の `latest` であるときだけ、`latest` を書く（[latest](../backend/snapshot/main.md#latest) と同じ。比べる相手が、git の親でなく 1 つ前の版になるだけである）。
 - ブランチのスナップショットは、base からの差分がそのディレクトリの中のファイルを変えるブランチにだけ作る。
   - なぜ：コードのブランチを、すべての repository のブランチの履歴に入れないため。
   - スナップショットの base は、その時点の版（base までにディレクトリを変えた、いちばん新しい `main` のコミット）にする。なぜ：本当の base がコードのコミットだと、スナップショットツリーがないから。ディレクトリの中身は、どちらも同じである。

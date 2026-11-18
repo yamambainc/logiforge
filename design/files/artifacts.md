@@ -17,23 +17,27 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 ## 反映の前のファイル
 
 - `file` は、ただのファイルとして、利用者がブランチのコミットに入れる。
-  - CLI のひな形が、ファイルを `artifacts/sha256/` の正しい名前に置く（[CLI](../cli/README.md)）。
+  - CLI のひな形が、ファイルを `artifacts/sha256/` の正しい名前に置く（[ひな形と check](../cli/local.md#ひな形)）。
   - なぜ：アップロードの API と置き場所を別に持たず、ほかのファイルと同じ git のコミットで扱えるから。
-- 大きさの上限は、CLI の `check` と、バックエンドの [差分の検査](../backend/checks.md) の両方で確かめる。
+- 大きさの上限は、CLI の `check`（[ひな形と check](../cli/local.md#check)）と、バックエンドの [差分の検査](../backend/checks.md) の両方で確かめる。
 - reviewer は、apply request の先頭のコミットを指定して、反映の前のファイルを読む。
 
 ## 人への依頼の回答
 
 - 回答の本文と添付は、git に置かない。GitForge の側に置く（[GitForge のポート](../backend/ports/gitforge.md)）。
-  - なぜ：回答は、利用者が WebUI から行い、git を使わないから。サーバの側が git に書くのを、pull request の操作と repository の用意だけにするため。
+  - なぜ：回答は、利用者が WebUI から行い、git を使わないから。
+  - なぜ：サーバの側が git に書くのを、pull request の操作と repository の用意だけにするため。
   - なぜ：バックエンドがデータを保持せず、置き場に書くのを worker だけにするため。
 - 添付は、GitForge の性質によって次のように扱う。各 GitForge の対応は、[アダプタ](../adapters/README.md) の各ページに書く。
-  - GitForge が、API でコメントにファイルを添付できるとき：添付をファイルで受け付け、GitForge に置く。添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
-  - 添付できないとき：添付はリンクだけにする。利用者が、ファイルを外に置いてリンクを書く。
+  - GitForge が、API でコメントにファイルを添付できるとき：添付をファイルで受け付け、GitForge に置く。
+    - 添付のファイルは、API の `getAnswerAttachment` で読む（[openapi.yaml](../api/openapi.yaml)）。
+  - 添付できないとき：添付はリンクだけにする。
+    - 利用者が、ファイルを外に置いてリンクを書く。
 - `link` の添付は、GitForge に置かず、回答の本文の末尾に「添付（リンク）」として書く。
   - なぜ：リンクは中身を持たず、本文と同じく、回答の記録の署名で守れるから。
 - opener が検証結果で回答を引用するときは、`link` の artifact にする。
-  - URL は、その添付を読む API の URL である。`sha256` も書く。
+  - URL は、その添付を読む API の URL である。
+  - `sha256` も書く。
   - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。
 
 ## 検証結果からの参照

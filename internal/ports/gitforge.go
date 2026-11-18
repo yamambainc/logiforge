@@ -218,7 +218,7 @@ type GitForge interface {
 
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
-	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の提案を返す（design/backend/verify.md）。
+	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の提案を返す（design/backend/verify/README.md）。
 	// そういう pull request がなければ ErrNotFound。pull request に apply_request の記録がなければ、ID が空の提案を返す。
 	MergedApplyRequest(ctx context.Context, repo, sha string) (ApplyRequest, error)
 
@@ -253,7 +253,7 @@ type Authenticator interface {
 	CanRead(ctx context.Context, token, repo string) (bool, error)
 }
 
-// 用意のコミットの種類（design/backend/verify.md の「用意のコミットの署名」）。
+// 用意のコミットの種類（design/backend/verify/init.md の「用意のコミットの署名」）。
 const (
 	// InitRoot は、根のコミットである。
 	InitRoot = "init-root"
@@ -278,7 +278,7 @@ func TokenFrom(ctx context.Context) string {
 	return t
 }
 
-// MergeVerdict は、main のコミットが反映によるものかの判定である（design/backend/verify.md）。
+// MergeVerdict は、main のコミットが反映によるものかの判定である（design/backend/verify/README.md）。
 type MergeVerdict struct {
 	// Pending は、まだ決められないこと（C を merge した pull request が見つからない、など）。次の見回りでやり直す。
 	Pending bool

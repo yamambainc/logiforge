@@ -10,7 +10,7 @@ opener が、木や検証結果を変えたブランチを push したあとに�
 
 ## すること
 
-- push されたブランチから `main` への pull request を作る。ブランチの先頭のコミットが、最初の先頭のコミットになる（[先頭のコミット](../../../backend/apply-request.md#先頭のコミット)）。
+- push されたブランチから `main` への pull request を作る。ブランチの先頭のコミットが、最初の先頭のコミットになる（[先頭のコミット](../../../backend/apply-request/README.md#先頭のコミット)）。
 - 差分が 4 種類の操作として読めなければ、受け付けない。
 - 差分から復元した操作を、応答に入れる。
 - apply request を open にする。

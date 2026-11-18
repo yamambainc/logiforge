@@ -29,7 +29,7 @@ type Adapter struct {
 	Repos
 	API  API
 	Keys Keyring
-	// Log は、worker の記録の控えである（design/backend/verify.md の「記録の控え」）。nil なら読まない。
+	// Log は、worker の記録の控えである（design/backend/verify/records.md）。nil なら読まない。
 	// 読む記録は、GitForge のコメントと控えを合わせたものである。GitForge から消された記録も、控えにあれば数える。
 	Log RecordLog
 }
@@ -366,7 +366,7 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f por
 // noPrevious は、最初のレビューの Logiforge-Previous-Review: の値である。
 const noPrevious = "-"
 
-// AddReview は、レビューを、pull request の記録のコメントとして書く（design/adapters/pull-requests.md の「レビューの書き方」）。
+// AddReview は、レビューを、pull request の記録のコメントとして書く（design/adapters/records.md の「レビューの書き方」）。
 // 直前のレビューの識別子を Logiforge-Previous-Review: に書き、レビューを鎖にする。
 func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r ports.Review) error {
 	ar, err := a.findPull(ctx, repo, applyRequestID)
@@ -408,7 +408,7 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 	return Reviews(a.Keys, Scope{RepoID: repoID, Number: ar.Number}, applyRequestID, comments), nil
 }
 
-// withLog は、pull request か issue のコメントに、worker の控えのコメントを合わせて返す（design/backend/verify.md の「記録の控え」）。
+// withLog は、pull request か issue のコメントに、worker の控えのコメントを合わせて返す（design/backend/verify/records.md）。
 // 同じコメントの id が両方にあれば、控えのもの（worker が最初に見た中身）を使う。GitForge から消されたものも、控えにあれば返す。
 func (a *Adapter) withLog(ctx context.Context, repo string, number int) ([]Comment, error) {
 	cur, err := a.API.ListComments(ctx, repo, number)

@@ -11,8 +11,7 @@
 
 - repository の名前と、根の仮説の主文を受け取る。
 - GitForge アダプタから、その名前の gitforge_ref を求める。
-- GitForge に repository を用意し、根の仮説を入れた最初のコミットを置く（[repository の用意](../../../backend/README.md)）。
-- 根の仮説を、最初のコミットとして書き込む。
+- GitForge に repository を用意し、根の仮説を入れた最初のコミットを置く（[repository の用意](../../../backend/README.md#repository-の用意)）。
 - 同じ名前の repository があれば作らない。
 
 ## 関係する要件

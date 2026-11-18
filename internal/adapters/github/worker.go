@@ -83,7 +83,7 @@ func (s *WorkerSource) RepoID(ctx context.Context, gitForgeRef string) (string, 
 }
 
 // CommentsSince は、repository のコメント（issue と pull request）のうち、since のあとに作られたか変わったものを返す
-// （記録の控え。design/backend/verify.md）。
+// （design/backend/verify/records.md）。
 func (s *WorkerSource) CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error) {
 	rp, err := repoPath(gitForgeRef)
 	if err != nil {

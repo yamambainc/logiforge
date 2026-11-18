@@ -1,5 +1,5 @@
 # ローカルと E2E のための compose。Forgejo、バックエンド（serve）、worker の 3 つを、1 つのタスクに見立てて動かす。
-# 手順は README の「compose で動かす」、形の理由は design/deploy.md に書く。
+# 手順は docs/development/compose.md、形の理由は design/deploy/README.md に書く。
 #
 # バックエンドと worker は、Forgejo のネットワークを共有する（network_mode: service:forgejo）。
 # Forgejo の URL が、手元のマシンからもコンテナからも http://localhost:3000 になり、
@@ -54,7 +54,7 @@ services:
     environment:
       <<: *common
       LOGIFORGE_WORKER_DIR: /var/lib/logiforge/worker
-      # 記録の署名の公開鍵。反映かの判定で、記録を確かめる（design/backend/verify.md）。scripts/compose-setup.sh が作る。
+      # 記録の署名の公開鍵。反映かの判定で、記録を確かめる（design/backend/verify/README.md）。scripts/compose-setup.sh が作る。
       LOGIFORGE_RECORD_PUBLIC_KEYS_FILE: /run/secrets/record_public_keys
     secrets: [worker_token, record_public_keys]
     volumes:

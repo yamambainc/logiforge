@@ -69,7 +69,7 @@ func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branc
 	return &br, nil
 }
 
-// PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot.md）。
+// PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot/README.md）。
 func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) error {
 	b, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: c})
 	if err != nil {
@@ -78,7 +78,7 @@ func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) er
 	return w.Put(ctx, CommitKey(repo, c.Revision), b)
 }
 
-// PutSnapshotTree は、main のコミットのスナップショットツリーを置く。main のすべてのコミットに置く（design/backend/snapshot.md の「すべてのコミットに作る」）。
+// PutSnapshotTree は、main のコミットのスナップショットツリーを置く。main のすべてのコミットに置く（design/backend/snapshot/main.md の「すべてのコミットに作る」）。
 func PutSnapshotTree(ctx context.Context, w Writer, repo, sha string, t *snapshot.SnapshotTree) error {
 	b, err := snapshot.Encode(&snapshot.SnapshotTreeDoc{FormatVersion: snapshot.FormatVersion, SnapshotTree: *t})
 	if err != nil {
@@ -207,7 +207,7 @@ func SetLatest(ctx context.Context, w Writer, repo, sha, old string) error {
 	return w.PutIf(ctx, LatestKey(repo), []byte(sha+"\n"), o)
 }
 
-// BranchEntry は、ブランチの履歴の 1 項目である（design/backend/snapshot.md の「ブランチの履歴」）。
+// BranchEntry は、ブランチの履歴の 1 項目である（design/backend/snapshot/branch.md の「ブランチの履歴」）。
 type BranchEntry struct {
 	Head    string    `json:"head,omitempty"`
 	Base    string    `json:"base,omitempty"`
@@ -336,7 +336,7 @@ func PutBroken(ctx context.Context, w Writer, repo string, x *Broken) error {
 	return w.Put(ctx, BrokenKey(repo), b)
 }
 
-// LoggedComment は、worker が見た記録のコメントの控えの 1 つである（design/backend/verify.md の「記録の控え」）。
+// LoggedComment は、worker が見た記録のコメントの控えの 1 つである（design/backend/verify/records.md）。
 type LoggedComment struct {
 	ID        int64     `json:"id"`
 	Issue     int       `json:"issue"`

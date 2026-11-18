@@ -6,7 +6,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// 反映のあとに、worker が確かめる警告（design/backend/worker.md の「すること」）。
+// 反映のあとに、worker が確かめる警告（design/backend/worker/patrol.md の「すること」）。
 const (
 	// RuleOverlap は、反映した apply request の対象ノードが、その base のあとに、別の反映で変わっていたことである。
 	RuleOverlap tree.Rule = "overlap"
