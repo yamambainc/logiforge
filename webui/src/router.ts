@@ -27,7 +27,8 @@ export type Route = { name: 'repositories' } | { name: RepoScreen; repo: string 
 const SCREENS: Record<string, RepoScreen> = { '': 'dashboard', tree: 'tree', 'human-requests': 'human-requests', 'apply-requests': 'apply-requests' };
 
 export function match(path: string): Route {
-  if (path === '/' || path === '') return { name: 'repositories' };
+  // セットアップが終わったあとの /setup は、repository の一覧を出す（design/webui/screens-setup.md）
+  if (path === '/' || path === '' || path === '/setup') return { name: 'repositories' };
   if (path === '/oauth/callback') return { name: 'callback' };
   const m = path.match(/^\/r\/([a-z0-9][a-z0-9-]{0,62})(?:\/([a-z-]+))?\/?$/);
   if (m && (m[2] ?? '') in SCREENS) return { name: SCREENS[m[2] ?? ''], repo: m[1] };

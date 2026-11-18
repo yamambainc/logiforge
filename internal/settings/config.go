@@ -49,6 +49,7 @@ var fields = []field{
 	{"github.api_url", plain, func(c *Config) *string { return &c.GitHub.APIURL }},
 	{"github.web_url", plain, func(c *Config) *string { return &c.GitHub.WebURL }},
 	{"github.app_id", plain, func(c *Config) *string { return &c.GitHub.AppID }},
+	{"github.slug", plain, func(c *Config) *string { return &c.GitHub.Slug }},
 	// App の秘密鍵は、バックエンドだけが読む。worker には、バックエンドが Read に絞って作った installation token だけを渡す
 	// （design/adapters/github-app.md の「worker のトークン」）。
 	{"github.app_private_key", backendOnly, func(c *Config) *string { return &c.GitHub.AppPrivateKey }},
@@ -91,6 +92,7 @@ type GitHubConfig struct {
 	APIURL        string `json:"api_url,omitempty"`
 	WebURL        string `json:"web_url,omitempty"`
 	AppID         string `json:"app_id,omitempty"`
+	Slug          string `json:"slug,omitempty"`
 	AppPrivateKey string `json:"app_private_key,omitempty"`
 	ClientID      string `json:"client_id,omitempty"`
 	ClientSecret  string `json:"client_secret,omitempty"`

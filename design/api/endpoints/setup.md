@@ -9,7 +9,7 @@
 |---|---|---|
 | `GET /setup` | `getSetup` | セットアップが終わったか、どの段まで進んだか、選んだ構成を返す。コードは求めない |
 | `POST /setup/code` | `checkSetupCode` | セットアップのコードが合うかだけを確かめる。何も置かない |
-| `PUT /setup/gitforge` | `setSetupGitForge` | 構成（`github` か `forgejo`）を決める |
+| `PUT /setup/gitforge` | `setSetupGitForge` | 構成（`github` か `forgejo`）と、WebUI の URL（サインインの `redirect_uri` の元）を決める |
 | `POST /setup/github/manifest` | `createSetupGitHubManifest` | owner、WebUI の URL、ほかの owner にも install するかを受け取り、manifest と送り先の URL を返す |
 | `POST /setup/github/conversion` | `convertSetupGitHubManifest` | manifest flow の `code` を受け取り、GitHub App を設定の DB に置く。App の slug と install の URL を返す |
 | `PUT /setup/repository` | `setSetupRepository` | GitHub の構成で、最初の repository（名前と `owner/name`、ディレクトリの repository ならパスも）を登録する。App の installation token で読めなければ `validation_failed` |

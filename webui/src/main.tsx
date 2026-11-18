@@ -1,12 +1,12 @@
-import { StrictMode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { start } from './auth';
+import { Setup } from './screens/Setup';
+import { boot } from './setup-boot';
 import './styles.css';
 
-void start();
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const render = (n: ReactNode) => createRoot(document.getElementById('root')!).render(<StrictMode>{n}</StrictMode>);
+
+// セットアップが終わっていなければ、サインインの前にセットアップの画面を出す（design/webui/signin-flow.md）
+void boot(start).then((b) => render(b.kind === 'setup' ? <Setup initial={b.state} /> : <App />));

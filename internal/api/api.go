@@ -31,6 +31,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeRepositoryExists:        http.StatusConflict,
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
 	backend.CodeSetupRequired:           http.StatusServiceUnavailable,
+	backend.CodeSetupDone:               http.StatusConflict,
 	backend.CodeSnapshotPending:         http.StatusServiceUnavailable,
 	backend.CodeRepositoryNotRegistered: http.StatusUnprocessableEntity,
 	backend.CodeInternal:                http.StatusInternalServerError,
@@ -492,15 +493,22 @@ func readsTree(pattern string) bool {
 		strings.Contains(pattern, "/nodes/") || strings.Contains(pattern, "/verdicts/")
 }
 
-// SetupRequired は、初回のセットアップが終わるまでのハンドラーである。/healthz のほかは、setup_required（503）を返す。
-// なぜ /healthz を通すか：ヘルスチェックで、起動し直され続けないようにするため（design/api/endpoints/setup.md）。
-func SetupRequired(detail string) http.Handler {
+// SetupRequired は、初回のセットアップが終わるまでのハンドラーである。/healthz、セットアップの API、サインインの中継、WebUI のほかは、
+// setup_required（503）を返す（design/api/endpoints/setup.md の「セットアップが終わるまでのほかの API」）。
+// なぜ /healthz を通すか：ヘルスチェックで、起動し直され続けないようにするため。
+func SetupRequired(detail string, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v1/", func(w http.ResponseWriter, _ *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeSetupRequired, Detail: detail})
 	})
-	return withHeaders(mux)
+	mountCommon(mux, opt)
+	if opt.WebUI == nil {
+		mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+			writeProblem(w, &backend.Error{Code: backend.CodeSetupRequired, Detail: detail})
+		})
+	}
+	return withHeaders(withGzip(mux))
 }
 
 // Unavailable は、unavailable（503）を返すハンドラーである。設定の DB を一時的に読めないときに使う。
