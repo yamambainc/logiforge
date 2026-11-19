@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: review-insufficient-story
+expected_outcome: |
+  story.create の子仮説だけでは親仮説が言えない（十分性が欠ける、隠れた前提）ことを見つけ、request_changes を選ぶ。--commit に材料の commit をそのまま使う。--body に対象のノード、外れた観点、直し方を書く。説明欄や PR は読まない。
+context:
+  scaffold_script: place-files.sh

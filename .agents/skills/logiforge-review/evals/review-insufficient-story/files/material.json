@@ -1,0 +1,28 @@
+{
+  "apply_request_id": "apr_c210",
+  "commit": "4b8e2f1a9d3c7e6b5a4f3e2d1c0b9a8f7e6d5c4b",
+  "operations": [
+    {
+      "kind": "story.create",
+      "story_id": "s_q81",
+      "parent_hypothesis_id": "h_2a",
+      "title": "電解液の添加剤で劣化を抑える",
+      "summary": "添加剤 X を 2% 加えると、SEI 膜が安定し、容量の低下が遅くなる。",
+      "hypotheses": [
+        {"hypothesis_id": "h_q82", "statement": "添加剤 X を 2% 加えると、SEI 膜の厚さの増加が半分になる"},
+        {"hypothesis_id": "h_q83", "statement": "添加剤 X は 25℃ で電解液に溶ける"}
+      ]
+    }
+  ],
+  "targets": [
+    {"node_type": "hypothesis", "id": "h_2a", "statement": "試作セルは 25℃ で 500 サイクル後も容量 80% 以上を保つ", "value": null, "leaf": false}
+  ],
+  "ancestors": [
+    {"id": "h_2a", "statement": "試作セルは 25℃ で 500 サイクル後も容量 80% 以上を保つ"},
+    {"id": "h_root", "statement": "試作セルは量産の寿命の基準を満たす"}
+  ],
+  "siblings": [
+    {"id": "s_p10", "title": "正極材の置き換え", "summary": "正極を NMC811 から LFP に替え、サイクル劣化を抑える。", "value": null}
+  ],
+  "citations": []
+}

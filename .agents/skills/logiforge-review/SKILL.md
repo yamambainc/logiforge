@@ -1,6 +1,6 @@
 ---
 name: logiforge-review
-description: Logiforge の apply request を reviewer として審査し、approve、request_changes、comment のどれかを付けるときに使う。着手できる作業に review_waiting があるとき、または apply request のレビューを頼まれたとき。apply request を出す・直すときは logiforge を使う。
+description: Logiforge の apply request を reviewer として審査し、approve、request_changes、comment のどれかを付けるときに使う。着手できる作業に review_waiting があるとき、apply request（AR、apr_…）のレビューや論理レビューを頼まれたとき、`logiforge ar material` や `logiforge ar review` を使う場面では、Logiforge の名前が無くても使う。ストーリーの十分性や、検証結果の根拠を審査するときも使う。apply request を出す・直すときは logiforge を使う。
 ---
 
 # Logiforge の apply request をレビューする

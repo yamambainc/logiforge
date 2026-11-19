@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: pvr-answer-to-verdict
+expected_outcome: |
+  human-request view で回答を読み、verdict new に --cite answer:hr_51 と回答から値を判断したレポートを付け、check、logiforge commit、push、ar create まで示す。回答をそのまま値にせず判断の過程をレポートに書くと言う。

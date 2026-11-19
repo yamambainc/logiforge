@@ -1,6 +1,6 @@
 ---
 name: logiforge
-description: Logiforge のスナップショットツリーを CLI（logiforge）で読み書きするときに使う。スナップショットツリーの今の状態を読む、着手できる作業を探す、apply request を出す、request_changes や反映の失敗のあとに直す、壊れた repository を直す、人への依頼（PVR、判断の依頼）を起票する、のどれかをするとき。apply request をレビューするときは logiforge-review を使う。
+description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、request_changes や反映の失敗（conflict、stale_target など）のあとに直す、壊れた repository を直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
 ---
 
 # Logiforge を使う
@@ -104,7 +104,11 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 種類ごとに、次のことをする。
 
 - `undecided_leaf`：葉を検証して `verdict.submit` を出す。1 つの検証で決められないなら、`story.create` で分解する。
-- `needs_reconsideration`：[要再検討の仮説に対してすること](../../../docs/tree/falsification.md#要再検討の仮説に対してすること) のどれかをする。
+- `needs_reconsideration`：次のどれかをする（[要再検討の仮説に対してすること](../../../docs/tree/falsification.md#要再検討の仮説に対してすること)）。
+  - まず `logiforge tree nodes --root <仮説> --depth 2` で、子ストーリーと、`false` になった子仮説を確かめる。
+  - 別の論理で、ストーリーを新しく作る（`story new --parent <仮説>`）。
+  - 仮説を直接否定する証拠があれば、偽と結論する（下の「apply request を出す」）。
+  - ストーリーが尽きたが直接の反証が無いなら、種類が `decision` の人への依頼を起票する。本文には、問い、試したストーリーとその結果、判断してほしいことを書く。
 - `fix_waiting`：自分が出した apply request を直す（下の「apply request を直す」）。
 - `human_request_answered`：回答を引用して `verdict.submit` を出す（下の「人への依頼」）。
 - `citation_changed`：引用元の変化を確かめ、要るなら検証結果を差し替える（[引用元の変化](../../../docs/tree/verdict.md#引用元の変化)）。
@@ -130,16 +134,26 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 - 各操作の決まりは、[apply request](../../../docs/apply-request/README.md#操作) からたどる。
 - 審査で何を見られるかは、[論理レビューの審査観点](../../../docs/apply-request/review-criteria.md) に書いてある。出す前に、自分で確かめる。
 - 説明欄は、レビューの材料に入らない。審査に要ることは、レポートや背景情報に書く。
-- 偽と結論するときは、2 つの操作を 1 つの apply request にまとめる（[偽と結論する](../../../docs/tree/falsification.md#偽と結論する)）。
+- 検証結果のレポートには、値を支える根拠と、その根拠から値を決めた理由を書く。プログラムで検証したなら、再現できるように、プログラムと実行結果を artifact に付ける。
+- 偽と結論するときは、次の 2 つを 1 つの apply request にまとめる（[偽と結論する](../../../docs/tree/falsification.md#偽と結論する)）。
+  - その仮説の active な子ストーリーを、すべて `story.inactivate` する。
+  - その仮説に、`false` の `verdict.submit` を出す。
+  - 同じブランチで、先に `story inactivate` をすべて行い、そのあと `verdict new --value false` を作る。子ストーリーがすべて inactive になると、その仮説は葉になるから。
+  - 仮説を直接否定する証拠が要る。「別のストーリーが見つからない」だけでは、偽と結論できない。
 - `ar create` が失敗して送り直すときは、出力された `Idempotency-Key` を `--idempotency-key` に渡す。
 
 ## apply request を直す
 
-`logiforge ar view <apply request> --json` で、レビューの本文（`reviews`）と反映の失敗（`merge_failures`）を読む。
+`logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、反映の失敗（`merge_failures`）を読む。
+直したら、同じブランチに push する。push すると新しい先頭のコミットになり、どの理由で直した場合も、レビューからやり直しになる。
 
-- `request_changes`、`stale_target`、`invariant_violation`：同じブランチでファイルを直し、`logiforge commit` して push する。
-  - push すると新しい先頭のコミットになり、レビューからやり直しになる。
-- `conflict`：ブランチを今の `origin/main` に合わせて直し、`logiforge check` してから push する。
+- `request_changes`、`invariant_violation`：同じブランチでファイルを直し、`logiforge commit` して push する。
+- `stale_target`、`conflict`：ブランチを今の `origin/main` に合わせて直す。
+  - `stale_target` は、ブランチを分けたあとに、操作の対象ノードが `main` で変わったことを示す。今のノードを読み直し、差分がまだ正しいかを確かめる。
+  1. `git fetch origin` し、`git rebase origin/main` で衝突を解く。
+     - merge ではなく rebase にする。merge のコミットには、セッションの trailer が付かないから。rebase なら、先頭のコミットの trailer が残る。
+  2. `logiforge check`
+  3. `git push --force-with-lease`（rebase で履歴が変わるため）
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
 - `repository_broken`：repository が壊れているあいだは、直すための apply request しか反映されない。先に下の「壊れた repository を直す」で直し、そのあと reviewer の `approve` し直しを待つ。
 - レビューの鎖が切れた（レビューの API が `not_open` を返す）：`logiforge ar close <apply request> --reason <理由>` し、同じブランチから `ar create` し直す。
@@ -163,9 +177,10 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 - 状態を見る：`logiforge human-request list [--kind pvr|decision] [--state open|answered] [--node <ノード>]`、`logiforge human-request view <人への依頼>`
 - 回答が来たら：`logiforge verdict new` に `--cite answer:<人への依頼>` を付け、回答から値を判断したレポートで出す。
   - 回答をそのまま値にしない。判断の過程も審査の対象である。
+  - 回答だけで値を決められないときは、新しい人への依頼を起票する。1 つの依頼への回答は 1 回だけで、やりとりは重ねられない。
 
 ## してはいけないこと
 
-- `main` に直接 push しない。反映によらない変更は、repository を壊す（[壊れた repository](../../../docs/apply-request/repair.md#壊れた-repository)）。
-- 自分の書いた apply request を、同じセッションでレビューしない。
-- `node.edit` で、主文、タイトル、概要を変えない。
+- `main` に直接 push しない。反映によらない変更は、repository を壊し、直すまでほかの apply request が反映されなくなる（[壊れた repository](../../../docs/apply-request/repair.md#壊れた-repository)）。
+- 自分の書いた apply request を、同じセッションでレビューしない。`same_session` で拒まれるうえ、別の文脈で論理を確かめる意味がなくなる。
+- `node.edit` で、主文、タイトル、概要を変えない。意味が変わると、それまでの審査と検証が成り立たなくなる。
