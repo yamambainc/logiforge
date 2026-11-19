@@ -152,7 +152,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
   - `stale_target` は、ブランチを分けたあとに、操作の対象ノードが `main` で変わったことを示す。今のノードを読み直し、差分がまだ正しいかを確かめる。
   1. `git fetch origin` し、`git rebase origin/main` で衝突を解く。
      - merge ではなく rebase にする。merge のコミットには、セッションの trailer が付かないから。rebase なら、先頭のコミットの trailer が残る。
-     - rebase は、ブランチを書いたセッションで行う。trailer は元のセッションのままなので、別のセッションが衝突を解くと、そのセッションの書いた分が記録されない。別のセッションで行うときは、最後に `logiforge commit` でコミットを 1 つ重ね、先頭のコミットにそのセッションを載せる。
+     - rebase は、ブランチを書いたセッションで行う。trailer は元のセッションのままなので、別のセッションが衝突を解くと、そのセッションの書いた分が記録されない。別のセッションで行うときは、最後に `logiforge commit --allow-empty -m <メッセージ>` でコミットを 1 つ重ね、先頭のコミットにそのセッションを載せる。
   2. `logiforge check`
   3. `git push --force-with-lease`（rebase で履歴が変わるため）
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
