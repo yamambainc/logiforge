@@ -15,7 +15,7 @@ App の権限とトークンの正本は、[GitHub App とトークン](../../..
 
 - App は、[セットアップ](../../webui/setup.md) の画面から、manifest flow で作る。GitHub の画面で手で作らない。
   - 権限、Webhook を使わないこと、callback の URL は、manifest に入っている（[初回のセットアップ](../../../design/settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)）。
-- App を作る owner（organization かアカウント）の管理者の権限が要る。
+- App を作る owner（organization かアカウント）の admin の権限が要る（organization なら organization の owner）。
 - 登録するリポジトリの owner が複数なら、セットアップの画面で「ほかの owner にも install する」を選ぶ。
   - なぜ：選ばない App は、App を作った owner にしか install できないから。
   - 選ぶと、App は public になり、だれでも自分のアカウントに install できる。Logiforge は、登録した owner の分しかトークンを作らない。
@@ -23,7 +23,7 @@ App の権限とトークンの正本は、[GitHub App とトークン](../../..
 
 ## install する
 
-- App を、登録するリポジトリの owner ごとに install する。その owner の管理者の権限が要る。
+- App を、登録するリポジトリの owner ごとに install する。その owner の admin の権限が要る（organization なら organization の owner）。
 - Repository access は、「Only select repositories」にし、Logiforge の repository を選ぶのを勧める。
   - repository を足したら、install の設定でも選び足す。選んでいないリポジトリは、worker が読めず、ログに出す。
   - App が install されていないリポジトリでは、Write があっても利用者にならない。

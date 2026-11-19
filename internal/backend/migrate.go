@@ -130,7 +130,7 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 		return out, err
 	}
 	if !archived {
-		problems = append(problems, "元の git リポジトリが archive でない（管理者が、先に archive にする）")
+		problems = append(problems, "元の git リポジトリが archive でない（repository の admin が、先に archive にする）")
 	}
 	if len(problems) > 0 {
 		return out, fail(CodeValidationFailed, "移せない：%s", strings.Join(problems, "、"))

@@ -46,11 +46,11 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
 
 ## Forgejo の守る設定
 
-Forgejo では、ディレクトリを変える PR の merge を、特定の人に絞る方法が、リポジトリの管理者の `force_merge` しかない。reviewer を管理者にすると、リポジトリの設定まで変えられるので、勧めない。
+Forgejo では、ディレクトリを変える PR の merge を、特定の人に絞る方法が、リポジトリの admin の `force_merge` しかない。reviewer をリポジトリの admin にすると、リポジトリの設定まで変えられるので、勧めない。
 
 - そのため、Forgejo では、ディレクトリの守りは、後から検査だけにする。`protected_file_patterns` は使わない。
-  - なぜ：`protected_file_patterns` を掛けると、管理者でない reviewer も、ディレクトリを変える apply request を merge できなくなり、反映できないから。
-  - Forgejo は、`protected_file_patterns` に掛かる PR を、管理者のほかは `Changed protected files` で断る。管理者は、`force_merge: true` でだけ merge できる。
+  - なぜ：`protected_file_patterns` を掛けると、リポジトリの admin でない reviewer も、ディレクトリを変える apply request を merge できなくなり、反映できないから。
+  - Forgejo は、`protected_file_patterns` に掛かる PR を、リポジトリの admin のほかは `Changed protected files` で断る。リポジトリの admin は、`force_merge: true` でだけ merge できる。
   - Forgejo は、rename の新しいパスだけを見る。そのため、ディレクトリの中のファイルを外へ rename する PR は、`protected_file_patterns` でも止まらない。
 - `main` のブランチの保護は、次のものだけを設定する。
 
@@ -60,11 +60,11 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 | `enable_merge_whitelist` | プロジェクトの決まりのまま | コードの PR は、人が merge する。reviewer も merge できるようにしておく |
 | `block_on_outdated_branch` | `false` | [衝突](../backend/merge.md#衝突) と同じ |
 
-## 管理者
+## リポジトリの admin と organization の owner
 
-- リポジトリと organization の管理者は、信頼の境界の中に入る（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。どちらの GitForge でも同じである。
-  - 管理者は、守る設定を外すか越えて、ディレクトリを変えられる。既存のリポジトリでは、organization の owner がいるので、管理者をなくせない。
-  - 管理者がディレクトリを変えたら、worker が見つけ、repository を壊れた状態にする。
+- リポジトリの admin と organization の owner は、信頼の境界の中に入る（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。どちらの GitForge でも同じである。
+  - この人たちは、守る設定を外すか越えて、ディレクトリを変えられる。既存のリポジトリでは、organization の owner がいるので、この人たちをなくせない。
+  - この人たちがディレクトリを変えたら、worker が見つけ、repository を壊れた状態にする。
 - GitHub では、Logiforge の承認の team に、メンバーを足さない。足された人は、ディレクトリを変える PR を承認して、merge できるようになる。team のメンバーを変えられる人（organization の owner と team の maintainer）も、信頼の境界の中に入る。
 - GitHub の reviewer の team の人は、bypass で、`main` のコードの PR も、承認なしに merge できる。
   - これを受け入れる。なぜ：コードの PR の承認は、プロジェクトの決まりで、bypass をだれに与えるかもプロジェクトが決めるから。受け入れられなければ、ディレクトリの守りを使わず、後から検査だけにする。

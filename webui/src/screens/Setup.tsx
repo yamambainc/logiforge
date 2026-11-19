@@ -1,15 +1,13 @@
 // セットアップの画面（docs/webui/setup.md、design/webui/screens-setup.md）。
 // セットアップが終わるまで、どの URL を開いてもこの画面を出す。段は上から順に進め、前の段が終わるまで次の段は押せない。
-import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Problem } from '../api';
 import { getAuth, signIn, subscribe, type SignedOutReason } from '../auth';
 import {
-  CALLBACK_PATH, checkSetupCode, clearCode, isRateLimited, continueStep, createSetupGitHubManifest, finishSetup, getCode, getSetup, handleManifestCallback,
-  markInstalled, markRepository, progress, setCode, setSetupForgejo, setSetupGitForge, setSetupRepository, stepsFor, submitManifest,
+  CALLBACK_PATH, continueStep, createSetupGitHubManifest, finishSetup, getSetup, handleManifestCallback,
+  markInstalled, markRepository, progress, setSetupForgejo, setSetupGitForge, setSetupRepository, stepsFor, submitManifest,
   type GitForgeKind, type ManifestCallbackResult, type SetupState, type SetupStep,
 } from '../setup';
-
-const WRONG_CODE = 'コードが違います。サーバのログの、いちばん新しいコードを入れてください。';
 
 const signedOutMessages: Partial<Record<SignedOutReason, string>> = {
   denied: 'サインインが許可されませんでした。',
@@ -25,16 +23,14 @@ let finishOnce: Promise<SetupState> | null = null;
 
 export function Setup({ initial }: { initial: SetupState }) {
   const [s, setS] = useState(initial);
-  const [hasCode, setHasCode] = useState(!!getCode());
   const [prog, setProg] = useState(progress);
-  const [codeError, setCodeError] = useState('');
   const [errors, setErrors] = useState<Partial<Record<SetupStep, ReactNode>>>({});
   const [busy, setBusy] = useState<SetupStep | null>(null);
   const auth = useSyncExternalStore(subscribe, getAuth);
 
   const gitforge: GitForgeKind = s.gitforge ?? 'github';
   const steps = stepsFor(gitforge);
-  const current = continueStep(s, hasCode, prog);
+  const current = continueStep(s, prog);
   const at = steps.indexOf(current);
   const enabled = (st: SetupStep) => steps.indexOf(st) <= at;
   const done = (st: SetupStep) => steps.indexOf(st) < at;
@@ -42,14 +38,9 @@ export function Setup({ initial }: { initial: SetupState }) {
 
   /** 段に共通のエラーの扱い。扱ったら true。 */
   function common(e: unknown, st: SetupStep): boolean {
-    // 呼びすぎ（1 分に 10 回）。コードは残し、detail をその段に示す
-    if (e instanceof Problem && isRateLimited(e)) { setError(st, e.detail); return true; }
-    if (e instanceof Problem && e.code === 'unauthenticated' && st !== 'code') {
-      // サーバが起動し直してコードが変わったときなど。コードの段に戻す
-      setHasCode(!!getCode());
-      setCodeError(WRONG_CODE);
-      // 終わりの呼び出しでは、サインインのトークンが断られたこともある。detail も示す
-      if (st === 'signin' && e.detail) setError(st, e.detail);
+    // 終わりの呼び出しで、サインインのトークンが受け入れられなかった。detail を示し、サインインし直せるようにする
+    if (e instanceof Problem && e.code === 'unauthenticated') {
+      setError(st, <>サインインを確かめられませんでした。もう一度サインインしてください。{e.detail && <><br />{e.detail}</>}</>);
       return true;
     }
     if (e instanceof Problem && e.code === 'setup_done') { location.assign('/'); return true; }
@@ -91,7 +82,7 @@ export function Setup({ initial }: { initial: SetupState }) {
 
   // サインインから /setup に戻ったら、最初の利用者にして、セットアップを終える
   useEffect(() => {
-    if (auth.kind !== 'signed-in' || !hasCode) return;
+    if (auth.kind !== 'signed-in') return;
     finishOnce ??= finishSetup();
     void run('signin', async () => {
       try { await finishOnce!; } catch (e) { finishOnce = null; throw e; }
@@ -106,41 +97,26 @@ export function Setup({ initial }: { initial: SetupState }) {
       return undefined;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.kind, hasCode]);
+  }, [auth.kind]);
 
   return (
     <div className="setup">
       <div className="setup-box">
         <h1 className="setup-title">Logiforge のセットアップ</h1>
 
-        <Step n={1} title="コード" on={enabled('code')} done={done('code')} error={errors.code}>
-          <CodeStep error={codeError} busy={busy === 'code'} done={hasCode} onSubmit={(c) => {
-            setCode(c);
-            setCodeError('');
-            void run('code', async () => {
-              try { await checkSetupCode(); } catch (e) { clearCode(); throw e; }
-              setS(await getSetup());
-            }, (p) => {
-              if (p.code !== 'unauthenticated') return p.detail || p.code;
-              setCodeError(WRONG_CODE);
-              return null;
-            }).then(() => setHasCode(!!getCode()));
-          }} />
-        </Step>
-
-        <Step n={2} title="構成" on={enabled('gitforge')} done={done('gitforge')} error={errors.gitforge}>
+        <Step n={1} title="構成" on={enabled('gitforge')} done={done('gitforge')} error={errors.gitforge}>
           <GitForgeStep value={s.gitforge} disabled={!enabled('gitforge') || busy === 'gitforge'} onSubmit={(g) =>
             void run('gitforge', async () => { setS(await setSetupGitForge(g)); })} />
         </Step>
 
         {gitforge === 'github' ? <>
-          <Step n={3} title="GitHub App" on={enabled('github_app')} done={done('github_app')} error={errors.github_app}>
+          <Step n={2} title="GitHub App" on={enabled('github_app')} done={done('github_app')} error={errors.github_app}>
             {s.github_app && <p className="dim small">App「{s.github_app.slug}」を作りました。作り直すときだけ、もう一度押してください。</p>}
             <GitHubAppStep disabled={!enabled('github_app') || busy === 'github_app'} onSubmit={(req) =>
               void run('github_app', async () => { submitManifest(await createSetupGitHubManifest(req)); })} />
           </Step>
 
-          <Step n={4} title="install" on={enabled('install')} done={done('install')}>
+          <Step n={3} title="install" on={enabled('install')} done={done('install')}>
             {s.github_app ? (
               <a className="btn" href={s.github_app.install_url} target="_blank" rel="noreferrer"
                 onClick={() => { markInstalled(); setProg(progress()); }}>GitHub で install する</a>
@@ -148,7 +124,7 @@ export function Setup({ initial }: { initial: SetupState }) {
             <p className="dim small">登録する GitHub リポジトリの owner に install してください。GitHub の画面が、別のタブで開きます。</p>
           </Step>
 
-          <Step n={5} title="repository" on={enabled('repository')} done={done('repository')} error={errors.repository}>
+          <Step n={4} title="repository" on={enabled('repository')} done={done('repository')} error={errors.repository}>
             <RepositoryStep disabled={!enabled('repository') || busy === 'repository'} onSubmit={(repo) =>
               void run('repository', async () => { setS(await setSetupRepository(repo)); markRepository(); setProg(progress()); }, (p) =>
                 p.code === 'validation_failed' ? <>
@@ -158,20 +134,20 @@ export function Setup({ initial }: { initial: SetupState }) {
                 </> : undefined)} />
           </Step>
         </> : (
-          <Step n={3} title="Forgejo" on={enabled('forgejo')} done={done('forgejo')} error={errors.forgejo}>
+          <Step n={2} title="Forgejo" on={enabled('forgejo')} done={done('forgejo')} error={errors.forgejo}>
             <ForgejoStep saved={done('forgejo')} disabled={!enabled('forgejo') || busy === 'forgejo'} onSubmit={(f) =>
               run('forgejo', async () => { setS(await setSetupForgejo(f)); })} />
           </Step>
         )}
 
-        <Step n={gitforge === 'github' ? 6 : 4} title="サインイン" on={enabled('signin')} done={false}
+        <Step n={gitforge === 'github' ? 5 : 3} title="サインイン" on={enabled('signin')} done={false}
           error={errors.signin ?? (auth.kind === 'signed-out' ? signedOutMessages[auth.reason] : null)}>
           <button className="btn primary" disabled={!enabled('signin') || busy === 'signin' || (auth.kind === 'signed-in' && !errors.signin)}
             onClick={() => void signIn('/setup')}>
             {gitforge === 'github' ? 'GitHub' : 'Forgejo'} でサインインして、利用者になる
           </button>
           <p className="dim small">サインインした人が、最初の利用者になります。
-            {gitforge === 'github' ? '5 の repository に書ける人でサインインしてください。' : 'organization の write の team に入っている人でサインインしてください。'}
+            {gitforge === 'github' ? '4 の repository に書ける人でサインインしてください。' : 'organization の write の team に入っている人でサインインしてください。'}
           </p>
         </Step>
       </div>
@@ -186,19 +162,6 @@ function Step({ n, title, on, done, error, children }: { n: number; title: strin
       <fieldset disabled={!on}>{children}</fieldset>
       {error && <p className="form-error" role="alert">{error}</p>}
     </section>
-  );
-}
-
-function CodeStep({ error, busy, done, onSubmit }: { error: string; busy: boolean; done: boolean; onSubmit: (c: string) => void }) {
-  const [code, setCode] = useState('');
-  const submit = (e: FormEvent) => { e.preventDefault(); if (code.trim()) onSubmit(code.trim()); };
-  return (
-    <form className="setup-row" onSubmit={submit}>
-      <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={done ? '入れました' : 'サーバのログのコード'}
-        autoComplete="off" spellCheck={false} aria-label="セットアップのコード" autoFocus={!done} />
-      <button className="btn" disabled={busy || !code.trim()}>次へ</button>
-      {error && <p className="form-error" role="alert">{error}</p>}
-    </form>
   );
 }
 
@@ -227,7 +190,7 @@ function GitHubAppStep({ disabled, onSubmit }: { disabled: boolean; onSubmit: (r
       </div>
       <label>WebUI の URL<input type="url" value={webui} onChange={(e) => setWebui(e.target.value)} required /></label>
       <label className="check"><input type="checkbox" checked={pub} onChange={(e) => setPub(e.target.checked)} /> ほかの owner にも install する</label>
-      <p className="dim small">GitHub の画面で App を作ります。App を作る owner の管理者の権限が要ります。</p>
+      <p className="dim small">GitHub の画面で App を作ります。App を作る owner の admin の権限（organization なら organization の owner）が要ります。</p>
       <div className="form-actions"><button className="btn" disabled={disabled || !owner.trim()}>GitHub で App を作る</button></div>
     </form>
   );

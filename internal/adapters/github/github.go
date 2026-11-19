@@ -154,7 +154,7 @@ func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error)
 	return ref.Object.SHA, nil
 }
 
-// SetupRepository は、管理者が作った空の repository に、用意のコミットを置く（design/adapters/github.md の「repository を用意する」）。
+// SetupRepository は、GitHub で作った空の repository に、用意のコミットを置く（design/adapters/github.md の「repository を用意する」）。
 // 呼ぶのは、repository を作る利用者のトークンである。
 //   - 根のコミット：contents API（PUT /contents）で、根の仮説のファイルを置く。空のリポジトリでは、ほかの方法がないから。
 //   - 2 つ目のコミット：残りのファイル（背景情報）を、Git Data API で 1 つのコミットにまとめて置き、
@@ -171,7 +171,7 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	}
 	if err := r.w(ctx, gitForgeRef, http.MethodGet, rp, nil, nil); err != nil {
 		if statusOf(err) == http.StatusNotFound {
-			return fmt.Errorf("%w: GitHub の repository %s がない（管理者が作り、利用者に Write の権限を与える）", ports.ErrNotFound, gitForgeRef)
+			return fmt.Errorf("%w: GitHub の repository %s がない（GitHub でリポジトリを作り、利用者に Write を与える）", ports.ErrNotFound, gitForgeRef)
 		}
 		return err
 	}
@@ -191,7 +191,7 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 			SHA string `json:"sha"`
 		} `json:"commit"`
 	}
-	// 根のコミットにも、署名を付ける。なぜ：管理者が Write を与えてから用意するまでのあいだに、ほかの人が Logiforge-Init: 付きの
+	// 根のコミットにも、署名を付ける。なぜ：repository の admin が Write を与えてから用意するまでのあいだに、ほかの人が Logiforge-Init: 付きの
 	// 根を push できるから。worker は、署名で用意のコミットと決める（design/backend/verify/init.md の「repository の用意のコミット」）。
 	repoID, err := api(r).RepoID(ctx, gitForgeRef)
 	if err != nil {

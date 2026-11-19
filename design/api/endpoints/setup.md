@@ -1,14 +1,13 @@
 # セットアップの API
 
-サーバを動かす人が、初回のセットアップで、WebUI から呼ぶ（[セットアップ](../../../docs/webui/setup.md)）。
+WebUI が、初回のセットアップの画面から呼ぶ（[セットアップ](../../../docs/webui/setup.md)）。
 流れと決まりは、[初回のセットアップ](../../settings/setup.md) に書く。
 
 ## 呼び出し
 
 | 呼び出し | operationId | すること |
 |---|---|---|
-| `GET /setup` | `getSetup` | セットアップが終わったか、どの段まで進んだか、選んだ構成を返す。コードは求めない |
-| `POST /setup/code` | `checkSetupCode` | セットアップのコードが合うかだけを確かめる。何も置かない |
+| `GET /setup` | `getSetup` | セットアップが終わったか、どの段まで進んだか、選んだ構成を返す |
 | `PUT /setup/gitforge` | `setSetupGitForge` | 構成（`github` か `forgejo`）と、WebUI の URL（サインインの `redirect_uri` の元）を決める |
 | `POST /setup/github/manifest` | `createSetupGitHubManifest` | owner、WebUI の URL、ほかの owner にも install するかを受け取り、manifest と送り先の URL を返す |
 | `POST /setup/github/conversion` | `convertSetupGitHubManifest` | manifest flow の `code` を受け取り、GitHub App を設定の DB に置く。App の slug と install の URL を返す |
@@ -18,11 +17,10 @@
 
 ## 認証
 
-- `GET /setup` のほかは、`Logiforge-Setup-Code` ヘッダーで、セットアップのコードを求める（[セットアップのコード](../../settings/setup.md#セットアップのコード)）。
-- `POST /setup/finish` は、コードに加えて、WebUI のサインインで得たトークンを `Authorization` で求める。
+- `POST /setup/finish` のほかは、認証を求めない（[だれがセットアップできるか](../../settings/setup.md#だれがセットアップできるか)）。
+- `POST /setup/finish` は、WebUI のサインインで得たトークンを `Authorization` で求める。
   - トークンが Logiforge の GitHub App か OAuth2 のアプリケーションのものでなければ、`unauthenticated`（401）を返す。
 - セットアップが終わったあとは、どれも `setup_done`（409）を返す。`GET /setup` だけは、終わったことを返す。
-  - なぜ `GET /setup` はコードを求めないか：WebUI が、セットアップの画面を出すかどうかを、コードを入れる前に決めるから。
 
 ## セットアップが終わるまでのほかの API
 

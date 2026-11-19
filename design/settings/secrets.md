@@ -65,7 +65,7 @@
 手順（GitHub App の例）：
 
 1. 利用者が、GitHub の App の設定の画面で、新しい client secret か秘密鍵を作る。
-   - App の設定の画面を開くには、App を作った owner の管理者の権限が要る。
+   - App の設定の画面を開くには、App を作った owner の admin の権限が要る（organization なら organization の owner）。
 2. 利用者が、それを設定の画面に入れる。
    - バックエンドは、置く前に、新しい値で GitHub を呼べることを確かめる。秘密鍵なら JWT で `GET /app` を、client secret なら `POST /applications/{client_id}/token` を呼ぶ。呼べなければ `validation_failed` を返し、置かない。
 3. 利用者が、GitHub で、古いものを消す。
@@ -94,6 +94,6 @@
 
 - 鍵は、DB と別の場所に置く。ファイルで渡す（`_FILE`。[環境変数と秘密](../deploy/env.md)）。
   - なぜ：DB のバックアップが漏れても、秘密を読めないようにするため。
-- 鍵を置く場所（バックエンドと worker を動かす環境）を持つ、サーバを動かす人を信頼する。
+- 鍵を置く場所（バックエンドと worker を動かす環境）を読める人を信頼する。
   - ほかの主体には、鍵を置く場所を読ませない。
 - worker は、git と GitForge に書く鍵を持たない。記録を作る秘密鍵も持たない。

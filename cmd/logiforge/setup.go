@@ -76,20 +76,13 @@ func stateOf(c *settings.Config, done bool) api.SetupState {
 	return st
 }
 
-func (s *setupService) CheckCode(ctx context.Context, code string) error {
+func (s *setupService) RequireOpen(ctx context.Context) error {
 	done, err := s.db.SetupDone(ctx)
 	if err != nil {
 		return err
 	}
 	if done {
 		return problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
-	}
-	ok, err := s.db.CheckSetupCode(ctx, code)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return problem(backend.CodeUnauthenticated, "セットアップのコードが違う。サーバのログの、いちばん新しいコードを入れる")
 	}
 	return nil
 }
@@ -316,16 +309,13 @@ func storeUsed(st *store.Dir) (bool, error) {
 	return len(es) > 0, nil
 }
 
-// logSetupCode は、セットアップが終わっていなければ、新しいセットアップのコードを作り、ログに出す。
-func logSetupCode(ctx context.Context, db *settings.DB) error {
-	code, err := db.NewSetupCode(ctx)
-	if errors.Is(err, settings.ErrSetupDone) {
-		return nil
-	}
-	if err != nil {
+// logSetupPending は、セットアップが終わっていなければ、そのことをログに出す。
+func logSetupPending(ctx context.Context, db *settings.DB) error {
+	done, err := db.SetupDone(ctx)
+	if err != nil || done {
 		return err
 	}
-	slog.Warn("初回のセットアップが終わっていない。WebUI の /setup を開き、このコードを入れる。コードは、起動するたびに変わる", "setup_code", code)
+	slog.Warn("初回のセットアップが終わっていない。WebUI の /setup を開いて進める")
 	return nil
 }
 

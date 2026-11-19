@@ -41,11 +41,8 @@ sequenceDiagram
 - WebUI は、開いたときに、まず `getSetup` を呼ぶ。認証を求めない（[セットアップの API](../api/endpoints/setup.md)）。
 - セットアップが終わっていなければ、サインインの前に、[セットアップの画面](../../docs/webui/setup.md)（`/setup`）を出す。authorize には行かない。
   - なぜ：セットアップが終わるまで、サインインに使うアプリと client_id が決まっていないから。ほかの API も `setup_required`（503）を返す。
-- セットアップの最後の段で、サーバを動かす人がボタンを押したときだけ、authorize に行く。戻り先の URL は `/setup` である。
+- セットアップの最後の段で、ボタンが押されたときだけ、authorize に行く。戻り先の URL は `/setup` である。
   - 戻ったら、WebUI は、アクセストークンを付けて `finishSetup` を呼ぶ。
-- セットアップのコードは、セットアップのあいだ `sessionStorage` に置き、終わったら消す。
-  - なぜ：App の作成、install、authorize で、ページが GitHub や Forgejo へ移動するたびに、コードを入れ直させないため。
-  - なぜ置いてよいか：コードは、セットアップが終わるか、バックエンドが起動し直すと、使えなくなるから（[セットアップのコード](../settings/setup.md#セットアップのコード)）。
 - 終わっていれば、下の「authorize とサインインの画面」に従う。
 
 ## authorize とサインインの画面
@@ -69,7 +66,7 @@ sequenceDiagram
 - Forgejo を使う構成で、交換の直後、そのアクセストークンでまだ API が 1 度も成功していないあいだに `unauthenticated`（401）が返ったら、authorize に行き直さない。サインインの画面に「Logiforge の organization に入っていません」と示す。
   - なぜ：Forgejo の認可は、organization に入っていない人でも通る。BE は、organization に属さない主体を `unauthenticated` で受け付けない（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。行き直すと、交換と 401 が止まらずに繰り返される。
 - GitHub を使う構成では、organization に入っていない人も、`client` として受け付ける（[GitHub アダプタの認証](../adapters/github.md#認証)）。
-  - それでも、交換の直後に `unauthenticated` が返ったら、authorize に行き直さず、サインインの画面に「サインインできませんでした。サーバを動かす人に知らせてください」と示す。なぜ：行き直しても、同じことが繰り返されるから。
+  - それでも、交換の直後に `unauthenticated` が返ったら、authorize に行き直さず、サインインの画面に「サインインできませんでした。Logiforge のサーバを起動した人に知らせてください」と示す。なぜ：行き直しても、同じことが繰り返されるから。
 - 主体が `user` でないとき（[利用者の決め方](../settings/users.md#利用者の決め方)）は、サインインはできるが、repository の作成と、人への依頼への回答で `forbidden`（403）になる。そのときは、利用者でないことを示す。
 
 ## redirect_uri と GitForge の画面
@@ -77,7 +74,7 @@ sequenceDiagram
 - `redirect_uri` は、`https://<WebUI のホスト>/oauth/callback` である。WebUI のホストは、設定の DB の WebUI の URL である（[設定](../settings/README.md#設定の-db-に置くもの)）。
 - `redirect_uri` は、GitForge に完全に一致する形で登録する。
   - GitHub：App の `callback_urls`。manifest で入れる（[初回のセットアップ](../settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)）。
-  - Forgejo：OAuth2 のアプリケーションの Redirect URI。サーバを動かす人が Forgejo で入れる（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)）。
+  - Forgejo：OAuth2 のアプリケーションの Redirect URI。初回のセットアップで、Forgejo で入れる（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)）。
 - GitForge にまだログインしていなければ、GitForge のログインの画面が出る。初めてのときだけ、GitForge の同意の画面が出る。
 
 ## モバイルで共有されたリンクを開いたとき

@@ -80,16 +80,10 @@ sudo systemctl enable --now logiforge-worker logiforge-serve logiforge-worker-he
 ## セットアップ
 
 1. [Tailscale で公開する](tailscale.md) の手順で、`https://<host>.<tailnet>.ts.net` を開けるようにする。
-2. ログから、セットアップのコードを読む。コードは、起動するたびに変わる。
-
-```sh
-journalctl -u logiforge-serve | grep setup_code | tail -1
-```
-
-3. ブラウザで `https://<host>.<tailnet>.ts.net/setup` を開き、コードを入れる。GitHub を選び、画面の段に沿って、GitHub App を作り、install し、最初の repository を登録し、サインインする（[セットアップ](../../webui/setup.md)）。
+2. ブラウザで `https://<host>.<tailnet>.ts.net/setup` を開く。GitHub を選び、画面の段に沿って、GitHub App を作り、install し、最初の repository を登録し、サインインする（[セットアップ](../../webui/setup.md)）。
    - WebUI は、`https://` の名前で開く。この URL が、GitHub App の callback になる。
    - サインインした人が、最初の利用者になる。その repository に Write がなければならない。
-4. ほかの repository は、[設定の画面](../../webui/settings.md) で足す。サービスを起動し直さずに効く。
+3. ほかの repository は、[設定の画面](../../webui/settings.md) で足す。サービスを起動し直さずに効く。
 
 ## 状態を見る
 

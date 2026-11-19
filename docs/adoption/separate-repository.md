@@ -35,21 +35,20 @@ Forgejo に、次のものを作る。権限の正本は、[Forgejo アダプタ
 
 ## セットアップ
 
-サーバを動かす人が、初めて起動したあとに 1 回だけ行う。画面は [セットアップ](../webui/setup.md)、流れの正本は [初回のセットアップ](../../design/settings/setup.md) である。
+初めて起動したあとに 1 回だけ行う。画面は [セットアップ](../webui/setup.md)、流れの正本は [初回のセットアップ](../../design/settings/setup.md) である。
 
-1. WebUI（例：`https://logiforge.example.com/setup`）を開き、バックエンドのログのコードを入れる。
-2. 構成で Forgejo を選ぶ。
-3. Forgejo の URL と organization を入れる。
-4. OAuth2 のアプリケーションの client_id と client secret、worker のユーザーとトークンを入れる。
-5. 「Forgejo でサインインして、利用者になる」を押す。サインインした人が、最初の利用者になる。コードを書ける team にいなければ、断られる。
+1. WebUI（例：`https://logiforge.example.com/setup`）を開き、構成で Forgejo を選ぶ。
+2. Forgejo の URL と organization を入れる。
+3. OAuth2 のアプリケーションの client_id と client secret、worker のユーザーとトークンを入れる。
+4. 「Forgejo でサインインして、利用者になる」を押す。サインインした人が、最初の利用者になる。コードを書ける team にいなければ、断られる。
 
 - あとから変えるときは、[設定](../webui/settings.md) の画面で変える。秘密の入れ直しも、そこで行う。サーバは起動し直さない。
 
 ## main を守る
 
-- Forgejo では、repository を作るときに、バックエンドが `main` を守る設定を掛ける。管理者が掛ける設定はない（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「repository の用意」）。
+- Forgejo では、repository を作るときに、バックエンドが `main` を守る設定を掛ける。人が掛ける設定はない（[Forgejo アダプタ](../../design/adapters/forgejo.md) の「repository の用意」）。
 - 掛かったことは、Forgejo の API で確かめる。`$FORGEJO_TOKEN` は、repository を作った利用者か organization の owner のトークンにする。
-  - なぜ：ブランチを守る設定を読むには、repository の管理者の権限が要るから。repository を作った利用者は、その管理者になる。
+  - なぜ：ブランチを守る設定を読むには、repository の admin の権限が要るから。repository を作った利用者は、その repository の admin になる。
 - `main` の規則で、`enable_push` が `false` ならよい。merge できる人は絞らない（reviewer が merge する）。
 
 ```sh

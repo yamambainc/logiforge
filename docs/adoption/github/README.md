@@ -10,7 +10,7 @@ apply request と人への依頼は、GitHub の pull request と issue にな�
   - Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。worker の読み取りと、WebUI のサインインに使う（[GitHub App](apps.md)）。
   - personal access token は使わない。
   - 反映（merge）は、`approve` をした reviewer のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい。反映によるものかは、worker が中身で決める（[反映かの判定](../../../design/backend/verify/README.md)）。
-- repository は、管理者が GitHub に作り、利用者が設定の画面で登録する。登録していない名前では作れない（`repository_not_registered`）。
+- repository は、GitHub でリポジトリを作る人（owner の admin か、repository を作れる人）が GitHub に作り、利用者が設定の画面で登録する。登録していない名前では作れない（`repository_not_registered`）。
 - 登録する repository の owner（organization か個人）は、いくつでもよい。
 - repository は、public でも private でもよい。
   - `main` を守る設定は、勧めるが求めない（下の「main を守る」）。GitHub Free の private のリポジトリでは、守る設定が使えない。そのときは、守る設定なしで使う。
@@ -30,7 +30,7 @@ head -c 32 /dev/urandom | base64 > shared_key
 export LOGIFORGE_DB=$PWD/settings.db LOGIFORGE_SHARED_KEY_FILE=$PWD/shared_key
 export LOGIFORGE_STORE_DIR=$PWD/store LOGIFORGE_WORKER_DIR=$PWD/worker
 logiforge worker &
-LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve    # ログにセットアップのコードが出る
+LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 ```
 
 - 鍵は、設定の DB と別の場所に置き、バックアップを取る（[鍵を置く場所](../../../design/settings/secrets.md#鍵を置く場所)）。
@@ -38,26 +38,25 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve    # ログにセッ
 
 ## セットアップ
 
-サーバを動かす人が、初めて起動したあとに 1 回だけ行う。画面は [セットアップ](../../webui/setup.md)、流れの正本は [初回のセットアップ](../../../design/settings/setup.md) である。
+初めて起動したあとに 1 回だけ行う。画面は [セットアップ](../../webui/setup.md)、流れの正本は [初回のセットアップ](../../../design/settings/setup.md) である。
 
-1. 管理者が、空の GitHub のリポジトリを 1 つ作る（例：`acme/myapp-cache-strategy`）。README などは足さない。
-   - サーバを動かす人に、そのリポジトリの Write を与える。なぜ：最後の段で、そのリポジトリに書ける人だけが最初の利用者になれるから。
-2. WebUI（例：`https://logiforge.example.com/setup`）を開き、バックエンドのログのコードを入れる。
-3. 構成で GitHub を選ぶ。
-4. GitHub App を作る owner と WebUI の URL を入れ、「GitHub で App を作る」を押す。GitHub の画面で App を作る（[GitHub App](apps.md)）。
-   - その owner の管理者の権限が要る。
-5. 「GitHub で install する」を押し、App を、登録するリポジトリの owner に install する。
-6. 最初の repository の名前と `owner/name` を入れる。
-7. 「GitHub でサインインして、利用者になる」を押す。サインインした人が、最初の利用者になる。
+1. 空の GitHub のリポジトリを 1 つ作る（例：`acme/myapp-cache-strategy`）。README などは足さない。
+   - 最初の利用者になる人に、そのリポジトリの Write を与える。なぜ：最後の段で、そのリポジトリに書ける人だけが最初の利用者になれるから。
+2. WebUI（例：`https://logiforge.example.com/setup`）を開き、構成で GitHub を選ぶ。
+3. GitHub App を作る owner と WebUI の URL を入れ、「GitHub で App を作る」を押す。GitHub の画面で App を作る（[GitHub App](apps.md)）。
+   - その owner の admin の権限が要る（organization なら organization の owner）。
+4. 「GitHub で install する」を押し、App を、登録するリポジトリの owner に install する。
+5. 最初の repository の名前と `owner/name` を入れる。
+6. 「GitHub でサインインして、利用者になる」を押す。サインインした人が、最初の利用者になる。
 
-- 途中でページを閉じても、入れた設定は残る。コードを入れ直せば、続きから進む。
+- 途中でページを閉じても、入れた設定は残る。開き直せば、続きから進む。
 
 ## repository を作って登録する
 
 2 つ目からの repository は、次のように足す。
 
-1. 管理者が、空の GitHub のリポジトリを作る。README などは足さない。
-2. 管理者が、利用者とエージェントに、リポジトリの Write の権限を与える。
+1. 空の GitHub のリポジトリを作る。README などは足さない。
+2. 利用者とエージェントに、リポジトリの Write の権限を与える。
    - 利用者は、repository の用意のコミットを置き、回答のコメントを書き、WebUI でレビューする。
    - エージェントは、ブランチを push し、pull request とコメントを書く。
    - reviewer は、merge する。

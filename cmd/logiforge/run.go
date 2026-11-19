@@ -122,11 +122,10 @@ func runServe(ctx context.Context) error {
 	if cacheDir == "" {
 		cacheDir = filepath.Join(os.TempDir(), "logiforge-git")
 	}
-	if err := logSetupCode(ctx, db); err != nil {
+	if err := logSetupPending(ctx, db); err != nil {
 		return err
 	}
 	l := &liveServer{db: db, keys: keys, store: &store.Dir{Root: storeDir}}
-	// セットアップの API は、版ごとに作り直さない。送り元ごとの回数の上限を、版が変わっても続けるため。
 	l.setup = api.SetupHandler(&setupService{db: db, keys: keys, store: l.store}, slog.Default())
 	// 作業用の複製は、使い捨てのキャッシュである。設定が変わっても、作り直さずに使い続ける。URL と資格情報は、今の設定のものを使う。
 	// 設定がそろっていないときや、読みに失敗したあとは、reader がない。そのときは、空の URL と誤りにして、git を呼ばせない。

@@ -3,11 +3,7 @@ package settings
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
-	"encoding/base32"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,52 +34,6 @@ func (d *DB) SetupDone(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return n > 0, nil
-}
-
-// NewSetupCode は、セットアップのコードを作り直し、その SHA-256 だけを置く。前のコードは使えなくなる。
-// コードは、128 ビットの乱数を base32 にしたものである（design/settings/setup.md の「セットアップのコード」）。
-// セットアップが終わっていれば、ErrSetupDone を返す。
-func (d *DB) NewSetupCode(ctx context.Context) (string, error) {
-	if done, err := d.SetupDone(ctx); err != nil {
-		return "", err
-	} else if done {
-		return "", ErrSetupDone
-	}
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	code := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)
-	err := d.write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO setup (id, code_hash, created_at) VALUES (1, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET code_hash = excluded.code_hash, created_at = excluded.created_at`, codeHash(code), now())
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-	return code, nil
-}
-
-func codeHash(code string) string {
-	h := sha256.Sum256([]byte(strings.ToUpper(strings.TrimSpace(code))))
-	return hex.EncodeToString(h[:])
-}
-
-// CheckSetupCode は、code が、今のセットアップのコードかを返す。かかる時間は、code によらない。
-func (d *DB) CheckSetupCode(ctx context.Context, code string) (bool, error) {
-	var have string
-	err := d.db.QueryRowContext(ctx, `SELECT code_hash FROM setup WHERE id = 1`).Scan(&have)
-	if errors.Is(err, sql.ErrNoRows) || isNoTable(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	if have == "" {
-		return false, nil
-	}
-	return subtle.ConstantTimeCompare([]byte(have), []byte(codeHash(code))) == 1, nil
 }
 
 // Put は、names の設定だけを置き換える。ほかの設定は変えない。空の値は、その設定を消す。by は、書いた主体。
@@ -169,9 +119,8 @@ func (d *DB) FinishSetup(ctx context.Context, keys Keys, by string) error {
 		if err := saveRecordKeys(ctx, tx, keys.Backend, []RecordKey{{ID: id, Seed: seed}}, at); err != nil {
 			return err
 		}
-		// コードは消す。セットアップが終わったら、使えなくするため。
-		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, code_hash, created_at, done_at) VALUES (1, '', ?, ?)
-			ON CONFLICT(id) DO UPDATE SET code_hash = '', done_at = excluded.done_at`, at, at)
+		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, created_at, done_at) VALUES (1, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET done_at = excluded.done_at`, at, at)
 		return err
 	})
 }

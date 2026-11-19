@@ -37,19 +37,18 @@ async function load() {
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
-describe('ヘッダー', () => {
-  it('getSetup はコードを付けない。ほかはコードを付ける', async () => {
+describe('呼び方', () => {
+  it('セットアップのコードのヘッダーは付けない。構成と WebUI の URL を送る', async () => {
     env('/setup', (url) => url === '/v1/setup' ? new Response(JSON.stringify({ done: false, step: 'gitforge', gitforge: null, github_app: null })) : new Response('{}'));
     const s = await load();
-    s.setCode('ABC');
     await s.getSetup();
     await s.setSetupGitForge('github');
-    expect(headersOf(0).has('Logiforge-Setup-Code')).toBe(false);
-    expect(headersOf(1).get('Logiforge-Setup-Code')).toBe('ABC');
+    expect([...headersOf(0).keys()]).toEqual([]);
+    expect([...headersOf(1).keys()]).toEqual(['content-type']);
     expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)).toEqual({ gitforge: 'github', webui_url: 'https://lf.example' });
   });
 
-  it('finishSetup は、コードとサインインのトークンの両方を付ける', async () => {
+  it('finishSetup は、サインインのトークンを付ける', async () => {
     env('/oauth/callback?code=c&state=s1', (url) => {
       if (url === '/v1/oauth/token') return new Response(JSON.stringify({ access_token: 'at', token_type: 'bearer', expires_in: 3600 }));
       return new Response(JSON.stringify({ done: true, step: null, gitforge: 'github', github_app: null }));
@@ -59,58 +58,39 @@ describe('ヘッダー', () => {
     const auth = await import('./auth');
     await auth.start();
     expect(location.pathname).toBe('/setup');
-    s.setCode('ABC');
     sessionStorage.setItem('lf-setup-repository', '1');
     await s.finishSetup();
-    const h = headersOf(1);
-    expect(h.get('Logiforge-Setup-Code')).toBe('ABC');
-    expect(h.get('Authorization')).toBe('Bearer at');
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/v1/setup/finish');
+    expect(headersOf(1).get('Authorization')).toBe('Bearer at');
     // 終わったら、置いたものを消す
-    expect(s.getCode()).toBeNull();
     expect(sessionStorage.getItem('lf-setup-repository')).toBeNull();
   });
 
-  it('コードがなければ、送らずに unauthenticated', async () => {
+  it('サインインしていなければ、finishSetup は送らずに unauthenticated', async () => {
     env('/setup');
     const s = await load();
-    await expect(s.checkSetupCode()).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(s.finishSetup()).rejects.toMatchObject({ code: 'unauthenticated' });
     expect(fetch).not.toHaveBeenCalled();
   });
 });
 
 describe('エラー', () => {
-  it('unauthenticated なら、コードを消す', async () => {
-    env('/setup', () => problem(401, 'unauthenticated'));
-    const s = await load();
-    s.setCode('OLD');
-    await expect(s.setSetupRepository({ name: 'q', gitforge_ref: 'o/q' })).rejects.toMatchObject({ status: 401, code: 'unauthenticated' });
-    expect(s.getCode()).toBeNull();
-  });
-
-  it('1 分に 10 回を越えて断られたときは、コードを残す', async () => {
-    env('/setup', () => problem(401, 'unauthenticated', '送り元の IP ごとに、1 分に 10 回までです'));
-    const s = await load();
-    s.setCode('ABC');
-    const e = await s.checkSetupCode().catch((x) => x);
-    expect(s.isRateLimited(e)).toBe(true);
-    expect(s.getCode()).toBe('ABC');
-  });
-
-  it('validation_failed では、コードを残し、detail を渡す', async () => {
+  it('validation_failed では、進み具合を残し、detail を渡す', async () => {
     env('/setup', () => problem(400, 'validation_failed', 'worker のトークンで organization を読めない'));
     const s = await load();
-    s.setCode('ABC');
+    s.markInstalled();
     await expect(s.setSetupForgejo({ url: 'u', public_url: 'u', organization: 'o', client_id: 'c', client_secret: 's', worker_user: 'w', worker_token: 't' }))
       .rejects.toMatchObject({ code: 'validation_failed', detail: 'worker のトークンで organization を読めない' });
-    expect(s.getCode()).toBe('ABC');
+    expect(s.progress().installed).toBe(true);
   });
 
   it('setup_done なら、置いたものを消す', async () => {
     env('/setup', () => problem(409, 'setup_done'));
     const s = await load();
-    s.setCode('ABC');
-    await expect(s.checkSetupCode()).rejects.toMatchObject({ code: 'setup_done' });
-    expect(s.getCode()).toBeNull();
+    s.markInstalled();
+    s.markRepository();
+    await expect(s.setSetupGitForge('github')).rejects.toMatchObject({ code: 'setup_done' });
+    expect(s.progress()).toEqual({ installed: false, repository: false });
   });
 });
 
@@ -135,7 +115,6 @@ describe('manifest flow', () => {
   it('state が合わなければ、code を送らない。URL から code は消す', async () => {
     env('/setup/github/callback?code=gh&state=other');
     const s = await load();
-    s.setCode('ABC');
     sessionStorage.setItem('lf-setup-manifest-state', 'mine');
     expect(await s.handleManifestCallback()).toEqual({ ok: false, reason: 'state-mismatch' });
     expect(fetch).not.toHaveBeenCalled();
@@ -146,7 +125,6 @@ describe('manifest flow', () => {
   it('state を置いていなければ、code を送らない', async () => {
     env('/setup/github/callback?code=gh&state=x');
     const s = await load();
-    s.setCode('ABC');
     expect(await s.handleManifestCallback()).toEqual({ ok: false, reason: 'state-mismatch' });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -154,13 +132,11 @@ describe('manifest flow', () => {
   it('state が合えば、URL から code を消してから、code を送る', async () => {
     env('/setup/github/callback?code=gh&state=mine', () => new Response(JSON.stringify({ slug: 'lf', install_url: 'https://github.com/apps/lf/installations/new' })));
     const s = await load();
-    s.setCode('ABC');
     sessionStorage.setItem('lf-setup-manifest-state', 'mine');
     const r = await s.handleManifestCallback();
     expect(r).toEqual({ ok: true, app: { slug: 'lf', install_url: 'https://github.com/apps/lf/installations/new' } });
     expect(events).toEqual(['replace /setup', 'fetch /v1/setup/github/conversion']);
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)).toEqual({ code: 'gh' });
-    expect(headersOf(0).get('Logiforge-Setup-Code')).toBe('ABC');
   });
 });
 
@@ -168,29 +144,24 @@ describe('続きの段', () => {
   const st = (p: Partial<SetupState>): SetupState => ({ done: false, step: 'gitforge', gitforge: null, github_app: null, ...p });
   const app = { slug: 'lf', install_url: 'https://github.com/apps/lf/installations/new' };
 
-  it('コードがなければ、コードの段', async () => {
+  it('はじめは、構成の段', async () => {
     const s = await load();
-    expect(s.continueStep(st({ step: 'signin', gitforge: 'github', github_app: app }), false)).toBe('code');
-  });
-
-  it('構成を選ぶ前は、構成の段', async () => {
-    const s = await load();
-    expect(s.continueStep(st({}), true)).toBe('gitforge');
+    expect(s.continueStep(st({}))).toBe('gitforge');
   });
 
   it('GitHub：App、install、repository、サインインの順', async () => {
     const s = await load();
-    expect(s.continueStep(st({ step: 'github_app', gitforge: 'github' }), true)).toBe('github_app');
+    expect(s.continueStep(st({ step: 'github_app', gitforge: 'github' }))).toBe('github_app');
     const signin = st({ step: 'signin', gitforge: 'github', github_app: app });
-    expect(s.continueStep(signin, true)).toBe('install');
-    expect(s.continueStep(signin, true, { installed: true, repository: false })).toBe('repository');
-    expect(s.continueStep(signin, true, { installed: true, repository: true })).toBe('signin');
+    expect(s.continueStep(signin)).toBe('install');
+    expect(s.continueStep(signin, { installed: true, repository: false })).toBe('repository');
+    expect(s.continueStep(signin, { installed: true, repository: true })).toBe('signin');
   });
 
   it('Forgejo：Forgejo の段、サインインの順', async () => {
     const s = await load();
-    expect(s.continueStep(st({ step: 'forgejo', gitforge: 'forgejo' }), true)).toBe('forgejo');
-    expect(s.continueStep(st({ step: 'signin', gitforge: 'forgejo' }), true)).toBe('signin');
+    expect(s.continueStep(st({ step: 'forgejo', gitforge: 'forgejo' }))).toBe('forgejo');
+    expect(s.continueStep(st({ step: 'signin', gitforge: 'forgejo' }))).toBe('signin');
   });
 });
 
