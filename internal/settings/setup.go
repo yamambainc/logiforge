@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/base32"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -40,56 +40,93 @@ func (d *DB) SetupDone(ctx context.Context) (bool, error) {
 	return n > 0, nil
 }
 
-// NewSetupCode は、セットアップのコードを作り直し、その SHA-256 だけを置く。前のコードは使えなくなる。
-// コードは、128 ビットの乱数を base32 にしたものである（design/settings/setup.md の「セットアップのコード」）。
-// セットアップが終わっていれば、ErrSetupDone を返す。
-func (d *DB) NewSetupCode(ctx context.Context) (string, error) {
-	if done, err := d.SetupDone(ctx); err != nil {
+// ErrSetupStarted は、初回のセットアップを、ほかのブラウザがもう始めたことである。
+var ErrSetupStarted = errors.New("初回のセットアップは、ほかのブラウザで進んでいる")
+
+// StartSetup は、初回のセットアップを始め、values（最初の段の設定）を置き、セットアップのトークンを返す。DB には、トークンの SHA-256 だけを置く。
+// トークンを持つブラウザだけが、セットアップを続けられる（design/settings/setup.md の「だれがセットアップできるか」）。
+// もう始まっていれば ErrSetupStarted、終わっていれば ErrSetupDone を返す。
+func (d *DB) StartSetup(ctx context.Context, keys Keys, values map[string]string) (string, error) {
+	if err := checkValues(values); err != nil {
 		return "", err
-	} else if done {
-		return "", ErrSetupDone
 	}
-	b := make([]byte, 16)
+	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	code := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)
+	tok := base64.RawURLEncoding.EncodeToString(b)
 	err := d.write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO setup (id, code_hash, created_at) VALUES (1, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET code_hash = excluded.code_hash, created_at = excluded.created_at`, codeHash(code), now())
-		return err
+		var hash, done string
+		err := tx.QueryRowContext(ctx, `SELECT token_hash, done_at FROM setup WHERE id = 1`).Scan(&hash, &done)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		case done != "":
+			return ErrSetupDone
+		case hash != "":
+			return ErrSetupStarted
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_keys`).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrSetupDone
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO setup (id, token_hash, created_at) VALUES (1, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at`, tokenHash(tok), now()); err != nil {
+			return err
+		}
+		// 最初の段の設定（構成と WebUI の URL）も、同じトランザクションで置く。なぜ：置くのに失敗したときに、
+		// 始まったのにトークンを受け取れない状態を残さないため。
+		return putTx(ctx, tx, keys, values, "")
 	})
 	if err != nil {
 		return "", err
 	}
-	return code, nil
+	return tok, nil
 }
 
-func codeHash(code string) string {
-	h := sha256.Sum256([]byte(strings.ToUpper(strings.TrimSpace(code))))
+func tokenHash(tok string) string {
+	h := sha256.Sum256([]byte(tok))
 	return hex.EncodeToString(h[:])
 }
 
-// CheckSetupCode は、code が、今のセットアップのコードかを返す。かかる時間は、code によらない。
-func (d *DB) CheckSetupCode(ctx context.Context, code string) (bool, error) {
-	var have string
-	err := d.db.QueryRowContext(ctx, `SELECT code_hash FROM setup WHERE id = 1`).Scan(&have)
+// SetupStarted は、初回のセットアップが、もう始まったかを返す。
+func (d *DB) SetupStarted(ctx context.Context) (bool, error) {
+	var hash string
+	err := d.db.QueryRowContext(ctx, `SELECT token_hash FROM setup WHERE id = 1`).Scan(&hash)
 	if errors.Is(err, sql.ErrNoRows) || isNoTable(err) {
 		return false, nil
 	}
-	if err != nil {
-		return false, err
-	}
-	if have == "" {
+	return hash != "", err
+}
+
+// CheckSetupToken は、tok が、セットアップを始めたブラウザのトークンかを返す。かかる時間は、tok によらない。
+func (d *DB) CheckSetupToken(ctx context.Context, tok string) (bool, error) {
+	var hash string
+	err := d.db.QueryRowContext(ctx, `SELECT token_hash FROM setup WHERE id = 1`).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) || isNoTable(err) {
 		return false, nil
 	}
-	return subtle.ConstantTimeCompare([]byte(have), []byte(codeHash(code))) == 1, nil
+	if err != nil || hash == "" || tok == "" {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare([]byte(hash), []byte(tokenHash(tok))) == 1, nil
 }
 
 // Put は、names の設定だけを置き換える。ほかの設定は変えない。空の値は、その設定を消す。by は、書いた主体。
 // 設定の API とセットアップの API は、Save（全体の置き換え）でなく、これを使う。なぜ：画面は秘密を返さないので、
 // 送られなかった秘密を消さないため。
 func (d *DB) Put(ctx context.Context, keys Keys, values map[string]string, by string) error {
+	if err := checkValues(values); err != nil {
+		return err
+	}
+	return d.write(ctx, func(tx *sql.Tx) error { return putTx(ctx, tx, keys, values, by) })
+}
+
+func checkValues(values map[string]string) error {
 	byName := map[string]field{}
 	for _, f := range fields {
 		byName[f.name] = f
@@ -102,32 +139,38 @@ func (d *DB) Put(ctx context.Context, keys Keys, values map[string]string, by st
 	if g, ok := values["gitforge"]; ok && g != GitForgeForgejo && g != GitForgeGitHub {
 		return fmt.Errorf("settings: gitforge は %s か %s：%q", GitForgeForgejo, GitForgeGitHub, g)
 	}
-	return d.write(ctx, func(tx *sql.Tx) error {
-		at := now()
-		for name, v := range values {
-			f := byName[name]
-			if v == "" {
-				if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE name = ?`, name); err != nil {
-					return err
-				}
-				continue
-			}
-			enc := false
-			if f.class != plain {
-				k := keys.forClass(f.class)
-				if k == nil {
-					return fmt.Errorf("settings: %s を書くには、%s が要る", name, className(f.class))
-				}
-				v, enc = k.seal(name, []byte(v)), true
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO settings (name, value, encrypted, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
-				ON CONFLICT(name) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
-				name, v, enc, at, by); err != nil {
+	return nil
+}
+
+func putTx(ctx context.Context, tx *sql.Tx, keys Keys, values map[string]string, by string) error {
+	byName := map[string]field{}
+	for _, f := range fields {
+		byName[f.name] = f
+	}
+	at := now()
+	for name, v := range values {
+		f := byName[name]
+		if v == "" {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE name = ?`, name); err != nil {
 				return err
 			}
+			continue
 		}
-		return nil
-	})
+		enc := false
+		if f.class != plain {
+			k := keys.forClass(f.class)
+			if k == nil {
+				return fmt.Errorf("settings: %s を書くには、%s が要る", name, className(f.class))
+			}
+			v, enc = k.seal(name, []byte(v)), true
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings (name, value, encrypted, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(name) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+			name, v, enc, at, by); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetFirstRepository は、セットアップの最初の repository を r だけにする。前にセットアップで登録したものは外す。
@@ -169,9 +212,9 @@ func (d *DB) FinishSetup(ctx context.Context, keys Keys, by string) error {
 		if err := saveRecordKeys(ctx, tx, keys.Backend, []RecordKey{{ID: id, Seed: seed}}, at); err != nil {
 			return err
 		}
-		// コードは消す。セットアップが終わったら、使えなくするため。
-		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, code_hash, created_at, done_at) VALUES (1, '', ?, ?)
-			ON CONFLICT(id) DO UPDATE SET code_hash = '', done_at = excluded.done_at`, at, at)
+		// トークンは消す。セットアップが終わったら、使えなくするため。
+		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, created_at, done_at) VALUES (1, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET token_hash = '', done_at = excluded.done_at`, at, at)
 		return err
 	})
 }

@@ -44,20 +44,20 @@ merge の要求に GitHub が次のものを返したら、アダプタは反映
 - 403。主体に merge の権限がない（Write がない、トークンの権限が足りない）。
   - レート制限による 403 は、`merge_forbidden` にしない。待ってやり直す（[GitHub での main の守りと制約](github-main.md)）。
 - 405 で、応答が `Repository rule violations found` のもの。ルールセットが、この主体の merge を断った。
-  - 例：ディレクトリの守りの (B) の bypass にいない人が、ディレクトリを変える PR を merge した（[main の守り（ディレクトリ方式）](../directory/main.md#github-の守る設定)）。リポジトリの管理者でも同じである。
+  - 例：ディレクトリの守りの (B) の bypass にいない人が、ディレクトリを変える PR を merge した（[main の守り（ディレクトリ方式）](../directory/main.md#github-の守る設定)）。リポジトリの admin でも同じである。
   - 応答には、`Waiting on required approvals from <承認の team>` も付く。
   - なぜ待たないか：待っても、断られることは変わらないから。
 - ほかの 405 は、`merge_forbidden` にしない。pull request を読み直し、衝突や先頭のコミットの変化として扱う。
 
 ## repository を用意する
 
-1. 管理者が、空の GitHub リポジトリを作る。
-2. 管理者が、利用者とエージェントに、Write の権限を与える。
+1. GitHub でリポジトリを作る人（owner の admin か、リポジトリを作れる人）が、空の GitHub リポジトリを作る。
+2. リポジトリの admin が、利用者とエージェントに、Write の権限を与える。
 3. 利用者が、repository の名前と `owner/name` の組を、設定の画面で登録する（[repository の登録](README.md#repository-の登録)）。この組が、名前の正本である。
 4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで用意のコミットを置く。
    - 根のコミット：contents API で、根の仮説のファイルを置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。
    - 背景情報があれば、2 つ目のコミット：Git Data API（tree と commit を作り、`main` の ref を進める）で、残りのファイルを 1 つのコミットにまとめる。trailer `Logiforge-Init-Signature:` を付ける。
-5. `main` を守る設定は、使えるなら、管理者が用意のあとに掛ける（[GitHub での main の守りと制約](github-main.md)）。
+5. `main` を守る設定は、使えるなら、リポジトリの admin が用意のあとに掛ける（[GitHub での main の守りと制約](github-main.md)）。
    - なぜ用意のあとか：2 つ目のコミットは、`main` の ref を直接進めるので、「Require a pull request before merging」があると断られるから。
 
 - バックエンドは、GitHub リポジトリを作らない。なぜ：organization にリポジトリを作る権限を、利用者のトークンに求めないため。

@@ -43,11 +43,17 @@ func (s *setupService) State(ctx context.Context) (api.SetupState, error) {
 	if err != nil {
 		return api.SetupState{}, err
 	}
+	started, err := s.db.SetupStarted(ctx)
+	if err != nil {
+		return api.SetupState{}, err
+	}
 	c, err := s.load(ctx)
 	if err != nil {
 		return api.SetupState{}, err
 	}
-	return stateOf(c, done), nil
+	st := stateOf(c, done)
+	st.Started = started || done
+	return st, nil
 }
 
 // stateOf は、設定から、次に進める段を決める。
@@ -76,7 +82,10 @@ func stateOf(c *settings.Config, done bool) api.SetupState {
 	return st
 }
 
-func (s *setupService) CheckCode(ctx context.Context, code string) error {
+// inProgress は、ほかのブラウザでセットアップが進んでいるときの誤りである。
+var inProgress = problem(backend.CodeSetupInProgress, "セットアップは、別のブラウザで進んでいる。最初からやり直すときは、設定の DB を消して起動し直す")
+
+func (s *setupService) Authorize(ctx context.Context, token string) error {
 	done, err := s.db.SetupDone(ctx)
 	if err != nil {
 		return err
@@ -84,26 +93,68 @@ func (s *setupService) CheckCode(ctx context.Context, code string) error {
 	if done {
 		return problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
 	}
-	ok, err := s.db.CheckSetupCode(ctx, code)
+	started, err := s.db.SetupStarted(ctx)
+	if err != nil {
+		return err
+	}
+	if !started {
+		return problem(backend.CodeValidationFailed, "セットアップが始まっていない。先に構成を選ぶ")
+	}
+	ok, err := s.db.CheckSetupToken(ctx, token)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return problem(backend.CodeUnauthenticated, "セットアップのコードが違う。サーバのログの、いちばん新しいコードを入れる")
+		return inProgress
 	}
 	return nil
 }
 
-func (s *setupService) SetGitForge(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+func (s *setupService) Start(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+	v, err := gitforgeValues(kind, webuiURL)
+	if err != nil {
+		return api.SetupState{}, err
+	}
+	tok, err := s.db.StartSetup(ctx, s.keys, v)
+	switch {
+	case errors.Is(err, settings.ErrSetupDone):
+		return api.SetupState{}, problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
+	case errors.Is(err, settings.ErrSetupStarted):
+		return api.SetupState{}, inProgress
+	case err != nil:
+		return api.SetupState{}, err
+	}
+	// 始めたあとは、状態を読めなくても、トークンは返す。なぜ：捨てると、始めたブラウザも続けられなくなるから。
+	// 画面は、そのあと getSetup で読み直す。
+	st, err := s.State(ctx)
+	if err != nil {
+		slog.Error("セットアップを始めたあとに、状態を読めない", "err", err)
+		g := kind
+		st = api.SetupState{Started: true, GitForge: &g}
+	}
+	st.SetupToken = tok
+	return st, nil
+}
+
+// gitforgeValues は、構成の段の入力を確かめ、設定の DB に置く値にする。
+func gitforgeValues(kind, webuiURL string) (map[string]string, error) {
 	if kind != gitforgeGitHub && kind != gitforgeForgejo {
-		return api.SetupState{}, problem(backend.CodeValidationFailed, "構成は github か forgejo")
+		return nil, problem(backend.CodeValidationFailed, "構成は github か forgejo")
 	}
 	v := map[string]string{"gitforge": kind}
 	if webuiURL != "" {
 		if err := checkWebUIURL(webuiURL); err != nil {
-			return api.SetupState{}, err
+			return nil, err
 		}
 		v["webui_url"] = strings.TrimRight(webuiURL, "/")
+	}
+	return v, nil
+}
+
+func (s *setupService) SetGitForge(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+	v, err := gitforgeValues(kind, webuiURL)
+	if err != nil {
+		return api.SetupState{}, err
 	}
 	if err := s.db.Put(ctx, s.keys, v, ""); err != nil {
 		return api.SetupState{}, err
@@ -316,16 +367,13 @@ func storeUsed(st *store.Dir) (bool, error) {
 	return len(es) > 0, nil
 }
 
-// logSetupCode は、セットアップが終わっていなければ、新しいセットアップのコードを作り、ログに出す。
-func logSetupCode(ctx context.Context, db *settings.DB) error {
-	code, err := db.NewSetupCode(ctx)
-	if errors.Is(err, settings.ErrSetupDone) {
-		return nil
-	}
-	if err != nil {
+// logSetupPending は、セットアップが終わっていなければ、そのことをログに出す。
+func logSetupPending(ctx context.Context, db *settings.DB) error {
+	done, err := db.SetupDone(ctx)
+	if err != nil || done {
 		return err
 	}
-	slog.Warn("初回のセットアップが終わっていない。WebUI の /setup を開き、このコードを入れる。コードは、起動するたびに変わる", "setup_code", code)
+	slog.Warn("初回のセットアップが終わっていない。WebUI の /setup を開いて進める")
 	return nil
 }
 

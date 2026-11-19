@@ -13,8 +13,8 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 
 | 構成 | サインインに使うアプリ | 作る人 |
 |---|---|---|
-| GitHub を使う | Logiforge の GitHub App（[GitHub App とトークン](../adapters/github-app.md)） | サーバを動かす人が、初回のセットアップで manifest flow で作る（[初回のセットアップ](../settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)） |
-| Forgejo を使う | Forgejo の OAuth2 のアプリケーション（confidential client） | サーバを動かす人が、Forgejo で作る（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)） |
+| GitHub を使う | Logiforge の GitHub App（[GitHub App とトークン](../adapters/github-app.md)） | 初回のセットアップで、manifest flow で作る（[初回のセットアップ](../settings/setup.md#github-を使う構成app-を-manifest-flow-で作る)） |
+| Forgejo を使う | Forgejo の OAuth2 のアプリケーション（confidential client） | 初回のセットアップで、Forgejo で作る（[初回のセットアップ](../settings/setup.md#forgejo-を使う構成)） |
 
 - authorize とトークンのエンドポイントは、次のとおり。
   - GitHub：GitHub の画面の URL（既定は `https://github.com`）の `/login/oauth/authorize` と `/login/oauth/access_token`

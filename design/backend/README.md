@@ -45,7 +45,7 @@
 - repository ごとの `user` の書き込み（repository の作成、人への依頼への回答、レビュー）は、その repository に Write があるときだけ受け付ける（[repository ごとの権限](../settings/users.md#repository-ごとの権限)）。
 - 設定の API は、`user` だけが使える（[利用者の決め方](../settings/users.md#利用者の決め方)）。
   - `user` でなければ、`forbidden` を返す。
-- セットアップの API は、主体ではなく、セットアップのコードで守る（[初回のセットアップ](../settings/setup.md#セットアップのコード)）。
+- セットアップの API は、セットアップが終わるまで、だれでも使える（[初回のセットアップ](../settings/setup.md#だれがセットアップできるか)）。
 
 ## repository の用意
 

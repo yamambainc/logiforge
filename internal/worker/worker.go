@@ -652,7 +652,7 @@ type RecordLog interface {
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
 // 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、trailer Logiforge-Init-Signature: の署名と、
 // 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。
-// なぜ根も署名で決めるか：GitHub では、管理者が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
+// なぜ根も署名で決めるか：GitHub では、repository の admin が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
 //
 // version は、このコミットの前の版の数（最初の版なら 0）、prevVersion は 1 つ前の版の SHA である。git リポジトリ全体の repository では、
 // どのコミットも版なので、git の first-parent と同じである。ディレクトリの repository では、1 つ前の版は、git の親とは限らない。

@@ -27,6 +27,8 @@ type ManifestInput struct {
 
 // Manifest は、GitHub App の manifest と、manifest をフォームで送る先の URL を返す。
 // 権限は design/adapters/github-app.md の「GitHub App」の表のとおりで、Webhook は使わない。
+// Webhook の設定（hook_attributes）は入れない。なぜ：active が false でも GitHub は hook の URL を確かめ、
+// インターネットから届かない URL（127.0.0.1 など）を断るから（design/settings/setup.md）。
 func Manifest(in ManifestInput) (manifest map[string]any, postURL string, err error) {
 	if in.Owner == "" || strings.ContainsAny(in.Owner, "/?#") {
 		return nil, "", fmt.Errorf("github: App を作る owner の名前が正しくない：%q", in.Owner)
@@ -47,13 +49,12 @@ func Manifest(in ManifestInput) (manifest map[string]any, postURL string, err er
 		name = name[:34]
 	}
 	manifest = map[string]any{
-		"name":            name,
-		"url":             webui,
-		"redirect_url":    webui + "/setup/github/callback",
-		"callback_urls":   []string{webui + "/oauth/callback"},
-		"public":          in.Public,
-		"hook_attributes": map[string]any{"url": webui + "/", "active": false},
-		"default_events":  []string{},
+		"name":           name,
+		"url":            webui,
+		"redirect_url":   webui + "/setup/github/callback",
+		"callback_urls":  []string{webui + "/oauth/callback"},
+		"public":         in.Public,
+		"default_events": []string{},
 		"default_permissions": map[string]string{
 			"contents":      "write",
 			"issues":        "write",

@@ -39,7 +39,7 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 - App の秘密鍵を読むのは、バックエンドだけである。worker には渡さない（[秘密ごとの鍵](../settings/secrets.md#秘密ごとの鍵)）。
   - なぜ 1 つの App にまとめるか：作り、install し、秘密を守るものを、1 つにするため。
 - 利用者が、App を、登録する GitHub リポジトリの owner（organization か個人）に install し、リポジトリを選ぶ。owner が複数なら、それぞれに install する。
-  - install には、その owner の管理者の権限が要る。
+  - install には、その owner の admin の権限が要る（organization なら organization の owner）。
 - App が owner に install されていないか、権限が足りなければ、GitHub が断る。worker は、その repository の見回りを誤りにする（ログに出す）。
 
 ## installation token

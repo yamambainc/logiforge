@@ -42,7 +42,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 ## repository の用意
 
-作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の管理者になる。
+作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の admin になる。
 
 1. `POST /orgs/{org}/repos` で、repository を作る。`auto_init` は付けない。
 2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
@@ -66,7 +66,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 アダプタと worker が前提にする、Forgejo の挙動である。
 
 - 空の repository にも、`POST /repos/{owner}/{repo}/contents` で最初のコミットを置ける。`auto_init` は要らない。
-- `enable_push: false` の `main` には、repository の管理者もサイトの管理者も push できない。pre-receive で拒まれる。
+- `enable_push: false` の `main` には、repository の admin も Forgejo の site admin も push できない。pre-receive で拒まれる。
 - ブランチを消すと、そのブランチの pull request は閉じる。
 - `refs/pull/<index>/head` は、git の fetch で読める。
 - merge の API は、Forgejo が merge できるかを確かめ終わるまで、405 を返す。

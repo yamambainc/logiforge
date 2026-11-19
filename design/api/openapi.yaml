@@ -33,7 +33,7 @@ tags:
   - name: oauth
     description: WebUI のサインイン（GitHub App か Forgejo の OAuth2 の中継）
   - name: setup
-    description: 初回のセットアップ（セットアップのコードで守る）
+    description: 初回のセットアップ（始めたブラウザのトークンだけが続けられる。最後の段でサインインした人が、最初の利用者になる）
   - name: settings
     description: 設定（user だけ）
 
@@ -97,7 +97,7 @@ paths:
       operationId: getSetup
       summary: セットアップが終わったか、どの段まで進んだか、選んだ構成
       description: |
-        認証を求めない。セットアップのコードも求めない。WebUI が、セットアップの画面を出すかを決めるのに使う。
+        認証を求めない。WebUI が、セットアップの画面を出すかを決めるのに使う。
         セットアップが終わったあとも、done が true の応答を返す。決まりは ../../design/api/endpoints/setup.md に従う。
       security: []
       responses:
@@ -107,25 +107,18 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SetupState' }
         '4XX': { $ref: '#/components/responses/Problem' }
-  /setup/code:
-    post:
-      tags: [setup]
-      operationId: checkSetupCode
-      summary: セットアップのコードが合うかだけを確かめる
-      description: 合えば 204。合わなければ unauthenticated。セットアップが終わっていれば setup_done。何も置かない。
-      security:
-        - setupCode: []
-      responses:
-        '204': { description: コードが合う }
-        '4XX': { $ref: '#/components/responses/Problem' }
   /setup/gitforge:
     put:
       tags: [setup]
       operationId: setSetupGitForge
       summary: 構成（github か forgejo）を決める
-      description: セットアップのコードが合わなければ unauthenticated。セットアップが終わっていれば setup_done。
+      description: |
+        セットアップを始める呼び出しである。Logiforge-Setup-Token を付けずに呼び、まだ始まっていなければ、始めて、応答の setup_token にトークンを入れる。
+        ブラウザは、トークンを localStorage に置き、以後のセットアップの要求に付ける（../../design/settings/setup.md の「だれがセットアップできるか」）。
+        もう始まっていて、トークンがないか違えば setup_in_progress。セットアップが終わっていれば setup_done。
       security:
-        - setupCode: []
+        - {}
+        - setupToken: []
       requestBody:
         required: true
         content:
@@ -152,7 +145,7 @@ paths:
         manifest の中身は ../../design/settings/setup.md の「GitHub を使う構成：App を manifest flow で作る」に従う。
         受け取った WebUI の URL は、設定の DB に置く。構成が github でなければ validation_failed。
       security:
-        - setupCode: []
+        - setupToken: []
       requestBody:
         required: true
         content:
@@ -186,7 +179,7 @@ paths:
         BE が POST /app-manifests/{code}/conversions を呼び、App の ID、slug、client_id、client secret、秘密鍵を置く（../../design/settings/setup.md）。
         code が切れているか正しくなければ validation_failed。そのときは createSetupGitHubManifest からやり直す。
       security:
-        - setupCode: []
+        - setupToken: []
       requestBody:
         required: true
         content:
@@ -210,9 +203,9 @@ paths:
       summary: GitHub の構成で、最初の repository を登録する
       description: |
         登録の決まりは registerRepository と同じである。GitHub App の installation token で、その GitHub リポジトリを読めなければ validation_failed。
-        Forgejo の構成では validation_failed。セットアップのコードが合わなければ unauthenticated。決まりは ../../design/settings/setup.md の「流れ」に従う。
+        Forgejo の構成では validation_failed。セットアップが終わっていれば setup_done。決まりは ../../design/settings/setup.md の「流れ」に従う。
       security:
-        - setupCode: []
+        - setupToken: []
       requestBody:
         required: true
         content:
@@ -234,7 +227,7 @@ paths:
         置く前に、worker のトークンで、そのユーザーと organization を読めることを確かめる。読めなければ validation_failed（../../design/settings/setup.md の「Forgejo を使う構成」）。
         構成が forgejo でなければ validation_failed。
       security:
-        - setupCode: []
+        - setupToken: []
       requestBody:
         required: true
         content:
@@ -253,12 +246,12 @@ paths:
       operationId: finishSetup
       summary: サインインした主体を、最初の利用者（user）にし、セットアップを終える
       description: |
-        セットアップのコードと、WebUI のサインインで得たトークンの両方を求める。
+        WebUI のサインインで得たトークンを求める。
         トークンが、Logiforge の GitHub App か Forgejo の OAuth2 のアプリケーションのものでなければ unauthenticated。
         記録の署名の鍵がなければ、1 つ作る（../../design/settings/setup.md の「流れ」）。
       security:
-        - setupCode: []
-          bearerAuth: []
+        - bearerAuth: []
+          setupToken: []
       responses:
         '200':
           description: セットアップの状態（done は true）
@@ -1089,11 +1082,11 @@ components:
       type: http
       scheme: bearer
       description: 主体（user または client）を示すトークン
-    setupCode:
+    setupToken:
       type: apiKey
       in: header
-      name: Logiforge-Setup-Code
-      description: セットアップのコード。バックエンドが起動したときにログに出す（../../design/settings/setup.md の「セットアップのコード」）
+      name: Logiforge-Setup-Token
+      description: セットアップを始めたブラウザのトークン。setSetupGitForge の応答の setup_token で受け取る。違えば setup_in_progress（../../design/settings/setup.md の「だれがセットアップできるか」）
 
   parameters:
     RepositoryName:
@@ -1194,9 +1187,11 @@ components:
       enum: [github, forgejo]
     SetupState:
       type: object
-      required: [done, step, gitforge]
+      required: [done, started, step, gitforge]
       properties:
         done: { type: boolean, description: セットアップが終わったか }
+        started: { type: boolean, description: だれかがセットアップを始めたか。トークンを持たないブラウザは、続けられない }
+        setup_token: { type: string, description: セットアップを始めた setSetupGitForge の応答にだけ入る、セットアップのトークン }
         step:
           type: [string, 'null']
           enum: [gitforge, github_app, forgejo, signin, null]
@@ -1393,7 +1388,7 @@ components:
             | code | status | 意味 |
             |---|---|---|
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
-            | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない。または、セットアップのコードがない、合わない |
+            | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない |
             | forbidden | 403 | 主体の種類が、その操作を使えない。または、user でない主体が設定の API を使おうとした |
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
@@ -1409,8 +1404,9 @@ components:
             | repository_not_registered | 422 | その名前の repository が、設定の DB に登録されていない。利用者が設定の画面で登録する repository（GitHub リポジトリとディレクトリ）だけで起きる |
             | setup_required | 503 | セットアップが終わっていない。セットアップの API と /healthz と、構成と client_id を置いたあとのサインインの中継のほかは、これを返す |
             | setup_done | 409 | セットアップが終わったあとに、セットアップの API（getSetup を除く）を呼んだ |
+            | setup_in_progress | 409 | セットアップが、ほかのブラウザで進んでいる（セットアップのトークンがないか違う） |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, internal]
+          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, setup_in_progress, internal]
 
     Tree:
       type: object

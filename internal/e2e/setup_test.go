@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +10,7 @@ import (
 )
 
 // 空の設定の DB で起動し、Forgejo を使う構成の初回のセットアップを、セットアップの API で最後まで通す
-// （design/settings/setup.md）。コードはログから読み、最後に、WebUI のサインインのトークンで alice が利用者になる。
+// （design/settings/setup.md）。だれでも最初の段から進められ、最後に、WebUI のサインインのトークンで alice が利用者になる。
 func TestE2ESetupForgejo(t *testing.T) {
 	var want settings.Config
 	w := setupWith(t, func(_ *world, _ string, c *settings.Config) {
@@ -19,18 +18,14 @@ func TestE2ESetupForgejo(t *testing.T) {
 		want = *c
 		*c = settings.Config{}
 	})
-	var code string
-	re := regexp.MustCompile(`setup_code=(\S+)`)
-	w.eventually("ログにセットアップのコードが出る", 20*time.Second, func() bool {
-		if m := re.FindStringSubmatch(w.logs["serve"].String()); m != nil {
-			code = m[1]
-			return true
-		}
-		return false
-	})
+	// token は、セットアップを始めたこのテスト（ブラウザのかわり）のトークンである。
+	var token string
 	setup := func(method, path string, in any, extra ...string) (int, map[string]any) {
 		t.Helper()
-		st, b := w.call("", method, path, in, append([]string{"Logiforge-Setup-Code", code}, extra...)...)
+		if token != "" {
+			extra = append([]string{"Logiforge-Setup-Token", token}, extra...)
+		}
+		st, b := w.call("", method, path, in, extra...)
 		out := map[string]any{}
 		_ = json.Unmarshal(b, &out)
 		return st, out
@@ -38,14 +33,14 @@ func TestE2ESetupForgejo(t *testing.T) {
 	if st, b := w.call("", "GET", "/repositories", nil); st != 503 || !strings.Contains(string(b), "setup_required") {
 		t.Fatalf("セットアップの前：%d %s", st, b)
 	}
-	if st, _ := w.call("", "POST", "/setup/code", nil, "Logiforge-Setup-Code", "WRONG"); st != 401 {
-		t.Fatalf("違うコード：%d", st)
-	}
-	if st, out := setup("POST", "/setup/code", nil); st != 204 {
-		t.Fatalf("コード：%d %v", st, out)
-	}
-	if st, out := setup("PUT", "/setup/gitforge", map[string]string{"gitforge": "forgejo", "webui_url": want.WebUIURL}); st != 200 || out["step"] != "forgejo" {
+	st, out := setup("PUT", "/setup/gitforge", map[string]string{"gitforge": "forgejo", "webui_url": want.WebUIURL})
+	token, _ = out["setup_token"].(string)
+	if st != 200 || out["step"] != "forgejo" || token == "" {
 		t.Fatalf("構成：%d %v", st, out)
+	}
+	// ほかのブラウザは、Forgejo のつなぎ方を差し替えられない。
+	if st, b := w.call("", "PUT", "/setup/forgejo", map[string]string{"url": "http://evil.example"}, "Logiforge-Setup-Token", "other"); st != 409 || !strings.Contains(string(b), "setup_in_progress") {
+		t.Fatalf("ほかのブラウザの Forgejo：%d %s", st, b)
 	}
 	f := want.Forgejo
 	in := map[string]string{"url": f.URL, "organization": f.Org, "client_id": f.OAuthClientID, "client_secret": f.OAuthClientSecret,
@@ -71,8 +66,8 @@ func TestE2ESetupForgejo(t *testing.T) {
 	if st, out := setup("POST", "/setup/finish", nil, "Authorization", "Bearer "+w.tokens["alice"]); st != 200 || out["done"] != true {
 		t.Fatalf("finish：%d %v", st, out)
 	}
-	if st, _ := setup("POST", "/setup/code", nil); st != 409 {
-		t.Fatalf("終わったあとのコード：%d", st)
+	if st, _ := setup("PUT", "/setup/gitforge", map[string]string{"gitforge": "forgejo"}); st != 409 {
+		t.Fatalf("終わったあとのセットアップ：%d", st)
 	}
 	// 終わったら、起動し直さずに、ふつうの API が動く。alice は repository を用意できる。
 	w.eventually("repository を用意できる", 30*time.Second, func() bool {

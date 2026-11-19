@@ -6,7 +6,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 ## main への書き込みを守る
 
 - 利用者とエージェントは、GitHub リポジトリに、apply request のもとになるブランチを push する（[CLI](../cli/README.md)）。
-- `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、管理者が用意する。
+- `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、リポジトリの admin が用意する。
   - ルールセットで、`main` に「Require a pull request before merging」「Block force pushes」「Restrict deletions」を付ける。bypass には、だれも入れない。
   - merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify/README.md)）。
 - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。

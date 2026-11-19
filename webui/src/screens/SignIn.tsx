@@ -8,8 +8,8 @@ const messages = (g: string): Record<SignedOutReason, string> => ({
   unavailable: `${g} につながりませんでした。しばらくしてから、もう一度サインインしてください。`,
   'not-member': g === 'GitHub'
     ? 'このアカウントでは、Logiforge を使えません。GitHub で、Logiforge の GitHub App と、登録したリポジトリへの権限を確かめてください。'
-    : 'Logiforge の organization に入っていません。管理者に、organization に入れてもらってください。',
-  'not-configured': 'このサーバでは、WebUI のサインインがまだ用意されていません。セットアップを終えるか、サーバを動かす人に知らせてください。',
+    : 'Logiforge の organization に入っていません。organization の owner に、organization の team に入れてもらってください。',
+  'not-configured': 'このサーバでは、WebUI のサインインがまだ用意されていません。セットアップを終えてください。',
 });
 
 // サインインの画面（design/webui/auth.md）。自動で authorize に行かない場面でだけ出す。

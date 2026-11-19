@@ -98,7 +98,7 @@ func fakeSetupGitHub(t *testing.T, pemKey string, installed *bool) *httptest.Ser
 	}))
 }
 
-// GitHub を使う構成のセットアップを、API で最後まで通す。コード、構成、manifest、conversion、repository、サインインした主体で終える。
+// GitHub を使う構成のセットアップを、API で最後まで通す。構成、manifest、conversion、repository、サインインした主体で終える。
 func TestSetupGitHub(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -122,10 +122,6 @@ func TestSetupGitHub(t *testing.T) {
 	if err := db.Put(t.Context(), keys, map[string]string{"github.api_url": gh.URL}, ""); err != nil {
 		t.Fatal(err)
 	}
-	code, err := db.NewSetupCode(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
 	st := &store.Dir{Root: filepath.Join(dir, "store")}
 	l := &liveServer{db: db, keys: keys, store: st}
 	l.setup = api.SetupHandler(&setupService{db: db, keys: keys, store: st}, nil)
@@ -134,7 +130,9 @@ func TestSetupGitHub(t *testing.T) {
 		code int
 		body map[string]any
 	}
-	call := func(method, path, setupCode, auth string, body any) resp {
+	// setupToken は、セットアップを始めたブラウザのトークンである。空でなければ、要求に付ける。
+	var setupToken string
+	call := func(method, path, auth string, body any) resp {
 		t.Helper()
 		var rd *strings.Reader
 		if body != nil {
@@ -145,8 +143,8 @@ func TestSetupGitHub(t *testing.T) {
 		}
 		req := httptest.NewRequest(method, path, rd)
 		req.RemoteAddr = "192.0.2.1:1234"
-		if setupCode != "" {
-			req.Header.Set("Logiforge-Setup-Code", setupCode)
+		if setupToken != "" {
+			req.Header.Set("Logiforge-Setup-Token", setupToken)
 		}
 		if auth != "" {
 			req.Header.Set("Authorization", "Bearer "+auth)
@@ -164,33 +162,57 @@ func TestSetupGitHub(t *testing.T) {
 		}
 	}
 
-	r := call("GET", "/v1/setup", "", "", nil)
+	r := call("GET", "/v1/setup", "", nil)
 	want(r, 200, "getSetup")
 	if r.body["done"] != false || r.body["step"] != "gitforge" {
 		t.Fatalf("最初の状態：%v", r.body)
 	}
-	want(call("POST", "/v1/setup/code", "WRONG", "", nil), 401, "違うコード")
-	want(call("POST", "/v1/setup/code", code, "", nil), 204, "コード")
 	// ほかの API は、setup_required。
-	want(call("GET", "/v1/repositories", "", "", nil), 503, "セットアップの前の API")
-	want(call("GET", "/v1/settings", "", "", nil), 503, "セットアップの前の設定の API")
+	want(call("GET", "/v1/repositories", "", nil), 503, "セットアップの前の API")
+	want(call("GET", "/v1/settings", "", nil), 503, "セットアップの前の設定の API")
 
-	r = call("PUT", "/v1/setup/gitforge", code, "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
+	// 始める前は、構成を決める呼び出しのほかは受け付けない。
+	want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"}), 422, "始める前の conversion")
+	// 最初の呼び出しの入力が誤っていれば、始めない。直して、トークンなしで送り直せば、始められる。
+	want(call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github", "webui_url": "ftp://lf.example"}), 422, "誤った WebUI の URL")
+	if r := call("GET", "/v1/setup", "", nil); r.body["started"] != false {
+		t.Fatalf("誤った入力で始まった：%v", r.body)
+	}
+	r = call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
+	setupToken, _ = r.body["setup_token"].(string)
+	if setupToken == "" || r.body["started"] != true {
+		t.Fatalf("始めた応答にトークンがない：%v", r.body)
+	}
+	// ほかのブラウザ（トークンなし・違うトークン）は、始められず、続けられない。
+	mine := setupToken
+	for _, other := range []string{"", "someone-else"} {
+		setupToken = other
+		want(call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "forgejo"}), 409, "ほかのブラウザの構成（"+other+"）")
+		want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"}), 409, "ほかのブラウザの conversion（"+other+"）")
+	}
+	setupToken = mine
+	if r := call("GET", "/v1/setup", "", nil); r.body["started"] != true || r.body["setup_token"] != nil {
+		t.Fatalf("getSetup：%v", r.body)
+	}
 	want(r, 200, "構成")
 	if r.body["step"] != "github_app" {
 		t.Fatalf("構成のあと：%v", r.body)
 	}
-	r = call("POST", "/v1/setup/github/manifest", code, "", map[string]any{"owner": "acme", "owner_kind": "organization", "webui_url": "https://lf.example", "public": false})
+	r = call("POST", "/v1/setup/github/manifest", "", map[string]any{"owner": "acme", "owner_kind": "organization", "webui_url": "https://lf.example", "public": false})
 	want(r, 200, "manifest")
 	if r.body["post_url"] != "https://github.com/organizations/acme/settings/apps/new" {
 		t.Fatalf("送り先：%v", r.body["post_url"])
 	}
 	m := r.body["manifest"].(map[string]any)
-	if m["redirect_url"] != "https://lf.example/setup/github/callback" || m["hook_attributes"].(map[string]any)["active"] != false {
+	if m["redirect_url"] != "https://lf.example/setup/github/callback" {
 		t.Fatalf("manifest：%v", m)
 	}
-	want(call("POST", "/v1/setup/github/conversion", code, "", map[string]string{"code": "expired"}), 422, "切れた code")
-	r = call("POST", "/v1/setup/github/conversion", code, "", map[string]string{"code": "good-code"})
+	// Webhook の設定は入れない。GitHub は、使わない hook の URL も確かめ、127.0.0.1 などを断るから。
+	if _, ok := m["hook_attributes"]; ok {
+		t.Fatalf("manifest に hook_attributes がある：%v", m)
+	}
+	want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "expired"}), 422, "切れた code")
+	r = call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"})
 	want(r, 200, "conversion")
 	if r.body["install_url"] != "https://github.com/apps/logiforge-test/installations/new" {
 		t.Fatalf("install の URL：%v", r.body)
@@ -200,71 +222,41 @@ func TestSetupGitHub(t *testing.T) {
 		t.Fatalf("worker から見た App：%+v", c.GitHub)
 	}
 	// install の前は、repository を読めない。
-	r = call("PUT", "/v1/setup/repository", code, "", map[string]string{"name": "q", "gitforge_ref": "acme/q"})
+	r = call("PUT", "/v1/setup/repository", "", map[string]string{"name": "q", "gitforge_ref": "acme/q"})
 	want(r, 422, "install の前の repository")
 	if !strings.Contains(r.body["detail"].(string), "/installations/new") {
 		t.Fatalf("install の URL を示さない：%v", r.body)
 	}
 	installed = true
-	r = call("PUT", "/v1/setup/repository", code, "", map[string]string{"name": "q", "gitforge_ref": "acme/q"})
+	r = call("PUT", "/v1/setup/repository", "", map[string]string{"name": "q", "gitforge_ref": "acme/q"})
 	want(r, 200, "repository")
 	if r.body["step"] != "signin" {
 		t.Fatalf("repository のあと：%v", r.body)
 	}
 	// サインインの中継は、セットアップの途中でも動く。
-	r = call("GET", "/v1/oauth/config", "", "", nil)
+	r = call("GET", "/v1/oauth/config", "", nil)
 	want(r, 200, "サインインの設定")
 	if r.body["redirect_uri"] != "https://lf.example/oauth/callback" {
 		t.Fatalf("redirect_uri：%v", r.body)
 	}
-	want(call("POST", "/v1/setup/finish", code, "", nil), 401, "トークンなしの finish")
-	want(call("POST", "/v1/setup/finish", code, "gho_cli", nil), 401, "App のものでないトークン")
-	want(call("POST", "/v1/setup/finish", code, "ghu_bob", nil), 403, "Write のない人")
-	r = call("POST", "/v1/setup/finish", code, "ghu_alice", nil)
+	want(call("POST", "/v1/setup/finish", "", nil), 401, "トークンなしの finish")
+	want(call("POST", "/v1/setup/finish", "gho_cli", nil), 401, "App のものでないトークン")
+	want(call("POST", "/v1/setup/finish", "ghu_bob", nil), 403, "Write のない人")
+	r = call("POST", "/v1/setup/finish", "ghu_alice", nil)
 	want(r, 200, "finish")
 	if r.body["done"] != true {
 		t.Fatalf("終わらない：%v", r.body)
 	}
 	// 終わったあとは、コードは使えず、getSetup は done を返す。
-	want(call("POST", "/v1/setup/code", code, "", nil), 409, "終わったあとのコード")
-	if r := call("GET", "/v1/setup", "", "", nil); r.body["done"] != true {
+	want(call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github"}), 409, "終わったあとのセットアップ")
+	if r := call("GET", "/v1/setup", "", nil); r.body["done"] != true {
 		t.Fatalf("終わったあとの getSetup：%v", r.body)
 	}
 	// 終わったら、設定の API が使える（セットアップの前は setup_required）。
-	want(call("GET", "/v1/settings", "", "ghu_alice", nil), 200, "セットアップのあとの getSettings")
+	want(call("GET", "/v1/settings", "ghu_alice", nil), 200, "セットアップのあとの getSettings")
 	c, err := db.Load(t.Context(), keys)
 	if err != nil || len(c.RecordKeys) != 1 || c.Ready() != nil {
 		t.Fatalf("記録の鍵：%v %v", c, err)
-	}
-	if _, err := db.NewSetupCode(t.Context()); err != settings.ErrSetupDone {
-		t.Fatalf("終わったあとにコードを作った：%v", err)
-	}
-}
-
-// セットアップのコードの API は、送り元ごとに 1 分に 10 回まで。
-func TestSetupRateLimit(t *testing.T) {
-	db, err := settings.Open(filepath.Join(t.TempDir(), "s.db"), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	h := api.SetupHandler(&setupService{db: db}, nil)
-	code, _ := db.NewSetupCode(t.Context())
-	send := func(c string) int {
-		req := httptest.NewRequest("POST", "/v1/setup/code", nil)
-		req.RemoteAddr = "192.0.2.9:1"
-		req.Header.Set("Logiforge-Setup-Code", c)
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		return rec.Code
-	}
-	for i := range 10 {
-		if s := send("WRONG"); s != 401 {
-			t.Fatalf("%d 回目：%d", i, s)
-		}
-	}
-	if s := send(code); s != 401 {
-		t.Fatalf("上限を越えても通った：%d", s)
 	}
 }
 

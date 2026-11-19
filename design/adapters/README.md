@@ -31,7 +31,7 @@ GitForge ごとに違う性質は、次のとおりである。
 | 性質 | GitHub | Forgejo |
 |---|---|---|
 | API でコメントにファイルを添付できるか（[人への依頼の回答](../files/artifacts.md)） | できない。添付はリンクだけ | できる |
-| repository をバックエンドが作れるか（[repository の登録](#repository-の登録)） | 作らない。管理者が GitHub で作り、利用者が登録する | 作る |
+| repository をバックエンドが作れるか（[repository の登録](#repository-の登録)） | 作らない。GitHub で作り、利用者が登録する | 作る |
 | pull request の最後の先頭のコミットの ref | `refs/pull/<number>/head` | `refs/pull/<index>/head` |
 
 ## 組み合わせ
@@ -87,7 +87,7 @@ flowchart TB
 repository の名前の正本は、構成ごとに次のとおりである。
 
 - GitHub を使う構成：設定の DB（repository の名前と `owner/name` の組。利用者が設定の画面で登録する）
-  - 管理者が GitHub リポジトリを作り、利用者がこの組を登録する（[GitHub アダプタ](github.md)、[設定の画面](../../docs/webui/settings.md)）。
+  - GitHub でリポジトリを作る人が GitHub リポジトリを作り、利用者がこの組を登録する（[GitHub アダプタ](github.md)、[設定の画面](../../docs/webui/settings.md)）。
   - gitforge_ref は `owner/name` である。
   - 設定に登録されていない名前では、repository を作れない（`repository_not_registered`）。
 - Forgejo を使う構成：設定した organization の、Forgejo の repository の一覧
