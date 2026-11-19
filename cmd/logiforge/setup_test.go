@@ -173,6 +173,11 @@ func TestSetupGitHub(t *testing.T) {
 
 	// 始める前は、構成を決める呼び出しのほかは受け付けない。
 	want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"}), 422, "始める前の conversion")
+	// 最初の呼び出しの入力が誤っていれば、始めない。直して、トークンなしで送り直せば、始められる。
+	want(call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github", "webui_url": "ftp://lf.example"}), 422, "誤った WebUI の URL")
+	if r := call("GET", "/v1/setup", "", nil); r.body["started"] != false {
+		t.Fatalf("誤った入力で始まった：%v", r.body)
+	}
 	r = call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
 	setupToken, _ = r.body["setup_token"].(string)
 	if setupToken == "" || r.body["started"] != true {

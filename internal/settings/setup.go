@@ -43,10 +43,13 @@ func (d *DB) SetupDone(ctx context.Context) (bool, error) {
 // ErrSetupStarted は、初回のセットアップを、ほかのブラウザがもう始めたことである。
 var ErrSetupStarted = errors.New("初回のセットアップは、ほかのブラウザで進んでいる")
 
-// StartSetup は、初回のセットアップを始め、セットアップのトークンを返す。DB には、トークンの SHA-256 だけを置く。
+// StartSetup は、初回のセットアップを始め、values（最初の段の設定）を置き、セットアップのトークンを返す。DB には、トークンの SHA-256 だけを置く。
 // トークンを持つブラウザだけが、セットアップを続けられる（design/settings/setup.md の「だれがセットアップできるか」）。
 // もう始まっていれば ErrSetupStarted、終わっていれば ErrSetupDone を返す。
-func (d *DB) StartSetup(ctx context.Context) (string, error) {
+func (d *DB) StartSetup(ctx context.Context, keys Keys, values map[string]string) (string, error) {
+	if err := checkValues(values); err != nil {
+		return "", err
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -71,9 +74,13 @@ func (d *DB) StartSetup(ctx context.Context) (string, error) {
 		if n > 0 {
 			return ErrSetupDone
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, token_hash, created_at) VALUES (1, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at`, tokenHash(tok), now())
-		return err
+		if _, err := tx.ExecContext(ctx, `INSERT INTO setup (id, token_hash, created_at) VALUES (1, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at`, tokenHash(tok), now()); err != nil {
+			return err
+		}
+		// 最初の段の設定（構成と WebUI の URL）も、同じトランザクションで置く。なぜ：置くのに失敗したときに、
+		// 始まったのにトークンを受け取れない状態を残さないため。
+		return putTx(ctx, tx, keys, values, "")
 	})
 	if err != nil {
 		return "", err
@@ -113,6 +120,13 @@ func (d *DB) CheckSetupToken(ctx context.Context, tok string) (bool, error) {
 // 設定の API とセットアップの API は、Save（全体の置き換え）でなく、これを使う。なぜ：画面は秘密を返さないので、
 // 送られなかった秘密を消さないため。
 func (d *DB) Put(ctx context.Context, keys Keys, values map[string]string, by string) error {
+	if err := checkValues(values); err != nil {
+		return err
+	}
+	return d.write(ctx, func(tx *sql.Tx) error { return putTx(ctx, tx, keys, values, by) })
+}
+
+func checkValues(values map[string]string) error {
 	byName := map[string]field{}
 	for _, f := range fields {
 		byName[f.name] = f
@@ -125,32 +139,38 @@ func (d *DB) Put(ctx context.Context, keys Keys, values map[string]string, by st
 	if g, ok := values["gitforge"]; ok && g != GitForgeForgejo && g != GitForgeGitHub {
 		return fmt.Errorf("settings: gitforge は %s か %s：%q", GitForgeForgejo, GitForgeGitHub, g)
 	}
-	return d.write(ctx, func(tx *sql.Tx) error {
-		at := now()
-		for name, v := range values {
-			f := byName[name]
-			if v == "" {
-				if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE name = ?`, name); err != nil {
-					return err
-				}
-				continue
-			}
-			enc := false
-			if f.class != plain {
-				k := keys.forClass(f.class)
-				if k == nil {
-					return fmt.Errorf("settings: %s を書くには、%s が要る", name, className(f.class))
-				}
-				v, enc = k.seal(name, []byte(v)), true
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO settings (name, value, encrypted, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
-				ON CONFLICT(name) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
-				name, v, enc, at, by); err != nil {
+	return nil
+}
+
+func putTx(ctx context.Context, tx *sql.Tx, keys Keys, values map[string]string, by string) error {
+	byName := map[string]field{}
+	for _, f := range fields {
+		byName[f.name] = f
+	}
+	at := now()
+	for name, v := range values {
+		f := byName[name]
+		if v == "" {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE name = ?`, name); err != nil {
 				return err
 			}
+			continue
 		}
-		return nil
-	})
+		enc := false
+		if f.class != plain {
+			k := keys.forClass(f.class)
+			if k == nil {
+				return fmt.Errorf("settings: %s を書くには、%s が要る", name, className(f.class))
+			}
+			v, enc = k.seal(name, []byte(v)), true
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings (name, value, encrypted, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(name) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+			name, v, enc, at, by); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetFirstRepository は、セットアップの最初の repository を r だけにする。前にセットアップで登録したものは外す。

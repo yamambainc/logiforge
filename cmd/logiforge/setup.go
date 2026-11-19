@@ -110,27 +110,44 @@ func (s *setupService) Authorize(ctx context.Context, token string) error {
 	return nil
 }
 
-func (s *setupService) Start(ctx context.Context) (string, error) {
-	tok, err := s.db.StartSetup(ctx)
+func (s *setupService) Start(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+	v, err := gitforgeValues(kind, webuiURL)
+	if err != nil {
+		return api.SetupState{}, err
+	}
+	tok, err := s.db.StartSetup(ctx, s.keys, v)
 	switch {
 	case errors.Is(err, settings.ErrSetupDone):
-		return "", problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
+		return api.SetupState{}, problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
 	case errors.Is(err, settings.ErrSetupStarted):
-		return "", inProgress
+		return api.SetupState{}, inProgress
+	case err != nil:
+		return api.SetupState{}, err
 	}
-	return tok, err
+	st, err := s.State(ctx)
+	st.SetupToken = tok
+	return st, err
 }
 
-func (s *setupService) SetGitForge(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+// gitforgeValues は、構成の段の入力を確かめ、設定の DB に置く値にする。
+func gitforgeValues(kind, webuiURL string) (map[string]string, error) {
 	if kind != gitforgeGitHub && kind != gitforgeForgejo {
-		return api.SetupState{}, problem(backend.CodeValidationFailed, "構成は github か forgejo")
+		return nil, problem(backend.CodeValidationFailed, "構成は github か forgejo")
 	}
 	v := map[string]string{"gitforge": kind}
 	if webuiURL != "" {
 		if err := checkWebUIURL(webuiURL); err != nil {
-			return api.SetupState{}, err
+			return nil, err
 		}
 		v["webui_url"] = strings.TrimRight(webuiURL, "/")
+	}
+	return v, nil
+}
+
+func (s *setupService) SetGitForge(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {
+	v, err := gitforgeValues(kind, webuiURL)
+	if err != nil {
+		return api.SetupState{}, err
 	}
 	if err := s.db.Put(ctx, s.keys, v, ""); err != nil {
 		return api.SetupState{}, err

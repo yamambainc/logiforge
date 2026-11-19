@@ -67,8 +67,9 @@ type Setup interface {
 	// Authorize は、token が、セットアップを始めたブラウザのトークンかを確かめる。終わっていれば setup_done、
 	// まだ始まっていなければ validation_failed、違えば setup_in_progress。
 	Authorize(ctx context.Context, token string) error
-	// Start は、セットアップを始め、トークンを返す。もう始まっていれば setup_in_progress、終わっていれば setup_done。
-	Start(ctx context.Context) (string, error)
+	// Start は、構成（kind）と WebUI の URL を確かめてから、セットアップを始めてそれらを置き、トークンを入れた状態を返す。
+	// 確かめに通らなければ、始めない。もう始まっていれば setup_in_progress、終わっていれば setup_done。
+	Start(ctx context.Context, kind, webuiURL string) (SetupState, error)
 	// SetGitForge は、構成を決める。webuiURL（WebUI の URL。空なら変えない）も置く。サインインの redirect_uri の元になる。
 	SetGitForge(ctx context.Context, kind, webuiURL string) (SetupState, error)
 	GitHubManifest(ctx context.Context, in SetupManifestInput) (SetupManifest, error)
@@ -102,19 +103,14 @@ func SetupHandler(s Setup, log *slog.Logger) http.Handler {
 			if err := decodeJSON(r, &in); err != nil {
 				return nil, err
 			}
-			tok, started := r.Header.Get(SetupTokenHeader), ""
+			tok := r.Header.Get(SetupTokenHeader)
 			if tok == "" {
-				t, err := s.Start(ctx)
-				if err != nil {
-					return nil, err
-				}
-				tok, started = t, t
-			} else if err := s.Authorize(ctx, tok); err != nil {
+				return s.Start(ctx, in.GitForge, in.WebUIURL)
+			}
+			if err := s.Authorize(ctx, tok); err != nil {
 				return nil, err
 			}
-			st, err := s.SetGitForge(ctx, in.GitForge, in.WebUIURL)
-			st.SetupToken = started
-			return st, err
+			return s.SetGitForge(ctx, in.GitForge, in.WebUIURL)
 		})
 	})
 	mux.HandleFunc("POST /v1/setup/github/manifest", h.open(func(ctx context.Context, r *http.Request) (any, error) {
