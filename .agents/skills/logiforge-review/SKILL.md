@@ -18,9 +18,9 @@ apply request を出す・直す側の使い方は、[logiforge](../logiforge/SK
   - 根は、問いを表す仮説である。
   - 仮説の子はストーリー、ストーリーの子は仮説で、交互に並ぶ。
   - ストーリーは、「子仮説がすべて真なら、親仮説は真になる」という論理のつながりである。
-  - 子ストーリーを持たない仮説（葉）に、検証結果（値とレポート）を付ける。
-- 値を入れるのは検証結果だけで、上の値は自動で決まる（ストーリーは子仮説の AND、仮説は子ストーリーの OR）。
-  - そのため、通した誤りは、根の結論まで自動で伝わる。
+  - active な子ストーリーを持たない仮説（葉）に、検証結果（値とレポート）を付ける。
+- 値を入れるのは検証結果だけで、上の値は自動で決まる（ストーリーは子仮説の AND、仮説は active な子ストーリーの OR）。
+  - そのため、通した誤った `true` は、根の結論まで自動で伝わる。
 - スナップショットツリーへの変更は、すべて apply request で出す。apply request は、reviewer が `approve` すると反映される。
 - reviewer が審査するのは、論理と根拠である。
   - ストーリーの子仮説で、親仮説が本当に言えるか。
@@ -93,6 +93,7 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - `request_changes`：問題ごとに、対象のノード、外れた観点、直し方。
 - `--prompt-revision` には、使ったプロンプト（このスキル）のリビジョンを書く。`approve` では必須である。
   - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。スナップショットツリーの git リポジトリのコミットではない。
+  - 求め方：`git -C <logiforge のリポジトリ> log -1 --format=%H -- .agents/skills/logiforge-review/SKILL.md`
 - 直しても通らない apply request（前提の主張そのものが誤っているなど）は、却下する：`logiforge ar close <apply request> --reason <理由>`
   - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](../../../docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
 
