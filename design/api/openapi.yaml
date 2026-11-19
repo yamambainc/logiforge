@@ -1289,6 +1289,11 @@ components:
         name: { $ref: '#/components/schemas/RepositoryNameValue' }
         gitforge_ref: { type: string }
         directory: { type: string, description: ディレクトリの repository のパス。git リポジトリ全体なら空 }
+        prepared:
+          type: boolean
+          description: |
+            用意のコミットがもうあるか（スナップショットツリーがもうあるか）。listRegisteredRepositories と registerRepository の応答にだけ入る。
+            GitForge に聞けなかったときは入らない（../../design/api/endpoints/settings.md の「prepared」）。
     RecordKey:
       type: object
       required: [key_id, public_key, created_at, primary]

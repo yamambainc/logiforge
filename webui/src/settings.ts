@@ -33,7 +33,8 @@ export interface ForgejoSettingsInput {
   url?: string; public_url?: string; organization?: string; client_id?: string; client_secret?: string; worker_user?: string; worker_token?: string;
 }
 export interface GitForgePatch { github?: GitHubSettingsInput; forgejo?: ForgejoSettingsInput; intervals?: IntervalSettings }
-export interface RegisteredRepository { name: string; gitforge_ref: string; directory?: string }
+/** prepared：スナップショットツリーがもうあるか。BE が GitForge に聞けなかったときは入らない（docs/webui/settings.md の「repository を足す」）。 */
+export interface RegisteredRepository { name: string; gitforge_ref: string; directory?: string; prepared?: boolean }
 export interface RecordKey { key_id: string; public_key: string; created_at: string; primary: boolean }
 
 const enc = encodeURIComponent;
@@ -149,3 +150,34 @@ export function buildPatch(s: Settings, form: { github: GitHubForm; forgejo: For
 export const unregisterConfirm = (name: string) => `${name} を外します。スナップショットツリーは読めなくなります。git リポジトリは消えません。`;
 /** 鍵を作るときの確かめの文。 */
 export const createKeyConfirm = '新しい記録の署名の鍵を作り、これから書く記録に使います。古い鍵の公開鍵は残すので、前の記録はそのまま確かめられます。';
+
+// --- repository を足す流れ（docs/webui/settings.md の「repository を足す」） ---
+
+// 名前と主文の決まり（openapi の RepositoryNameValue、docs/tree/README.md の「仮説」）。
+// BE と同じ決まりである：主文は 50 字以下（internal/tree/check.go の MaxStatementChars）、
+// 文字数は NFC に正規化したあとのコードポイント数（同じく CharCount）。BE が最後に確かめるので、ここは送る前の案内である
+export const NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+export const MAX_STATEMENT = 50;
+/** 文字数は、NFC に正規化したあとのコードポイント数で数える */
+export const charCount = (s: string) => [...s.normalize('NFC')].length;
+
+export const validateName = (name: string): string | null =>
+  NAME_RE.test(name) ? null : '名前は、英小文字・数字・ハイフンで、63 字まで（先頭はハイフン以外）にしてください。';
+
+export function validateStatement(statement: string): string | null {
+  if (!statement.trim()) return '根の仮説の主文を書いてください。';
+  if (charCount(statement) > MAX_STATEMENT) return `主文は ${MAX_STATEMENT} 字以下にしてください。`;
+  return null;
+}
+
+/** 足す流れの段。exists は、スナップショットツリーがもうあるので、最初の問いを飛ばしたもの。 */
+export type AddStep = { at: 'repository' } | { at: 'question'; name: string } | { at: 'exists'; name: string } | { at: 'done'; name: string };
+
+/** 登録したあとの段。prepared が分からないときは、最初の問いの段に進む（作るときに BE が確かめる）。 */
+export const afterRegister = (r: RegisteredRepository): AddStep => (r.prepared ? { at: 'exists', name: r.name } : { at: 'question', name: r.name });
+
+/** ?add=first のときの段：最初の問いがまだの repository があれば、その 2 段目。なければ 1 段目。 */
+export function firstStep(items: RegisteredRepository[]): AddStep {
+  const r = items.find((x) => x.prepared === false);
+  return r ? { at: 'question', name: r.name } : { at: 'repository' };
+}

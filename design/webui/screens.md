@@ -15,7 +15,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
 | セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
-| 設定 | `/settings?tab=`（`tab` は `repository`、`gitforge`、`record-keys`） |
+| 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`、`record-keys`。`add` は `new` か `first` で、repository を足す段を開く） |
 | サインインから戻る先 | `/oauth/callback`（[サインインの流れ](signin-flow.md)） |
 
 ## 画面ごとの API
@@ -23,7 +23,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 ### [repository の一覧](../../docs/webui/repositories.md)
 
 - 一覧：`listRepositories`。根の主文は、`Repository` の `root_statement` を使う（[WebUI のための API](#webui-のための-api)）。
-- 作成：`createRepository`。応答の `Logiforge-Pending-Commit` があれば、スナップショットツリーが出るまで、ビュワーで「取り込み中」と示す（[書いた直後の読み](../api/writes.md)、[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
+- 「新しい repository」は、`/settings?tab=repository&add=new` を開く。作成は、設定の画面で行う（[セットアップと設定の画面と API](screens-setup.md#設定)）。
 
 ### [スナップショットツリーのビュワー](../../docs/webui/tree-viewer.md)
 

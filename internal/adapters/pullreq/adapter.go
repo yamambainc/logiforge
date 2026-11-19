@@ -21,6 +21,9 @@ type Repos interface {
 	MainHead(ctx context.Context, gitForgeRef string) (string, error)
 	SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error
 	Archived(ctx context.Context, gitForgeRef string) (bool, error)
+	// Prepared は、用意のコミットがもうあるか（git リポジトリ全体なら main、ディレクトリならそのディレクトリ）を、主体のトークンで読む。
+	// 設定の画面で登録したあと、最初の問いを入れる段が要るかを決めるのに使う（docs/webui/settings.md）。
+	Prepared(ctx context.Context, gitForgeRef string) (bool, error)
 }
 
 // Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は gitforge_ref である。

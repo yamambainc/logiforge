@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -447,4 +448,29 @@ func (r repos) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
 		return false, err
 	}
 	return x.Archived, nil
+}
+
+// Prepared は、repository の用意が済んでいるか（スナップショットツリーがもうあるか）を、主体のトークンで読む。
+// git リポジトリ全体なら main があるか、ディレクトリの repository なら main にそのディレクトリがあるかで決める。
+func (r repos) Prepared(ctx context.Context, gitForgeRef string) (bool, error) {
+	head, err := r.MainHead(ctx, gitForgeRef)
+	if errors.Is(err, ports.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, dir := ports.SplitRef(gitForgeRef)
+	if dir == "" {
+		return true, nil
+	}
+	rp, _ := repoPath(gitForgeRef)
+	err = r.w(ctx, http.MethodGet, rp+"/contents/"+escapePath(dir)+"?ref="+url.QueryEscape(head), nil, nil)
+	if err == nil {
+		return true, nil
+	}
+	if statusOf(err) == http.StatusNotFound {
+		return false, nil
+	}
+	return false, err
 }

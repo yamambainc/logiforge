@@ -1,12 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Problem } from '../api';
-import { navigate, settingsPath, type SettingsTab } from '../router';
+import { createRepository, Problem } from '../api';
+import { navigate, settingsPath, type AddParam, type SettingsTab } from '../router';
 import {
-  buildPatch, createKeyConfirm, createRecordKey, formsFrom, getSettings, installUrlFrom, INTERVAL_KEYS, listRecordKeys,
+  afterRegister, buildPatch, charCount, createKeyConfirm, firstStep, MAX_STATEMENT, validateName, validateStatement, type AddStep, createRecordKey, formsFrom, getSettings, installUrlFrom, INTERVAL_KEYS, listRecordKeys,
   listRegisteredRepositories, noteAccess, registerRepository, unregisterConfirm, unregisterRepository, updateGitForgeSettings,
   type ForgejoForm, type GitHubForm, type IntervalForm, type RecordKey, type RegisteredRepository, type SecretState, type Settings as SettingsValue,
 } from '../settings';
-import { NAME_RE } from './RepositoryList';
 
 const fmt = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
 const TAB_LABELS: Record<SettingsTab, string> = { repository: 'repository', gitforge: 'GitForge', 'record-keys': '記録の鍵' };
@@ -15,7 +14,7 @@ const message = (e: unknown): string | null =>
   e instanceof Problem ? (e.status === 401 ? null : e.code === 'forbidden' ? '設定を変えられるのは、利用者だけです。' : e.detail || e.code) : String(e);
 
 // 設定の画面（docs/webui/settings.md、design/webui/screens-setup.md の「設定」）。利用者だけが開ける。
-export function Settings({ tab }: { tab: SettingsTab }) {
+export function Settings({ tab, add }: { tab: SettingsTab; add?: AddParam }) {
   const [s, setS] = useState<SettingsValue | null>(null);
   const [error, setError] = useState<'forbidden' | string | null>(null);
   const reload = () => getSettings().then((v) => { setS(v); noteAccess(true); }).catch((e) => {
@@ -43,7 +42,7 @@ export function Settings({ tab }: { tab: SettingsTab }) {
           ))}
         </div>
       </div>
-      {tab === 'repository' ? <RepositoryTab settings={s} onChanged={() => void reload()} />
+      {tab === 'repository' ? <RepositoryTab settings={s} add={add} onChanged={() => void reload()} />
         : tab === 'gitforge' ? <GitForgeTab settings={s} onSaved={setS} />
         : <RecordKeysTab onChanged={() => void reload()} />}
       <p className="settings-updated dim">最後に変えた人：{s.updated_by || '—'}　{fmt(s.updated_at)}</p>
@@ -55,13 +54,18 @@ const WorkerNotice = ({ what }: { what: string }) => <p className="dim small">{w
 
 // --- repository ---
 
-function RepositoryTab({ settings, onChanged }: { settings: SettingsValue; onChanged: () => void }) {
+function RepositoryTab({ settings, add, onChanged }: { settings: SettingsValue; add?: AddParam; onChanged: () => void }) {
   const [items, setItems] = useState<RegisteredRepository[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [flow, setFlow] = useState<AddStep | null>(add === 'new' ? { at: 'repository' } : null);
   const [busy, setBusy] = useState<string | null>(null);
-  const load = () => listRegisteredRepositories().then(setItems).catch((e) => setError(message(e)));
-  useEffect(() => { void load(); }, []);
+  const load = () => listRegisteredRepositories().then((v) => { setItems(v); return v; }).catch((e) => { setError(message(e)); return null; });
+  useEffect(() => {
+    void load().then((v) => { if (add === 'first' && v) setFlow(firstStep(v)); });
+    // 開いたら、URL から add を消す。読み直したときに、また開かないように
+    if (add) navigate(settingsPath('repository'), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const remove = async (name: string) => {
     if (!window.confirm(unregisterConfirm(name))) return;
     setBusy(name); setError(null);
@@ -74,13 +78,13 @@ function RepositoryTab({ settings, onChanged }: { settings: SettingsValue; onCha
       <div className="page-head">
         <h2>repository</h2>
         <span className="spacer" />
-        {!adding && <button className="btn" onClick={() => setAdding(true)}>足す</button>}
+        {!flow && <button className="btn" onClick={() => setFlow({ at: 'repository' })}>足す</button>}
       </div>
       <p className="dim small">{github
-        ? 'GitHub リポジトリと、ディレクトリの repository を登録します。'
-        : 'ディレクトリの repository を登録します。ふつうの repository は、repository の一覧で作ってください。'}</p>
+        ? 'GitHub リポジトリと、ディレクトリの repository を足します。'
+        : 'Forgejo に repository を作るか、ディレクトリの repository を登録します。'}</p>
       <WorkerNotice what="repository の一覧の変更" />
-      {adding && <AddRepository github={github} onCancel={() => setAdding(false)} onAdded={() => { setAdding(false); void load(); onChanged(); }} />}
+      {flow && <AddFlow github={github} step={flow} onStep={setFlow} onClose={() => setFlow(null)} onRegistered={() => { void load(); onChanged(); }} />}
       {error && <p className="form-error" role="alert">{error}</p>}
       {!items ? <p className="dim">読み込み中…</p> : items.length === 0 ? <p className="dim">登録した repository はありません。</p> : (
         <ul className="settings-list">
@@ -89,6 +93,7 @@ function RepositoryTab({ settings, onChanged }: { settings: SettingsValue; onCha
               <span className="mono strong">{r.name}</span>
               <span className="mono">{r.gitforge_ref}{r.directory ? ` : ${r.directory}` : ''}</span>
               <span className="spacer" />
+              {r.prepared === false && <button className="btn primary" disabled={!!flow} onClick={() => setFlow({ at: 'question', name: r.name })}>最初の問いを入れる</button>}
               <button className="btn" disabled={busy === r.name} onClick={() => void remove(r.name)}>外す</button>
             </li>
           ))}
@@ -98,22 +103,45 @@ function RepositoryTab({ settings, onChanged }: { settings: SettingsValue; onCha
   );
 }
 
-function AddRepository({ github, onCancel, onAdded }: { github: boolean; onCancel: () => void; onAdded: () => void }) {
+// 足す流れ：1. repository → 2. 最初の問い → 完了。トップの画面には移らない（docs/webui/settings.md の「repository を足す」）。
+function AddFlow({ github, step, onStep, onClose, onRegistered }: {
+  github: boolean; step: AddStep; onStep: (s: AddStep) => void; onClose: () => void; onRegistered: () => void;
+}) {
+  const second = step.at === 'repository' ? '' : step.at === 'question' ? 'on' : 'done';
+  return (
+    <div className="add-flow">
+      <ol className="flow-steps" aria-label="足す段">
+        <li className={step.at === 'repository' ? 'on' : 'done'}>1. repository</li>
+        <li className={second}>2. 最初の問い{step.at === 'exists' && '（もうある）'}</li>
+      </ol>
+      {step.at === 'repository' ? <RepositoryStep github={github} onNext={onStep} onCancel={onClose} onRegistered={onRegistered} />
+        : step.at === 'question' ? <QuestionStep name={step.name} onDone={() => { onStep({ at: 'done', name: step.name }); onRegistered(); }} onCancel={onClose} />
+        : <Finished name={step.name} exists={step.at === 'exists'} onClose={onClose} />}
+    </div>
+  );
+}
+
+function RepositoryStep({ github, onNext, onCancel, onRegistered }: { github: boolean; onNext: (s: AddStep) => void; onCancel: () => void; onRegistered: () => void }) {
+  // Forgejo では、ふつうの repository は Forgejo に作る（登録しない）。ディレクトリの repository は登録する。
+  const [kind, setKind] = useState<'create' | 'directory'>(github ? 'directory' : 'create');
   const [name, setName] = useState('');
   const [ref, setRef] = useState('');
   const [dir, setDir] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ReactNode>(null);
+  const register = !github && kind === 'create' ? false : true;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const n = name.trim(), r = ref.trim(), d = dir.trim().replace(/^\/+|\/+$/g, '');
-    if (!NAME_RE.test(n)) { setError('名前は、英小文字・数字・ハイフンで、63 字まで（先頭はハイフン以外）にしてください。'); return; }
+    const v = validateName(n);
+    if (v) { setError(v); return; }
+    if (!register) { onNext({ at: 'question', name: n }); return; }
     if (!/^[^/\s]+\/[^/\s]+$/.test(r)) { setError('git リポジトリは owner/name の形で入れてください。'); return; }
     if (!github && !d) { setError('ディレクトリのパスを入れてください。'); return; }
     setBusy(true); setError(null);
     try {
-      await registerRepository(n, r, d);
-      onAdded();
+      onNext(afterRegister(await registerRepository(n, r, d)));
+      onRegistered();
     } catch (err) {
       setBusy(false);
       const url = err instanceof Problem && err.code === 'validation_failed' ? installUrlFrom(err.detail) : null;
@@ -126,17 +154,83 @@ function AddRepository({ github, onCancel, onAdded }: { github: boolean; onCance
   };
   return (
     <form className="setup-form settings-form" onSubmit={submit}>
+      {!github && (
+        <div className="setup-row" role="radiogroup" aria-label="repository の種類">
+          <label><input type="radio" name="kind" checked={kind === 'create'} onChange={() => setKind('create')} />Forgejo に新しく作る</label>
+          <label><input type="radio" name="kind" checked={kind === 'directory'} onChange={() => setKind('directory')} />git リポジトリの中のディレクトリを使う</label>
+        </div>
+      )}
       <label>名前<input value={name} onChange={(e) => setName(e.target.value)} placeholder="question-a" autoFocus required /></label>
-      <label>{github ? 'GitHub リポジトリ（owner/name）' : 'git リポジトリ（owner/name）'}<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="my-org/app" autoComplete="off" required /></label>
-      <label>{github ? 'ディレクトリのパス（git リポジトリ全体なら空）' : 'ディレクトリのパス'}
-        <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="logiforge/question-a" autoComplete="off" required={!github} />
-      </label>
+      {register && <>
+        <label>{github ? 'GitHub リポジトリ（owner/name）' : 'git リポジトリ（owner/name）'}<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="my-org/app" autoComplete="off" required /></label>
+        <label>{github ? 'ディレクトリのパス（git リポジトリ全体なら空）' : 'ディレクトリのパス'}
+          <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="logiforge/question-a" autoComplete="off" required={!github} />
+        </label>
+      </>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="form-actions">
-        <button className="btn primary" type="submit" disabled={busy}>{busy ? '確かめています…' : '足す'}</button>
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? '確かめています…' : register ? '登録して次へ' : '次へ'}</button>
         <button className="btn" type="button" onClick={onCancel} disabled={busy}>やめる</button>
       </div>
     </form>
+  );
+}
+
+const CREATE_ERRORS: Record<string, string> = {
+  repository_exists: 'その名前の repository は、もうあります。',
+  forbidden: 'repository を作れるのは、利用者だけです。',
+  repository_not_registered: 'その名前の repository は、登録されていません。',
+};
+
+function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: () => void; onCancel: () => void }) {
+  const [statement, setStatement] = useState('');
+  const [background, setBackground] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const n = charCount(statement);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = validateStatement(statement);
+    if (v) { setError(v); return; }
+    setBusy(true); setError(null);
+    try {
+      // スナップショットツリーがまだ出ていなくても（Logiforge-Pending-Commit）、用意は済んでいる。ビュワーが「取り込み中」と示して読み直す
+      await createRepository(name, statement.trim(), background.trim());
+      onDone();
+    } catch (err) {
+      setBusy(false);
+      if (err instanceof Problem && err.status === 401) return;
+      setError(err instanceof Problem ? CREATE_ERRORS[err.code] ?? (err.detail || err.code) : String(err));
+    }
+  };
+  return (
+    <form className="setup-form settings-form" onSubmit={submit}>
+      <p className="small"><span className="mono strong">{name}</span> の根に置く、最初の問い（根の仮説）を書きます。</p>
+      <label>根の仮説の主文 <span className={`dim ${n > MAX_STATEMENT ? 'over' : ''}`}>{n} / {MAX_STATEMENT}</span>
+        <input value={statement} onChange={(e) => { setStatement(e.target.value); setError(null); }} placeholder="ある究極の問いの主文" autoFocus required />
+      </label>
+      <label>背景情報（なくてもよい）<textarea value={background} onChange={(e) => setBackground(e.target.value)} rows={3} /></label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="form-actions">
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? '用意しています…' : '用意する'}</button>
+        <button className="btn" type="button" onClick={onCancel} disabled={busy}>あとで入れる</button>
+      </div>
+    </form>
+  );
+}
+
+function Finished({ name, exists, onClose }: { name: string; exists: boolean; onClose: () => void }) {
+  return (
+    <div className="setup-form settings-form" role="status">
+      <p>{exists
+        ? <><span className="mono strong">{name}</span> には、スナップショットツリーがもうあります。最初の問いは要りません。</>
+        : <><span className="mono strong">{name}</span> を用意しました。</>}</p>
+      {exists && <p className="dim small">worker が読み込むと、repository の一覧に出ます。</p>}
+      <div className="form-actions">
+        <button className="btn primary" onClick={() => navigate(`/r/${name}/tree`)}>スナップショットツリーを開く</button>
+        <button className="btn" onClick={onClose}>閉じる</button>
+      </div>
+    </div>
   );
 }
 

@@ -44,7 +44,7 @@ export function App() {
         : route.name === 'dashboard' ? <Dashboard key={route.repo} repo={route.repo} />
         : route.name === 'human-requests' ? <HumanRequests key={route.repo} repo={route.repo} />
         : route.name === 'apply-requests' ? <ApplyRequests key={route.repo} repo={route.repo} />
-        : route.name === 'settings' ? <Settings tab={route.tab} />
+        : route.name === 'settings' ? <Settings tab={route.tab} add={route.add} />
         : route.name === 'repositories' || route.name === 'callback' ? <RepositoryList /> : (
         <div className="empty-box"><div className="empty-title">この画面はありません</div><button className="btn" onClick={() => navigate('/')}>repository の一覧へ</button></div>
       )}

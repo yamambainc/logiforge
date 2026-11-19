@@ -25,16 +25,27 @@ const reportMD = "# 検証\n\n比較実験で、成果物までの時間が**半
 // Forgejo に、サインインに使う OAuth2 のアプリケーション（confidential client）を、admin で登録する。
 func setupWebUI(t *testing.T) (*world, string) {
 	t.Helper()
-	chrome := os.Getenv("LOGIFORGE_E2E_CHROME")
+	chrome, _ := browserEnv(t)
+	// WebUI のサインインのアプリケーションは、setup が、どのテストでも登録する。
+	w := setup(t)
+	return w, chrome
+}
+
+// browserEnv は、Chrome のパスとスクリーンショットの置き場を返す。Chrome と webui/dist がなければ飛ばす。
+func browserEnv(t *testing.T) (chrome, out string) {
+	t.Helper()
+	chrome = os.Getenv("LOGIFORGE_E2E_CHROME")
 	if chrome == "" {
 		t.Skip("LOGIFORGE_E2E_CHROME がない")
 	}
 	if _, err := os.Stat("../../webui/dist/index.html"); err != nil {
 		t.Skip("webui/dist がない（webui/ で npm run build）")
 	}
-	// WebUI のサインインのアプリケーションは、setup が、どのテストでも登録する。
-	w := setup(t)
-	return w, chrome
+	out = os.Getenv("LOGIFORGE_E2E_OUT")
+	if out == "" {
+		out = t.TempDir()
+	}
+	return chrome, out
 }
 
 // runBrowser は、webui/ で node の script を動かす。env は、足す環境変数。

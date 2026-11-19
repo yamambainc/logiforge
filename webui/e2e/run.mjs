@@ -58,17 +58,28 @@ try {
   if (new URL(page.url()).search.includes('code=')) throw new Error('URL に code が残っている');
   await page.screenshot({ path: OUT + '/signin-desktop.png' });
 
-  step('repository を作る：名前と主文を書くと、ビュワーが開き、取り込まれしだい根が出る');
-  await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === '新しい repository').click());
-  await page.type('form.create input[placeholder="question-a"]', 'made');
-  await page.type('form.create input[placeholder="ある究極の問いの主文"]', 'あ'.repeat(51));
-  await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
+  step('repository を作る：トップの「新しい repository」で設定の画面が開き、1. repository → 2. 最初の問い → 完了まで、その画面で進む');
+  await page.waitForFunction(() => [...document.querySelectorAll('a.btn')].some((b) => b.textContent === '新しい repository'), { timeout: 20000 });
+  await page.screenshot({ path: OUT + '/add-0-top.png' });
+  await page.evaluate(() => [...document.querySelectorAll('a.btn')].find((b) => b.textContent === '新しい repository').click());
+  await page.waitForSelector('.add-flow input[placeholder="question-a"]', { timeout: 20000 });
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('add'), { timeout: 5000 }); // 読み直しで、また開かない
+  await page.type('.add-flow input[placeholder="question-a"]', 'made');
+  await page.screenshot({ path: OUT + '/add-1-repository.png' });
+  await page.evaluate(() => document.querySelector('.add-flow button[type="submit"]').click());
+  await page.waitForSelector('.add-flow input[placeholder="ある究極の問いの主文"]', { timeout: 5000 });
+  await page.type('.add-flow input[placeholder="ある究極の問いの主文"]', 'あ'.repeat(51));
+  await page.evaluate(() => document.querySelector('.add-flow button[type="submit"]').click());
   await page.waitForFunction(() => document.querySelector('.form-error')?.textContent.includes('50 字以下'), { timeout: 5000 });
-  await page.screenshot({ path: OUT + '/create.png' });
-  await page.$eval('form.create input[placeholder="ある究極の問いの主文"]', (e) => { e.select(); });
+  await page.$eval('.add-flow input[placeholder="ある究極の問いの主文"]', (e) => { e.select(); });
   await page.keyboard.press('Backspace');
-  await page.type('form.create input[placeholder="ある究極の問いの主文"]', 'ブラウザから作った問い');
-  await page.evaluate(() => document.querySelector('form.create button[type="submit"]').click());
+  await page.type('.add-flow input[placeholder="ある究極の問いの主文"]', 'ブラウザから作った問い');
+  await page.screenshot({ path: OUT + '/add-2-question.png' });
+  await page.evaluate(() => document.querySelector('.add-flow button[type="submit"]').click());
+  await page.waitForFunction(() => document.querySelector('.add-flow [role="status"]')?.textContent.includes('made を用意しました'), { timeout: 30000 });
+  if (new URL(page.url()).pathname !== '/settings') throw new Error('用意したあと、設定の画面から移った：' + page.url());
+  await page.screenshot({ path: OUT + '/add-3-done.png' });
+  await page.evaluate(() => [...document.querySelectorAll('.add-flow button')].find((b) => b.textContent === 'スナップショットツリーを開く').click());
   await page.waitForFunction(() => location.pathname === '/r/made/tree', { timeout: 30000 });
   await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === 'ブラウザから作った問い'), { timeout: 60000 });
 

@@ -47,6 +47,9 @@ type SetupRepository struct {
 	Name        string `json:"name"`
 	GitForgeRef string `json:"gitforge_ref"`
 	Directory   string `json:"directory,omitempty"`
+	// Prepared は、スナップショットツリーがもうあるか（用意のコミットがあるか）。設定の API の応答にだけ入れる。
+	// GitForge に聞けなかったときは入れない（docs/webui/settings.md の「repository を足す」）。
+	Prepared *bool `json:"prepared,omitempty"`
 }
 
 // SetupForgejo は、setSetupForgejo の本文である（ForgejoSettingsInput）。

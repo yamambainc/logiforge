@@ -9,8 +9,8 @@
 |---|---|---|
 | `GET /settings` | `getSettings` | 設定を返す。秘密は、置いたかどうかだけを返す |
 | `PATCH /settings/gitforge` | `updateGitForgeSettings` | GitForge とのつなぎ方と、見回りの間隔を変える。秘密は、入れたものだけを置き換える |
-| `GET /settings/repositories` | `listRegisteredRepositories` | 登録した repository の一覧を返す |
-| `PUT /settings/repositories/{repository}` | `registerRepository` | repository を登録する。登録済みの名前の `gitforge_ref` とディレクトリは変えられない（`validation_failed`） |
+| `GET /settings/repositories` | `listRegisteredRepositories` | 登録した repository の一覧を返す。それぞれに `prepared` を付ける |
+| `PUT /settings/repositories/{repository}` | `registerRepository` | repository を登録する。登録済みの名前の `gitforge_ref` とディレクトリは変えられない（`validation_failed`）。応答に `prepared` を付ける |
 | `DELETE /settings/repositories/{repository}` | `unregisterRepository` | repository を外す |
 | `GET /settings/record-keys` | `listRecordKeys` | 記録の署名の鍵の ID、公開鍵、作った時刻を返す |
 | `POST /settings/record-keys` | `createRecordKey` | 新しい鍵を作り、書くときの鍵にする |
@@ -44,6 +44,17 @@
   - なぜ：置き場は、repository の名前をキーにするから。別の git リポジトリを同じ名前にすると、履歴が混ざり、書き換えとみなされて壊れた状態になるか、古いスナップショットを返す。
 - そのため、外した repository の名前と `gitforge_ref` とディレクトリは、設定の DB に残す。
   - なぜ：誤って外したときに、作り直さずに戻せるようにするため。
+
+## prepared
+
+- `prepared` は、登録した git リポジトリに、用意のコミットがもうあるかである。
+  - git リポジトリ全体の repository：`main` があるか。
+  - ディレクトリの repository：`main` に、そのディレクトリがあるか。
+- 要求した本人のトークンで、GitForge に聞く。
+- 聞けなかったときは、`prepared` を返さない。登録と一覧は、失敗にしない。
+  - なぜ：GitForge の一時的な失敗で、登録と一覧を止めないため。
+- WebUI は、`prepared` で、最初の問いを入れる段が要るかを決める（[repository を足す](../../../docs/webui/settings.md#repository-を足す)）。
+- なぜ worker のスナップショットで決めないか：登録した直後は、worker が、まだその repository を読んでいないから。
 
 ## 詳細
 

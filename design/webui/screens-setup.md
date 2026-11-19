@@ -17,7 +17,7 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
 - repository の段：`setSetupRepository`。`validation_failed` なら、App が install されていないことと、install の URL を示す。
 - Forgejo の段：`setSetupForgejo`。`validation_failed` なら、`detail` を、その欄の隣に示す。
 - サインインの段：`getOAuthConfig` と `exchangeOAuthCode` でサインインし、`finishSetup` を呼ぶ。
-  - 終わったら、`/settings?tab=repository` を開く。
+  - 終わったら、`/settings?tab=repository&add=first` を開く（下の「設定」の「repository を足す」）。
 - どの呼び出しでも、`setup_done` が返ったら、repository の一覧を出す。
 - 構成の段の応答の `setup_token` を `localStorage` に置き、以後の呼び出しに `Logiforge-Setup-Token` で付ける（[だれがセットアップできるか](../settings/setup.md#だれがセットアップできるか)）。
   - `getSetup` の `started` が `true` なのにトークンを持っていないとき、または `setup_in_progress` が返ったときは、段のかわりに「セットアップは別のブラウザで進行中です。最初からやり直すときは、設定の DB を消して起動し直してください」と示す。
@@ -29,6 +29,13 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
   - `/settings` を直接開いて `forbidden` なら、利用者でないことを示す。
 - repository のタブ：`listRegisteredRepositories`、`registerRepository`、`unregisterRepository`。
   - `registerRepository` が `validation_failed` を返し、`detail` に install の URL があれば、そのリンクを示す。
+  - 一覧で `prepared` が `false` の repository に、「最初の問いを入れる」を示す。
+- repository を足す（[repository を足す](../../docs/webui/settings.md#repository-を足す)）：
+  - 1 段目：登録するものは `registerRepository`。Forgejo に新しく作るものは、呼ばずに 2 段目へ進む。
+  - 登録の応答の `prepared` が `true` なら、2 段目を飛ばす。`prepared` がなければ（GitForge に聞けなかった）、2 段目へ進む。
+  - 2 段目：`createRepository`。`Logiforge-Pending-Commit` で応答しても、用意は済んでいる。開いたビュワーが「取り込み中」と示す（[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
+  - `?add=new` で開くと、1 段目から始める。`?add=first` で開くと、`prepared` が `false` の repository があれば、その 2 段目から始める。なければ 1 段目から始める。
+  - 開いたら、`history.replaceState` で URL から `add` を消す。なぜ：読み直したときに、また開かないため。
 - GitForge のタブ：`getSettings` と `updateGitForgeSettings`。秘密は、置いたかどうかだけを示し、入れたときだけ送る。
 - 記録の鍵のタブ：`listRecordKeys`、`createRecordKey`。
 - 最後に変えた利用者と時刻は、各応答の `updated_by` と `updated_at` を示す。
