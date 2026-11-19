@@ -5,9 +5,9 @@ description: Logiforge の apply request を reviewer として審査し、appro
 
 # Logiforge の apply request をレビューする
 
-エージェントが reviewer として、[apply request](../../../docs/apply-request/README.md) を審査し、結果を付けるときに使う。
-論理レビューの仕組みの正本は [論理レビュー](../../../docs/apply-request/review.md) である。
-apply request を出す・直す側の使い方は、[logiforge](../logiforge/SKILL.md) に書く。
+エージェントが reviewer として、[apply request](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md) を審査し、結果を付けるときに使う。
+論理レビューの仕組みの正本は [論理レビュー](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md) である。
+apply request を出す・直す側の使い方は、[logiforge](https://github.com/yamambainc/logiforge/blob/main/.agents/skills/logiforge/SKILL.md) に書く。
 
 ## 何をレビューするか
 
@@ -43,9 +43,9 @@ apply request を出す・直す側の使い方は、[logiforge](../logiforge/SK
 ## 始める前に
 
 - 差分を書いたどのセッションとも別のセッション ID を、`LOGIFORGE_SESSION_ID` に置く。
-  - 差分を書いたセッションからのレビューは、種類によらず、`same_session` で拒まれる（[反映の条件](../../../docs/apply-request/review.md#反映の条件)）。
+  - 差分を書いたセッションからのレビューは、種類によらず、`same_session` で拒まれる（[反映の条件](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#反映の条件)）。
 - 自分が書いた差分や、自分が指示した差分はレビューしない。セッションを変えても、文脈は分かれないから。
-- 1 つの apply request ごとに、新しいコンテキストで始める（[想定する使い方](../../../docs/apply-request/review.md#想定する使い方)）。
+- 1 つの apply request ごとに、新しいコンテキストで始める（[想定する使い方](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#想定する使い方)）。
   - 前のレビューの文脈に、引きずられないため。
 
 ## 手順
@@ -53,7 +53,7 @@ apply request を出す・直す側の使い方は、[logiforge](../logiforge/SK
 1. レビュー待ちを探す：`logiforge work list --kind review_waiting`
    - 各項目の `subject_id` が、apply request の識別子である（text の出力では 2 つ目の列）。
 2. 材料を読む：`logiforge ar material <apply request> --json`
-   - 材料の中身は、[レビューの材料](../../../docs/apply-request/review.md#レビューの材料) に書いてある。
+   - 材料の中身は、[レビューの材料](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#レビューの材料) に書いてある。
    - 応答の `commit` を控える。手順 5 でそのまま使う。
 3. 要るなら、引用された artifact を読む：`logiforge artifact get <sha256> -o <ファイル>`
    - プログラムによる検証は、artifact から再現できるかを確かめる。
@@ -69,10 +69,10 @@ apply request を出す・直す側の使い方は、[logiforge](../logiforge/SK
 
 ## 審査すること
 
-- 操作ごとの観点は、[論理レビューの審査観点](../../../docs/apply-request/review-criteria.md) に従う。
+- 操作ごとの観点は、[論理レビューの審査観点](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review-criteria.md) に従う。
   - 材料の `operations` の `kind` で、どの節を使うかを決める。
   - `story.inactivate` と false の `verdict.submit` が同じ仮説に並んでいれば、「偽と結論する」の観点も使う。
-- 直すための apply request（材料に `repair` がある）では、[直し方](../../../docs/apply-request/repair.md#直し方) に従う。
+- 直すための apply request（材料に `repair` がある）では、[直し方](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#直し方) に従う。
   - `repair.revert`：`repair.changes` の変化をすべて取り消してよいかを見る。
   - `repair.accept`：`repair.changes` の変化を、ふつうの apply request の差分と同じ観点で審査する。
 - 形の検査（スナップショットツリーの形、4 種類の操作として読めるか）は、Logiforge が行う。reviewer は、論理を見る。
@@ -95,7 +95,7 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。スナップショットツリーの git リポジトリのコミットではない。
   - 求め方：`git -C <logiforge のリポジトリ> log -1 --format=%H -- .agents/skills/logiforge-review/SKILL.md`
 - 直しても通らない apply request（前提の主張そのものが誤っているなど）は、却下する：`logiforge ar close <apply request> --reason <理由>`
-  - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](../../../docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
+  - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
 
 ## 付けたあと
 

@@ -72,6 +72,7 @@ apply request の説明欄は、材料に含めない。
 - レビューのプロンプトは、Logiforge 自体の git リポジトリに置く。
 - プロンプトは差し替えられる。
 - 標準のプロンプトを 1 つ同梱する。
+  - 標準のプロンプトは、[logiforge-review](../../.agents/skills/logiforge-review/SKILL.md) のスキルである。
 - プロンプトの変更は、Logiforge の範囲外とする。
   - プロンプトの変更は、その git リポジトリの通常のレビューに従う。
 
