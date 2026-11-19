@@ -1,22 +1,85 @@
 ---
 name: logiforge
-description: Logiforge の木を CLI（logiforge）で読み書きするときに使う。木の今の状態を読む、着手できる作業を探す、apply request を出す、request_changes や反映の失敗のあとに直す、壊れた repository を直す、人への依頼（PVR、判断の依頼）を起票する、のどれかをするとき。apply request をレビューするときは logiforge-review を使う。
+description: Logiforge のスナップショットツリーを CLI（logiforge）で読み書きするときに使う。スナップショットツリーの今の状態を読む、着手できる作業を探す、apply request を出す、request_changes や反映の失敗のあとに直す、壊れた repository を直す、人への依頼（PVR、判断の依頼）を起票する、のどれかをするとき。apply request をレビューするときは logiforge-review を使う。
 ---
 
 # Logiforge を使う
 
-エージェントが opener として、Logiforge の木を読み、apply request を出し、直すときに使う。
+エージェントが opener として、Logiforge のスナップショットツリーを読み、apply request を出し、直すときに使う。
 apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.md) に書く。
 
 言葉は、[用語](../../../docs/concepts/glossary.md) に従う。
 コマンドとフラグの正本は、`logiforge help` と [コマンドの一覧](../../../design/cli/commands.md) である。
+
+## Logiforge とは
+
+この節は、リンクを開かなくても読めるように書く。詳しい決まりは、各節のリンク先にある。
+
+### 解く課題と位置づけ
+
+- 答えの分からない問いでは、問いを仮説に分け、検証し、外れたら別の道を探す、を繰り返す。
+- この過程は、会話やメモに散らばりやすい。散らばると、どの結論がどの根拠に基づくかを、後から辿れない。
+- Logiforge は、仮説と根拠を記録する正本（system of record）である。
+  - GitForge（GitHub や Forgejo）がコードの正本であるのと同じ位置づけである。
+  - エージェントを動かす仕組みではない。エージェントは CLI で、人は WebUI で、同じ記録を読み書きする。
+
+### スナップショットツリー
+
+- 1 つの問いを、根の仮説とする木で表す。これをスナップショットツリーと呼ぶ。
+  - 1 つの repository に、スナップショットツリーが 1 つある。
+- 仮説とストーリーが、交互に並ぶ。
+  - 仮説：主文（50 字以下）と背景情報からなる。
+  - ストーリー：「子仮説がすべて真なら、親仮説は真になる」という論理のつながり。タイトルと概要からなる。
+  - 1 つの仮説に、別々のストーリーを複数立ててよい。
+- active な子ストーリーを持たない仮説を、葉と呼ぶ。検証するのは葉だけである。
+- 検証結果（verdict）は、葉に付ける値（`true` か `false`）とレポートの組である。
+  - レポートは、本文、artifact（プログラムと実行結果、データ、文献など）、引用（ほかのノードや artifact）からなる。
+- 欠陥のあるストーリーは消さず、inactive にする。inactive なストーリーは、値の計算から外れる。
+
+### 真偽値の伝播
+
+- 値は、`true`、`false`、`null`（未決）のどれかである。
+- 値を入れられるのは、検証結果だけである。ほかのノードの値は、自動で決まる。
+  - ストーリーの値は、子仮説の AND である。1 つでも `false` なら `false`、すべて `true` なら `true`。
+  - 仮説の値は、active な子ストーリーの OR である。1 つでも `true` なら `true`。
+  - `false` は、仮説より上には自動で伝わらない。別のストーリーで検証できる可能性が残るから。
+- active な子ストーリーがすべて `false` の仮説を、要再検討と呼ぶ。別のストーリーを立てるか、偽と結論する。
+
+### 変更は apply request で行う
+
+- スナップショットツリーを変えられるのは、承認された apply request（AR）の反映だけである。
+- apply request は、次の 4 種類の操作の組である。
+  - `story.create`：ストーリーを、子仮説と一緒に作る。
+  - `story.inactivate`：ストーリーを inactive にする。
+  - `verdict.submit`：葉に検証結果を出す。
+  - `node.edit`：仮説の背景情報に、文章を加える。
+- 差分を書いたのとは別のセッションの reviewer が `approve` すると、反映される。
+  - 別のセッションにするのは、書いた本人の推論に引きずられずに、論理を審査するためである。
+  - 差分が更新されたら、`approve` はやり直しになる。
+
+### 役割
+
+- opener：apply request を出す主体。問いの分解、葉の検証、人への依頼をする。エージェントでも人でもよい。
+- reviewer：apply request を審査する主体。エージェントでも人でもよい。
+- 利用者：WebUI を使う人。repository を作り、人への依頼に回答し、apply request をレビューする。
+- 計算機の中で検証できない葉は、人への依頼（PVR）で人に検証してもらう。
+
+### git リポジトリとバックエンド
+
+- スナップショットツリーの正本は、GitForge の git リポジトリ（またはその中の 1 つのディレクトリ）にある。
+  - ノードはディレクトリで、中身は md のファイルである。
+- apply request は、GitForge の pull request である。opener はブランチを push し、CLI でそれを apply request にする。
+- バックエンド（Logiforge のサーバ）は、git リポジトリを取り込んで検査し、値を計算して、API で返す。
+  - `approve` されたら、バックエンドが pull request を merge する。
+  - 値はファイルに保存されない。今の値は、clone ではなく CLI（API）で読む。
+- apply request を通さずに `main` を変えると、repository は「壊れた」状態になる。
 
 ## 準備
 
 - トークンとバックエンドの URL を置く：`logiforge auth login --with-token --host <URL>`（トークンは標準入力から渡す）。
   - トークンの種類とスコープは、[CLI の認証](../../../design/cli/auth.md) に従う。
 - git にトークンを渡す：`logiforge auth setup-git`
-- 木を clone する：`logiforge repo clone <repository>`。以降のコマンドは、clone の中で動かす。
+- スナップショットツリーの git リポジトリを clone する：`logiforge repo clone <repository>`。以降のコマンドは、clone の中で動かす。
 - セッション ID を、環境変数 `LOGIFORGE_SESSION_ID` に置く。
   - CLI は作らない。自分で一意な値を決める。
   - 同じ apply request をレビューする reviewer とは、別の値にする（[保証の範囲](../../../docs/apply-request/review.md#保証の範囲)）。
@@ -24,12 +87,12 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 
 ## 今の状態を読む
 
-- 木の概要：`logiforge tree view`
+- スナップショットツリーの概要：`logiforge tree view`
 - ノードの一覧：`logiforge tree nodes [--root <ノード>] [--depth <n>]`
 - ノードの詳細と履歴：`logiforge node view <ノード>`、`logiforge node history <ノード>`
 - 検証結果とレポート：`logiforge verdict view <検証結果>`
 - artifact の中身：`logiforge artifact get <sha256> [-o <ファイル>]`
-- 木の全体を書き出す：`logiforge tree export --format json|markdown`
+- スナップショットツリーの全体を書き出す：`logiforge tree export --format json|markdown`
 - 作業が終わったか：`logiforge tree completion`（[作業の終わりの判定](../../../docs/work/README.md#作業の終わりの判定)）
 - `tree view`、`tree nodes`、`tree export`、`node view`、`artifact get` は、`--commit <SHA>` で、過去の `main` の時点を読める。
 - 値と要再検討の意味は、[真偽値の伝播](../../../docs/tree/propagation.md) に従う。
@@ -85,7 +148,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 
 ## 壊れた repository を直す
 
-壊れた repository では、木を読むコマンドが、最後に正しかった時点の木を出し、終了コード 1 で終わる（[壊れているあいだ](../../../docs/apply-request/repair.md#壊れているあいだ)）。
+壊れた repository では、スナップショットツリーを読むコマンドが、最後に正しかった時点のスナップショットツリーを出し、終了コード 1 で終わる（[壊れているあいだ](../../../docs/apply-request/repair.md#壊れているあいだ)）。
 戻すか認めるかは、[直し方](../../../docs/apply-request/repair.md#直し方) で決める。
 
 1. `logiforge repair revert` か `logiforge repair accept`。ブランチとコミットを作る。

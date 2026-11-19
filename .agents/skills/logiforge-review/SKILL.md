@@ -7,7 +7,38 @@ description: Logiforge の apply request を reviewer として審査し、appro
 
 エージェントが reviewer として、[apply request](../../../docs/apply-request/README.md) を審査し、結果を付けるときに使う。
 論理レビューの仕組みの正本は [論理レビュー](../../../docs/apply-request/review.md) である。
-準備（トークン、clone、`--json`）は、[logiforge](../logiforge/SKILL.md) の「準備」に従う。
+apply request を出す・直す側の使い方は、[logiforge](../logiforge/SKILL.md) に書く。
+
+## 何をレビューするか
+
+この節は、ほかのスキルやリンクを開かなくても読めるように書く。
+
+- Logiforge は、答えの分からない問いを仮説に分けて検証していく過程の、仮説と根拠を記録する正本である。
+- 記録は、スナップショットツリーという木である。
+  - 根は、問いを表す仮説である。
+  - 仮説の子はストーリー、ストーリーの子は仮説で、交互に並ぶ。
+  - ストーリーは、「子仮説がすべて真なら、親仮説は真になる」という論理のつながりである。
+  - 子ストーリーを持たない仮説（葉）に、検証結果（値とレポート）を付ける。
+- 値を入れるのは検証結果だけで、上の値は自動で決まる（ストーリーは子仮説の AND、仮説は子ストーリーの OR）。
+  - そのため、通した誤りは、根の結論まで自動で伝わる。
+- スナップショットツリーへの変更は、すべて apply request で出す。apply request は、reviewer が `approve` すると反映される。
+- reviewer が審査するのは、論理と根拠である。
+  - ストーリーの子仮説で、親仮説が本当に言えるか。
+  - 検証結果のレポートが、値を本当に支えているか。
+  - 形の決まり（文字数、操作の種類など）は、Logiforge が検査する。
+
+### 別のコンテキストでレビューする理由
+
+- opener と同じ文脈で読むと、opener の推論をそのまま受け入れてしまい、審査にならない。
+- そのため、差分を書いたのとは別のセッションで、レビューの材料だけを読んで審査する。
+  - 材料には、apply request の説明欄を含めない。opener の推論が入るから。
+- 1 つの apply request ごとに新しいコンテキストで始めると、前のレビューに引きずられず、同じ材料なら同じ判断になりやすい。
+
+## 準備
+
+- トークンとバックエンドの URL を置く：`logiforge auth login --with-token --host <URL>`（トークンは標準入力から渡す）。
+- repository の名前を、環境変数 `LOGIFORGE_REPO` に置くか、各コマンドに `--repo <repository>` を付ける。
+- 出力を機械的に読むときは、どのコマンドにも `--json` を付ける。
 
 ## 始める前に
 
@@ -44,7 +75,7 @@ description: Logiforge の apply request を reviewer として審査し、appro
 - 直すための apply request（材料に `repair` がある）では、[直し方](../../../docs/apply-request/repair.md#直し方) に従う。
   - `repair.revert`：`repair.changes` の変化をすべて取り消してよいかを見る。
   - `repair.accept`：`repair.changes` の変化を、ふつうの apply request の差分と同じ観点で審査する。
-- 形の検査（木の形、4 種類の操作として読めるか）は、Logiforge が行う。reviewer は、論理を見る。
+- 形の検査（スナップショットツリーの形、4 種類の操作として読めるか）は、Logiforge が行う。reviewer は、論理を見る。
 
 ## 結果の付け方
 
@@ -61,7 +92,7 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - `approve`：確かめた観点と、問題が無いと判断した理由。
   - `request_changes`：問題ごとに、対象のノード、外れた観点、直し方。
 - `--prompt-revision` には、使ったプロンプト（このスキル）のリビジョンを書く。`approve` では必須である。
-  - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。木のリポジトリのコミットではない。
+  - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。スナップショットツリーの git リポジトリのコミットではない。
 - 直しても通らない apply request（前提の主張そのものが誤っているなど）は、却下する：`logiforge ar close <apply request> --reason <理由>`
   - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](../../../docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
 
