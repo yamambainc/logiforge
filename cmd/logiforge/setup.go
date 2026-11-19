@@ -124,9 +124,16 @@ func (s *setupService) Start(ctx context.Context, kind, webuiURL string) (api.Se
 	case err != nil:
 		return api.SetupState{}, err
 	}
+	// 始めたあとは、状態を読めなくても、トークンは返す。なぜ：捨てると、始めたブラウザも続けられなくなるから。
+	// 画面は、そのあと getSetup で読み直す。
 	st, err := s.State(ctx)
+	if err != nil {
+		slog.Error("セットアップを始めたあとに、状態を読めない", "err", err)
+		g := kind
+		st = api.SetupState{Started: true, GitForge: &g}
+	}
 	st.SetupToken = tok
-	return st, err
+	return st, nil
 }
 
 // gitforgeValues は、構成の段の入力を確かめ、設定の DB に置く値にする。
