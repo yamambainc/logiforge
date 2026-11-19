@@ -36,7 +36,9 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
 
 ## 準備
 
-- トークンとバックエンドの URL を置く：`logiforge auth login --with-token --host <URL>`（トークンは標準入力から渡す）。
+- バックエンドの URL を置く：`logiforge auth login --host <URL>`
+  - GitHub を使う構成では、`gh auth login` をしてあれば、トークンは置かなくてよい。CLI が `gh auth token` を読む。
+  - Forgejo を使う構成では、トークンも置く：`logiforge auth login --with-token --host <URL>`（トークンは標準入力から渡す）。
 - repository の名前を、環境変数 `LOGIFORGE_REPO` に置くか、各コマンドに `--repo <repository>` を付ける。
 - 出力を機械的に読むときは、どのコマンドにも `--json` を付ける。
 

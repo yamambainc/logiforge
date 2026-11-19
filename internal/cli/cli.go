@@ -42,6 +42,11 @@ type App struct {
 	HTTP *http.Client
 	// PendingWait は、snapshot_pending が返ったときに、送り直すまで待つ時間である。0 なら 1 秒。
 	PendingWait time.Duration
+	// Gh は、gh の実行ファイルである。空なら PATH の gh。
+	Gh string
+
+	// tok は、見つけたトークンである。ghHost は、それを gh から得たときの GitHub のホスト名である。
+	tok, ghHost string
 
 	json bool
 	// broken は、応答のヘッダー Logiforge-Repository-Broken の値（最後に正しかった時点のコミット）。
@@ -202,6 +207,7 @@ func (a *App) help() {
 	}
 	fmt.Fprintln(a.Stdout, "")
 	fmt.Fprintln(a.Stdout, "環境変数：LOGIFORGE_TOKEN、LOGIFORGE_HOST、LOGIFORGE_SESSION_ID、LOGIFORGE_REPO")
+	fmt.Fprintln(a.Stdout, "トークンは、LOGIFORGE_TOKEN、設定ファイルの順に探す。GitHub の構成では、どちらにもなければ gh auth token を使う")
 }
 
 // ---- フラグ ----
@@ -279,19 +285,97 @@ func (a *App) readConfig() (config, error) {
 	return c, yaml.Unmarshal(b, &c)
 }
 
-// token は、トークンを、環境変数 LOGIFORGE_TOKEN、設定ファイルの順に探す。
-func (a *App) token() (string, error) {
+// errNoToken は、トークンが見つからないときの誤りである。
+var errNoToken = errors.New("トークンがない。logiforge auth login --with-token で設定ファイルに書くか、LOGIFORGE_TOKEN で渡す")
+
+// token は、トークンを、環境変数 LOGIFORGE_TOKEN、設定ファイル、gh auth token の順に探す（design/cli/auth.md の「置き場所」）。
+// gh は、バックエンドが GitHub の構成だと確かめられたときだけ呼ぶ。Forgejo の構成や、確かめられないときは呼ばない。
+// 1 回の実行では、1 度だけ探す。
+func (a *App) token(ctx context.Context) (string, error) {
+	if a.tok != "" {
+		return a.tok, nil
+	}
 	if t := a.Getenv("LOGIFORGE_TOKEN"); t != "" {
+		a.tok = t
 		return t, nil
 	}
 	c, err := a.readConfig()
 	if err != nil {
 		return "", err
 	}
-	if c.Token == "" {
-		return "", errors.New("トークンがない。logiforge auth login --token <トークン> か、LOGIFORGE_TOKEN で渡す")
+	if c.Token != "" {
+		a.tok = c.Token
+		return c.Token, nil
 	}
-	return c.Token, nil
+	h := a.githubHost(ctx)
+	if h == "" {
+		return "", errNoToken
+	}
+	t, err := a.ghToken(ctx, h)
+	if err != nil {
+		return "", err
+	}
+	a.tok, a.ghHost = t, h
+	return t, nil
+}
+
+// githubHost は、バックエンドが GitHub の構成なら、GitHub のホスト名を返す。そうでないか、確かめられなければ空を返す。
+// GET /v1/oauth/config（認証を求めない）の gitforge と authorize_url から求める。
+func (a *App) githubHost(ctx context.Context) string {
+	host, err := a.host()
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, host+"/v1/oauth/config", nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := a.HTTP.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var cfg struct {
+		GitForge     string `json:"gitforge"`
+		AuthorizeURL string `json:"authorize_url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&cfg); err != nil || cfg.GitForge != "github" {
+		return ""
+	}
+	u, err := url.Parse(cfg.AuthorizeURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return ""
+	}
+	return u.Host
+}
+
+// ghToken は、gh auth token --hostname <ホスト> の出力を返す。
+func (a *App) ghToken(ctx context.Context, hostname string) (string, error) {
+	gh := a.Gh
+	if gh == "" {
+		gh = "gh"
+	}
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, gh, "auth", "token", "--hostname", hostname)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("トークンがない。GitHub の構成なので gh auth token を読もうとしたが、gh がない。gh を入れて gh auth login --hostname %s でログインするか、logiforge auth login --with-token で渡す", hostname)
+	}
+	t := strings.TrimSpace(stdout.String())
+	if err != nil || t == "" {
+		why := strings.TrimSpace(stderr.String())
+		if why == "" && err != nil {
+			why = err.Error()
+		}
+		return "", fmt.Errorf("トークンがない。gh auth token --hostname %s でトークンを得られなかった（%s）。gh auth login --hostname %s でログインするか、logiforge auth login --with-token で渡す", hostname, why, hostname)
+	}
+	return t, nil
 }
 
 func (a *App) host() (string, error) {
@@ -390,7 +474,7 @@ func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 	if err != nil {
 		return response{}, err
 	}
-	tok, err := a.token()
+	tok, err := a.token(ctx)
 	if err != nil {
 		return response{}, err
 	}

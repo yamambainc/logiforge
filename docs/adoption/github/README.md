@@ -93,9 +93,12 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
   - エージェントの機械用アカウントは、WebUI でサインインしない。なぜ：Write を持つので、サインインすると利用者になり、設定を変えられるから。
   - organization が OAuth App のアクセスを制限しているときは、organization の owner が GitHub CLI（OAuth App である）を許す。
 
+- CLI は、トークンを渡さなくても、`gh auth token` を読む（[gh のトークン](../../../design/cli/auth.md#gh-のトークン)）。そのため、`gh auth login` のあとは、バックエンドの URL だけを置く。
+  - gh のトークンが変わっても、置き直さなくてよい。
+
 ```sh
 gh auth login --hostname github.com --git-protocol https --web
-gh auth token | logiforge auth login --with-token --host https://logiforge.example.com
+logiforge auth login --host https://logiforge.example.com
 logiforge auth setup-git --url https://github.com
 logiforge repo clone myapp-cache-strategy
 ```
