@@ -37,6 +37,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 ## 作業を選ぶ
 
 `logiforge work list [--subtree <ノード>] [--kind <種類>,...]` で、着手できる作業を探す（[着手できる作業](../../../docs/work/README.md)）。
+ノードを対象にした open の apply request がある作業は、既定では出ない。それも見るときは `--include-claimed` を付ける。
 種類ごとに、次のことをする。
 
 - `undecided_leaf`：葉を検証して `verdict.submit` を出す。1 つの検証で決められないなら、`story.create` で分解する。
@@ -44,6 +45,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 - `fix_waiting`：自分が出した apply request を直す（下の「apply request を直す」）。
 - `human_request_answered`：回答を引用して `verdict.submit` を出す（下の「人への依頼」）。
 - `citation_changed`：引用元の変化を確かめ、要るなら検証結果を差し替える（[引用元の変化](../../../docs/tree/verdict.md#引用元の変化)）。
+  - 差し替えは、`logiforge verdict new ... --supersedes <検証結果>` で出す。`--supersedes` が無いと、検証結果が 2 つ並ぶ。
 - `repair_repository`：壊れた repository を直す（下の「壊れた repository を直す」）。
 - `review_waiting`：[logiforge-review](../logiforge-review/SKILL.md) を、別のセッションで使う。
 
@@ -76,6 +78,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
   - push すると新しい先頭のコミットになり、レビューからやり直しになる。
 - `conflict`：ブランチを今の `origin/main` に合わせて直し、`logiforge check` してから push する。
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
+- `repository_broken`：repository が壊れているあいだは、直すための apply request しか反映されない。先に下の「壊れた repository を直す」で直し、そのあと reviewer の `approve` し直しを待つ。
 - レビューの鎖が切れた（レビューの API が `not_open` を返す）：`logiforge ar close <apply request> --reason <理由>` し、同じブランチから `ar create` し直す。
 - 取り下げるとき：`logiforge ar close <apply request> --reason <理由>`
 - 反映か close のあと、手元のブランチは `logiforge ar cleanup` で消せる。
@@ -94,7 +97,7 @@ apply request のレビューは、[logiforge-review](../logiforge-review/SKILL.
 計算機の中で検証できない葉や、ストーリーが尽きた要再検討の仮説は、人に頼む（[人への依頼](../../../docs/human-requests/README.md)）。
 
 - 起票：`logiforge human-request create --node <ノード> --kind pvr|decision --body <ファイル>`
-- 状態を見る：`logiforge human-request list [--state open|answered]`、`logiforge human-request view <人への依頼>`
+- 状態を見る：`logiforge human-request list [--kind pvr|decision] [--state open|answered] [--node <ノード>]`、`logiforge human-request view <人への依頼>`
 - 回答が来たら：`logiforge verdict new` に `--cite answer:<人への依頼>` を付け、回答から値を判断したレポートで出す。
   - 回答をそのまま値にしない。判断の過程も審査の対象である。
 

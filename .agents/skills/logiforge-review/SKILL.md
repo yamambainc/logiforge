@@ -12,7 +12,7 @@ description: Logiforge の apply request を reviewer として審査し、appro
 ## 始める前に
 
 - 差分を書いたどのセッションとも別のセッション ID を、`LOGIFORGE_SESSION_ID` に置く。
-  - 同じセッションの `approve` は、反映の条件を満たさない（[反映の条件](../../../docs/apply-request/review.md#反映の条件)）。
+  - 差分を書いたセッションからのレビューは、種類によらず、`same_session` で拒まれる（[反映の条件](../../../docs/apply-request/review.md#反映の条件)）。
 - 自分が書いた差分や、自分が指示した差分はレビューしない。セッションを変えても、文脈は分かれないから。
 - 1 つの apply request ごとに、新しいコンテキストで始める（[想定する使い方](../../../docs/apply-request/review.md#想定する使い方)）。
   - 前のレビューの文脈に、引きずられないため。
@@ -20,7 +20,7 @@ description: Logiforge の apply request を reviewer として審査し、appro
 ## 手順
 
 1. レビュー待ちを探す：`logiforge work list --kind review_waiting`
-   - 各行の 2 つ目の列が、apply request の識別子である。
+   - 各項目の `subject_id` が、apply request の識別子である（text の出力では 2 つ目の列）。
 2. 材料を読む：`logiforge ar material <apply request> --json`
    - 材料の中身は、[レビューの材料](../../../docs/apply-request/review.md#レビューの材料) に書いてある。
    - 応答の `commit` を控える。手順 5 でそのまま使う。
@@ -61,8 +61,9 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - `approve`：確かめた観点と、問題が無いと判断した理由。
   - `request_changes`：問題ごとに、対象のノード、外れた観点、直し方。
 - `--prompt-revision` には、使ったプロンプト（このスキル）のリビジョンを書く。`approve` では必須である。
-  - 例：このファイルを含む git リポジトリでの `git log -1 --format=%H -- <このファイル>`
+  - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。木のリポジトリのコミットではない。
 - 直しても通らない apply request（前提の主張そのものが誤っているなど）は、却下する：`logiforge ar close <apply request> --reason <理由>`
+  - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](../../../docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
 
 ## 付けたあと
 
@@ -72,11 +73,13 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 - `merge_failures` がある：反映できなかった。apply request は open のまま残る。
   - `snapshot_pending`：少し待って、材料を読み直し、`approve` し直す。
   - `merge_forbidden`：この reviewer の主体に merge の権限が無い。権限のある reviewer に任せる。
+  - `repository_broken`：repository が壊れていて、直すための apply request でないので反映されない。直すのは別の作業なので、reviewer がすることは無い。
   - `stale_target`、`invariant_violation`、`conflict`：opener が直す。reviewer がすることは無い。
 - `warnings` に、reviewer と作成者が同じ主体だという警告があれば、頼んだ人に伝える。
 
 `ar review` が誤りを返したとき：
 
+- `same_session`：差分を書いたセッションと同じセッション ID を使っている。レビューをやめ、別のセッションでやり直す。
 - `commit_conflict`：材料を読んだあとに push された。手順 2 から、やり直す。
 - `snapshot_pending`：少し待って、送り直す。
 - `not_open`：レビューの鎖が切れたか、もう open でない。opener の作業なので、レビューをやめる。
