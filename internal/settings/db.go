@@ -78,6 +78,8 @@ func (d *DB) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS record_keys (key_id TEXT PRIMARY KEY, public_key TEXT NOT NULL, private_key TEXT NOT NULL,
 			created_at TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS worker_tokens (owner TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL, repositories TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS webui_sessions (id_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, access_token TEXT NOT NULL,
+			access_expires_at TEXT NOT NULL, refresh_token TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS setup (id INTEGER PRIMARY KEY CHECK (id = 1), token_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, done_at TEXT NOT NULL DEFAULT '')`,
 	}
 	return d.write(ctx, func(tx *sql.Tx) error {

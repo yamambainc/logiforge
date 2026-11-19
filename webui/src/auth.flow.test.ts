@@ -11,7 +11,12 @@ class MemStorage {
 }
 
 let assigned: string[];
+// POST /v1/oauth/session の応答（セッションの cookie があるときの BE）。既定はセッションなし（401）
+let session: () => Response;
+let sessionCalls: number;
 function env(path: string) {
+  session = () => new Response('{}', { status: 401 });
+  sessionCalls = 0;
   const u = new URL(path, 'https://lf.example');
   assigned = [];
   const loc = { pathname: u.pathname, search: u.search, origin: u.origin, assign: (x: string) => assigned.push(x) };
@@ -21,6 +26,8 @@ function env(path: string) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/v1/oauth/config') return new Response(JSON.stringify({ authorize_url: 'https://forge.example/login/oauth/authorize', client_id: 'c', redirect_uri: 'https://lf.example/oauth/callback', scope: 's' }));
     if (url === '/v1/oauth/token') return new Response(JSON.stringify({ access_token: 'at', token_type: 'bearer', expires_in: 3600 }));
+    if (url === '/v1/oauth/session') { sessionCalls++; return session(); }
+    if (url === '/v1/oauth/signout') return new Response(null, { status: 204 });
     return new Response('{}', { status: 404 });
   }));
   return loc;
@@ -34,8 +41,38 @@ async function load() {
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+const tokenResp = (t: string, sec = 3600) => () => new Response(JSON.stringify({ access_token: t, token_type: 'bearer', expires_in: sec }));
+
 describe('起動', () => {
-  it('トークンがなければ、今の URL を戻り先にして authorize に行く。残っていた lf-oauth:* は消す', async () => {
+  it('セッションがあれば、authorize に行かずに、そのアクセストークンでサインインする（再読み込み、新しいタブ）', async () => {
+    env('/r/q/tree?node=h-1');
+    session = tokenResp('at-s');
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-s' });
+    expect(assigned).toHaveLength(0);
+    expect(location.pathname + location.search).toBe('/r/q/tree?node=h-1');
+  });
+
+  it('BE が答えなければ、authorize に行かずに、しばらくしてからと示す', async () => {
+    env('/');
+    session = () => new Response('{}', { status: 503 });
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'unavailable' });
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('サインアウトしたタブでは、セッションを見ずにサインインの画面', async () => {
+    env('/');
+    sessionStorage.setItem('lf-signed-out', '1');
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'signed-out' });
+    expect(sessionCalls).toBe(0);
+  });
+
+  it('セッションがなければ（401）、今の URL を戻り先にして authorize に行く。残っていた lf-oauth:* は消す', async () => {
     env('/r/q/tree?node=h-1');
     sessionStorage.setItem('lf-oauth:old', '{}');
     const a = await load();
@@ -106,7 +143,17 @@ describe('401', () => {
     expect(assigned).toHaveLength(0);
   });
 
-  it('1 度は成功したあとの 401 では、サインインの画面を出さずに authorize に行く', async () => {
+  it('1 度は成功したあとの 401 では、まずセッションから新しいトークンをもらう。もらえれば authorize に行かない', async () => {
+    vi.useRealTimers();
+    const a = await signedIn();
+    a.markVerified();
+    session = tokenResp('at-2');
+    a.onUnauthorized();
+    await vi.waitFor(() => expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-2' }));
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('1 度は成功したあとの 401 で、セッションも切れていたら、サインインの画面を出さずに authorize に行く', async () => {
     // authorize への移動は、PKCE の digest（本物の非同期）のあとなので、この試しだけ本物の時計で待つ。期限（59 分後）は来ない
     vi.useRealTimers();
     const a = await signedIn();
@@ -117,10 +164,57 @@ describe('401', () => {
     expect(assigned).toHaveLength(1);
   });
 
-  it('期限の 1 分前に authorize に行くように、時計を仕掛ける', async () => {
+  it('セッションが同じトークンしか返さなければ（GitForge で取り消された）、authorize に行く', async () => {
+    vi.useRealTimers();
+    const a = await signedIn();
+    a.markVerified();
+    session = tokenResp('at');
+    a.onUnauthorized();
+    await vi.waitFor(() => expect(assigned).toHaveLength(1));
+  });
+
+  it('期限の 1 分前に、セッションから黙って新しいトークンをもらう。authorize には行かない', async () => {
     const spy = vi.spyOn(globalThis, 'setTimeout');
     const a = await signedIn();
     const delays = spy.mock.calls.map((c) => c[1]);
     expect(delays).toContain(3600_000 - a.EXPIRY_MARGIN_MS);
+    session = tokenResp('at-2');
+    await vi.advanceTimersByTimeAsync(3600_000 - a.EXPIRY_MARGIN_MS);
+    expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-2' });
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('期限の前に BE が答えなければ、しばらくしてもう 1 度もらう', async () => {
+    const a = await signedIn();
+    session = () => new Response('{}', { status: 503 });
+    await vi.advanceTimersByTimeAsync(3600_000 - a.EXPIRY_MARGIN_MS);
+    expect(sessionCalls).toBe(1);
+    session = tokenResp('at-3');
+    await vi.advanceTimersByTimeAsync(a.RENEW_RETRY_MS);
+    expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-3' });
+  });
+
+  it('回答の前の reauthorize：もらえれば true（移動しない）、セッションが切れていれば authorize に行って false', async () => {
+    vi.useRealTimers();
+    const a = await signedIn();
+    session = tokenResp('at-2');
+    expect(await a.reauthorize()).toBe(true);
+    expect(assigned).toHaveLength(0);
+    session = () => new Response('{}', { status: 401 });
+    expect(await a.reauthorize()).toBe(false);
+    expect(assigned).toHaveLength(1);
+  });
+});
+
+describe('サインアウト', () => {
+  it('BE のセッションを消す要求を送り、サインインの画面を出す', async () => {
+    env('/');
+    session = tokenResp('at-s');
+    const a = await load();
+    await a.start();
+    await a.signOut();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'signed-out' });
+    expect(fetch).toHaveBeenCalledWith('/v1/oauth/signout', expect.objectContaining({ method: 'POST' }));
+    expect(sessionStorage.getItem('lf-signed-out')).toBe('1');
   });
 });

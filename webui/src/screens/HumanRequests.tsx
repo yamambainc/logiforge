@@ -162,8 +162,8 @@ function AnswerForm({ repo, h, onDone, onAlready }: { repo: string; h: HumanRequ
     if (!body.trim()) { setError('回答を書いてください。'); return; }
     const bad = checkAttachments(body, files, links);
     if (bad) { setError(bad); return; }
-    // 残りが少なければ、書きかけを置いて先に authorize に行く（送っている途中で期限が来ないように）
-    if (remainingMs() < MIN_TOKEN_MS) { await reauthorize(); return; }
+    // 残りが少なければ、先に新しいトークンをもらう。セッションが切れていたら、書きかけを置いて authorize に行く（送っている途中で期限が来ないように）
+    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
     setBusy(true); setError(null);
     try {
       const atts: AttachmentInput[] = [];

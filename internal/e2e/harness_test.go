@@ -59,6 +59,9 @@ type world struct {
 	stopWorker func()
 	// logs は、動かしたサブコマンドのログである（名前ごと）。
 	logs map[string]*lockedBuffer
+	// app は、WebUI のサインインのアプリケーション。dbPath は、設定の DB のパス。
+	app    forgejotest.App
+	dbPath string
 }
 
 // lockedBuffer は、サブコマンドが書くあいだにも読めるバッファである。
@@ -240,6 +243,7 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 	if err != nil {
 		t.Fatal(err)
 	}
+	w.app = app
 	c.WebUIURL = serveURL
 	c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret = app.ClientID, app.ClientSecret
 	if w.tokens["alice"], err = forgejotest.Token(fu, w.login("alice"), "pw-"+w.login("alice")+"-12345", app, serveURL+"/oauth/callback"); err != nil {
@@ -252,6 +256,7 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 		extra(w, serveURL, c)
 	}
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	w.dbPath = dbPath
 	backendKey, sharedKey := settings.NewKey(), settings.NewKey()
 	// 記録の鍵がなければ、設定の DB に書かない。セットアップの API で入れる（setup_test.go）。
 	if len(c.RecordKeys) > 0 {

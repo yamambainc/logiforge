@@ -234,7 +234,7 @@ function ReviewPane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onC
 
   const send = async (k: ReviewKind, commit: string) => {
     // 残りが少なければ、書きかけを置いて先に authorize に行く（送っている途中で期限が来ないように）
-    if (remainingMs() < MIN_TOKEN_MS) { await reauthorize(); return; }
+    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
     setBusy(true); setError(null); setConflict(null);
     const r = await submitReview(repo, a.id, k, commit, body);
     setBusy(false);

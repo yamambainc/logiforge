@@ -4,6 +4,7 @@ WebUI のサインインと、トークンの扱いを実装するときに読�
 BE が主体を確かめる方法は、[認証](../backend/ports/authentication.md)、[GitHub アダプタの認証](../adapters/github.md#認証)、[Forgejo アダプタの認証](../adapters/forgejo.md#認証) に書く。
 スクリプトの注入への備えは、[スクリプトの注入への備えと、ファイルの開き方](security.md) に書く。
 authorize から戻るまでの流れは、[サインインの流れ](signin-flow.md) に書く。
+再読み込みや新しいタブでサインインを保つ仕組みは、[サインインのセッション](session.md) に書く。
 
 ## 方式
 
@@ -21,7 +22,7 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
   - Forgejo：Forgejo の URL の `/login/oauth/authorize` と `/login/oauth/access_token`
 - client_id、client secret、`redirect_uri` の元の WebUI の URL、GitForge の URL は、BE が要求ごとに設定の DB から読む（[設定](../settings/README.md#設定の-db-に置くもの)）。
 - トークンの交換は、BE が中継する（[サインインの中継](oauth-relay.md)、[サインインの流れ](signin-flow.md)）。
-- ブラウザが持つのは、アクセストークンだけである。リフレッシュトークンは、ブラウザに渡さない（[トークンの持ち方](#トークンの持ち方)）。
+- ブラウザが持つのは、アクセストークンと、セッションの cookie だけである。リフレッシュトークンは、BE が持ち、ブラウザに渡さない（[トークンの持ち方](#トークンの持ち方)）。
 
 ## client secret の役目
 
@@ -32,7 +33,8 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
   - GitHub：GitHub は、交換に client secret を必ず求める。
   - Forgejo：Forgejo に、同意の画面を省かせるため。Forgejo は、許可済みの利用者が authorize に来たとき、confidential client なら同意の画面を出さずにすぐ戻す。public client なら、毎回同意の画面を出す。
 - どちらの構成でも、許可済みの利用者には、同意の画面が出ない。
-  - なぜ要るか：トークンをメモリだけに持つので、新しいタブ、リロード、共有されたリンク、アクセストークンの期限のたびに authorize に行くから。そのたびに押させないためである。
+  - なぜ要るか：セッションが切れたときや、サインアウトしたあとに authorize に行くとき、押させないためである。
+- refresh にも、client secret を使う。GitHub も Forgejo も、refresh に client secret を求める。
 - なぜ BE が中継するか：
   - client secret を、ブラウザに渡さずに済むから。
   - WebUI と BE は同じオリジンなので、GitForge の CORS と、CSP の `connect-src` を広げずに済むから。Forgejo の CORS の設定は、Forgejo の API 全体に効く。GitHub のトークンのエンドポイントは、ブラウザからの要求に CORS で応じない。
@@ -43,9 +45,9 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 
 - GitHub App のトークンの権限は、スコープでは決まらない。App の権限と、その人のリポジトリの権限の、両方にあるものになる（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
 - authorize の `scope` には、`offline_access` だけを付ける。
-  - GitHub は、`offline_access` を付けると、App の設定で期限を切っていても、期限つきの user access token（8 時間）とリフレッシュトークンを返す。リフレッシュトークンは、BE が除く。
-  - なぜ：期限のないトークンは、盗まれたときに、利用者が許可を取り消すまで使えるから。
-- BE は、交換の応答に `expires_in` がなければ、トークンを返さずに `unavailable` を返す。
+  - GitHub は、`offline_access` を付けると、App の設定で期限を切っていなくても、期限つきの user access token（8 時間）とリフレッシュトークンを返す。リフレッシュトークンは、BE が持つ（[サインインのセッション](session.md)）。
+  - なぜ：期限のないトークンは、盗まれたときに、利用者が許可を取り消すまで使えるから。リフレッシュトークンがあれば、再読み込みのたびに GitHub に行かずに済むから。
+- 交換の応答に `expires_in` かリフレッシュトークンがなければ、BE はセッションを作らない。アクセストークンは返す。
 - 盗まれたときに書ける範囲は、App が install されていて、その人が書けるリポジトリの、App の権限の中である。
 
 ### Forgejo を使う構成
@@ -61,25 +63,25 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 
 ## トークンの持ち方
 
-- アクセストークンは、メモリ（JavaScript の変数）だけに持つ。`localStorage`、`sessionStorage`、cookie には保存しない。
+- アクセストークンは、ブラウザでは、メモリ（JavaScript の変数）だけに持つ。`localStorage`、`sessionStorage`、cookie には保存しない。
 - アクセストークンの寿命は、構成で決まる。
   - GitHub：8 時間（[user access token](../adapters/github-app.md#user-access-token)）
   - Forgejo：1 時間（Forgejo の既定）
-- リフレッシュトークンは、ブラウザに渡さない。BE は、GitForge の応答から除いて返し、保持もしない。
-  - なぜ：盗まれたときに使える期間を、アクセストークンの寿命までに収めるため。リフレッシュトークンを盗まれると、更新を続けて、利用者が GitForge で許可を取り消すまで使われる。
-- タブごとに、それぞれ交換したアクセストークンを持つ。
-  - Forgejo では、同じ利用者が何度交換しても、先に交換したアクセストークンは使えたままである。
-  - GitHub は、同じ利用者とアプリの組のトークンが多すぎると、古いものを取り消すことがある。取り消されたタブは、API の `unauthenticated` で authorize に行き直す（[サインインの流れ](signin-flow.md#authorize-とサインインの画面)）。
+- リフレッシュトークンは、BE が設定の DB に暗号化して持ち、ブラウザに渡さない。ブラウザには、セッション ID を入れた `HttpOnly` の cookie だけを渡す（[サインインのセッション](session.md)）。
+  - なぜ BE に持つか：JavaScript から読めない場所に置き、サインアウトで BE の記録を消せば使えなくするため。
+- 同じブラウザのタブは、同じセッションの、同じアクセストークンを使う。期限が近づくと、BE が 1 度だけ refresh する。
+- 再読み込み、新しいタブ、期限の前には、セッションからアクセストークンをもらう。authorize には行かない。
 - API を呼ぶたびに、`Authorization: Bearer <アクセストークン>` を付ける。
-- 期限ごとに authorize へのページの移動が起きるので、書きかけを失わないようにする。
+- セッションが切れたときは、authorize へのページの移動が起きるので、書きかけを失わないようにする。
   - 人への依頼の回答の書きかけは、書くたびに `sessionStorage` に置き、戻ったら戻す（置くものは [人への依頼](screens.md#人への依頼) に書く）。
     - なぜ置いてよいか：トークンではないから。
     - 添付のファイルの中身は置かない。戻ったら、選び直すように示す。
-  - 回答を送る直前に、アクセストークンの残りが 5 分より少なければ、先に authorize に行く。
+  - 回答を送る直前に、アクセストークンの残りが 5 分より少なければ、先にセッションから新しいものをもらう。セッションが切れていれば、authorize に行く。
 
 ## サインアウト
 
-- サインアウトは、メモリのアクセストークンと、回答の書きかけ（`sessionStorage`）を消し、サインインの画面を出す。
+- サインアウトは、BE のセッションと cookie、メモリのアクセストークン、回答の書きかけ（`sessionStorage`）を消し、サインインの画面を出す。
+  - GitForge での取り消しはしない。リフレッシュトークンは BE の外に出ていないので、BE の記録を消せば使えないからである。
   - サインインの画面には、構成に合わせて「GitHub でサインイン」か「Forgejo でサインイン」のボタンだけを置く。構成は、`getOAuthConfig` の `gitforge` で知る。
 - GitForge のログインは残る。そのため、新しいタブを開いたり、ボタンを押したりすると、押す操作なしにサインインし直す。
   - 本当に外れるには、GitForge からログアウトする。サインインの画面に、そのためのリンクを置く。
@@ -90,5 +92,8 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
   - apply request を approve して、merge することも使われうる。盗まれた WebUI のトークンでできることの中で、いちばん大きい（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
   - 設定の API も使われうる（[利用者の決め方](../settings/users.md#利用者の決め方)）。
 - CSP の `default-src 'self'` は、`fetch` や画像で外のオリジンへ送ることを防ぐ。ただし、ページの移動（`location.href` や `window.open` で外の URL を開く）でトークンを外へ送ることは、止めない（[スクリプトの注入への備え](security.md)）。
-- 外へ渡ったときに使えるのは、アクセストークンの寿命（GitHub は 8 時間、Forgejo は 1 時間）までである。リフレッシュトークンはブラウザにないので、それより延びない。
-- トークンを保存しないので、ページを閉じたあとに端末から盗まれることはない。
+- 外へ渡ったアクセストークンを使えるのは、その寿命（GitHub は 8 時間、Forgejo は 1 時間）までである。
+- スクリプトが注入されると、そのページが開いているあいだ、`POST /v1/oauth/session` で、新しいアクセストークンをもらわれうる。リフレッシュトークンとセッション ID は、読まれない（`HttpOnly`）。
+- 設定の DB とバックエンドの鍵の両方が漏れると、リフレッシュトークンで、その寿命（GitHub は 6 か月、Forgejo は約 30 日）まで、利用者として使われうる。
+  - 同じ DB と鍵で守る GitHub App の秘密鍵や client secret と、同じ守りである（[秘密の暗号化](../settings/secrets.md)）。
+- 端末の cookie を盗まれると、サインアウトするか、リフレッシュトークンが切れるまで、利用者として使われうる。端末そのものが侵害されたときは、守りの外とする。

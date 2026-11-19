@@ -251,7 +251,7 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}
 	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth}, slog.Default())
-	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup, Settings: st}), fs.reader, nil
+	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c, sessionStore{l.db, l.keys}), WebUI: webui.Dist(), Setup: l.setup, Settings: st}), fs.reader, nil
 }
 
 // setupOptions は、セットアップが終わるまでに配るものである。
@@ -264,7 +264,7 @@ func (l *liveServer) setupOptions(ctx context.Context) (api.Options, error) {
 	if web == "" {
 		web = github.DefaultWebURL
 	}
-	return api.Options{OAuth: oauthOf(c), WebUI: webui.Dist(), Setup: l.setup, SetupFormAction: originOf(web)}, nil
+	return api.Options{OAuth: oauthOf(c, sessionStore{l.db, l.keys}), WebUI: webui.Dist(), Setup: l.setup, SetupFormAction: originOf(web)}, nil
 }
 
 // originOf は、URL のオリジン（scheme://host）である。
@@ -277,7 +277,7 @@ func originOf(v string) string {
 }
 
 // oauthOf は、WebUI のサインインの中継の設定を作る（design/webui/oauth-relay.md）。client_id がなければ nil（中継を動かさない）。
-func oauthOf(c *settings.Config) *api.OAuth {
+func oauthOf(c *settings.Config, sessions api.SessionStore) *api.OAuth {
 	id, secret, public, web := c.Forgejo.OAuthClientID, c.Forgejo.OAuthClientSecret, c.Forgejo.PublicURL, c.Forgejo.URL
 	if c.GitForge == gitforgeGitHub {
 		id, secret, public, web = c.GitHub.ClientID, c.GitHub.ClientSecret, "", c.GitHub.WebURL
@@ -289,7 +289,26 @@ func oauthOf(c *settings.Config) *api.OAuth {
 		return nil
 	}
 	return &api.OAuth{ForgejoURL: trimSlash(web), PublicURL: public, ClientID: id, ClientSecret: secret,
-		RedirectURI: trimSlash(c.WebUIURL) + "/oauth/callback", GitForge: c.GitForge}
+		RedirectURI: trimSlash(c.WebUIURL) + "/oauth/callback", GitForge: c.GitForge, Sessions: sessions}
+}
+
+// sessionStore は、WebUI のサインインのセッションを、設定の DB に置く（design/webui/session.md）。
+type sessionStore struct {
+	db   *settings.DB
+	keys settings.Keys
+}
+
+func (s sessionStore) PutSession(ctx context.Context, x api.Session) error {
+	return s.db.PutWebUISession(ctx, s.keys, settings.WebUISession(x))
+}
+
+func (s sessionStore) SessionOf(ctx context.Context, idHash string) (api.Session, bool, error) {
+	x, ok, err := s.db.WebUISessionOf(ctx, s.keys, idHash)
+	return api.Session(x), ok, err
+}
+
+func (s sessionStore) DeleteSession(ctx context.Context, idHash string) error {
+	return s.db.DeleteWebUISession(ctx, idHash)
 }
 
 func trimSlash(s string) string {

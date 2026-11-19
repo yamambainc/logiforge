@@ -316,3 +316,57 @@ func TestWorkerTokens(t *testing.T) {
 		t.Fatal("消したトークンが残っている")
 	}
 }
+
+// WebUI のセッション：バックエンドの鍵で暗号化して置き、revision を進めない。rekey では消す。長く使われていないものは消す。
+func TestWebUISessions(t *testing.T) {
+	ctx := context.Background()
+	d, p := openRW(t)
+	keys := testKeys(t)
+	if err := d.Save(ctx, keys, sample(), ""); err != nil {
+		t.Fatal(err)
+	}
+	r0, _ := d.Revision(ctx)
+	now := time.Now().UTC().Truncate(time.Second)
+	s := WebUISession{IDHash: "h1", ClientID: "cid", AccessToken: "at", AccessExpires: now.Add(time.Hour), RefreshToken: "rt-secret", CreatedAt: now, UsedAt: now}
+	if err := d.PutWebUISession(ctx, keys, s); err != nil {
+		t.Fatal(err)
+	}
+	if r1, _ := d.Revision(ctx); r1 != r0 {
+		t.Fatalf("セッションを書いて revision が進んだ：%d → %d", r0, r1)
+	}
+	got, ok, err := d.WebUISessionOf(ctx, keys, "h1")
+	if err != nil || !ok || got != s {
+		t.Fatalf("読んだもの：%+v %v %v", got, ok, err)
+	}
+	raw, _ := os.ReadFile(p)
+	if strings.Contains(string(raw), "rt-secret") {
+		t.Fatal("refresh token を平文で置いた")
+	}
+	// 共有の鍵だけ（worker）では読めない
+	if _, _, err := d.WebUISessionOf(ctx, Keys{Shared: keys.Shared}, "h1"); err == nil {
+		t.Fatal("バックエンドの鍵なしで読めた")
+	}
+	old := WebUISession{IDHash: "h-old", ClientID: "cid", AccessExpires: now, CreatedAt: now, UsedAt: now.Add(-SessionMaxIdle - time.Hour)}
+	if err := d.PutWebUISession(ctx, keys, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.PutWebUISession(ctx, keys, s); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := d.WebUISessionOf(ctx, keys, "h-old"); ok {
+		t.Fatal("長く使われていないセッションが残った")
+	}
+	if err := d.DeleteWebUISession(ctx, "h1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := d.WebUISessionOf(ctx, keys, "h1"); ok {
+		t.Fatal("消したのに残った")
+	}
+	_ = d.PutWebUISession(ctx, keys, s)
+	if _, err := d.Rekey(ctx, keys, testKeys(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := d.WebUISessionOf(ctx, keys, "h1"); ok {
+		t.Fatal("rekey でセッションを消していない")
+	}
+}
