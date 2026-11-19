@@ -30,6 +30,8 @@ const (
 	CodeSetupRequired Code = "setup_required"
 	// CodeSetupDone は、セットアップが終わったあとに、セットアップの API を呼んだことである。
 	CodeSetupDone Code = "setup_done"
+	// CodeSetupInProgress は、セットアップが、ほかのブラウザで進んでいることである。
+	CodeSetupInProgress Code = "setup_in_progress"
 	// CodeInternal は、バックエンドの内部の誤りである。詳しいことは、ログにだけ書く。
 	CodeInternal Code = "internal"
 )

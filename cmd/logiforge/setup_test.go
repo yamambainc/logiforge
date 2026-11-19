@@ -130,6 +130,8 @@ func TestSetupGitHub(t *testing.T) {
 		code int
 		body map[string]any
 	}
+	// setupToken は、セットアップを始めたブラウザのトークンである。空でなければ、要求に付ける。
+	var setupToken string
 	call := func(method, path, auth string, body any) resp {
 		t.Helper()
 		var rd *strings.Reader
@@ -141,6 +143,9 @@ func TestSetupGitHub(t *testing.T) {
 		}
 		req := httptest.NewRequest(method, path, rd)
 		req.RemoteAddr = "192.0.2.1:1234"
+		if setupToken != "" {
+			req.Header.Set("Logiforge-Setup-Token", setupToken)
+		}
 		if auth != "" {
 			req.Header.Set("Authorization", "Bearer "+auth)
 		}
@@ -166,7 +171,24 @@ func TestSetupGitHub(t *testing.T) {
 	want(call("GET", "/v1/repositories", "", nil), 503, "セットアップの前の API")
 	want(call("GET", "/v1/settings", "", nil), 503, "セットアップの前の設定の API")
 
+	// 始める前は、構成を決める呼び出しのほかは受け付けない。
+	want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"}), 422, "始める前の conversion")
 	r = call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "github", "webui_url": "https://lf.example"})
+	setupToken, _ = r.body["setup_token"].(string)
+	if setupToken == "" || r.body["started"] != true {
+		t.Fatalf("始めた応答にトークンがない：%v", r.body)
+	}
+	// ほかのブラウザ（トークンなし・違うトークン）は、始められず、続けられない。
+	mine := setupToken
+	for _, other := range []string{"", "someone-else"} {
+		setupToken = other
+		want(call("PUT", "/v1/setup/gitforge", "", map[string]string{"gitforge": "forgejo"}), 409, "ほかのブラウザの構成（"+other+"）")
+		want(call("POST", "/v1/setup/github/conversion", "", map[string]string{"code": "good-code"}), 409, "ほかのブラウザの conversion（"+other+"）")
+	}
+	setupToken = mine
+	if r := call("GET", "/v1/setup", "", nil); r.body["started"] != true || r.body["setup_token"] != nil {
+		t.Fatalf("getSetup：%v", r.body)
+	}
 	want(r, 200, "構成")
 	if r.body["step"] != "github_app" {
 		t.Fatalf("構成のあと：%v", r.body)

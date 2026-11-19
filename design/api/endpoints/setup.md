@@ -17,8 +17,10 @@ WebUI が、初回のセットアップの画面から呼ぶ（[セットアッ�
 
 ## 認証
 
-- `POST /setup/finish` のほかは、認証を求めない（[だれがセットアップできるか](../../settings/setup.md#だれがセットアップできるか)）。
-- `POST /setup/finish` は、WebUI のサインインで得たトークンを `Authorization` で求める。
+- `GET /setup` は、何も求めない。
+- `PUT /setup/gitforge` は、セットアップを始める。`Logiforge-Setup-Token` を付けずに呼び、まだ始まっていなければ、応答の `setup_token` にトークンを返す。
+- ほかの呼び出し（と、始めたあとの `PUT /setup/gitforge`）は、`Logiforge-Setup-Token` を求める。ないか違えば `setup_in_progress`（409）を返す。まだ始まっていなければ `validation_failed` を返す（[だれがセットアップできるか](../../settings/setup.md#だれがセットアップできるか)）。
+- `POST /setup/finish` は、加えて、WebUI のサインインで得たトークンを `Authorization` で求める。
   - トークンが Logiforge の GitHub App か OAuth2 のアプリケーションのものでなければ、`unauthenticated`（401）を返す。
 - セットアップが終わったあとは、どれも `setup_done`（409）を返す。`GET /setup` だけは、終わったことを返す。
 

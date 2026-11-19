@@ -23,6 +23,7 @@ function env(path: string, handler: Handler = () => new Response('{}')) {
     const n = new URL(to, u.origin); loc.pathname = n.pathname; loc.search = n.search;
   } });
   vi.stubGlobal('sessionStorage', new MemStorage());
+  vi.stubGlobal('localStorage', new MemStorage());
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => { events.push('fetch ' + url); return handler(url, init); }));
   return loc;
 }
@@ -38,7 +39,7 @@ async function load() {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('呼び方', () => {
-  it('セットアップのコードのヘッダーは付けない。構成と WebUI の URL を送る', async () => {
+  it('トークンを持っていなければ、トークンのヘッダーは付けない。構成と WebUI の URL を送る', async () => {
     env('/setup', (url) => url === '/v1/setup' ? new Response(JSON.stringify({ done: false, step: 'gitforge', gitforge: null, github_app: null })) : new Response('{}'));
     const s = await load();
     await s.getSetup();
@@ -59,11 +60,14 @@ describe('呼び方', () => {
     await auth.start();
     expect(location.pathname).toBe('/setup');
     sessionStorage.setItem('lf-setup-repository', '1');
+    localStorage.setItem('lf-setup-token', 'tok');
     await s.finishSetup();
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/v1/setup/finish');
     expect(headersOf(1).get('Authorization')).toBe('Bearer at');
-    // 終わったら、置いたものを消す
+    expect(headersOf(1).get('Logiforge-Setup-Token')).toBe('tok');
+    // 終わったら、置いたもの（トークンも）を消す
     expect(sessionStorage.getItem('lf-setup-repository')).toBeNull();
+    expect(localStorage.getItem('lf-setup-token')).toBeNull();
   });
 
   it('サインインしていなければ、finishSetup は送らずに unauthenticated', async () => {
@@ -71,6 +75,69 @@ describe('呼び方', () => {
     const s = await load();
     await expect(s.finishSetup()).rejects.toMatchObject({ code: 'unauthenticated' });
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('セットアップのトークン', () => {
+  const started = { done: false, step: 'github_app', gitforge: 'github', github_app: null, started: true };
+
+  it('構成を選ぶ応答のトークンを localStorage に置き、応答からは除く', async () => {
+    env('/setup', () => new Response(JSON.stringify({ ...started, setup_token: 'tok' })));
+    const s = await load();
+    const r = await s.setSetupGitForge('github');
+    expect(r).not.toHaveProperty('setup_token');
+    expect(localStorage.getItem('lf-setup-token')).toBe('tok');
+    // モジュールを読み直しても（ページを開き直しても）残る
+    const s2 = await load();
+    expect(s2.inOtherBrowser(r)).toBe(false);
+  });
+
+  it('置いてあれば、書く呼び出しにヘッダーを付ける。トークンのない応答では、置いたものを残す', async () => {
+    env('/setup', () => new Response(JSON.stringify(started)));
+    localStorage.setItem('lf-setup-token', 'tok');
+    const s = await load();
+    await s.setSetupGitForge('github');
+    await s.createSetupGitHubManifest({ owner: 'o', owner_kind: 'organization', webui_url: 'https://lf.example', public: false });
+    await s.setSetupRepository({ name: 'q', gitforge_ref: 'o/q' });
+    await s.setSetupForgejo({ url: 'u', public_url: 'u', organization: 'o', client_id: 'c', client_secret: 's', worker_user: 'w', worker_token: 't' });
+    for (let i = 0; i < 4; i++) expect(headersOf(i).get('Logiforge-Setup-Token')).toBe('tok');
+    expect(localStorage.getItem('lf-setup-token')).toBe('tok');
+  });
+
+  it('GitHub から戻って code を送るときも、ヘッダーを付ける', async () => {
+    env('/setup/github/callback?code=gh&state=mine', () => new Response(JSON.stringify({ slug: 'lf', install_url: 'x' })));
+    localStorage.setItem('lf-setup-token', 'tok');
+    sessionStorage.setItem('lf-setup-manifest-state', 'mine');
+    const s = await load();
+    await s.handleManifestCallback();
+    expect(headersOf(0).get('Logiforge-Setup-Token')).toBe('tok');
+  });
+
+  it('始まっていて、トークンがなければ、別のブラウザで進行中', async () => {
+    env('/setup');
+    const s = await load();
+    expect(s.inOtherBrowser(started as never)).toBe(true);
+    expect(s.inOtherBrowser({ ...started, started: false } as never)).toBe(false);
+    localStorage.setItem('lf-setup-token', 'tok');
+    expect(s.inOtherBrowser(started as never)).toBe(false);
+  });
+
+  it('setup_in_progress なら、別のブラウザで進行中。持っていたトークンは消す', async () => {
+    env('/setup', () => problem(409, 'setup_in_progress'));
+    localStorage.setItem('lf-setup-token', 'wrong');
+    const s = await load();
+    const e = await s.setSetupRepository({ name: 'q', gitforge_ref: 'o/q' }).catch((x: unknown) => x);
+    expect(s.isSetupInProgress(e)).toBe(true);
+    expect(localStorage.getItem('lf-setup-token')).toBeNull();
+    expect(s.inOtherBrowser(started as never)).toBe(true);
+  });
+
+  it('setup_done なら、トークンも消す', async () => {
+    env('/setup', () => problem(409, 'setup_done'));
+    localStorage.setItem('lf-setup-token', 'tok');
+    const s = await load();
+    await expect(s.setSetupGitForge('github')).rejects.toMatchObject({ code: 'setup_done' });
+    expect(localStorage.getItem('lf-setup-token')).toBeNull();
   });
 });
 

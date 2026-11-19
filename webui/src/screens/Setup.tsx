@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react
 import { Problem } from '../api';
 import { getAuth, signIn, subscribe, type SignedOutReason } from '../auth';
 import {
-  CALLBACK_PATH, continueStep, createSetupGitHubManifest, finishSetup, getSetup, handleManifestCallback,
+  CALLBACK_PATH, continueStep, createSetupGitHubManifest, finishSetup, getSetup, handleManifestCallback, inOtherBrowser, isSetupInProgress,
   markInstalled, markRepository, progress, setSetupForgejo, setSetupGitForge, setSetupRepository, stepsFor, submitManifest,
   type GitForgeKind, type ManifestCallbackResult, type SetupState, type SetupStep,
 } from '../setup';
@@ -26,6 +26,8 @@ export function Setup({ initial }: { initial: SetupState }) {
   const [prog, setProg] = useState(progress);
   const [errors, setErrors] = useState<Partial<Record<SetupStep, ReactNode>>>({});
   const [busy, setBusy] = useState<SetupStep | null>(null);
+  // 別のブラウザがセットアップを進めている。段は出さない
+  const [other, setOther] = useState(() => inOtherBrowser(initial));
   const auth = useSyncExternalStore(subscribe, getAuth);
 
   const gitforge: GitForgeKind = s.gitforge ?? 'github';
@@ -44,6 +46,7 @@ export function Setup({ initial }: { initial: SetupState }) {
       return true;
     }
     if (e instanceof Problem && e.code === 'setup_done') { location.assign('/'); return true; }
+    if (isSetupInProgress(e)) { setOther(true); return true; }
     if (!(e instanceof Problem)) { setError(st, 'BE につながりませんでした。しばらくしてから、もう一度押してください。'); return true; }
     return false;
   }
@@ -98,6 +101,17 @@ export function Setup({ initial }: { initial: SetupState }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.kind]);
+
+  if (other) {
+    return (
+      <div className="setup">
+        <div className="setup-box">
+          <h1 className="setup-title">Logiforge のセットアップ</h1>
+          <p role="alert">セットアップは別のブラウザで進行中です。最初からやり直すときは、設定の DB を消して起動し直してください。</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="setup">

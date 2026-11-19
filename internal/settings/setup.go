@@ -3,7 +3,11 @@ package settings
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -34,6 +38,75 @@ func (d *DB) SetupDone(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return n > 0, nil
+}
+
+// ErrSetupStarted は、初回のセットアップを、ほかのブラウザがもう始めたことである。
+var ErrSetupStarted = errors.New("初回のセットアップは、ほかのブラウザで進んでいる")
+
+// StartSetup は、初回のセットアップを始め、セットアップのトークンを返す。DB には、トークンの SHA-256 だけを置く。
+// トークンを持つブラウザだけが、セットアップを続けられる（design/settings/setup.md の「だれがセットアップできるか」）。
+// もう始まっていれば ErrSetupStarted、終わっていれば ErrSetupDone を返す。
+func (d *DB) StartSetup(ctx context.Context) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	tok := base64.RawURLEncoding.EncodeToString(b)
+	err := d.write(ctx, func(tx *sql.Tx) error {
+		var hash, done string
+		err := tx.QueryRowContext(ctx, `SELECT token_hash, done_at FROM setup WHERE id = 1`).Scan(&hash, &done)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		case done != "":
+			return ErrSetupDone
+		case hash != "":
+			return ErrSetupStarted
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_keys`).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return ErrSetupDone
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, token_hash, created_at) VALUES (1, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at`, tokenHash(tok), now())
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return tok, nil
+}
+
+func tokenHash(tok string) string {
+	h := sha256.Sum256([]byte(tok))
+	return hex.EncodeToString(h[:])
+}
+
+// SetupStarted は、初回のセットアップが、もう始まったかを返す。
+func (d *DB) SetupStarted(ctx context.Context) (bool, error) {
+	var hash string
+	err := d.db.QueryRowContext(ctx, `SELECT token_hash FROM setup WHERE id = 1`).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) || isNoTable(err) {
+		return false, nil
+	}
+	return hash != "", err
+}
+
+// CheckSetupToken は、tok が、セットアップを始めたブラウザのトークンかを返す。かかる時間は、tok によらない。
+func (d *DB) CheckSetupToken(ctx context.Context, tok string) (bool, error) {
+	var hash string
+	err := d.db.QueryRowContext(ctx, `SELECT token_hash FROM setup WHERE id = 1`).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) || isNoTable(err) {
+		return false, nil
+	}
+	if err != nil || hash == "" || tok == "" {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare([]byte(hash), []byte(tokenHash(tok))) == 1, nil
 }
 
 // Put は、names の設定だけを置き換える。ほかの設定は変えない。空の値は、その設定を消す。by は、書いた主体。
@@ -119,8 +192,9 @@ func (d *DB) FinishSetup(ctx context.Context, keys Keys, by string) error {
 		if err := saveRecordKeys(ctx, tx, keys.Backend, []RecordKey{{ID: id, Seed: seed}}, at); err != nil {
 			return err
 		}
+		// トークンは消す。セットアップが終わったら、使えなくするため。
 		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, created_at, done_at) VALUES (1, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET done_at = excluded.done_at`, at, at)
+			ON CONFLICT(id) DO UPDATE SET token_hash = '', done_at = excluded.done_at`, at, at)
 		return err
 	})
 }

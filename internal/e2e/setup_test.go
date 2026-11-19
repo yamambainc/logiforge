@@ -18,8 +18,13 @@ func TestE2ESetupForgejo(t *testing.T) {
 		want = *c
 		*c = settings.Config{}
 	})
+	// token は、セットアップを始めたこのテスト（ブラウザのかわり）のトークンである。
+	var token string
 	setup := func(method, path string, in any, extra ...string) (int, map[string]any) {
 		t.Helper()
+		if token != "" {
+			extra = append([]string{"Logiforge-Setup-Token", token}, extra...)
+		}
 		st, b := w.call("", method, path, in, extra...)
 		out := map[string]any{}
 		_ = json.Unmarshal(b, &out)
@@ -28,8 +33,14 @@ func TestE2ESetupForgejo(t *testing.T) {
 	if st, b := w.call("", "GET", "/repositories", nil); st != 503 || !strings.Contains(string(b), "setup_required") {
 		t.Fatalf("セットアップの前：%d %s", st, b)
 	}
-	if st, out := setup("PUT", "/setup/gitforge", map[string]string{"gitforge": "forgejo", "webui_url": want.WebUIURL}); st != 200 || out["step"] != "forgejo" {
+	st, out := setup("PUT", "/setup/gitforge", map[string]string{"gitforge": "forgejo", "webui_url": want.WebUIURL})
+	token, _ = out["setup_token"].(string)
+	if st != 200 || out["step"] != "forgejo" || token == "" {
 		t.Fatalf("構成：%d %v", st, out)
+	}
+	// ほかのブラウザは、Forgejo のつなぎ方を差し替えられない。
+	if st, b := w.call("", "PUT", "/setup/forgejo", map[string]string{"url": "http://evil.example"}, "Logiforge-Setup-Token", "other"); st != 409 || !strings.Contains(string(b), "setup_in_progress") {
+		t.Fatalf("ほかのブラウザの Forgejo：%d %s", st, b)
 	}
 	f := want.Forgejo
 	in := map[string]string{"url": f.URL, "organization": f.Org, "client_id": f.OAuthClientID, "client_secret": f.OAuthClientSecret,

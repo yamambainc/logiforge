@@ -12,10 +12,14 @@ import (
 
 // SetupState は、セットアップの状態である（openapi.yaml の SetupState）。
 type SetupState struct {
-	Done      bool            `json:"done"`
+	Done bool `json:"done"`
+	// Started は、だれかがセットアップを始めたかである。トークンを持たないブラウザは、続けられないことを示す。
+	Started   bool            `json:"started"`
 	Step      *string         `json:"step"`
 	GitForge  *string         `json:"gitforge"`
 	GitHubApp *SetupGitHubApp `json:"github_app"`
+	// SetupToken は、セットアップを始めた応答にだけ入る、セットアップのトークンである。
+	SetupToken string `json:"setup_token,omitempty"`
 }
 
 // SetupGitHubApp は、セットアップで作った GitHub App である。
@@ -60,8 +64,11 @@ type SetupForgejo struct {
 // 誤りは *backend.Error で返す。
 type Setup interface {
 	State(ctx context.Context) (SetupState, error)
-	// RequireOpen は、セットアップがまだ終わっていないことを確かめる。終わっていれば setup_done。
-	RequireOpen(ctx context.Context) error
+	// Authorize は、token が、セットアップを始めたブラウザのトークンかを確かめる。終わっていれば setup_done、
+	// まだ始まっていなければ validation_failed、違えば setup_in_progress。
+	Authorize(ctx context.Context, token string) error
+	// Start は、セットアップを始め、トークンを返す。もう始まっていれば setup_in_progress、終わっていれば setup_done。
+	Start(ctx context.Context) (string, error)
 	// SetGitForge は、構成を決める。webuiURL（WebUI の URL。空なら変えない）も置く。サインインの redirect_uri の元になる。
 	SetGitForge(ctx context.Context, kind, webuiURL string) (SetupState, error)
 	GitHubManifest(ctx context.Context, in SetupManifestInput) (SetupManifest, error)
@@ -73,8 +80,8 @@ type Setup interface {
 }
 
 // SetupHandler は、/v1/setup の下の API のハンドラーである（design/api/endpoints/setup.md）。
-// 認証を求めない。だれでも、最初の段から進められる。最後の段でサインインした人が、最初の利用者になる。
-// セットアップが終わったら、getSetup のほかは setup_done を返す。
+// だれでも、最初の段から始められる。始めたブラウザが受け取ったトークン（Logiforge-Setup-Token）を持つ要求だけが、続けられる。
+// 最後の段でサインインした人が、最初の利用者になる。セットアップが終わったら、getSetup のほかは setup_done を返す。
 func SetupHandler(s Setup, log *slog.Logger) http.Handler {
 	if log == nil {
 		log = slog.Default()
@@ -84,16 +91,32 @@ func SetupHandler(s Setup, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /v1/setup", func(w http.ResponseWriter, r *http.Request) {
 		h.reply(w, r, func(ctx context.Context) (any, error) { return s.State(ctx) })
 	})
-	mux.HandleFunc("PUT /v1/setup/gitforge", h.open(func(ctx context.Context, r *http.Request) (any, error) {
-		var in struct {
-			GitForge string `json:"gitforge"`
-			WebUIURL string `json:"webui_url"`
-		}
-		if err := decodeJSON(r, &in); err != nil {
-			return nil, err
-		}
-		return s.SetGitForge(ctx, in.GitForge, in.WebUIURL)
-	}))
+	// 構成を決める呼び出しが、セットアップを始める。トークンを持たずに呼べば、始めてトークンを返す。
+	mux.HandleFunc("PUT /v1/setup/gitforge", func(w http.ResponseWriter, r *http.Request) {
+		h.reply(w, r, func(ctx context.Context) (any, error) {
+			r.Body = http.MaxBytesReader(w, r.Body, setupBodyLimit)
+			var in struct {
+				GitForge string `json:"gitforge"`
+				WebUIURL string `json:"webui_url"`
+			}
+			if err := decodeJSON(r, &in); err != nil {
+				return nil, err
+			}
+			tok, started := r.Header.Get(SetupTokenHeader), ""
+			if tok == "" {
+				t, err := s.Start(ctx)
+				if err != nil {
+					return nil, err
+				}
+				tok, started = t, t
+			} else if err := s.Authorize(ctx, tok); err != nil {
+				return nil, err
+			}
+			st, err := s.SetGitForge(ctx, in.GitForge, in.WebUIURL)
+			st.SetupToken = started
+			return st, err
+		})
+	})
 	mux.HandleFunc("POST /v1/setup/github/manifest", h.open(func(ctx context.Context, r *http.Request) (any, error) {
 		var in SetupManifestInput
 		if err := decodeJSON(r, &in); err != nil {
@@ -139,11 +162,14 @@ type setupHandler struct {
 	log *slog.Logger
 }
 
-// open は、セットアップがまだ終わっていないことを確かめてから f を呼ぶ。
+// SetupTokenHeader は、セットアップのトークンを送るヘッダーである。
+const SetupTokenHeader = "Logiforge-Setup-Token"
+
+// open は、要求が、セットアップを始めたブラウザのものかを確かめてから f を呼ぶ。
 func (h *setupHandler) open(f func(ctx context.Context, r *http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h.reply(w, r, func(ctx context.Context) (any, error) {
-			if err := h.s.RequireOpen(ctx); err != nil {
+			if err := h.s.Authorize(ctx, r.Header.Get(SetupTokenHeader)); err != nil {
 				return nil, err
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, setupBodyLimit)

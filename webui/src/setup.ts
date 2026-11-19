@@ -1,5 +1,8 @@
 // 初回のセットアップの API（design/api/endpoints/setup.md）と、GitHub App の manifest flow（design/settings/setup.md）。
-// - セットアップが終わるまでは、だれでも呼べる。終わったあとは setup_done で断られる。
+// - セットアップを始めたブラウザだけが続けられる。構成を選ぶ呼び出しで始まり、BE がセットアップのトークンを返す。
+//   ほかの書く呼び出しには、そのトークンを Logiforge-Setup-Token のヘッダーで付ける。ないか違えば setup_in_progress で断られる。
+//   終わったあとは setup_done で断られる。
+// - トークンは localStorage に置く。ページを閉じても、GitHub やサインインへ移動して戻っても、続けられるように。
 // - 画面の進み具合と manifest flow の state は、sessionStorage に置く。GitHub や Forgejo へ移動して戻っても、続きから進めるように。
 
 import { Problem } from './api';
@@ -9,9 +12,13 @@ export type GitForgeKind = 'github' | 'forgejo';
 export interface SetupGitHubApp { slug: string; install_url: string }
 export interface SetupState {
   done: boolean;
+  /** だれかがセットアップを始めたか。 */
+  started?: boolean;
   step: 'gitforge' | 'github_app' | 'forgejo' | 'signin' | null;
   gitforge: GitForgeKind | null;
   github_app: SetupGitHubApp | null;
+  /** セットアップを始めた応答（構成を選ぶ呼び出し）にだけ入る。 */
+  setup_token?: string;
 }
 export interface ManifestRequest { owner: string; owner_kind: 'organization' | 'user'; webui_url: string; public: boolean }
 export interface ManifestResponse { manifest: Record<string, unknown>; post_url: string }
@@ -21,6 +28,8 @@ export interface ForgejoInput {
 }
 
 const MANIFEST_STATE = 'lf-setup-manifest-state';
+const TOKEN = 'lf-setup-token';
+export const TOKEN_HEADER = 'Logiforge-Setup-Token';
 // 画面だけで覚える進み具合。getSetup の step では分からないもの（install を開いたか、repository を登録したか）
 const INSTALLED = 'lf-setup-installed';
 const REPOSITORY = 'lf-setup-repository';
@@ -31,10 +40,19 @@ export const markInstalled = () => sessionStorage.setItem(INSTALLED, '1');
 export const markRepository = () => sessionStorage.setItem(REPOSITORY, '1');
 export const progress = () => ({ installed: !!sessionStorage.getItem(INSTALLED), repository: !!sessionStorage.getItem(REPOSITORY) });
 
-/** セットアップが終わったら、sessionStorage に置いたものを消す。 */
+const setupToken = () => localStorage.getItem(TOKEN);
+
+/** セットアップが終わったら、置いたもの（sessionStorage の進み具合と、localStorage のトークン）を消す。 */
 export function clearSetupStorage() {
   for (const k of [MANIFEST_STATE, INSTALLED, REPOSITORY]) sessionStorage.removeItem(k);
+  localStorage.removeItem(TOKEN);
 }
+
+/** 別のブラウザがセットアップを進めているか。始まっていて、このブラウザにトークンがなければそう。 */
+export const inOtherBrowser = (s: SetupState) => !s.done && !!s.started && !setupToken();
+
+/** 呼び出しが、別のブラウザで進行中のために断られたか。 */
+export const isSetupInProgress = (e: unknown) => e instanceof Problem && e.code === 'setup_in_progress';
 
 async function problem(r: Response): Promise<Problem> {
   let code = 'internal', detail = '';
@@ -51,11 +69,15 @@ export async function getSetup(): Promise<SetupState> {
 
 async function send(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   const h: Record<string, string> = { ...headers };
+  const t = setupToken();
+  if (t) h[TOKEN_HEADER] = t;
   if (body !== undefined) h['Content-Type'] = 'application/json';
   const r = await fetch('/v1' + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!r.ok) {
     const p = await problem(r);
     if (p.code === 'setup_done') clearSetupStorage();
+    // トークンが受け入れられなかった。持っていても続けられないので消す
+    else if (p.code === 'setup_in_progress') localStorage.removeItem(TOKEN);
     throw p;
   }
   return r;
@@ -64,8 +86,12 @@ async function send(method: string, path: string, body?: unknown, headers: Recor
 const json = async <T>(r: Response) => (await r.json()) as T;
 
 // webui_url は、サインインの redirect_uri の元になる。どちらの構成でも、今の WebUI のオリジンを送る
-export const setSetupGitForge = async (gitforge: GitForgeKind, webuiUrl = location.origin) =>
-  json<SetupState>(await send('PUT', '/setup/gitforge', { gitforge, webui_url: webuiUrl }));
+// セットアップを始める呼び出し。応答にトークンが入っていれば置く
+export async function setSetupGitForge(gitforge: GitForgeKind, webuiUrl = location.origin): Promise<SetupState> {
+  const { setup_token, ...s } = await json<SetupState>(await send('PUT', '/setup/gitforge', { gitforge, webui_url: webuiUrl }));
+  if (setup_token) localStorage.setItem(TOKEN, setup_token);
+  return s;
+}
 export const createSetupGitHubManifest = async (req: ManifestRequest) => json<ManifestResponse>(await send('POST', '/setup/github/manifest', req));
 export const convertSetupGitHubManifest = async (code: string) => json<SetupGitHubApp>(await send('POST', '/setup/github/conversion', { code }));
 export const setSetupRepository = async (repo: SetupRepository) => json<SetupState>(await send('PUT', '/setup/repository', repo));

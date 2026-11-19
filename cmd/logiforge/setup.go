@@ -43,11 +43,17 @@ func (s *setupService) State(ctx context.Context) (api.SetupState, error) {
 	if err != nil {
 		return api.SetupState{}, err
 	}
+	started, err := s.db.SetupStarted(ctx)
+	if err != nil {
+		return api.SetupState{}, err
+	}
 	c, err := s.load(ctx)
 	if err != nil {
 		return api.SetupState{}, err
 	}
-	return stateOf(c, done), nil
+	st := stateOf(c, done)
+	st.Started = started || done
+	return st, nil
 }
 
 // stateOf は、設定から、次に進める段を決める。
@@ -76,7 +82,10 @@ func stateOf(c *settings.Config, done bool) api.SetupState {
 	return st
 }
 
-func (s *setupService) RequireOpen(ctx context.Context) error {
+// inProgress は、ほかのブラウザでセットアップが進んでいるときの誤りである。
+var inProgress = problem(backend.CodeSetupInProgress, "セットアップは、別のブラウザで進んでいる。最初からやり直すときは、設定の DB を消して起動し直す")
+
+func (s *setupService) Authorize(ctx context.Context, token string) error {
 	done, err := s.db.SetupDone(ctx)
 	if err != nil {
 		return err
@@ -84,7 +93,32 @@ func (s *setupService) RequireOpen(ctx context.Context) error {
 	if done {
 		return problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
 	}
+	started, err := s.db.SetupStarted(ctx)
+	if err != nil {
+		return err
+	}
+	if !started {
+		return problem(backend.CodeValidationFailed, "セットアップが始まっていない。先に構成を選ぶ")
+	}
+	ok, err := s.db.CheckSetupToken(ctx, token)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return inProgress
+	}
 	return nil
+}
+
+func (s *setupService) Start(ctx context.Context) (string, error) {
+	tok, err := s.db.StartSetup(ctx)
+	switch {
+	case errors.Is(err, settings.ErrSetupDone):
+		return "", problem(backend.CodeSetupDone, "セットアップは、もう終わっている")
+	case errors.Is(err, settings.ErrSetupStarted):
+		return "", inProgress
+	}
+	return tok, err
 }
 
 func (s *setupService) SetGitForge(ctx context.Context, kind, webuiURL string) (api.SetupState, error) {

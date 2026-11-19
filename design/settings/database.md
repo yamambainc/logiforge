@@ -42,7 +42,7 @@ SQLite にする。
 | `repositories` | `name`、`gitforge_ref`、`directory` | 登録した repository（GitHub リポジトリの repository と、ディレクトリの repository）。Forgejo の構成のふつうの repository は置かない（[repository の登録](../adapters/README.md#repository-の登録)） |
 | `record_keys` | `key_id`、`public_key`、`private_key`、`created_at`、`primary` | 記録の署名の鍵。`private_key` は暗号文 |
 | `worker_tokens` | `owner`、`token`、`expires_at`、`repositories` | worker のための installation token（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。`token` は暗号文 |
-| `setup` | `created_at`、`done_at` | 初回のセットアップ（[初回のセットアップ](setup.md)） |
+| `setup` | `token_hash`、`created_at`、`done_at` | 初回のセットアップ（[初回のセットアップ](setup.md)） |
 
 - 表の定義は、実装の migration が正本である。
 - `updated_by` は、変えた利用者のアカウント名である。

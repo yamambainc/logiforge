@@ -19,6 +19,9 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
 - サインインの段：`getOAuthConfig` と `exchangeOAuthCode` でサインインし、`finishSetup` を呼ぶ。
   - 終わったら、`/settings?tab=repository` を開く。
 - どの呼び出しでも、`setup_done` が返ったら、repository の一覧を出す。
+- 構成の段の応答の `setup_token` を `localStorage` に置き、以後の呼び出しに `Logiforge-Setup-Token` で付ける（[だれがセットアップできるか](../settings/setup.md#だれがセットアップできるか)）。
+  - `getSetup` の `started` が `true` なのにトークンを持っていないとき、または `setup_in_progress` が返ったときは、段のかわりに「セットアップは別のブラウザで進行中です。最初からやり直すときは、設定の DB を消して起動し直してください」と示す。
+  - セットアップが終わったら、トークンを消す。
 
 ### [設定](../../docs/webui/settings.md)
 

@@ -32,6 +32,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeUnavailable:             http.StatusServiceUnavailable,
 	backend.CodeSetupRequired:           http.StatusServiceUnavailable,
 	backend.CodeSetupDone:               http.StatusConflict,
+	backend.CodeSetupInProgress:         http.StatusConflict,
 	backend.CodeSnapshotPending:         http.StatusServiceUnavailable,
 	backend.CodeRepositoryNotRegistered: http.StatusUnprocessableEntity,
 	backend.CodeInternal:                http.StatusInternalServerError,
