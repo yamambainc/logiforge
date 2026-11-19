@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { match, settingsPath } from './router';
 import type { Settings } from './settings';
+import { afterRegister, firstStep } from './settings';
 
 vi.mock('./auth', () => ({ getAuth: () => ({ kind: 'signed-in', token: 'at' }), markVerified: () => {}, onUnauthorized: () => {} }));
 
@@ -40,6 +41,11 @@ describe('URL', () => {
     expect(match('/settings', '')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings', '?tab=nothing')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings')).toEqual({ name: 'settings', tab: 'repository' });
+    expect(match('/settings', '?tab=repository&add=new')).toEqual({ name: 'settings', tab: 'repository', add: 'new' });
+    expect(match('/settings', '?tab=repository&add=first')).toEqual({ name: 'settings', tab: 'repository', add: 'first' });
+    expect(match('/settings', '?tab=repository&add=x')).toEqual({ name: 'settings', tab: 'repository' });
+    expect(match('/settings', '?tab=gitforge&add=new')).toEqual({ name: 'settings', tab: 'gitforge' });
+    expect(settingsPath('repository', 'new')).toBe('/settings?tab=repository&add=new');
     expect(settingsPath('record-keys')).toBe('/settings?tab=record-keys');
   });
 });
@@ -161,5 +167,18 @@ describe('メニューに出すか', () => {
     stubFetch(() => problem(500, 'internal'));
     const s = await load();
     expect(await s.loadAccess()).toBe('unknown');
+  });
+});
+
+describe('repository を足す流れの段', () => {
+  it('登録したあと：スナップショットツリーがもうあれば最初の問いを飛ばす。分からなければ最初の問いへ', () => {
+    expect(afterRegister({ name: 'a', gitforge_ref: 'o/a', prepared: true })).toEqual({ at: 'exists', name: 'a' });
+    expect(afterRegister({ name: 'a', gitforge_ref: 'o/a', prepared: false })).toEqual({ at: 'question', name: 'a' });
+    expect(afterRegister({ name: 'a', gitforge_ref: 'o/a' })).toEqual({ at: 'question', name: 'a' });
+  });
+  it('セットアップのあと：最初の問いがまだの repository があれば、その 2 段目から', () => {
+    expect(firstStep([{ name: 'a', gitforge_ref: 'o/a', prepared: true }, { name: 'b', gitforge_ref: 'o/b', prepared: false }])).toEqual({ at: 'question', name: 'b' });
+    expect(firstStep([{ name: 'a', gitforge_ref: 'o/a' }])).toEqual({ at: 'repository' });
+    expect(firstStep([])).toEqual({ at: 'repository' });
   });
 });

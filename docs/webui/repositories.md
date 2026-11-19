@@ -1,6 +1,6 @@
 # repository の一覧
 
-利用者が、扱う repository を選ぶときと、新しい問いを持ち込むときに使う画面。
+利用者が、扱う repository を選ぶときに使う画面。
 repository の決まりは、[仮説とストーリーの木](../tree/README.md) に書く。
 
 ## ワイヤフレーム
@@ -19,7 +19,7 @@ repository の決まりは、[仮説とストーリーの木](../tree/README.md)
 - repository を、根の主文と根の値と一緒に一覧する。
 - repository を選ぶと、ほかの画面はその repository を表示する。
 
-## repository の作成
+## 新しい repository
 
-- 利用者は、repository の名前と、根の仮説の主文を書いて、repository を作る。
-- 主文の文字数は、[仮説](../tree/README.md) の決まりに従う。
+- 「新しい repository」を押すと、[設定](settings.md#repository-を足す) の画面で、repository を足す段を開く。
+- このボタンは、設定を開ける利用者にだけ示す。

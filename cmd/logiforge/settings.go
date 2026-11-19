@@ -309,10 +309,35 @@ func (s *settingsService) ListRepositories(ctx context.Context, token string) ([
 		return nil, err
 	}
 	var out []api.SetupRepository
+	prepared := preparedOf(ctx, c, token)
 	for _, r := range c.Repositories {
-		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory})
+		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: prepared(r.Name)})
 	}
 	return out, nil
+}
+
+// preparedOf は、repository の名前から、スナップショットツリーがもうあるかを、利用者のトークンで GitForge に聞く関数を返す
+// （docs/webui/settings.md の「repository を足す」）。聞けなかったときは nil を返す。なぜ：一覧と登録を、GitForge の一時的な失敗で止めないため。
+func preparedOf(ctx context.Context, c *settings.Config, token string) func(name string) *bool {
+	fs, err := setupForge(c, pullreq.Keyring{}, true, nil)
+	if err != nil {
+		slog.Warn("用意が済んでいるかを確かめられない", "err", err)
+		return func(string) *bool { return nil }
+	}
+	ctx = ports.WithToken(ctx, token)
+	return func(name string) *bool {
+		ref, err := fs.forge.GitForgeRef(ctx, name)
+		if err != nil {
+			slog.Warn("用意が済んでいるかを確かめられない", "repository", name, "err", err)
+			return nil
+		}
+		ok, err := fs.forge.Prepared(ctx, ref)
+		if err != nil {
+			slog.Warn("用意が済んでいるかを確かめられない", "repository", name, "err", err)
+			return nil
+		}
+		return &ok
+	}
 }
 
 func (s *settingsService) RegisterRepository(ctx context.Context, token string, in api.SetupRepository) (api.SetupRepository, error) {
@@ -332,7 +357,7 @@ func (s *settingsService) RegisterRepository(ctx context.Context, token string, 
 	for _, o := range c.Repositories {
 		if o.Name == r.Name {
 			if o.GitForgeRef == r.GitForgeRef && o.Directory == r.Directory {
-				return in, nil
+				return api.SetupRepository{Name: o.Name, GitForgeRef: o.GitForgeRef, Directory: o.Directory, Prepared: preparedOf(ctx, c, token)(o.Name)}, nil
 			}
 			return api.SetupRepository{}, problem(backend.CodeValidationFailed, "%s は、%s%s で登録してある。登録した組は変えられない", o.Name, o.GitForgeRef, dirSuffix(o.Directory))
 		}
@@ -371,7 +396,7 @@ func (s *settingsService) RegisterRepository(ctx context.Context, token string, 
 		return api.SetupRepository{}, err
 	}
 	slog.Info("repository を登録した", "user", p.Login, "repository", r.Name, "gitforge_ref", r.GitForgeRef, "directory", r.Directory)
-	return api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory}, nil
+	return api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: preparedOf(ctx, c2, token)(r.Name)}, nil
 }
 
 func dirSuffix(d string) string {

@@ -61,12 +61,12 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
    - エージェントは、ブランチを push し、pull request とコメントを書く。
    - reviewer は、merge する。
 3. App の install の設定で、そのリポジトリを選び足す（App を「Only select repositories」で install したとき）。
-4. 利用者が、[設定の画面](../../webui/settings.md) の「repository」で、名前と `owner/name` を足す。サーバは起動し直さない。
-5. 利用者が、WebUI で repository を作る（[repository を作る](../separate-repository.md#repository-を作る)）。
+4. 利用者が、[設定の画面](../../webui/settings.md#repository-を足す) の「repository」の「足す」で、名前と `owner/name` を登録する。サーバは起動し直さない。
+5. 続けて同じ画面で、最初の問い（根の仮説の主文）を入れて、repository を用意する。
 6. 使えるなら、`main` を守るルールセットを作る（下の「main を守る」）。
    - なぜ用意のあとか：用意の 2 つ目のコミット（背景情報）は、`main` を直接進めるから（[GitHub アダプタ](../../../design/adapters/github.md) の「repository を用意する」）。
 
-- セットアップで登録した最初の repository も、5 と 6 を行う。
+- セットアップで登録した最初の repository も、5 と 6 を行う。セットアップが終わると、設定の画面で 5 の段が開く。
 
 ## 見回りの間隔
 

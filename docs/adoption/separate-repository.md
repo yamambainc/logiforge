@@ -61,7 +61,7 @@ curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
 ## repository を作る
 
 1. 利用者が、WebUI（バックエンドの URL）を開き、Forgejo のアカウントでサインインする。
-2. repository の一覧で、名前と、根の仮説の主文を書いて作る（[repository の一覧](../webui/repositories.md)）。
+2. 設定の画面の「足す」で、名前と、根の仮説の主文を書いて作る（[repository を足す](../webui/settings.md#repository-を足す)）。
 
 - 名前は、プロジェクトと問いがわかるものにする（例：`myapp-cache-strategy`）。
   - なぜ：1 つの organization に、プロジェクトをまたいだ repository が並ぶから。

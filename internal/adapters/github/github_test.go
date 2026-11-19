@@ -73,6 +73,21 @@ func TestSetupRepository(t *testing.T) {
 	}
 }
 
+// 用意が済んでいるか：空の repository では false、用意のあとは true。
+func TestPrepared(t *testing.T) {
+	ctx := agentCtx()
+	_, a, _ := newTestAdapter(t)
+	if ok, err := a.Prepared(ctx, fakeRepo); err != nil || ok {
+		t.Fatalf("空の repository：%v %v", ok, err)
+	}
+	if err := a.SetupRepository(ctx, fakeRepo, []ports.File{{Path: "tree/h-aaaaaaaaaa/hypothesis.md", Content: []byte("問い")}}, "m\n\nLogiforge-Init: 1"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := a.Prepared(ctx, fakeRepo); err != nil || !ok {
+		t.Fatalf("用意のあと：%v %v", ok, err)
+	}
+}
+
 // 用意が 1 つ目のコミットのあとで止まったら、送り直し（根の識別子は新しい）で、2 つ目のファイルを main の根に置いて続ける。
 func TestSetupRepositoryResume(t *testing.T) {
 	ctx := agentCtx()

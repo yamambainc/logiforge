@@ -54,7 +54,7 @@ merge の要求に GitHub が次のものを返したら、アダプタは反映
 1. GitHub でリポジトリを作る人（owner の admin か、リポジトリを作れる人）が、空の GitHub リポジトリを作る。
 2. リポジトリの admin が、利用者とエージェントに、Write の権限を与える。
 3. 利用者が、repository の名前と `owner/name` の組を、設定の画面で登録する（[repository の登録](README.md#repository-の登録)）。この組が、名前の正本である。
-4. 利用者が、名前と根の主文で repository を作る。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで用意のコミットを置く。
+4. 利用者が、続けて設定の画面で、根の主文を入れて repository を作る（[repository を足す](../../docs/webui/settings.md#repository-を足す)）。バックエンドは、[repository の用意](../backend/README.md) の手順で、利用者のトークンで用意のコミットを置く。
    - 根のコミット：contents API で、根の仮説のファイルを置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。
    - 背景情報があれば、2 つ目のコミット：Git Data API（tree と commit を作り、`main` の ref を進める）で、残りのファイルを 1 つのコミットにまとめる。trailer `Logiforge-Init-Signature:` を付ける。
 5. `main` を守る設定は、使えるなら、リポジトリの admin が用意のあとに掛ける（[GitHub での main の守りと制約](github-main.md)）。

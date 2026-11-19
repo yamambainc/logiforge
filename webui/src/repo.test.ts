@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { match, screenPath } from './router';
-import { charCount, validateNew } from './screens/RepositoryList';
+import { charCount, validateName, validateStatement } from './settings';
 
 describe('URL と画面', () => {
   it('repository の中の画面', () => {
@@ -21,11 +21,12 @@ describe('repository の作成', () => {
     expect(charCount('😀')).toBe(1);
   });
   it('名前と主文を確かめる', () => {
-    expect(validateNew('q-1', '問い')).toBeNull();
-    expect(validateNew('-q', '問い')).toMatch('名前');
-    expect(validateNew('Q', '問い')).toMatch('名前');
-    expect(validateNew('q', '  ')).toMatch('主文を書いて');
-    expect(validateNew('q', 'あ'.repeat(51))).toMatch('50 字以下');
-    expect(validateNew('q', 'あ'.repeat(50))).toBeNull();
+    expect(validateName('q-1')).toBeNull();
+    expect(validateName('-q')).toMatch('名前');
+    expect(validateName('Q')).toMatch('名前');
+    expect(validateStatement('問い')).toBeNull();
+    expect(validateStatement('  ')).toMatch('主文を書いて');
+    expect(validateStatement('あ'.repeat(51))).toMatch('50 字以下');
+    expect(validateStatement('あ'.repeat(50))).toBeNull();
   });
 });

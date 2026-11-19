@@ -83,7 +83,8 @@ sudo systemctl enable --now logiforge-worker logiforge-serve logiforge-worker-he
 2. ブラウザで `https://<host>.<tailnet>.ts.net/setup` を開く。GitHub を選び、画面の段に沿って、GitHub App を作り、install し、最初の repository を登録し、サインインする（[セットアップ](../../webui/setup.md)）。
    - WebUI は、`https://` の名前で開く。この URL が、GitHub App の callback になる。
    - サインインした人が、最初の利用者になる。その repository に Write がなければならない。
-3. ほかの repository は、[設定の画面](../../webui/settings.md) で足す。サービスを起動し直さずに効く。
+3. 続けて開く設定の画面で、最初の repository の最初の問い（根の仮説の主文）を入れる（[repository を足す](../../webui/settings.md#repository-を足す)）。
+4. ほかの repository も、同じ設定の画面で足す。サービスを起動し直さずに効く。
 
 ## 状態を見る
 

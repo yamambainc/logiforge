@@ -596,3 +596,14 @@ ol.steps { margin: 0; padding-left: 20px; color: var(--sub); }
 .confirm { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .confirm p { margin: 0; }
 .confirm .mono { word-break: break-all; }
+/* 設定の画面の、repository を足す流れ（docs/webui/settings.md の「repository を足す」） */
+a.btn { display: inline-block; text-decoration: none; }
+.add-flow { border: 1px solid var(--line-2); border-radius: 10px; padding: 14px 16px; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 12px; }
+.add-flow p { margin: 0; }
+.flow-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.flow-steps li { padding: 4px 10px; border-radius: 999px; background: var(--u-bg); color: var(--sub); }
+.flow-steps li.on { background: var(--sel); color: var(--accent); font-weight: 700; }
+.flow-steps li.done { color: var(--t-fg); }
+.flow-steps li.done::before { content: '✓ '; }
+.settings-form .over { color: var(--f-fg); font-weight: 700; }
+.settings-form textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); }

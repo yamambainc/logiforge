@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Problem } from '../api';
 import { getAuth, signIn, subscribe, type SignedOutReason } from '../auth';
+import { settingsPath } from '../router';
 import {
   CALLBACK_PATH, continueStep, createSetupGitHubManifest, finishSetup, getSetup, handleManifestCallback, inOtherBrowser, isSetupInProgress,
   markInstalled, markRepository, progress, setSetupForgejo, setSetupGitForge, setSetupRepository, stepsFor, submitManifest,
@@ -89,7 +90,8 @@ export function Setup({ initial }: { initial: SetupState }) {
     finishOnce ??= finishSetup();
     void run('signin', async () => {
       try { await finishOnce!; } catch (e) { finishOnce = null; throw e; }
-      location.assign('/settings?tab=repository');
+      // 続けて、設定の画面で最初の問いを入れる（docs/webui/setup.md）
+      location.assign(settingsPath('repository', 'first'));
     }, (p) => {
       if (p.code === 'forbidden') {
         const m = gitforge === 'github'
