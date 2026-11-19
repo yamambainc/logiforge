@@ -37,9 +37,14 @@ type ghBackend struct {
 	bearer      []string
 }
 
-func newGhBackend(t *testing.T, status int, config string) (*ghBackend, string) {
+// newGhBackend は、https のバックエンドを立てる。tls が false なら http で立てる。
+func newGhBackend(t *testing.T, status int, config string, tls ...bool) (*ghBackend, string, *http.Client) {
 	b := &ghBackend{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	newServer := httptest.NewTLSServer
+	if len(tls) > 0 && !tls[0] {
+		newServer = httptest.NewServer
+	}
+	srv := newServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if r.URL.Path == "/v1/oauth/config" {
@@ -57,13 +62,13 @@ func newGhBackend(t *testing.T, status int, config string) (*ghBackend, string) 
 		_, _ = w.Write([]byte(`{"items":[],"next_cursor":null}`))
 	}))
 	t.Cleanup(srv.Close)
-	return b, srv.URL
+	return b, srv.URL, srv.Client()
 }
 
-func runGh(t *testing.T, gh string, e env, stdin string, args ...string) (int, string, string) {
+func runGh(t *testing.T, c *http.Client, gh string, e env, stdin string, args ...string) (int, string, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	a := &App{Stdout: &out, Stderr: &errb, Stdin: strings.NewReader(stdin), Getenv: e.get, PendingWait: time.Millisecond, Gh: gh}
+	a := &App{Stdout: &out, Stderr: &errb, Stdin: strings.NewReader(stdin), Getenv: e.get, PendingWait: time.Millisecond, Gh: gh, HTTP: c}
 	code := a.Run(context.Background(), args)
 	return code, out.String(), errb.String()
 }
@@ -73,10 +78,10 @@ const githubConfig = `{"gitforge":"github","authorize_url":"https://github.examp
 // GitHub の構成で、トークンがなければ、gh auth token --hostname <GitHub のホスト> を使う。API にも git にも。
 func TestGhTokenOnGitHub(t *testing.T) {
 	gh, log := fakeGh(t, `echo gho_fromgh`)
-	b, host := newGhBackend(t, 200, githubConfig)
+	b, host, c := newGhBackend(t, 200, githubConfig)
 	e := env{"HOME": t.TempDir(), "LOGIFORGE_HOST": host}
 
-	if code, _, errs := runGh(t, gh, e, "", "repo", "list"); code != 0 {
+	if code, _, errs := runGh(t, c, gh, e, "", "repo", "list"); code != 0 {
 		t.Fatalf("repo list: %d %s", code, errs)
 	}
 	if len(b.bearer) != 1 || b.bearer[0] != "Bearer gho_fromgh" {
@@ -86,12 +91,12 @@ func TestGhTokenOnGitHub(t *testing.T) {
 		t.Fatalf("gh の呼び方：%q", got)
 	}
 
-	code, out, errs := runGh(t, gh, e, "protocol=https\nhost=github.example.com\n\n", "auth", "git-credential", "get")
+	code, out, errs := runGh(t, c, gh, e, "protocol=https\nhost=github.example.com\n\n", "auth", "git-credential", "get")
 	if code != 0 || out != "username=logiforge\npassword=gho_fromgh\n" {
 		t.Fatalf("credential: %d %q %s", code, out, errs)
 	}
 	// ほかのホストには、gh のトークンを渡さない。
-	code, out, errs = runGh(t, gh, e, "protocol=https\nhost=other.example.com\n\n", "auth", "git-credential", "get")
+	code, out, errs = runGh(t, c, gh, e, "protocol=https\nhost=other.example.com\n\n", "auth", "git-credential", "get")
 	if code == 0 || strings.Contains(out, "gho_fromgh") || !strings.Contains(errs, "other.example.com") {
 		t.Fatalf("ほかのホスト：%d %q %s", code, out, errs)
 	}
@@ -100,17 +105,17 @@ func TestGhTokenOnGitHub(t *testing.T) {
 // LOGIFORGE_TOKEN と設定ファイルのトークンは、GitHub の構成でも gh より先。gh もバックエンドの設定も見ない。
 func TestGhTokenNotUsedWhenTokenGiven(t *testing.T) {
 	gh, log := fakeGh(t, `echo gho_fromgh`)
-	b, host := newGhBackend(t, 200, githubConfig)
+	b, host, c := newGhBackend(t, 200, githubConfig)
 	home := t.TempDir()
 	e := env{"HOME": home, "LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "env"}
-	if _, out, _ := runGh(t, gh, e, "", "auth", "git-credential", "get"); !strings.Contains(out, "password=env") {
+	if _, out, _ := runGh(t, c, gh, e, "", "auth", "git-credential", "get"); !strings.Contains(out, "password=env") {
 		t.Fatalf("env: %q", out)
 	}
 	delete(e, "LOGIFORGE_TOKEN")
-	if code, _, errs := runGh(t, gh, e, "", "auth", "login", "--token", "file"); code != 0 {
+	if code, _, errs := runGh(t, c, gh, e, "", "auth", "login", "--token", "file"); code != 0 {
 		t.Fatal(errs)
 	}
-	if _, out, _ := runGh(t, gh, e, "", "auth", "git-credential", "get"); !strings.Contains(out, "password=file") {
+	if _, out, _ := runGh(t, c, gh, e, "", "auth", "git-credential", "get"); !strings.Contains(out, "password=file") {
 		t.Fatalf("file: %q", out)
 	}
 	if ghCalls(log) != "" || b.configCalls != 0 {
@@ -139,45 +144,59 @@ func TestGhTokenNeverOutsideGitHub(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			gh, log := fakeGh(t, `echo gho_fromgh`)
 			e := env{"HOME": t.TempDir()}
+			var client *http.Client
+			b := &ghBackend{}
 			if !c.noHost {
-				_, host := newGhBackend(t, c.status, c.config)
+				var host string
+				b, host, client = newGhBackend(t, c.status, c.config)
 				e["LOGIFORGE_HOST"] = host
 			}
-			code, out, errs := runGh(t, gh, e, "protocol=https\nhost=forgejo.example.com\n\n", "auth", "git-credential", "get")
+			code, out, errs := runGh(t, client, gh, e, "protocol=https\nhost=forgejo.example.com\n\n", "auth", "git-credential", "get")
 			if code != ExitError || out != "" || !strings.Contains(errs, errNoToken.Error()) {
 				t.Fatalf("今までと同じ誤りにならない：%d %q %s", code, out, errs)
 			}
 			if got := ghCalls(log); got != "" {
 				t.Fatalf("gh を呼んだ：%q", got)
 			}
+			// 応答の中身で断ったことを確かめる（つながらなくて断ったのではない）。
+			if want := map[bool]int{true: 0, false: 1}[c.noHost]; b.configCalls != want {
+				t.Fatalf("oauth/config を呼んだ回数：%d", b.configCalls)
+			}
 		})
 	}
 	// バックエンドにつながらないときも、gh を呼ばない。
 	gh, log := fakeGh(t, `echo gho_fromgh`)
-	e := env{"HOME": t.TempDir(), "LOGIFORGE_HOST": "http://127.0.0.1:1"}
-	if code, _, errs := runGh(t, gh, e, "", "auth", "git-credential", "get"); code != ExitError || !strings.Contains(errs, errNoToken.Error()) || ghCalls(log) != "" {
+	e := env{"HOME": t.TempDir(), "LOGIFORGE_HOST": "https://127.0.0.1:1"}
+	if code, _, errs := runGh(t, nil, gh, e, "", "auth", "git-credential", "get"); code != ExitError || !strings.Contains(errs, errNoToken.Error()) || ghCalls(log) != "" {
 		t.Fatalf("つながらない：%d %s %q", code, errs, ghCalls(log))
+	}
+	// バックエンドの URL が https でなければ、GitHub の構成でも、確かめず、gh を呼ばない。
+	gh, log = fakeGh(t, `echo gho_fromgh`)
+	b, host, client := newGhBackend(t, 200, githubConfig, false)
+	e = env{"HOME": t.TempDir(), "LOGIFORGE_HOST": host}
+	if code, _, errs := runGh(t, client, gh, e, "", "auth", "git-credential", "get"); code != ExitError || !strings.Contains(errs, errNoToken.Error()) || ghCalls(log) != "" || b.configCalls != 0 {
+		t.Fatalf("http のバックエンド：%d %s %q %d", code, errs, ghCalls(log), b.configCalls)
 	}
 }
 
 // gh がない、またはログインしていなければ、何をすればよいかを示す。
 func TestGhTokenErrors(t *testing.T) {
-	_, host := newGhBackend(t, 200, githubConfig)
+	_, host, c := newGhBackend(t, 200, githubConfig)
 	e := env{"HOME": t.TempDir(), "LOGIFORGE_HOST": host}
 
-	code, _, errs := runGh(t, "logiforge-test-no-such-gh", e, "", "auth", "git-credential", "get")
+	code, _, errs := runGh(t, c, "logiforge-test-no-such-gh", e, "", "auth", "git-credential", "get")
 	if code != ExitError || !strings.Contains(errs, "gh がない") || !strings.Contains(errs, "gh auth login --hostname github.example.com") || !strings.Contains(errs, "auth login --with-token") {
 		t.Fatalf("gh がない：%d %s", code, errs)
 	}
 
 	gh, _ := fakeGh(t, `echo "You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2; exit 1`)
-	code, out, errs := runGh(t, gh, e, "", "auth", "git-credential", "get")
+	code, out, errs := runGh(t, c, gh, e, "", "auth", "git-credential", "get")
 	if code != ExitError || out != "" || !strings.Contains(errs, "not logged into") || !strings.Contains(errs, "gh auth login --hostname github.example.com") || !strings.Contains(errs, "auth login --with-token") {
 		t.Fatalf("ログインしていない：%d %q %s", code, out, errs)
 	}
 
 	gh, _ = fakeGh(t, `exit 0`)
-	if code, _, errs := runGh(t, gh, e, "", "auth", "git-credential", "get"); code != ExitError || !strings.Contains(errs, "gh auth login") {
+	if code, _, errs := runGh(t, c, gh, e, "", "auth", "git-credential", "get"); code != ExitError || !strings.Contains(errs, "gh auth login") {
 		t.Fatalf("空のトークン：%d %s", code, errs)
 	}
 }

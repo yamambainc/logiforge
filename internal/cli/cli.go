@@ -321,12 +321,13 @@ func (a *App) token(ctx context.Context) (string, error) {
 
 // githubHost は、バックエンドが GitHub の構成なら、GitHub のホスト名を返す。そうでないか、確かめられなければ空を返す。
 // GET /v1/oauth/config（認証を求めない）の gitforge と authorize_url から求める。
+// バックエンドの URL が https でなければ、確かめない（gh のトークンを平文で送らないため）。
 func (a *App) githubHost(ctx context.Context) string {
 	host, err := a.host()
-	if err != nil {
+	if err != nil || !strings.HasPrefix(host, "https://") {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, host+"/v1/oauth/config", nil)
 	if err != nil {
