@@ -212,9 +212,20 @@ describe('サインアウト', () => {
     session = tokenResp('at-s');
     const a = await load();
     await a.start();
-    await a.signOut();
+    expect(await a.signOut()).toBe(true);
     expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'signed-out' });
     expect(fetch).toHaveBeenCalledWith('/v1/oauth/signout', expect.objectContaining({ method: 'POST' }));
     expect(sessionStorage.getItem('lf-signed-out')).toBe('1');
+  });
+
+  it('BE がセッションを消せなければ、サインインしたままにして false（押し直せる）', async () => {
+    env('/');
+    session = tokenResp('at-s');
+    const a = await load();
+    await a.start();
+    vi.mocked(fetch).mockImplementation(async () => new Response('{}', { status: 503 }));
+    expect(await a.signOut()).toBe(false);
+    expect(a.getAuth()).toMatchObject({ kind: 'signed-in' });
+    expect(sessionStorage.getItem('lf-signed-out')).toBeNull();
   });
 });

@@ -44,8 +44,10 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 ### GitHub を使う構成
 
 - GitHub App のトークンの権限は、スコープでは決まらない。App の権限と、その人のリポジトリの権限の、両方にあるものになる（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。
-- authorize の `scope` には、`offline_access` だけを付ける。
-  - GitHub は、`offline_access` を付けると、App の設定で期限を切っていなくても、期限つきの user access token（8 時間）とリフレッシュトークンを返す。リフレッシュトークンは、BE が持つ（[サインインのセッション](session.md)）。
+- authorize の `scope` には、`offline_access` だけを付ける。ほかのスコープは、GitHub App では効かない。
+- authorize には、`prompt` などの、ログインや同意をやり直させる値を付けない。値は、`state` と `code_challenge` のほかは、毎回同じである。
+  - [GitHub の docs](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens) では、`offline_access` を付けると、App の設定で期限を切っていなくても、期限つきの user access token（8 時間）とリフレッシュトークンを返す。リフレッシュトークンは、BE が持つ（[サインインのセッション](session.md)）。
+  - リフレッシュトークンが来なければ、BE はセッションを作らない。そのときは、再読み込みのたびに authorize に行く。
   - なぜ：期限のないトークンは、盗まれたときに、利用者が許可を取り消すまで使えるから。リフレッシュトークンがあれば、再読み込みのたびに GitHub に行かずに済むから。
 - 交換の応答に `expires_in` かリフレッシュトークンがなければ、BE はセッションを作らない。アクセストークンは返す。
 - 盗まれたときに書ける範囲は、App が install されていて、その人が書けるリポジトリの、App の権限の中である。

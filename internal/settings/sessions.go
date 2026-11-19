@@ -64,13 +64,15 @@ func (d *DB) WebUISessionOf(ctx context.Context, keys Keys, idHash string) (s We
 	if keys.Backend == nil {
 		return WebUISession{}, false, errors.New("settings: セッションを読むには、バックエンドの鍵が要る")
 	}
+	// 復号できなければ（鍵を入れ替えた、rekey と競合した）、知らないセッションとして扱い、消す。
+	// なぜ：エラーを返し続けると、その端末は、cookie が切れるまで authorize にも行けないから。
 	a, err := keys.Backend.open(sessionName(idHash, "access"), at)
 	if err != nil {
-		return WebUISession{}, false, err
+		return WebUISession{}, false, d.DeleteWebUISession(ctx, idHash)
 	}
 	r, err := keys.Backend.open(sessionName(idHash, "refresh"), rt)
 	if err != nil {
-		return WebUISession{}, false, err
+		return WebUISession{}, false, d.DeleteWebUISession(ctx, idHash)
 	}
 	s.IDHash, s.AccessToken, s.RefreshToken = idHash, string(a), string(r)
 	for _, x := range []struct {

@@ -183,15 +183,21 @@ export async function reauthorize(): Promise<boolean> {
   return false;
 }
 
-/** サインアウト。BE のセッションと cookie を消し、メモリのトークンと回答の書きかけを消す。 */
-export async function signOut() {
+/**
+ * サインアウト。BE のセッションと cookie を消してから、メモリのトークンと回答の書きかけを消す。
+ * BE が消せなかったら false を返し、サインインしたままにする（押し直せるように）。
+ * なぜ：セッションが残ると、共用の端末で、次の人が新しいタブを開いたときに、前の人としてサインインするから。
+ */
+export async function signOut(): Promise<boolean> {
+  let ok = false;
+  try { ok = (await postJSON('/v1/oauth/signout')).ok; } catch { /* 下で false を返す */ }
+  if (!ok) return false;
   clearTimeout(expiryTimer);
   // 回答の書きかけも消す（同じタブで、ほかの人がサインインすることがあるため）
   clearAllDrafts();
   sessionStorage.setItem(SIGNED_OUT, '1');
   set({ kind: 'signed-out', reason: 'signed-out' });
-  // BE が答えなくても、このタブはサインアウトしたままにする。セッションは、使われなければ BE が消す
-  try { await postJSON('/v1/oauth/signout'); } catch { /* 何もしない */ }
+  return true;
 }
 
 const verifiedListeners = new Set<() => void>();

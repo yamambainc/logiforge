@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,12 +113,22 @@ func sessionIDFrom(r *http.Request) string {
 }
 
 // webOrigin は、WebUI のオリジンである。redirect_uri（WebUI の URL の /oauth/callback）から作る。
-func (o *OAuth) webOrigin() string {
-	u, err := url.Parse(o.RedirectURI)
-	if err != nil || u.Host == "" {
+func (o *OAuth) webOrigin() string { return normOrigin(o.RedirectURI) }
+
+// normOrigin は、URL のオリジンを、ブラウザの Origin と同じ形にする（小文字、既定のポートを除く）。
+func normOrigin(v string) string {
+	u, err := url.Parse(v)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return ""
 	}
-	return u.Scheme + "://" + u.Host
+	scheme, host, port := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname()), u.Port()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port == "" || (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		return scheme + "://" + host
+	}
+	return scheme + "://" + host + ":" + port
 }
 
 // sameOriginJSON は、cookie を使う要求の CSRF の守りである（design/webui/session.md の「CSRF」）。
@@ -127,7 +138,7 @@ func (o *OAuth) sameOriginJSON(w http.ResponseWriter, r *http.Request) bool {
 		writeProblem(w, &backend.Error{Code: backend.CodeValidationFailed, Detail: "Content-Type は application/json"})
 		return false
 	}
-	if origin := o.webOrigin(); origin == "" || r.Header.Get("Origin") != origin {
+	if origin := o.webOrigin(); origin == "" || normOrigin(r.Header.Get("Origin")) != origin {
 		writeProblem(w, &backend.Error{Code: backend.CodeForbidden, Detail: "ほかのオリジンからは呼べない"})
 		return false
 	}
@@ -168,7 +179,8 @@ func (o *OAuth) session(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeUnauthenticated, Detail: "セッションがない"})
 		return
 	}
-	ctx, h := r.Context(), hashSessionID(id)
+	// refresh から置くまでを、切断で止めない。なぜ：GitForge で回転したリフレッシュトークンを置き損ねると、そのセッションは使えなくなるから。
+	ctx, h := context.WithoutCancel(r.Context()), hashSessionID(id)
 	defer lockSession(h)()
 	s, ok, err := o.Sessions.SessionOf(ctx, h)
 	if err != nil {

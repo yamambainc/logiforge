@@ -241,6 +241,8 @@ func TestSessionCSRF(t *testing.T) {
 		{"/v1/oauth/session", "application/json", []string{"Cookie", ck}},
 		{"/v1/oauth/signout", "text/plain", []string{"Origin", testOrigin, "Cookie", ck}},
 		{"/v1/oauth/signout", "application/json", []string{"Origin", "null", "Cookie", ck}},
+		{"/v1/oauth/session", "application/json", []string{"Origin", "https://lf.example.evil", "Cookie", ck}},
+		{"/v1/oauth/session", "application/json", []string{"Origin", "http://lf.example", "Cookie", ck}},
 	} {
 		if rec := do(h, "POST", x.path, x.ct, "{}", x.hdr...); rec.Code < 400 {
 			t.Errorf("%s %s %v：%d", x.path, x.ct, x.hdr, rec.Code)
@@ -251,6 +253,10 @@ func TestSessionCSRF(t *testing.T) {
 	}
 	if rec := do(h, "GET", "/v1/oauth/session", "", "", "Cookie", ck); rec.Code < 400 {
 		t.Fatalf("GET：%d", rec.Code)
+	}
+	// 既定のポートと大文字は、同じオリジンとみなす
+	if rec := do(h, "POST", "/v1/oauth/session", "application/json", "{}", "Origin", "https://LF.example:443", "Cookie", ck); rec.Code != 200 {
+		t.Fatalf("同じオリジンの別の書き方：%d", rec.Code)
 	}
 }
 

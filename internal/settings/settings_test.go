@@ -346,6 +346,14 @@ func TestWebUISessions(t *testing.T) {
 	if _, _, err := d.WebUISessionOf(ctx, Keys{Shared: keys.Shared}, "h1"); err == nil {
 		t.Fatal("バックエンドの鍵なしで読めた")
 	}
+	// 違う鍵では復号できない。知らないセッションとして扱い、消す（エラーにしない）
+	if _, ok, err := d.WebUISessionOf(ctx, testKeys(t), "h1"); ok || err != nil {
+		t.Fatalf("違う鍵：%v %v", ok, err)
+	}
+	if _, ok, _ := d.WebUISessionOf(ctx, keys, "h1"); ok {
+		t.Fatal("復号できなかったセッションが残った")
+	}
+	_ = d.PutWebUISession(ctx, keys, s)
 	old := WebUISession{IDHash: "h-old", ClientID: "cid", AccessExpires: now, CreatedAt: now, UsedAt: now.Add(-SessionMaxIdle - time.Hour)}
 	if err := d.PutWebUISession(ctx, keys, old); err != nil {
 		t.Fatal(err)

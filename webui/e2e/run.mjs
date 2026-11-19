@@ -559,6 +559,32 @@ try {
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   if (/eyJ|access_token|gta_/.test(stored)) throw new Error('トークンをストレージに置いている：' + stored);
 
+  step('アクセストークンの期限が来ても、Forgejo に行かずに、セッションから黙って新しいものをもらう（GitHub の 8 時間ごとの更新にあたる）');
+  const ren = await browser.newPage();
+  await ren.setRequestInterception(true);
+  let renCalls = 0;
+  ren.on('request', async (r) => {
+    const u = new URL(r.url());
+    // 1 回目だけ、寿命を 65 秒にする（期限の 1 分前、つまり 5 秒後に、もらい直す）
+    if (u.pathname === '/v1/oauth/session' && ++renCalls === 1) {
+      const res = await fetch(r.url(), { method: 'POST', headers: { ...r.headers() }, body: r.postData() });
+      const t = await res.json();
+      return r.respond({ status: res.status, contentType: 'application/json', body: JSON.stringify({ ...t, expires_in: 65 }) });
+    }
+    r.continue();
+  });
+  const rw = watch(ren);
+  await ren.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await ren.waitForSelector('.repo-list', { timeout: 20000 });
+  for (let i = 0; renCalls < 2; i++) {
+    if (i > 200) throw new Error('期限の前に、セッションからもらい直さない');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await ren.reload({ waitUntil: 'networkidle0' });
+  await ren.waitForSelector('.repo-list', { timeout: 20000 });
+  if (rw.states.size !== 0) throw new Error('期限の更新か再読み込みで、authorize に ' + rw.states.size + ' 回行った（0 回のはず）');
+  await ren.close();
+
   step('新しいタブ（モバイルの幅）で開いても、Forgejo に行かずにサインインする');
   const mobile = await browser.newPage();
   await mobile.setViewport({ width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
