@@ -3,6 +3,13 @@
 バックエンドと worker が、一覧を返すときや、多くの項目をまとめて扱うときに、GitForge と置き場をどう読むかを確かめるときに読む。
 1 回の要求で読む REST の回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) が正本である。
 
+このページで使う語は、次のとおりである。
+- 記録：Logiforge が、GitForge の pull request と issue に書く、署名つきのコメントである。apply request を作った、close した、反映に失敗した、レビュー、人への依頼、回答の 6 種類がある（[記録のコメントとレビュー](../adapters/records.md)）。
+- 記録の控え（控え）：worker が、GitForge から読んだ記録を、置き場（スナップショットの置き場）に写したものである。
+- 読む位置：控えに持つ、次に GitForge のコメントを読み始める時刻（コメントの `updated_at`）である。
+- `latest`：worker が置き場に書く、取り込み終えたいちばん新しい `main` のコミットである（[latest](snapshot/main.md#latest)）。
+- 控えと読む位置の詳しいことは、[キャッシュ](caches.md) に書く。
+
 - 正本は GitForge である。一覧の読みでも、正本は変えない。
 - 一覧は、GitForge の一覧の API で読む。項目ごとに GitForge の API を呼ばない。
   - なぜ：項目ごとに呼ぶと、REST の回数が項目の数に比例し、主体ごとの上限（1 時間に 5,000 回）に当たるから。
