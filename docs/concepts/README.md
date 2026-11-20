@@ -46,7 +46,7 @@ Logiforge が何のためにあり、どこまでを扱うかを確かめると�
 
 - 変更履歴が残る。
 - ファイル（レポートと artifact）をコミットできる。
-- apply request に opener と reviewer がいる。
+- apply request（GitForge の pull request に当たる）に opener と reviewer がいる。
 
 違いは、管理対象がファイルだけでなく、規則付きの木構造であること。
 木の上では、真偽値が自動で伝わる。
