@@ -48,7 +48,7 @@ func TestE2EEdges(t *testing.T) {
 		}
 	})
 
-	// ---- 競合：同じノードを対象にする 2 つの提案。2 つ目は stale_target で修正待ちになる ----
+	// ---- 競合：同じノードを対象にする 2 つの apply request。2 つ目は stale_target で修正待ちになる ----
 	t.Run("stale_target", func(t *testing.T) {
 		agent.branch("x")
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("x.md", "x の背景\n"))

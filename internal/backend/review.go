@@ -130,7 +130,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	return out, nil
 }
 
-// approveResent は、反映済みの提案への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
+// approveResent は、反映済みの apply request への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
 func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, session string) (ReviewResult, bool, error) {
 	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
 	if err != nil || ar.State != ports.StateMerged {

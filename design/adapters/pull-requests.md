@@ -8,8 +8,8 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 
 | GitForge のポートの操作 | 実装 |
 |---|---|
-| 提案 | 利用者のブランチから `main` への pull request。提案を作る主体（opener）のトークンで作る |
-| 提案の記録（識別子と、作ったときの先頭） | pull request を作った直後に、同じトークンで書く最初のコメント |
+| apply request | 利用者のブランチから `main` への pull request。apply request を作る主体（opener）のトークンで作る |
+| apply request の記録（識別子と、作ったときの先頭） | pull request を作った直後に、同じトークンで書く最初のコメント |
 | 説明欄 | pull request の本文 |
 | 先頭のコミット | pull request の head のコミット（[先頭のコミット](../backend/apply-request/README.md#先頭のコミット)） |
 | 反映する | pull request の merge。`approve` をした reviewer のトークンで、squash を選び、head の SHA とメッセージを渡す |
@@ -26,7 +26,7 @@ GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo ア�
 - ラベル（`logiforge/pvr`、`logiforge/decision`、`logiforge/answered`）は、GitForge の画面で見分けるためだけに付ける。バックエンドは読まない。
   - ラベルがなければ、付けるときに作る。
 
-## 提案の状態
+## apply request の状態
 
 | 状態 | 決め方 |
 |---|---|

@@ -269,7 +269,7 @@ func TestCreateApplyRequestResumes(t *testing.T) {
 		t.Fatalf("新しく作った：%+v", ar)
 	}
 	if again := create(t, a, "apr_a", "a"); again.Number != 1 {
-		t.Fatal("送り直しで、別の提案になった")
+		t.Fatal("送り直しで、別の apply request になった")
 	}
 	if _, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{ID: "apr_x", Branch: "a"}); !errors.Is(err, ports.ErrBranchHasOpen) {
 		t.Fatalf("got %v", err)
@@ -412,7 +412,7 @@ func TestReviewsWithLog(t *testing.T) {
 	if got, _ := a.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
 		t.Fatalf("消した：%+v", got)
 	}
-	// merge した pull request から、提案を引ける。
+	// merge した pull request から、apply request を引ける。
 	if _, err := a.Merge(ctx, repo, "apr_a", "h-a", "t", "m"); err != nil {
 		t.Fatal(err)
 	}

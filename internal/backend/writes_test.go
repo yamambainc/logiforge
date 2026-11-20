@@ -147,7 +147,7 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	b := f.b
 	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
 	reviewer := Caller{Token: "rev", Principal: ports.Principal{Login: "reviewer", Kind: ports.PrincipalClient}}
-	// 2 つの提案が、どちらも H1 を対象にする。
+	// 2 つの apply request が、どちらも H1 を対象にする。
 	f.branch("x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
 	f.branch("y", "s4", map[string][]byte{dH1 + "/background.md": []byte("二\n")})
 	x, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "x", Session: "s3"})
@@ -346,7 +346,7 @@ func TestMergeFailurePaths(t *testing.T) {
 		f.r.write(dS1+"/"+h5+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: h5, Statement: "子3"}))
 		f.r.git("add", "-A")
 		f.r.git("commit", "--quiet", "-m", "反映\n\nLogiforge-Apply-Request: apr_0")
-		// 2 つの提案が、別の仮説の下に、同じ識別子のストーリーと仮説を作る。対象ノードは違う。
+		// 2 つの apply request が、別の仮説の下に、同じ識別子のストーリーと仮説を作る。対象ノードは違う。
 		x := create(t, f, "x", "s3", story(dH2))
 		y := create(t, f, "y", "s4", story(dS1+"/"+h5))
 		if _, err := approve(t, f, x); err != nil {

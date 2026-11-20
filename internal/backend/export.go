@@ -34,7 +34,7 @@ type ExportVerdict struct {
 	Citations    []tree.Citation    `json:"citations"`
 }
 
-// ExportTree は、木を書き出す。ノードは、根から深さ優先の順に並べる。open の提案と人への依頼は含めない。
+// ExportTree は、木を書き出す。ノードは、根から深さ優先の順に並べる。open の apply request と人への依頼は含めない。
 func (b *Backend) ExportTree(ctx context.Context, c Caller, repo, revision string) (Export, error) {
 	if _, err := b.access(ctx, c, repo); err != nil {
 		return Export{}, err

@@ -14,7 +14,7 @@ import (
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrMainExists    = errors.New("main がすでにある")
-	ErrBranchHasOpen = errors.New("そのブランチに open の提案がすでにある")
+	ErrBranchHasOpen = errors.New("そのブランチに open の apply request がすでにある")
 	ErrHeadMoved     = errors.New("pull request の head が、指定した SHA でない")
 	ErrConflict      = errors.New("git の衝突で merge できない")
 	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
@@ -51,7 +51,7 @@ type File struct {
 	Content []byte
 }
 
-// State は、提案の状態である。
+// State は、apply request の状態である。
 type State string
 
 const (
@@ -60,8 +60,8 @@ const (
 	StateClosed State = "closed"
 )
 
-// ApplyRequest は、GitForge から読んだ提案である。
-// head のブランチが消えた open の提案を closed として扱うのは、ブランチの履歴を読むバックエンドである。
+// ApplyRequest は、GitForge から読んだ apply request である。
+// head のブランチが消えた open の apply request を closed として扱うのは、ブランチの履歴を読むバックエンドである。
 type ApplyRequest struct {
 	ID     string
 	Number int
@@ -72,7 +72,7 @@ type ApplyRequest struct {
 	FirstRevision string
 	HeadRevision  string
 	State         State
-	// Opener は、提案を作った主体である（バックエンドを通した記録の値）。
+	// Opener は、apply request を作った主体である（バックエンドを通した記録の値）。
 	Opener string
 	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
 	Kind         string
@@ -96,7 +96,7 @@ type MergeFailure struct {
 	Detail string
 }
 
-// NewApplyRequest は、提案を作るときに渡すものである。
+// NewApplyRequest は、apply request を作るときに渡すものである。
 type NewApplyRequest struct {
 	ID string
 	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
@@ -128,7 +128,7 @@ type Review struct {
 	CreatedAt      time.Time
 }
 
-// Reviews は、提案のレビューの一覧である。
+// Reviews は、apply request のレビューの一覧である。
 type Reviews struct {
 	// Items は、数えたレビューを、記録した順に並べたもの。
 	Items []Review
@@ -218,8 +218,8 @@ type GitForge interface {
 
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
-	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の提案を返す（design/backend/verify/README.md）。
-	// そういう pull request がなければ ErrNotFound。pull request に apply_request の記録がなければ、ID が空の提案を返す。
+	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の apply request を返す（design/backend/verify/README.md）。
+	// そういう pull request がなければ ErrNotFound。pull request に apply_request の記録がなければ、ID が空の apply request を返す。
 	MergedApplyRequest(ctx context.Context, repo, sha string) (ApplyRequest, error)
 
 	CreateHumanRequest(ctx context.Context, repo string, hr NewHumanRequest) (HumanRequest, error)

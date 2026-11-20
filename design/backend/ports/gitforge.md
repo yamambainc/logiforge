@@ -1,6 +1,6 @@
 # GitForge
 
-バックエンドが、repository、提案（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるときに読む。
+バックエンドが、repository、apply request（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるときに読む。
 このポートを実装するのが、GitForge アダプタである（[アダプタ](../../adapters/README.md)）。
 
 GitForge は、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
@@ -16,15 +16,15 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 - `main` の先頭を読む。GitForge の今の `main` の SHA を返す。反映の前に、worker が追いついているかを確かめるのに使う（[反映の手順](../merge.md)）。
 - ほかの操作は、どれも repository を指定して行う。
 
-## 提案
+## apply request
 
-提案（apply request）は、GitForge の pull request である（[apply request と pull request](../apply-request/README.md)）。
+apply request は、GitForge の pull request である（[apply request と pull request](../apply-request/README.md)）。
 
-- 提案を作る。識別子、説明欄、ブランチ、作ったときの先頭のコミットを渡す。
-  - そのブランチに open の提案がすでにあれば、そのことがわかる形で失敗する。
+- apply request を作る。識別子、説明欄、ブランチ、作ったときの先頭のコミットを渡す。
+  - そのブランチに open の apply request がすでにあれば、そのことがわかる形で失敗する。
 - 説明欄を書き換える。
-- 提案を読む。状態（open、merged、closed）、ブランチ、向き先（pull request の base のブランチ）、作ったときの先頭のコミット、今の head のコミット、反映したときは merge のコミットを返す。
-- 提案を作った順に読む。
+- apply request を読む。状態（open、merged、closed）、ブランチ、向き先（pull request の base のブランチ）、作ったときの先頭のコミット、今の head のコミット、反映したときは merge のコミットを返す。
+- apply request を作った順に読む。
 - 反映する。head のコミットの SHA と、反映のコミットのメッセージを渡し、squash merge する。
   - head が指定した SHA でなければ、そのことがわかる形で失敗する。
   - git の衝突で merge できなければ、そのことがわかる形で失敗する。
@@ -36,7 +36,7 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 - レビューを記録する。
   - 種類（`approve`、`request_changes`、`comment`）、本文、レビューした先頭のコミット
   - reviewer のセッションと、使ったプロンプトのリビジョン
-- 提案ごとのレビューを、記録した順に読む。
+- apply request ごとのレビューを、記録した順に読む。
 
 ## 人への依頼
 

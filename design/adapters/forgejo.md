@@ -30,7 +30,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | repository | 設定した organization の repository。gitforge_ref は `<organization>/<名前>` |
 | repository を列挙する | `GET /orgs/{org}/repos` |
 | repository を用意する | [repository の用意](#repository-の用意) |
-| 提案を作る | `POST /repos/{owner}/{repo}/pulls` |
+| apply request を作る | `POST /repos/{owner}/{repo}/pulls` |
 | 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
 | レビュー | pull request の記録のコメント（`POST /repos/{owner}/{repo}/issues/{index}/comments`。[レビューの書き方](records.md#レビューの書き方)） |
 | 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify/README.md)） |

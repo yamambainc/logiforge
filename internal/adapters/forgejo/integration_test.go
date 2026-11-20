@@ -222,7 +222,7 @@ func TestForgejo(t *testing.T) {
 	}
 	t.Log("確かめた：サイトの管理者でも、enable_push: false の main には push できない（pre-receive で拒まれる）")
 
-	// ---- 提案 ----
+	// ---- apply request ----
 	ar, err := gf.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: "apr_1", Branch: "topic", Description: "説明", FirstRevision: head1, Opener: e.login("agent")})
 	if err != nil || ar.State != ports.StateOpen || ar.HeadRevision != head1 {
 		t.Fatalf("create: %+v %v", ar, err)

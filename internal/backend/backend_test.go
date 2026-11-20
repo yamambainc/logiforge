@@ -551,7 +551,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 		t.Fatal("回答済みの依頼が、作業にない")
 	}
 	sha := tree.SHA256Hex([]byte("jpg"))
-	// 背景情報に識別子を書いても、外れない（open の提案 apr_2 の差分に足す）。
+	// 背景情報に識別子を書いても、外れない（open の apply request apr_2 の差分に足す）。
 	f.r.git("checkout", "--quiet", "b")
 	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("hrq_1 の回答を見た\n"))
 	head := f.r.commit("版 2")

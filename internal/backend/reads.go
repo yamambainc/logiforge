@@ -352,7 +352,7 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 	return out, nil
 }
 
-// ListApplyRequests は、提案を作った順に返す。カーソルは、GitForge の連番（pull request の番号）である。
+// ListApplyRequests は、apply request を作った順に返す。カーソルは、GitForge の連番（pull request の番号）である。
 func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, cursor string, limit int) (Page[ApplyRequest], error) {
 	limit, err := CheckLimit(limit)
 	if err != nil {
@@ -401,7 +401,7 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 	return out, nil
 }
 
-// GetApplyRequest は、提案の詳細を返す。
+// GetApplyRequest は、apply request の詳細を返す。
 func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string) (ApplyRequest, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
