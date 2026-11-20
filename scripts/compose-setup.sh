@@ -110,8 +110,7 @@ docker compose run -T --rm --no-deps backend settings load - <<JSON
     "worker_token": "$worker_token",
     "oauth_client_id": "$client_id",
     "oauth_client_secret": "$client_secret"
-  },
-  "record_keys": [{"id": "k1", "secret": "$(rand)"}]
+  }
 }
 JSON
 
