@@ -593,3 +593,12 @@ func (a api) DownloadAttachment(ctx context.Context, repo string, commentID int6
 	}
 	return a.download(ctx, ports.TokenFrom(ctx), as.URL)
 }
+
+// EditIssueBody は、issue の本文を書き換える。
+func (a api) EditIssueBody(ctx context.Context, repo string, number int, body string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	return a.w(ctx, http.MethodPatch, fmt.Sprintf("%s/issues/%d", rp, number), map[string]string{"body": body}, nil)
+}

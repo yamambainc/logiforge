@@ -531,3 +531,12 @@ func (a api) UploadAttachment(context.Context, string, int64, string, []byte) (s
 func (a api) DownloadAttachment(context.Context, string, int64, string) ([]byte, error) {
 	return nil, ports.ErrAttachmentsUnsupported
 }
+
+// EditIssueBody は、issue の本文を書き換える。
+func (a api) EditIssueBody(ctx context.Context, repo string, number int, body string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	return a.w(ctx, repo, http.MethodPatch, fmt.Sprintf("%s/issues/%d", rp, number), map[string]string{"body": body}, nil)
+}

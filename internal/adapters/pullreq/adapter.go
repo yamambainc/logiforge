@@ -74,9 +74,12 @@ const (
 	lineTargetNode     = "Target-Node"
 	lineIdempotencyKey = "Idempotency-Key"
 	lineAttachment     = "Attachment"
+	// lineAnswerAttachment は、回答の添付の sha256 を、依頼の issue の本文に写す行である。
+	// なぜ：回答を引用した検証結果を、issue の一覧だけで見つけるため（design/adapters/texts.md の「回答」）。
+	lineAnswerAttachment = "Answer-Attachment"
 )
 
-var knownLines = []string{lineSession, linePrompt, lineCloseReason, lineTargetNode, lineIdempotencyKey, lineAttachment}
+var knownLines = []string{lineSession, linePrompt, lineCloseReason, lineTargetNode, lineIdempotencyKey, lineAttachment, lineAnswerAttachment}
 
 type line struct{ key, value string }
 
@@ -513,6 +516,12 @@ func toHumanRequest(is Issue, kind ports.HumanRequestKind) ports.HumanRequest {
 	}
 	if is.State == "closed" {
 		hr.Answer = &ports.Answer{CreatedAt: is.ClosedAt}
+		for _, l := range ls {
+			if l.key == lineAnswerAttachment {
+				name, sha := splitAttachment(l.value)
+				hr.Answer.Attachments = append(hr.Answer.Attachments, ports.Attachment{Name: name, SHA256: sha})
+			}
+		}
 	}
 	return hr
 }
@@ -758,7 +767,26 @@ func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string,
 			return err
 		}
 	}
+	if err := a.copyAnswerAttachments(ctx, repo, is, names, shas); err != nil {
+		return err
+	}
 	return a.API.CloseIssue(ctx, repo, is.Number)
+}
+
+// copyAnswerAttachments は、回答の添付の名前と sha256 を、依頼の issue の本文の最後に `Answer-Attachment:` の行で写す。
+// すでに写してあれば、書き直さない。添付がなければ、何もしない。
+func (a *Adapter) copyAnswerAttachments(ctx context.Context, repo string, is Issue, names []string, shas map[string]string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	body, ls := splitLines(is.Body)
+	if lineValue(ls, lineAnswerAttachment) != "" {
+		return nil
+	}
+	for _, n := range names {
+		ls = append(ls, line{lineAnswerAttachment, attachmentLine(n, shas[n])})
+	}
+	return a.API.EditIssueBody(ctx, repo, is.Number, withLines(body, ls...))
 }
 
 // ReadAttachment は、回答の添付を sha256 で引いて読み、中身の sha256 を確かめる。

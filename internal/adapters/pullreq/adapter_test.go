@@ -223,6 +223,11 @@ func (f *fake) CloseIssue(_ context.Context, _ string, n int) error {
 	f.events[n] = append(f.events[n], Event{Kind: "closed", Actor: f.actor, CreatedAt: f.now})
 	return nil
 }
+func (f *fake) EditIssueBody(_ context.Context, _ string, n int, body string) error {
+	f.call("EditIssueBody")
+	f.issues[n].Body = body
+	return nil
+}
 func (f *fake) AttachmentsSupported() bool { return !f.noAttachments }
 func (f *fake) UploadAttachment(_ context.Context, _ string, commentID int64, name string, content []byte) (string, error) {
 	f.call("UploadAttachment")
@@ -444,6 +449,10 @@ func TestHumanRequestAndAnswer(t *testing.T) {
 	list, _ := a.ListHumanRequests(ctx, "o/r:logiforge/x")
 	if len(list) != 1 || list[0].Answer == nil || list[0].Answer.CreatedAt.IsZero() {
 		t.Fatalf("一覧の回答済み：%+v", list)
+	}
+	// 回答の添付の sha256 は、issue の本文に写るので、一覧だけで、回答を引用した検証結果を見つけられる。依頼の本文は変わらない。
+	if len(list[0].Answer.Attachments) != 1 || list[0].Answer.Attachments[0].SHA256 != got.Answer.Attachments[0].SHA256 || list[0].Body != got.Body {
+		t.Fatalf("一覧の回答の添付：%+v（1 件の読み %+v）", list[0], got)
 	}
 }
 
