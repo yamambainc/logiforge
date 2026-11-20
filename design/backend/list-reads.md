@@ -16,7 +16,7 @@
 |---|---|---|
 | apply request（pull request）と、そのレビュー待ちか修正待ちか | `GET /repos/{owner}/{repo}/pulls` | `GET /repos/{owner}/{repo}/pulls` |
 | 人への依頼（issue）と、回答済みか | `GET /repos/{owner}/{repo}/issues?state=all&labels=…`（pull request も返るので除く） | `GET /repos/{owner}/{repo}/issues?state=all&type=issues&labels=…` |
-| 利用者が読める repository | `GET /user/installations/{installation_id}/repositories` | （問い合わせない。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)） |
+| 主体が読める repository | `GET /user/repos?affiliation=owner,collaborator,organization_member`（60 秒持つ） | （問い合わせない。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)） |
 | 反映した pull request（worker） | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc` | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` |
 
 - 一覧では、review を読まない。レビュー待ちか修正待ちかは、pull request の一覧に入っているラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。
@@ -45,7 +45,9 @@
 
 - 一覧の項目ごとに置き場を読むのは、返すページの項目（`limit` まで）だけにする（[ページ送り](../api/paging.md)）。
   - ただし、`closed` の一覧では、GitForge で open の apply request ごとに、ブランチの履歴を読む。ブランチが消えたかを決めるためである。読む数は、open の数に比例する。
-- repository の一覧で、利用者が読めるかは、上の表の「利用者が読める repository」で決める。repository ごとに `GET /repos/{owner}/{repo}` を呼ばない。
+- repository の一覧で、主体が読めるかは、上の表の「主体が読める repository」で決める。repository ごとに `GET /repos/{owner}/{repo}` を呼ばない。
+  - 一覧にないもの（主体が関わっていない public のリポジトリ）だけ、そのリポジトリを 1 件読んで確かめ、その結果も 60 秒持つ。
+  - なぜ一覧に頼りきらないか：GitHub の一覧は、関わっていない public のリポジトリを返さないから。そうしたリポジトリは、ふつうは少ない。
 - 設定の画面の repository の一覧で、`prepared` は、置き場の `latest` があるかで決める（[latest](snapshot/main.md#latest)）。
   - なぜ：`latest` は、worker が `main` を取り込んだ印で、GitForge に repository ごとに聞かずに分かるから。
   - 登録した直後は、worker が取り込むまで、`prepared` は `false` に見える。WebUI での扱いは [セットアップの画面](../webui/screens-setup.md) に書く。
