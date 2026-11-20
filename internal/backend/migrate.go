@@ -171,37 +171,3 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 	out.Value = repo
 	return out, err
 }
-
-// citationChanged は、部分木の引用の引用元が、引用したあとに変わったかを返す（docs/tree/verdict.md の「引用元の変化」）。
-// 引用したコミットが、この repository の版でなく、移した元の repository の版なら、次のどちらかで変わったとみなす
-// （design/directory/migrate.md の「引用」）。
-//   - 元の repository で、引用したコミットから移したコミットまでのあいだに、部分木が変わった。
-//   - 移した先で、版の 1 番のあとに、部分木が変わった。
-func (b *Backend) citationChanged(ctx context.Context, v *view, node, commit string) (bool, error) {
-	num, err := b.mainNumber(ctx, v, commit)
-	if err != nil {
-		return false, err
-	}
-	if num > 0 {
-		return v.main.SnapshotTree.SubtreeChangedAfter(node, num), nil
-	}
-	mf, err := b.migratedFrom(ctx, v.repo)
-	if err != nil || mf == nil {
-		return true, err
-	}
-	src, err := b.mainAt(ctx, mf.Repository, mf.Commit)
-	if err != nil {
-		if e := AsError(err); e != nil && e.Code == CodeSnapshotPending {
-			return true, nil
-		}
-		return false, err
-	}
-	sn, err := b.mainNumber(ctx, src, commit)
-	if err != nil {
-		return false, err
-	}
-	if sn == 0 {
-		return true, nil
-	}
-	return src.main.SnapshotTree.SubtreeChangedAfter(node, sn) || v.main.SnapshotTree.SubtreeChangedAfter(node, 1), nil
-}

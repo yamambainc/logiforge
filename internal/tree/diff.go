@@ -48,8 +48,6 @@ type Context struct {
 	Others []*Tree
 	// WasLeafBeforeInactivation は、仮説が、祖先のストーリーが inactive になる直前に葉だったかを返す。
 	WasLeafBeforeInactivation func(hypothesisID string) (bool, error)
-	// SubtreeExists は、main のコミットの並びにあるコミットに、そのノードがあるかを返す。
-	SubtreeExists func(nodeID, revision string) (bool, error)
 }
 
 // Result は、差分の検査の結果である。
@@ -168,15 +166,11 @@ func CheckChange(base, head Files, ctx Context) (Result, error) {
 					reject(RuleArtifactCitation, id, "引用した artifact %s がない", c.SHA256)
 				}
 			case "subtree":
-				if ctx.SubtreeExists == nil {
-					continue
-				}
-				ok, err := ctx.SubtreeExists(c.NodeID, c.Commit)
-				if err != nil {
-					return res, err
-				}
-				if !ok {
-					reject(RuleSubtreeCitation, id, "引用した部分木 %s@%s がない", c.NodeID, c.Commit)
+				// 引用できるのは、先頭のコミットの木にあるノードである。同じ apply request で加えるノードも引用できる。
+				_, isH := ht.Hypotheses[c.NodeID]
+				_, isS := ht.Stories[c.NodeID]
+				if !isH && !isS {
+					reject(RuleSubtreeCitation, id, "引用した部分木 %s が、先頭のコミットの木にない", c.NodeID)
 				}
 			}
 		}

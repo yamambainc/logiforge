@@ -66,7 +66,7 @@ export const getRepository = (repo: string) => call<Repository>(`/repositories/$
 
 export interface NodeList { commit: string; nodes: Node[] }
 export interface Artifact { kind: 'file' | 'link'; name: string; sha256?: string; uri?: string; media_type?: string }
-export interface Citation { target_kind: 'artifact' | 'subtree'; sha256?: string; node_id?: string; commit?: string }
+export interface Citation { target_kind: 'artifact' | 'subtree'; sha256?: string; node_id?: string }
 export interface Verdict {
   id: string; hypothesis_id: string; value: boolean; report_body: string; artifacts: Artifact[]; citations: Citation[];
   supersedes?: string[]; apply_request_id?: string; submitted_commit: string; superseded_commit?: string | null;

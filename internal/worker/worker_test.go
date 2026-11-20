@@ -561,3 +561,42 @@ func TestRunDoesNotClearRepositoriesWithoutList(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// 反映のコミットで加わった検証結果が引用した部分木が、base のあとに別の反映で変わっていたら、重なりにする。
+// 同じ反映で加えたノードの引用は、見ない（design/backend/worker/patrol.md の「コミットの警告」）。
+func TestCitationOverlap(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	base := r.git("rev-parse", "main")
+	const hNew = "h-6666666666"
+	// x：H1 の検証結果が H2 の部分木と、同じ反映で加える仮説を引用する。
+	r.git("checkout", "--quiet", "-b", "x", base)
+	r.write(h0+"/s-5555555555/story.md", tree.MarshalStory(tree.StoryContent{ID: "s-5555555555", Title: "t", Summary: "s"}))
+	r.write(h0+"/s-5555555555/"+hNew+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: hNew, Statement: "新"}))
+	r.write(h1+"/verdicts/v-7777777777.md", tree.MarshalVerdict(tree.VerdictContent{ID: "v-7777777777", Value: true, Report: "r\n",
+		Citations: []tree.Citation{{TargetKind: "subtree", NodeID: "h-4444444444"}, {TargetKind: "subtree", NodeID: hNew}}}))
+	r.commit("x")
+	// y：H2 を変える。x より先に反映する。
+	r.git("checkout", "--quiet", "-b", "y", base)
+	r.write(h2+"/background.md", []byte("背景\n"))
+	r.commit("y")
+	r.squash("y", "apr_y")
+	sx := r.squash("x", "apr_x")
+	syncRepo(t, w)
+	c, err := store.GetCommit(ctx, st, "q", sx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nodes []string
+	for _, v := range c.Warnings {
+		if v.Rule == snapshot.RuleOverlap {
+			nodes = append(nodes, v.Node)
+		}
+	}
+	// 対象ノード（H1 と根）は y で変わっていないので、重なりは、引用した H2 だけに出る。同じ反映で加えた hNew には出ない。
+	if len(nodes) != 1 || nodes[0] != "h-4444444444" {
+		t.Fatalf("重なりの警告：%v", c.Warnings)
+	}
+}

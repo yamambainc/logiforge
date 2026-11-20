@@ -256,17 +256,6 @@ func (b *Backend) checkContext(ctx context.Context, latest *view) tree.Context {
 			n := before.main.SnapshotTree.Nodes[hid]
 			return n != nil && n.Leaf, nil
 		},
-		// 引用したコミットが main の並びにあり、そのスナップショットツリーに、そのノードがあるか。
-		SubtreeExists: func(nodeID, revision string) (bool, error) {
-			if n, err := b.mainNumber(ctx, latest, revision); err != nil || n == 0 {
-				return false, err
-			}
-			v, err := b.mainAt(ctx, latest.repo, revision)
-			if err != nil {
-				return false, err
-			}
-			return v.main.SnapshotTree.Nodes[nodeID] != nil, nil
-		},
 	}
 }
 

@@ -26,7 +26,7 @@ func TestVerdictRoundTrip(t *testing.T) {
 	c := VerdictContent{
 		ID: V1, Value: true, Supersedes: []string{V2},
 		Artifacts: []ArtifactRef{{Kind: "link", Name: "paper", URI: "https://example.com/a"}},
-		Citations: []Citation{{TargetKind: "subtree", NodeID: H1, Commit: strings.Repeat("a", 40)}},
+		Citations: []Citation{{TargetKind: "subtree", NodeID: H1}},
 		Report:    "# レポート\n\n本文\n",
 	}
 	got, err := ParseVerdict(MarshalVerdict(c))
@@ -65,9 +65,9 @@ func TestParseRejects(t *testing.T) {
 
 func TestVerdictFieldChecks(t *testing.T) {
 	cases := map[string]string{
-		"artifact の name が空":     "artifacts:\n  - kind: link\n    name: \"\"\n    uri: https://example.com\n",
-		"引用の node_id が識別子でない":    "citations:\n  - target_kind: subtree\n    node_id: x\n    revision: " + strings.Repeat("a", 40) + "\n",
-		"引用の revision が SHA でない": "citations:\n  - target_kind: subtree\n    node_id: " + H1 + "\n    revision: main\n",
+		"artifact の name が空":  "artifacts:\n  - kind: link\n    name: \"\"\n    uri: https://example.com\n",
+		"引用の node_id が識別子でない": "citations:\n  - target_kind: subtree\n    node_id: x\n",
+		"引用に決まっていない項目がある":     "citations:\n  - target_kind: subtree\n    node_id: " + H1 + "\n    at: main\n",
 	}
 	for name, extra := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -98,5 +98,19 @@ func TestSupersedesForm(t *testing.T) {
 	c, err := ParseVerdict([]byte(src))
 	if err != nil || len(c.Supersedes) != 2 {
 		t.Fatalf("got %+v, %v", c, err)
+	}
+}
+
+// 前の形で書いた引用の commit と revision は、受け付けて無視する（design/files/layout.md の「検証結果」）。
+func TestOldCitationCommitIgnored(t *testing.T) {
+	for _, key := range []string{"commit", "revision"} {
+		src := "---\nid: " + V1 + "\nvalue: true\ncitations:\n  - target_kind: subtree\n    node_id: " + H1 + "\n    " + key + ": " + strings.Repeat("a", 40) + "\n---\nレポート\n"
+		c, err := ParseVerdict([]byte(src))
+		if err != nil || !reflect.DeepEqual(c.Citations, []Citation{{TargetKind: "subtree", NodeID: H1}}) {
+			t.Fatalf("%s: got %+v, %v", key, c.Citations, err)
+		}
+		if strings.Contains(string(MarshalVerdict(c)), key+":") {
+			t.Fatalf("%s を書き戻している", key)
+		}
 	}
 }

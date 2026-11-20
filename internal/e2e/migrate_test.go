@@ -66,13 +66,9 @@ func TestE2EMigrate(t *testing.T) {
 	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("ra.md", "A\n"))
 	agent.commitPush("c2", "A")
 	merge("c2")
-	var tr struct {
-		Commit string `json:"commit"`
-	}
-	agent.must(&tr, "tree", "view")
 	agent.branch("c3")
 	var vb scaffold
-	agent.must(&vb, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA+"@"+tr.Commit)
+	agent.must(&vb, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA)
 	agent.commitPush("c3", "B は A を引用")
 	merge("c3")
 	citedVerdict := vb.IDs["verdict_id"].(string)
@@ -114,7 +110,7 @@ func TestE2EMigrate(t *testing.T) {
 		t.Fatalf("移した元に書けた：%d %s", st, b)
 	}
 
-	// 移した検証結果の引用（元の版のコミット）は、移しただけでは、引用元が変わったことにならない。
+	// 移した検証結果の引用は、引用した時点が版の 1 番になるので、移しただけでは、引用元が変わったことにならない。
 	mover := w.user("agent", "s-agent-mig2")
 	mover.repo = "moved"
 	mover.loginAndClone("moved")

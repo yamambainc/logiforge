@@ -402,7 +402,7 @@ func (a *App) verdictNew(ctx context.Context, args []string) error {
 	var arts, links, cites, supersedes multi
 	f.Var(&arts, "artifact", "artifact のファイル（くり返せる）")
 	f.Var(&links, "link", "<名前>=<URL>（くり返せる）")
-	f.Var(&cites, "cite", "subtree:<ノード>@<SHA>、artifact:<sha256>、answer:<人への依頼>（くり返せる）")
+	f.Var(&cites, "cite", "subtree:<ノード>、artifact:<sha256>、answer:<人への依頼>（くり返せる）")
 	f.Var(&supersedes, "supersedes", "差し替える検証結果（くり返せる）")
 	if err := f.parse(args); err != nil {
 		return err
@@ -454,11 +454,15 @@ func (a *App) verdictNew(ctx context.Context, args []string) error {
 		kind, target, _ := strings.Cut(c, ":")
 		switch kind {
 		case "subtree":
-			node, rev, ok := strings.Cut(target, "@")
-			if !ok {
-				return usagef("--cite subtree:<ノード>@<SHA>")
+			if strings.Contains(target, "@") {
+				return usagef("--cite subtree:<ノード>（コミットは書かない。引用した時点は、反映した main のコミットで決まる）")
 			}
-			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "subtree", NodeID: node, Commit: rev})
+			_, isH := w.tree.Hypotheses[target]
+			_, isS := w.tree.Stories[target]
+			if !isH && !isS {
+				return fmt.Errorf("引用する部分木 %s が、手元の木にない", target)
+			}
+			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "subtree", NodeID: target})
 		case "artifact":
 			vc.Citations = append(vc.Citations, tree.Citation{TargetKind: "artifact", SHA256: target})
 		case "answer":
@@ -530,7 +534,7 @@ type checkResult struct {
 //   - 新しい識別子が、origin/main の木とぶつからないかも確かめる。
 //   - 差分を origin/main に重ねられないとき（origin/main でも同じファイルが変わった）は、警告する。
 //
-// 手元でできないもの（引用したコミットの確認、inactive になる前の状態）は省く。API は呼ばない。
+// 手元でできないもの（inactive になる前の状態）は省く。API は呼ばない。
 func (a *App) check(_ context.Context, args []string) error {
 	f := newFlags("check")
 	if err := f.parse(args); err != nil {

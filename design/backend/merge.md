@@ -47,6 +47,7 @@ apply request を `main` に反映するとき、バックエンドが何を確�
   - 仮説：自分の `hypothesis.md`、`background.md`、`verdicts/`、子ストーリーの `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
   - ストーリー：自分の `story.md` と `inactivated.md`、祖先のストーリーの `inactivated.md`
   - 引用した部分木のノード（部分木のどれかのノードの `last_changed` の番号が、base の番号より大きければ、変わったとみなす）
+    - 今の `main` にないノードは、同じ apply request で加えるノードなので、変わったとみなさない。
 - 今の `main` のスナップショットツリーで、対象ノードの `last_changed` の番号が、base の番号より大きければ、変わったとみなす（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
   - 1 つのスナップショットツリーを読むだけで確かめられる。
   - base が `main` の並びになければ、変わったものとみなす（[コミットの記録から引くもの](snapshot/main.md#コミットの記録から引くもの)）。
@@ -67,7 +68,7 @@ apply request を `main` に反映するとき、バックエンドが何を確�
 - 手順 3 の検査と、手順 4 の merge の間に、別の apply request が反映されることがある。このすき間は、ふさがない。
   - そのため、まれに、同じ仮説への重なり（例：偽の結論と、新しいストーリーの追加）が、両方反映されることがある。
   - なぜふさがないか：ふさぐには、`main` への書き込みをバックエンドの側で直列にする仕組みが要る。起きる頻度に対して、仕組みが重いから。
-- [worker](worker/README.md) は、反映のあとの `main` で、不変条件と、同じ対象ノードへの重なりを確かめ、見つけたら警告する。
+- [worker](worker/README.md) は、反映のあとの `main` で、不変条件と、同じ対象ノードへの重なりと、引用した部分木の変化を確かめ、見つけたら警告する（[コミットの警告](worker/patrol.md#コミットの警告)）。
   - 警告を見た opener と reviewer は、新しい apply request で直す（例：ストーリーを inactive にする）。
   - 直すための apply request は、すでに破れている条件では拒まれない（[差分の検査](checks.md)）。
 

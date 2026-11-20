@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -206,6 +207,45 @@ func OverlapWarnings(c Commit, baseNumber int) []tree.Violation {
 	for _, id := range sortedKeys(ts) {
 		if r := ts[id]; r != nil && r.Number > baseNumber {
 			out = append(out, tree.Violation{Rule: RuleOverlap, Node: id, Detail: "対象ノードが、base のあとに " + r.Revision + " で変わっていた"})
+		}
+	}
+	return out
+}
+
+// CitationOverlapWarnings は、反映のコミット c で加わった検証結果が引用した部分木が、base（番号 baseNumber の main のコミット）のあとに、
+// c より前の別のコミットで変わっていれば、警告を返す（design/backend/worker/patrol.md の「コミットの警告」）。
+// prev は 1 つ前のコミットのスナップショットツリー、files は c の木である。prev にないノードは、同じ反映で加えたノードなので見ない。
+func CitationOverlapWarnings(c Commit, files tree.Files, prev *SnapshotTree, baseNumber int) []tree.Violation {
+	if prev == nil {
+		return nil
+	}
+	var out []tree.Violation
+	seen := map[string]bool{}
+	for _, ch := range c.Changes {
+		for _, f := range ch.Files {
+			if f.File != FileVerdict {
+				continue
+			}
+			if _, existed := prev.Nodes[ch.Node]; existed && slices.ContainsFunc(prev.Nodes[ch.Node].Files, func(sf File) bool { return sf.Path == f.Path }) {
+				continue // 加わった検証結果だけを見る
+			}
+			fl, ok := files[f.Path]
+			if !ok {
+				continue
+			}
+			v, err := tree.ParseVerdict(fl.Content)
+			if err != nil {
+				continue
+			}
+			for _, ci := range v.Citations {
+				if ci.TargetKind != "subtree" || seen[ci.NodeID] || prev.Nodes[ci.NodeID] == nil {
+					continue
+				}
+				seen[ci.NodeID] = true
+				if prev.SubtreeChangedAfter(ci.NodeID, baseNumber) {
+					out = append(out, tree.Violation{Rule: RuleOverlap, Node: ci.NodeID, Detail: "引用した部分木が、base のあとに変わっていた"})
+				}
+			}
 		}
 	}
 	return out

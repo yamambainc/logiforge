@@ -267,9 +267,13 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 		}
 	}
 	// 引用した部分木が、base のあとに変わっていれば、それも stale_target にする（design/backend/merge.md の「対象ノードの変化」）。
+	// 今の main にないノードは、同じ apply request で加えるノードなので、変わったとみなさない。先頭のコミットの木にあるかは、下の検査で確かめる。
 	for _, op := range ops {
 		for _, ci := range op.Citations {
-			if ci.TargetKind == "subtree" && onto.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
+			if ci.TargetKind != "subtree" || onto.main.SnapshotTree.Nodes[ci.NodeID] == nil {
+				continue
+			}
+			if onto.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
 				return "stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID), nil
 			}
 		}

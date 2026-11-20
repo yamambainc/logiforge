@@ -122,6 +122,8 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 2. ひな形を作る（[ひな形](https://github.com/yamambainc/logiforge/blob/main/design/cli/local.md#ひな形)）。
    - `story.create`：`logiforge story new --parent <仮説> --title <タイトル> --summary <概要> --hypothesis <主文>...`
    - `verdict.submit`：`logiforge verdict new --hypothesis <仮説> --value true|false --report <ファイル> [--artifact <ファイル>]... [--cite ...]...`
+     - 部分木は `--cite subtree:<ノード>` で引用する。コミットは書かない。
+     - 引用した時点は、反映された `main` のコミットで決まる（[引用](https://github.com/yamambainc/logiforge/blob/main/docs/tree/verdict.md#引用)）。
    - `story.inactivate`：`logiforge story inactivate <ストーリー> --reason <理由>`
    - `node.edit`：`logiforge node edit <仮説> --append-background <ファイル>`
 3. 要るなら、できたファイルを手で直す。
