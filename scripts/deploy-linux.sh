@@ -1,6 +1,6 @@
 #!/bin/sh
 # 手元の checkout から logiforge をビルドし、Linux のサーバのバイナリを入れ替えて、serve と worker を起動し直す。
-# 使い方と前提は docs/adoption/linux-host/README.md の「更新」に書く。
+# 使い方と前提は docs/adoption/linux-host/update.md に書く。
 #
 #   scripts/deploy-linux.sh <ssh の送り先>      例：scripts/deploy-linux.sh admin@logiforge-host
 #
