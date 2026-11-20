@@ -5,8 +5,11 @@ pull request との対応は [apply request](README.md) に書く。
 
 ## 作成
 
-1. 識別子を求める（[同じ要求の繰り返し](../../api/writes.md)）。
-2. GitForge で、その識別子の apply request を読む。あれば、それを返して終わる。中身は比べない。
+1. 識別子の番号を取る（[番号の取り方](../ids/numbering.md)）。
+   - 送り直しの番号か、新しい番号かも分かる（[同じ要求の繰り返し](../ids/numbering.md#同じ要求の繰り返し)）。
+2. GitForge で、その識別子の apply request を、その repository の記録から読む。
+   - 送り直しの番号で、あれば、それを返して終わる。中身は比べない。
+   - 新しい番号で、あれば、番号が重なっている。カウンタを合わせて、手順 1 からやり直す（[番号の重なり](../ids/numbering.md#番号の重なり)）。
 3. 作業用の git の複製に、`main` とブランチを fetch する（下の「作業用の git の複製」）。
 4. ブランチの先頭と `main` の分かれた点（base）を求め、base から変わったファイルだけを読む。
    - 要求に `commit` があり、ブランチの先頭と違えば、`validation_failed` で受け付けない。

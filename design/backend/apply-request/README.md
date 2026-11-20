@@ -1,7 +1,7 @@
 # apply request
 
 バックエンドが、apply request を GitForge の pull request としてどう扱い、先頭のコミット・更新・close をどうするかを確かめるときに読む。
-API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要求の繰り返し](../../api/writes.md) が正本である。反映は [反映の手順](../merge.md) に書く。
+API の決まり（`Idempotency-Key`）は、[同じ要求の繰り返し](../../api/writes.md) が正本である。識別子の決め方は、[識別子](../ids/README.md) が正本である。反映は [反映の手順](../merge.md) に書く。
 
 ## 読む順
 

@@ -16,6 +16,7 @@
 9. [worker](worker/README.md)
 10. [反映かの判定](verify/README.md)
 11. [壊れた repository](broken.md)
+12. [識別子](ids/README.md)
 
 ## 持つルール
 
@@ -84,6 +85,8 @@
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 - バックエンドが持つ唯一の永続のデータは、設定の DB である（[設定の DB](../settings/database.md)）。
   - なぜ持つか：repository の一覧と GitForge とのつなぎ方は、git にも GitForge にも正本がなく、利用者が WebUI から変えるから（[設定](../settings/README.md)）。
+  - 識別子のカウンタも、設定の DB に置く（[識別子](ids/numbering.md#カウンタ)）。
+    - なぜ：repository ごとに詰まった番号を数える仕組みが、GitForge にないから。
   - 設定の DB は、要求ごとに読み、メモリに保持しない（[設定を読むとき](../settings/README.md#設定を読むとき)）。
     - そのため、同じ設定の DB を読むバックエンドどうしで、設定は食い違わない。
   - 設定の DB の SQLite のファイルは、NFS などで、ほかのノードと共有しない（[DB の種類](../settings/database.md#db-の種類)）。

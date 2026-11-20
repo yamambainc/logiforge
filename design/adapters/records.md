@@ -42,7 +42,14 @@ pull request と issue の対応は、[GitForge アダプタの共通の書き�
 - 回答の添付は、`answer` の記録に書いた sha256 で守る。添付を読むときに sha256 を確かめ、合わなければ返さずに警告する。
 - 一覧の API は、repository のコメントの一覧（`GET /repos/{owner}/{repo}/issues/comments`）から、まとめて読む。GitHub と Forgejo の両方にある。
 - 1 件を読む API は、その pull request か issue のコメントだけを読む（`GET /repos/{owner}/{repo}/issues/{index}/comments`）。
-  - pull request と issue のタイトルは、`[Logiforge] <識別子>` にする。1 件を読むときに、どの番号かを探す手がかりにだけ使う。記録としては読まない。
+  - pull request と issue のタイトルは、`[Logiforge] <識別子>` にする。
+    - ディレクトリの repository では、[ディレクトリ方式](../directory/README.md#人への依頼) のタイトルにする。
+  - タイトルは、1 件を読むときに、どの番号かを探す手がかりにだけ使う。記録としては読まない。
+  - タイトルの識別子は、語として一致するものだけを手がかりにする。
+    - なぜ：`apr_4` は、`apr_42` の一部だから。
+  - 手がかりの pull request か issue の記録のうち、識別子と repository の両方が合うものだけを数える。
+    - repository は、`Logiforge-Repository:` で決める（[ディレクトリ方式](../directory/README.md#apply-request-とみなす-pr)）。
+    - なぜ：識別子は repository ごとに数えるので、1 つの git リポジトリに、ディレクトリの repository ごとの `apr_1` があるから。
   - タイトルで見つからなければ（書き換えられた、など）、repository のコメントの一覧から探す。
 - 提案を作ったあと、記録のコメントを書く前に止まったら、送り直しで記録のコメントを書く。
   - 同じブランチの open の pull request で、記録のコメントがないものがあれば、新しく作らずに、それに記録を書く。

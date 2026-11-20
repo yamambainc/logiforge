@@ -5,7 +5,9 @@
 
 ## 置くものと置かないもの
 
-- 設定の DB に置くのは、設定だけである。
+- 設定の DB に置くのは、設定と、次の 2 つだけである。
+  - WebUI のサインインのセッション（[サインインのセッション](../webui/session.md)）
+  - 識別子のカウンタと、送り直しのキーと番号の対応（[識別子](../backend/ids/README.md)）
 - 木、apply request、人への依頼、スナップショットは置かない。
   - なぜ：それらの正本は GitForge と置き場にあるから（[状態を持たない](../backend/README.md#状態を持たない)）。
 - サインインのトークンも置かない（[サインイン](../webui/auth.md#トークンの持ち方)）。
@@ -44,6 +46,8 @@ SQLite にする。
 | `worker_tokens` | `owner`、`token`、`expires_at`、`repositories` | worker のための installation token（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。`token` は暗号文 |
 | `webui_sessions` | `id_hash`、`client_id`、`access_token`、`access_expires_at`、`refresh_token`、`created_at`、`used_at` | WebUI のサインインのセッション（[サインインのセッション](../webui/session.md)）。トークンは暗号文。worker は読まない |
 | `setup` | `token_hash`、`created_at`、`done_at` | 初回のセットアップ（[初回のセットアップ](setup.md)） |
+| `id_counters` | `repository`、`kind`、`next` | 識別子の次の番号（[カウンタ](../backend/ids/numbering.md#カウンタ)）。worker は読まない |
+| `idempotency_keys` | `key_hash`、`repository`、`kind`、`number`、`created_at` | 送り直しのキーと番号の対応（[同じ要求の繰り返し](../backend/ids/numbering.md#同じ要求の繰り返し)）。worker は読まない |
 
 - 表の定義は、実装の migration が正本である。
 - `updated_by` は、変えた利用者のアカウント名である。
