@@ -501,6 +501,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	x := snapshot.NewIndex()
 	var files tree.Files
 	var broken []tree.Violation
+	var prevTree *snapshot.SnapshotTree // 1 つ前のコミットのスナップショットツリー
 	if prevVersion != "" {
 		m, err := store.GetMain(ctx, w.store, repo, prevVersion)
 		if err != nil {
@@ -511,6 +512,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			return err
 		}
 		broken = m.SnapshotTree.Broken
+		prevTree = &m.SnapshotTree
 	}
 	for i := start; i < len(chain); i++ {
 		sha, prev := chain[i], ""
@@ -583,7 +585,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		x.AddNewlyBroken(&rec, newly...)
 		broken = t.Broken
 		if version > 0 {
-			x.AddWorkerWarnings(&rec, w.overlap(ctx, g, repo, rec)...)
+			x.AddWorkerWarnings(&rec, w.overlap(ctx, g, repo, rec, files, prevTree)...)
 		}
 		// 反映のコミットが、ディレクトリの外も変えていたら、警告にする（判定には使わない。design/directory/history.md の「反映かの判定」）。
 		if len(outside) > 0 && v != nil && v.Authorized {
@@ -593,6 +595,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			x.AddWorkerWarnings(&rec, tree.Violation{Rule: RuleMainRewritten, Node: sha, Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
 		}
 		t.Warned = x.Warned()
+		prevTree = t
 		// コミットの記録、main の並びの索引、スナップショットツリーの順に置き、最後に latest を進める。
 		if err := store.PutCommit(ctx, w.store, repo, rec); err != nil {
 			return err
@@ -808,10 +811,11 @@ func (w *Worker) putBroken(ctx context.Context, repo string, br *store.Broken) e
 // RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。
 const RuleMainRewritten = snapshot.RuleMainRewritten
 
-// overlap は、反映のコミットについて、対象ノードが、その base のあとに別の反映で変わっていないかを確かめる。
+// overlap は、反映のコミットについて、対象ノードと、加わった検証結果が引用した部分木が、その base のあとに別の反映で変わっていないかを確かめる。
 // base は、反映した先頭のコミット（Logiforge-Version:）と、反映の直前の main の分かれた点である。
 // c は、記録を作ったばかりの反映のコミットで、その親までは、コミットの記録と main の並びの索引が置いてある。
-func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snapshot.Commit) []tree.Violation {
+// files は c の木、prev は 1 つ前のコミットのスナップショットツリーである。
+func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snapshot.Commit, files tree.Files, prev *snapshot.SnapshotTree) []tree.Violation {
 	if snapshot.HasTrailer(c, snapshot.TrailerApplyRequest) == "" {
 		return nil
 	}
@@ -833,7 +837,7 @@ func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snaps
 	if n == 0 {
 		return unchecked("base " + base + " が main の並びにない")
 	}
-	return snapshot.OverlapWarnings(c, n)
+	return append(snapshot.OverlapWarnings(c, n), snapshot.CitationOverlapWarnings(c, files, prev, n)...)
 }
 
 // mainNumber は、sha が、番号 upTo までの main の並びにあれば、その番号を返す。なければ 0。

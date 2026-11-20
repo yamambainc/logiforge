@@ -39,14 +39,6 @@ func TestWebUIWorkCounts(t *testing.T) {
 			t.Fatalf("%s の approve：%d %s", branch, code, out)
 		}
 	}
-	mainCommit := func() string {
-		var r struct {
-			Commit string `json:"commit"`
-		}
-		_, b := w.call("alice", "GET", "/repositories/q/tree", nil)
-		_ = json.Unmarshal(b, &r)
-		return r.Commit
-	}
 
 	// 仮説 A〜D のストーリー
 	agent.branch("c1")
@@ -63,9 +55,8 @@ func TestWebUIWorkCounts(t *testing.T) {
 	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("ra.md", "A\n"))
 	agent.commitPush("c2", "A")
 	merge("c2")
-	rA := mainCommit()
 	agent.branch("c3")
-	agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA+"@"+rA)
+	agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA)
 	agent.commitPush("c3", "B は A を引用")
 	merge("c3")
 	agent.branch("c4")

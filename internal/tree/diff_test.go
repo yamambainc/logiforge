@@ -3,7 +3,6 @@ package tree
 import (
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -260,18 +259,31 @@ func TestArtifacts(t *testing.T) {
 }
 
 func TestSubtreeCitation(t *testing.T) {
-	b, d := base()
-	rev := strings.Repeat("a", 40)
-	h := b.clone()
-	v := VerdictContent{ID: V1, Value: true, Report: "r", Citations: []Citation{{TargetKind: "subtree", NodeID: H2, Commit: rev}}}
-	h.put(d[H1]+"/"+VerdictsDir+"/"+V1+".md", MarshalVerdict(v))
-
-	exists := func(want bool) Context {
-		return Context{SubtreeExists: func(node, r string) (bool, error) { return want && node == H2 && r == rev, nil }}
+	cite := func(node string) func(h *fb, d map[string]string) {
+		return func(h *fb, d map[string]string) {
+			v := VerdictContent{ID: V1, Value: true, Report: "r", Citations: []Citation{{TargetKind: "subtree", NodeID: node}}}
+			h.put(d[H1]+"/"+VerdictsDir+"/"+V1+".md", MarshalVerdict(v))
+		}
 	}
-	wantOK(t, mustCheck(t, b, h, exists(true)))
-	wantRejected(t, mustCheck(t, b, h, exists(false)), RuleSubtreeCitation)
-	wantOK(t, mustCheck(t, b, h, Context{})) // 問い合わせがなければ省く
+	t.Run("先頭の木にあるノード", func(t *testing.T) {
+		b, d := base()
+		h := b.clone()
+		cite(H2)(h, d)
+		wantOK(t, mustCheck(t, b, h, Context{}))
+	})
+	t.Run("同じ差分で加えるノード", func(t *testing.T) {
+		b, d := base()
+		h := b.clone()
+		h.hyp(h.story(d[H2], S2, "t"), H3, "x")
+		cite(S2)(h, d)
+		wantOK(t, mustCheck(t, b, h, Context{}))
+	})
+	t.Run("ないノード", func(t *testing.T) {
+		b, d := base()
+		h := b.clone()
+		cite("h-zzzzzzzzzz")(h, d)
+		wantRejected(t, mustCheck(t, b, h, Context{}), RuleSubtreeCitation)
+	})
 }
 
 func TestIDCollisionWithOtherTree(t *testing.T) {

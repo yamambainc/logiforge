@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -38,9 +37,9 @@ type ArtifactRef struct {
 type Citation struct {
 	TargetKind string `yaml:"target_kind" json:"target_kind"`
 	SHA256     string `yaml:"sha256,omitempty" json:"sha256,omitempty"`
-	NodeID     string `yaml:"node_id,omitempty" json:"node_id,omitempty"`
-	// Commit は、部分木を引用した main のコミットの SHA。前は `revision` という名前で書いていた。読むときは、どちらの名前も受け付ける。
-	Commit string `yaml:"commit,omitempty" json:"commit,omitempty"`
+	// NodeID は、部分木の根のノードの識別子である。引用した時点は、検証結果のファイルが加わった main のコミットで決まる
+	// （design/files/revisions.md の「引用した時点」）。
+	NodeID string `yaml:"node_id,omitempty" json:"node_id,omitempty"`
 }
 
 // HypothesisContent は hypothesis.md の中身である。
@@ -65,9 +64,6 @@ type VerdictContent struct {
 	Citations  []Citation    `json:"citations,omitempty"`
 	Report     string        `json:"report"`
 }
-
-// commitPattern は、git のコミットの SHA の形である（SHA-1 の 40 文字か、SHA-256 の 64 文字）。
-var commitPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // SHA256Hex は、中身の sha256 を 16 進で返す。
 func SHA256Hex(content []byte) string {
@@ -334,22 +330,12 @@ func parseCitations(v any) ([]Citation, error) {
 			if err := onlyKeys(m, "target_kind", "node_id", "commit", "revision"); err != nil {
 				return nil, fmt.Errorf("引用: %w", err)
 			}
+			// 前の形で書いた commit（とその前の名前 revision）は、受け付けて無視する（design/files/layout.md の「検証結果」）。
 			node, _ := m["node_id"].(string)
-			// 前の名前（revision）で書いたファイルも読む。両方は書かない。
-			rev, _ := m["commit"].(string)
-			if old, ok := m["revision"].(string); ok {
-				if _, both := m["commit"]; both {
-					return nil, fmt.Errorf("部分木の引用に、commit と revision の両方がある")
-				}
-				rev = old
-			}
 			if k := ids.KindOf(node); k != ids.Hypothesis && k != ids.Story {
 				return nil, fmt.Errorf("部分木の引用の node_id が、仮説かストーリーの識別子でない: %q", node)
 			}
-			if !commitPattern.MatchString(rev) {
-				return nil, fmt.Errorf("部分木の引用の commit が、コミットの SHA でない: %q", rev)
-			}
-			out = append(out, Citation{TargetKind: kind, NodeID: node, Commit: rev})
+			out = append(out, Citation{TargetKind: kind, NodeID: node})
 		default:
 			return nil, fmt.Errorf("引用の target_kind が正しくない: %q", kind)
 		}

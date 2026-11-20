@@ -1569,11 +1569,11 @@ components:
               $ref: '#/components/schemas/Sha256'
               description: artifact の sha256。回答の添付は、ここではなく link の artifact で引用する（../../design/files/artifacts.md）
         - type: object
-          required: [target_kind, node_id, commit]
+          required: [target_kind, node_id]
+          description: 引用した時点は、検証結果が反映された main のコミット（Verdict の submitted_commit）である（../../docs/tree/verdict.md）
           properties:
             target_kind: { type: string, const: subtree }
             node_id: { $ref: '#/components/schemas/NodeId' }
-            commit: { $ref: '#/components/schemas/Commit' }
     Artifact:
       type: object
       required: [kind, name]
@@ -1845,7 +1845,7 @@ components:
           items: { $ref: '#/components/schemas/Story' }
         citations:
           type: array
-          description: 引用している部分木（引用したコミットのもの）と artifact
+          description: 引用している部分木（先頭のコミットの木のもの）と artifact
           items:
             type: object
             required: [citation]
@@ -1853,6 +1853,7 @@ components:
               citation: { $ref: '#/components/schemas/Citation' }
               nodes:
                 type: array
+                description: 部分木の引用だけ。先頭のコミットの木の、引用した部分木のノード
                 items: { $ref: '#/components/schemas/Node' }
               artifact: { $ref: '#/components/schemas/Artifact' }
 

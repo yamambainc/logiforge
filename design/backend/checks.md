@@ -74,7 +74,9 @@ apply request の差分を、バックエンドがどう検査するかを確か
   - inactive になる前の状態は、`inactivated.md` が加わった `main` のコミットの 1 つ前のスナップショットツリーで確かめる。
   - そのコミットの番号は、ストーリーの `inactivated_at` である。
   - 1 つ前の SHA は、`main` の並びの索引で引く（[コミットの記録から引くもの](snapshot/main.md#コミットの記録から引くもの)）。
-- 部分木の引用：引用したコミットが、`main` の並びにある（[コミットの記録から引くもの](snapshot/main.md#コミットの記録から引くもの)）。かつ、そのコミットのスナップショットツリーに、指定した識別子のノードがある。
+- 部分木の引用：先頭のコミットの木に、指定した識別子の仮説かストーリーがある。
+  - 同じ apply request で加えるノードも引用できる。
+  - inactive な部分木のノードも引用できる（[inactive](../../docs/tree/inactive.md)）。
 - artifact の引用：sha256 が、base の木の `artifacts` か、同じ apply request で加えるファイルにある。
 - artifact のファイル名が、中身のハッシュと一致する。
 - artifact のファイルが、上限の大きさを超えない（[artifact](../../docs/tree/verdict.md)）。

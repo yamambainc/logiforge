@@ -145,7 +145,7 @@ func commands() []command {
 		{"commit", "[git commit の引数]", "セッションの trailer を付けて git commit する", (*App).commit},
 		{"story new", "--parent <仮説> --title <タイトル> --summary <概要> --hypothesis <主文>...", "ストーリーと子仮説のひな形を作る", (*App).storyNew},
 		{"story inactivate", "<ストーリー> --reason <理由>", "inactivated.md を作る", (*App).storyInactivate},
-		{"verdict new", "--hypothesis <仮説> --value true|false --report <ファイル> [--artifact <ファイル>]... [--link <名前>=<URL>]... [--cite subtree:<ノード>@<SHA>|artifact:<sha256>|answer:<人への依頼>]... [--supersedes <検証結果>]...", "検証結果のひな形を作る", (*App).verdictNew},
+		{"verdict new", "--hypothesis <仮説> --value true|false --report <ファイル> [--artifact <ファイル>]... [--link <名前>=<URL>]... [--cite subtree:<ノード>|artifact:<sha256>|answer:<人への依頼>]... [--supersedes <検証結果>]...", "検証結果のひな形を作る", (*App).verdictNew},
 		{"verdict view", "<検証結果>", "検証結果とレポート", (*App).verdictView},
 		{"node edit", "<仮説> --append-background <ファイル>", "背景情報の末尾に加える", (*App).nodeEdit},
 		{"node view", "<ノード> [--commit <SHA>]", "ノードの詳細", (*App).nodeView},

@@ -343,13 +343,6 @@ func TestE2EEdges(t *testing.T) {
 			}
 			return got
 		}
-		mainCommit := func() string {
-			var tr struct {
-				Commit string `json:"commit"`
-			}
-			agent.must(&tr, "tree", "view")
-			return tr.Commit
-		}
 		agent.branch("c1")
 		var sc scaffold
 		agent.must(&sc, "story", "new", "--parent", repo.Root, "--title", "道筋", "--summary", "s", "--hypothesis", "A", "--hypothesis", "B")
@@ -363,11 +356,10 @@ func TestE2EEdges(t *testing.T) {
 		agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("ra.md", "A\n"))
 		agent.commitPush("c2", "A")
 		merge("c2")
-		rA := mainCommit()
 
 		agent.branch("c3")
 		var vb scaffold
-		agent.must(&vb, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA+"@"+rA)
+		agent.must(&vb, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb.md", "A を流用\n"), "--cite", "subtree:"+hA)
 		agent.commitPush("c3", "B は A を引用")
 		merge("c3")
 		oldVerdict := vb.IDs["verdict_id"].(string)
@@ -395,10 +387,10 @@ func TestE2EEdges(t *testing.T) {
 			t.Fatal("引用元が変わったのに、citation_changed が出ない")
 		}
 
-		// 見直して、引用を今のリビジョンにした検証結果で差し替えると、作業から外れる。
+		// 見直した検証結果で差し替えると、引用した時点が新しい反映のコミットになり、作業から外れる。
 		agent.branch("c5")
 		agent.must(nil, "verdict", "new", "--hypothesis", hB, "--value", "true", "--report", agent.file("rb2.md", "見直した\n"),
-			"--cite", "subtree:"+hA+"@"+mainCommit(), "--supersedes", oldVerdict)
+			"--cite", "subtree:"+hA, "--supersedes", oldVerdict)
 		agent.commitPush("c5", "B を見直す")
 		merge("c5")
 		if citationChanged() {

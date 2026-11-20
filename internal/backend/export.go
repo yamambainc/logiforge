@@ -117,7 +117,7 @@ func (e Export) Markdown() string {
 				}
 				for _, c := range v.Citations {
 					if c.TargetKind == "subtree" {
-						fmt.Fprintf(&b, "- 引用：部分木 %s（%s）\n", c.NodeID, c.Commit)
+						fmt.Fprintf(&b, "- 引用：部分木 %s\n", c.NodeID)
 					} else {
 						fmt.Fprintf(&b, "- 引用：artifact %s\n", c.SHA256)
 					}

@@ -11,7 +11,7 @@ import (
 //   - 親仮説から根まで：対象ノードの親の仮説から、根までの仮説
 //   - 兄弟ストーリー：story.create では親仮説の子ストーリー、story.inactivate では同じ親仮説のほかのストーリー、
 //     verdict.submit と node.edit では、対象の仮説が属するストーリーと同じ親仮説を持つ、ほかのストーリー
-//   - 引用：引用している部分木（引用したコミットのもの）と、artifact
+//   - 引用：引用している部分木（先頭のコミットの木のもの）と、artifact
 func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id string) (ReviewMaterial, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
@@ -47,6 +47,7 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 			return ReviewMaterial{}, err
 		}
 	}
+	var head *view // 先頭のコミットの木。部分木の引用があるときだけ作る
 	seenT, seenA, seenS := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	addAncestors := func(h *tree.Hypothesis) {
 		for ; h != nil; h = parentHyp(h) {
@@ -97,9 +98,13 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 			mc := MaterialCitation{Citation: ci}
 			switch ci.TargetKind {
 			case "subtree":
-				if cv, err := b.mainAt(ctx, repo, ci.Commit); err == nil {
-					mc.Nodes = cv.subtree(ci.NodeID, -1, claims{})
+				// 引用した部分木は、先頭のコミットの木から読む（design/files/revisions.md の「引用した時点」）。
+				if head == nil {
+					if head, err = b.branchView(ctx, repo, d.current.Commit); err != nil {
+						return ReviewMaterial{}, err
+					}
 				}
+				mc.Nodes = head.subtree(ci.NodeID, -1, claims{})
 			case "artifact":
 				// 同じ操作の artifact か、今の木の検証結果が参照する artifact から引く。
 				mc.Artifact = findArtifact(op.Artifacts, ci.SHA256)

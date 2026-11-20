@@ -329,7 +329,7 @@ function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
             ? <li key={i}><span>artifact</span><span>{c.artifact?.name ?? ''}</span><span className="mono dim">{(c.citation.sha256 ?? '').slice(0, 12)}</span></li>
             : (
               <li key={i}>
-                <span>部分木</span><span className="mono">{c.citation.node_id}</span><span className="mono dim">{(c.citation.commit ?? '').slice(0, 7)} の時点</span>
+                <span>部分木</span><span className="mono">{c.citation.node_id}</span><span className="dim">先頭のコミットの木</span>
                 {(c.nodes ?? []).length > 0 && <details><summary>{c.nodes!.length} 個のノード</summary><ul className="ops">{c.nodes!.map((n) => <li key={n.id}><span className="mono">{n.id}</span><span>{textOf(n)}</span><span className="dim">{VALUE(n.value)}</span></li>)}</ul></details>}
               </li>
             ))}

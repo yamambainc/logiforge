@@ -61,14 +61,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 			continue
 		}
 		for _, c := range tv.Citations {
-			if c.TargetKind != "subtree" {
-				continue
-			}
-			changed, err := b.citationChanged(ctx, v, c.NodeID, c.Commit)
-			if err != nil {
-				return nil, nil, err
-			}
-			if changed {
+			if c.TargetKind == "subtree" && citationChanged(v, tv, c.NodeID) {
 				items = append(items, WorkItem{Kind: "citation_changed", SubjectID: vid, NodeID: h.ID})
 				break
 			}
@@ -345,4 +338,15 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 	})
 	out.Done = out.Decided && out.RemainingWork == 0 && !unknown
 	return out, nil
+}
+
+// citationChanged は、検証結果 tv の部分木の引用の引用元が、引用したあとに変わったかを返す（docs/tree/verdict.md の「引用元の変化」）。
+// 引用した時点は、検証結果のファイルが加わった main のコミットである（design/files/revisions.md の「引用した時点」）。
+// 加わったコミットがわからなければ、変わったものとみなす。
+func citationChanged(v *view, tv *tree.Verdict, node string) bool {
+	added := fileAdded(v, tv.Hypothesis.ID, tv.Path)
+	if added == nil || added.Number == 0 {
+		return true
+	}
+	return v.main.SnapshotTree.SubtreeChangedAfter(node, added.Number)
 }

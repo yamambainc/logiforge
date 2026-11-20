@@ -247,16 +247,24 @@ func (b *Backend) verdict(ctx context.Context, v *view, tv *tree.Verdict) (Verdi
 // addedIn は、検証結果のファイル p が加わったコミットと、その反映の apply request を返す。
 // worker がスナップショットツリーのファイルに書いた値を使うので、置き場を読まない（design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 func (b *Backend) addedIn(_ context.Context, v *view, node, p string) (string, string, error) {
+	if a := fileAdded(v, node, p); a != nil {
+		return a.Revision, a.ApplyRequest, nil
+	}
+	return "", "", nil
+}
+
+// fileAdded は、ノード node の検証結果のファイル p が加わった main のコミットを返す。わからなければ nil。
+func fileAdded(v *view, node, p string) *snapshot.AddedIn {
 	n := v.main.SnapshotTree.Nodes[node]
 	if n == nil {
-		return "", "", nil
+		return nil
 	}
 	for _, f := range n.Files {
 		if f.Path == p && f.Added != nil {
-			return f.Added.Revision, f.Added.ApplyRequest, nil
+			return f.Added
 		}
 	}
-	return "", "", nil
+	return nil
 }
 
 // GetVerdict は、検証結果を返す。差し替えられた古い検証結果も読める。

@@ -139,7 +139,7 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
                 <div className="cites">
                   <span className="dim">引用</span>
                   {verdict.citations.map((c, i) => c.target_kind === 'subtree' && c.node_id
-                    ? <NodeLink key={i} ix={ix} id={c.node_id} onReveal={onReveal} suffix={`の部分木 @ ${(c.commit ?? '').slice(0, 7)}`} />
+                    ? <NodeLink key={i} ix={ix} id={c.node_id} onReveal={onReveal} suffix="の部分木" />
                     : <span key={i} className="mono dim">artifact {(c.sha256 ?? '').slice(0, 10)}</span>)}
                 </div>
               )}

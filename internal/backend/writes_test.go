@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/base64"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -359,7 +360,7 @@ func TestMergeFailurePaths(t *testing.T) {
 	t.Run("引用した部分木が変わった", func(t *testing.T) {
 		f := live(t)
 		id := create(t, f, "x", "s3", map[string][]byte{dH2 + "/verdicts/v-9999999999.md": tree.MarshalVerdict(tree.VerdictContent{ID: "v-9999999999", Value: true, Report: "r\n",
-			Citations: []tree.Citation{{TargetKind: "subtree", NodeID: H1, Commit: f.c2}}})})
+			Citations: []tree.Citation{{TargetKind: "subtree", NodeID: H1}}})})
 		other := create(t, f, "y", "s4", map[string][]byte{dH1 + "/background.md": []byte("変えた\n")})
 		if _, err := approve(t, f, other); err != nil {
 			t.Fatal(err)
@@ -370,6 +371,41 @@ func TestMergeFailurePaths(t *testing.T) {
 		}
 	})
 	_ = ctx
+}
+
+// 同じ apply request で加えるノードも引用できる。引用した時点は、検証結果が反映された main のコミットである。
+func TestCiteNodeAddedInSameApplyRequest(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	const sNew, hNew, vNew = "s-aaaaaaaaaa", "h-bbbbbbbbbb", "v-9999999999"
+	dNew := dH2 + "/" + sNew + "/" + hNew
+	id := create(t, f, "x", "s3", map[string][]byte{
+		dH2 + "/" + sNew + "/story.md": tree.MarshalStory(tree.StoryContent{ID: sNew, Title: "t", Summary: "s"}),
+		dNew + "/hypothesis.md":        tree.MarshalHypothesis(tree.HypothesisContent{ID: hNew, Statement: "x"}),
+		dH1 + "/verdicts/" + vNew + ".md": tree.MarshalVerdict(tree.VerdictContent{ID: vNew, Value: true, Report: "r\n", Supersedes: []string{V1},
+			Citations: []tree.Citation{{TargetKind: "subtree", NodeID: sNew}}}),
+	})
+	res, err := approve(t, f, id)
+	if err != nil || res.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("approve: %+v %v", res.Value.ApplyRequest, err)
+	}
+	changed := func() bool {
+		w, err := f.b.ListWork(ctx, agentC, "q", WorkQuery{Kinds: []string{"citation_changed"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(w.Items, func(it WorkItem) bool { return it.SubjectID == vNew })
+	}
+	if changed() {
+		t.Fatal("引用した時点のあとに変わっていないのに、citation_changed が出た")
+	}
+	other := create(t, f, "y", "s4", map[string][]byte{dNew + "/background.md": []byte("変えた\n")})
+	if res, err := approve(t, f, other); err != nil || res.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("approve: %+v %v", res.Value.ApplyRequest, err)
+	}
+	if !changed() {
+		t.Fatal("引用元が変わったのに、citation_changed が出ない")
+	}
 }
 
 func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
