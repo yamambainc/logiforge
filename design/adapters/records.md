@@ -1,7 +1,7 @@
 # 記録のコメントとレビュー
 
 GitHub アダプタと Forgejo アダプタが、GitForge に記録とレビューをどう書き、どれを信じるかを確かめるときに読む。
-pull request と issue の対応は、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+pull request と issue の対応は、[GitForge のポートを pull request と issue で実装する](pull-requests.md) に書く。
 
 ## 記録のコメント
 

@@ -1,4 +1,4 @@
-# GitForge アダプタの共通の書き方
+# GitForge のポートを pull request と issue で実装する
 
 GitHub アダプタと Forgejo アダプタが、[GitForge](../backend/ports/gitforge.md) のポートを、同じ形で実装するところを確かめるときに読む。
 GitForge ごとの違いは、[GitHub アダプタ](github.md) と [Forgejo アダプタ](forgejo.md) に書く。

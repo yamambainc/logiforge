@@ -1,7 +1,7 @@
 # GitHub アダプタ
 
 GitHub を使って Logiforge を動かすときに、[GitForge](../backend/ports/gitforge.md) のポートをどう実装するかを確かめるために読む。
-Forgejo アダプタと共通のところは、[GitForge アダプタの共通の書き方](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
+Forgejo アダプタと共通のところは、[GitForge のポートを pull request と issue で実装する](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
 [worker](../backend/worker/README.md) は、[git アダプタ](git.md) で、GitHub リポジトリを読む。
 
 ## アカウントとトークン

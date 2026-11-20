@@ -26,7 +26,7 @@
 - パスは、どれも `GET /repos/{owner}/{repo}/` の下である（利用者が読める repository を除く）。
 - GitForge で open の pull request は、バックエンドで open の apply request をすべて含む。そのため、open の一覧は `state=open` で足りる。
   - ブランチが消えた open の apply request は `closed` に数える（[apply request](apply-request/README.md)）。そのため、`closed` の一覧では、GitForge で open のものも読む。
-- 記録とレビューは、記録の控えと、控えの読む位置より後のコメントを合わせて作る（[キャッシュ](caches.md#記録の控え)）。
+- 記録とレビューは、記録の控えと、控えの読む位置より後のコメントを合わせて作る（[キャッシュ](caches.md#記録の控えの読み方)）。
   - pull request ごとのコメントの一覧（`issues/{number}/comments`）は、一覧の読みでは使わない。
   - repository のコメントの一覧を、はじめから全部は読まない。なぜ：コメントの数は pull request の数の数倍で、全部読むとページ送りだけで REST の回数が増えるから。
 - GitForge の repository の識別子は、その要求で読んだ pull request の一覧から取る。

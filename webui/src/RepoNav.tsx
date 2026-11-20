@@ -1,4 +1,4 @@
-// repository の中の画面の切り替え（design/webui/mobile.md の「すべての画面の決まり」）。
+// repository の中の画面の切り替え（design/webui/mobile.md の「画面の骨組み」）。
 // デスクトップは上の帯のタブ、モバイルは下のタブ（片手の親指で届く位置）。
 // タブは 4 つ（ツリー、依頼、AR、状況）である。
 import { navigate, screenPath, type RepoScreen } from './router';

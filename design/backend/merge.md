@@ -27,7 +27,7 @@ apply request を `main` に反映するとき、バックエンドが何を確�
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、`approve` をした reviewer のトークンで呼ぶ。
    - なぜ reviewer のトークンか：反映は、`approve` の要求の中で同期で行うので、そのトークンがいつも手元にあるから。
-   - Logiforge は、merge するための自分のアカウントを持たない（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+   - Logiforge は、merge するための自分のアカウントを持たない（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
    - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗の理由を `merge_forbidden` として記録する。
      - apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
      - `merge_forbidden` は、opener が直すものではないので、修正待ちにしない（レビュー待ちのまま）。

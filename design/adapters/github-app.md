@@ -5,7 +5,7 @@ GitHub アダプタのほかの決まりは、[GitHub アダプタ](github.md) �
 
 ## アカウントとトークン
 
-Logiforge は、GitHub に書くための自分のアカウント（書き込み主体）を持たない。GitHub に書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+Logiforge は、GitHub に書くための自分のアカウント（書き込み主体）を持たない。GitHub に書くのは、いつも、API の要求を送った主体のトークンである（[GitForge のポートを pull request と issue で実装する](pull-requests.md)）。
 Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。personal access token と OAuth App は使わない。
 
 | 使う者 | トークン | 要る権限 |

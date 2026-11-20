@@ -1,7 +1,7 @@
 # Forgejo アダプタ
 
 自前で持つ構成で、[Forgejo](https://forgejo.org/) を使って Logiforge を動かすときに、[GitForge のポート](../backend/ports/gitforge.md) と [認証](../backend/ports/authentication.md) のポートをどう実装するかを確かめるために読む。
-GitHub アダプタと共通のところは、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+GitHub アダプタと共通のところは、[GitForge のポートを pull request と issue で実装する](pull-requests.md) に書く。
 
 ## Forgejo を使う理由
 
@@ -18,7 +18,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書き、WebUI のレビューで merge する。team の権限は、コード、issue、pull request の書き込みにする |
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
-- Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+- Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge のポートを pull request と issue で実装する](pull-requests.md)）。
 - worker のユーザーとトークンは、設定の DB に置く（[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)、[秘密の暗号化](../settings/secrets.md)）。
 - 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体の記録のコメントを編集し、消し、pull request を close できる。
   - 編集は署名で見つけ、worker の控えに残る記録は、消されても判定に使う（[信頼の境界](pull-requests.md#信頼の境界)）。

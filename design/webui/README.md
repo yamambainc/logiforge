@@ -18,7 +18,7 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 11. [図の操作](graph-navigation.md)：図の最初の表示、ズームとパン、フォーカス、キーボード
 12. [スナップショットツリーの 3D](viewer-3d.md)：層ごとの円錐に置き、回す・ズーム・パンができる表示
 13. [3D の性能と、描けないとき](viewer-3d-limits.md)：ラベルの選び直しの間隔と、WebGL を使えないとき
-14. [モバイルの表示](mobile.md)：幅 767 px 以下のレイアウトと、タッチ操作の決まり
+14. [モバイルの表示](mobile.md)：幅 767 px 以下のレイアウトと、タッチ操作
 15. [差分の重ね表示と過去の時点](overlay.md)：apply request を反映したあとの姿と、過去の `main` の姿
 16. [Markdown と Mermaid の表示](markdown.md)：利用者とエージェントが書く文章の示し方と、図を sandbox の iframe で描くこと
 

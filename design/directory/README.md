@@ -30,7 +30,7 @@
 
 ## apply request とみなす PR
 
-- apply request は、git リポジトリ全体の repository と同じく、署名の合う `apply_request` の記録のコメントがある pull request だけである（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。だれのトークンで作ったかは問わない。
+- apply request は、git リポジトリ全体の repository と同じく、署名の合う `apply_request` の記録のコメントがある pull request だけである（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。だれのトークンで作ったかは問わない。
   - 記録のない PR は、ディレクトリを変えていても、apply request ではない。Logiforge は反映しない。人が merge すれば、反映によらないコミットになる（[履歴](history.md) の「反映かの判定」）。
   - コードだけの PR は、Logiforge は読まない。
 - 記録のコメントに、trailer `Logiforge-Repository:`（ディレクトリのパス。例：`logiforge/cache-strategy`）を足す。署名に含める。

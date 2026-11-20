@@ -13,7 +13,7 @@
 | 設定の DB | SQLite | [設定の DB](../settings/database.md) |
 
 - [worker](../backend/worker/README.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
-- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
+- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge のポートを pull request と issue で実装する](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
 - 構成ごとの設定と秘密は、[設定](../settings/README.md) と [秘密の暗号化](../settings/secrets.md) に書く。
 
 ## GitForge アダプタに求めること

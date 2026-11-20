@@ -24,7 +24,7 @@
 
 ## カーソル
 
-- apply request と人への依頼のカーソルには、GitForge の連番（pull request と issue の番号）を使う（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+- apply request と人への依頼のカーソルには、GitForge の連番（pull request と issue の番号）を使う（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
 - ノードの履歴のカーソルは、次に読むコミットの番号である。
   - その番号のコミットの記録から、そのノードを前に変えたコミットを順にたどって、続きを返す（[ノードを変えたコミット](../backend/snapshot/main.md#ノードを変えたコミット)）。
 - 着手できる作業のカーソルは、応答の `commit` に結びつける。
