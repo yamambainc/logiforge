@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: review-partial-story
+expected_outcome: |
+  story.create が親仮説の一部の場合（25℃）しか証明せず、残り（45℃）を兄弟ストーリーに頼っていることを見つけ、request_changes を選ぶ。--commit に材料の commit をそのまま使う。--body に対象のノード、外れた観点、直し方（25℃ と 45℃ を 1 つのストーリーの子仮説として並べる）を書く。
+context:
+  scaffold_script: place-files.sh
