@@ -244,8 +244,6 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if err != nil {
 		return nil, nil, err
 	}
-	// 反映の手順でも、worker の記録の控えを合わせて読む（design/backend/merge.md の手順 1）。
-	fs.forge.Log = snapstore.RecordLog{Store: l.store}
 	b := &backend.Backend{Forge: fs.forge, Auth: fs.auth, Snap: &snapstore.Adapter{Store: l.store}, Git: l.git}
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
@@ -456,7 +454,6 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 	interval := settings.Duration(c.Intervals.Patrol, worker.DefaultInterval)
 	gitTimeout := settings.Duration(c.Intervals.GitTimeout, worker.DefaultGitTimeout)
 	listInterval := settings.Duration(c.Intervals.List, worker.DefaultListInterval)
-	recordInterval := settings.Duration(c.Intervals.Record, 0)
 	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
 	var tokens github.TokenSource
 	if c.GitForge == gitforgeGitHub && c.GitHub.AppID != "" {
@@ -472,11 +469,9 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 		return nil, 0, fmt.Errorf("git の操作の時間の上限（%v）は、GitHub を使う構成では %v より短くする", gitTimeout, github.RefreshBefore)
 	}
 	src := fs.reader
-	fs.forge.Log = snapstore.RecordLog{Store: st}
 	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
-	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
 	w := worker.New(worker.Config{Dir: dir, GitEnv: gitEnv, GitCredentials: src.GitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
-		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
+		Verifier: v}, src, st)
 	slog.Info("worker の設定を読んだ", "interval", interval, "git_timeout", gitTimeout)
 	return w, listInterval, nil
 }

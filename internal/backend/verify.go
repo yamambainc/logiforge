@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
@@ -19,7 +20,9 @@ import (
 //
 // prevVersion は、1 つ前の版（git リポジトリ全体の repository では parents[0] と同じ。ディレクトリの repository では、
 // ディレクトリを変えた 1 つ前の main のコミット）で、その版のスナップショットツリーに重ねる（design/directory/history.md の「反映かの判定」）。
-func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+//
+// committed は、sha の committer date で、反映した pull request の一覧を読むのをやめる位置に使う（design/backend/list-reads.md）。
+func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
 	no := func(format string, a ...any) (ports.MergeVerdict, error) {
 		return ports.MergeVerdict{Detail: fmt.Sprintf(format, a...)}, nil
 	}
@@ -27,7 +30,7 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 		return no("根のコミットでないのに、親がない")
 	}
 	// 1. C を merge した pull request。
-	ar, err := b.Forge.MergedApplyRequest(ctx, ref, sha)
+	ar, err := b.Forge.MergedApplyRequest(ctx, ref, sha, committed)
 	if errors.Is(err, ports.ErrNotFound) {
 		return ports.MergeVerdict{Pending: true, Detail: "merge した pull request が見つからない"}, nil
 	}
@@ -42,11 +45,8 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 	default:
 		return no("コミットの形が、squash merge でも、先頭のコミット %s との merge のコミットでもない", h)
 	}
-	// 3. apply_request の記録。
-	if ar.ID == "" {
-		return no("pull request #%d に、apply_request の記録がない", ar.Number)
-	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
+	// 3. その pull request の review（その場で読む）。
+	d, err := b.applyRequest(ctx, repo, ref, ar, readVerify, nil)
 	if err != nil {
 		return ports.MergeVerdict{}, err
 	}
@@ -56,7 +56,7 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 	if d.current.Commit != h {
 		return no("pull request の先頭のコミット %s が、apply request %s の先頭のコミットの一覧の最後 %s でない", h, ar.ID, d.current.Commit)
 	}
-	// 4. レビューとセッション（記録の控えを合わせて読む。Forge が控えを読む）。
+	// 4. レビューとセッション。
 	if p := approvalProblem(d); p != "" {
 		return no("apply request %s：%s", ar.ID, p)
 	}

@@ -1,5 +1,5 @@
-// Package pullreq は、GitForge のポートを、pull request と issue とコメントで実装する、GitHub と Forgejo に共通の部分である
-// （design/adapters/pull-requests.md）。GitForge ごとの REST の呼び方は、API インターフェースで差し替える。
+// Package pullreq は、GitForge のポートを、pull request、review、issue、ラベル、commit status で実装する、
+// GitHub と Forgejo に共通の部分である（design/adapters/pull-requests.md）。GitForge ごとの REST の呼び方は、API インターフェースで差し替える。
 package pullreq
 
 import (
@@ -9,28 +9,44 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
-// API は、GitForge ごとの REST の呼び方である。repo は、gitforge_ref（`owner/name`）である。
+// API は、GitForge ごとの REST の呼び方である。repo は、gitforge_ref の git リポジトリの部分（`owner/name`）である。
 // 一覧は、作った順（番号の順）に返す。
 type API interface {
-	// RepoID は、GitForge の中で変わらない repository の識別子を返す。記録の MAC に使う。
-	RepoID(ctx context.Context, repo string) (string, error)
-
 	CreatePull(ctx context.Context, repo, head, title, body string) (Pull, error)
 	GetPull(ctx context.Context, repo string, number int) (Pull, error)
-	ListPulls(ctx context.Context, repo string) ([]Pull, error)
+	// ListPulls は、state（open、closed、all）の pull request を、番号の順に返す。
+	ListPulls(ctx context.Context, repo, state string) ([]Pull, error)
+	// ClosedPullsPage は、closed の pull request を、更新の新しい順に、page（1 から）のページだけ返す。more は、次のページがあるか。
+	ClosedPullsPage(ctx context.Context, repo string, page int) (pulls []Pull, more bool, err error)
 	EditPullBody(ctx context.Context, repo string, number int, body string) error
 	ClosePull(ctx context.Context, repo string, number int) error
 	// MergePull は、squash merge する。head が headSHA でなければ ErrHeadMoved（ports）、衝突なら ErrConflict（ports）を返す。
 	MergePull(ctx context.Context, repo string, number int, headSHA, title, message string) (string, error)
-	// MergedPull は、sha を merge のコミットにした、merge 済みで向き先が main の pull request を返す。なければ false。
-	MergedPull(ctx context.Context, repo, sha string) (Pull, bool, error)
+
+	// ListReviews は、pull request の、出された review を返す（pending は除く）。
+	ListReviews(ctx context.Context, repo string, number int) ([]PullReview, error)
+	// CreateReview は、review を出す。event は approve、request_changes、comment のどれか（ports.ReviewKind）。
+	CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (PullReview, error)
+	// ReviewerCanPush は、review を書いた人が、repository に書く権限を持つかを返す（design/adapters/pull-requests.md の「数える review」）。
+	ReviewerCanPush(ctx context.Context, repo string, r PullReview) (bool, error)
+
+	// SetStatus は、コミットに commit status を立てる。ListStatuses は、そのコミットの commit status を、新しい順に返す。
+	SetStatus(ctx context.Context, repo, sha string, s Status) error
+	ListStatuses(ctx context.Context, repo, sha string) ([]Status, error)
+
+	// EnsureLabel は、ラベルがなければ作る。AddLabel と RemoveLabel は、pull request か issue に付け外しする。
+	EnsureLabel(ctx context.Context, repo string, l Label) error
+	AddLabel(ctx context.Context, repo string, number int, name string) error
+	RemoveLabel(ctx context.Context, repo string, number int, name string) error
+	// ListEvents は、pull request か issue の出来事（ラベルの付け外し、close、reopen）を、古い順に返す。
+	ListEvents(ctx context.Context, repo string, number int) ([]Event, error)
 
 	// コメントは、pull request と issue で共通である（番号で指す）。
 	CreateComment(ctx context.Context, repo string, number int, body string) (Comment, error)
 	ListComments(ctx context.Context, repo string, number int) ([]Comment, error)
-	ListRepoComments(ctx context.Context, repo string) ([]Comment, error)
 
 	CreateIssue(ctx context.Context, repo, title, body string, labels []string) (Issue, error)
+	// ListIssues は、issue を番号の順に返す。pull request は含めない。
 	ListIssues(ctx context.Context, repo string) ([]Issue, error)
 	GetIssue(ctx context.Context, repo string, number int) (Issue, error)
 	CloseIssue(ctx context.Context, repo string, number int) error
@@ -59,7 +75,49 @@ type Pull struct {
 	// MergeCommit は、merge したときの、merge のコミットの SHA である。merge していなければ空。
 	MergeCommit string
 	Author      string
+	Labels      []string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// PullReview は、pull request の review である。
+type PullReview struct {
+	ID       int64
+	Kind     ports.ReviewKind
+	Body     string
+	Author   string
+	CommitID string
+	// Dismissed は、dismiss されたか。
+	Dismissed bool
+	// Association は、GitHub の author_association。Official は、Forgejo の official（書く権限を持つ人の review か）。
+	Association string
+	Official    bool
+	SubmittedAt time.Time
+}
+
+// Status は、commit status である。
+type Status struct {
+	Context     string
+	State       string // success、failure、pending、error
+	Description string
+	Creator     string
+	CreatedAt   time.Time
+}
+
+// Label は、ラベルである。
+type Label struct {
+	Name        string
+	Color       string // #rrggbb
+	Description string
+}
+
+// Event は、pull request か issue の出来事である。
+type Event struct {
+	// Kind は、labeled、unlabeled、closed、reopened のどれか。
+	Kind      string
+	Label     string
+	Actor     string
+	CreatedAt time.Time
 }
 
 // Comment は、pull request か issue のコメントである。
@@ -69,8 +127,6 @@ type Comment struct {
 	Body        string
 	Author      string
 	CreatedAt   time.Time
-	// UpdatedAt は、最後に変わった時刻。記録の控えの、次に読む位置（since）に使う。
-	UpdatedAt time.Time
 	// Attachments は、コメントの添付の名前から、GitForge の側の識別子を引く。
 	Attachments map[string]string
 }
@@ -82,5 +138,7 @@ type Issue struct {
 	Body      string
 	State     string
 	Author    string
+	Labels    []string
 	CreatedAt time.Time
+	ClosedAt  time.Time
 }

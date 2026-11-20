@@ -77,7 +77,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 
 	// レビュー待ちと修正待ちの apply request。
 	for _, ar := range open.ars {
-		d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
+		d, err := b.applyRequest(ctx, repo, ref, ar, readList, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -129,7 +129,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 }
 
 // answerRefPattern は、回答の添付を読む API の URL である（design/files/artifacts.md：回答の引用は、この URL の link にする）。
-var answerRefPattern = regexp.MustCompile(`/human-requests/(hrq_[0-9A-Z]+)/attachments/([0-9a-f]{64})`)
+var answerRefPattern = regexp.MustCompile(`/human-requests/([1-9][0-9]*)/attachments/([0-9a-f]{64})`)
 
 // answerRefs は、検証結果が引用している回答である。依頼の識別子と、添付の sha256 を持つ。
 type answerRefs struct {

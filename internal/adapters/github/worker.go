@@ -3,11 +3,7 @@ package github
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/url"
-	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
@@ -80,40 +76,11 @@ func (s *WorkerSource) GitEnv(ctx context.Context, gitForgeRef string) ([]string
 	}, nil
 }
 
-// RepoID は、記録の署名の場所に使う、repository の node_id を返す。
+// RepoID は、用意のコミットの署名の場所に使う、repository の node_id を返す。
 func (s *WorkerSource) RepoID(ctx context.Context, gitForgeRef string) (string, error) {
 	tok, err := s.ReadToken(ctx, gitForgeRef)
 	if err != nil {
 		return "", err
 	}
 	return api{&forge{cfg: s.cfg, c: s.c}}.RepoID(ports.WithToken(ctx, tok), gitForgeRef)
-}
-
-// CommentsSince は、repository のコメント（issue と pull request）のうち、since のあとに作られたか変わったものを返す
-// （design/backend/verify/records.md）。
-func (s *WorkerSource) CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error) {
-	rp, err := repoPath(gitForgeRef)
-	if err != nil {
-		return nil, err
-	}
-	path := rp + "/issues/comments?sort=updated&direction=asc"
-	if !since.IsZero() {
-		path += "&since=" + url.QueryEscape(since.UTC().Format(time.RFC3339))
-	}
-	tok, err := s.ReadToken(ctx, gitForgeRef)
-	if err != nil {
-		return nil, err
-	}
-	cs, err := list[commentJSON](ctx, s.c, tok, path)
-	if err != nil {
-		if statusOf(err) == http.StatusNotFound {
-			return nil, ports.ErrNotFound
-		}
-		return nil, err
-	}
-	out := make([]pullreq.Comment, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.comment())
-	}
-	return out, nil
 }

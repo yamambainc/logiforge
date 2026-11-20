@@ -3,8 +3,8 @@ package pullreq
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,115 +12,195 @@ import (
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
-// fake は、メモリの上の GitForge である。
+// fake は、メモリの上の GitForge である。calls は、呼んだ API の名前の数である（呼び出しの回数のテストのため）。
 type fake struct {
-	writer   string
+	actor    string
+	now      time.Time
 	next     int
 	pulls    map[int]*Pull
 	issues   map[int]*Issue
-	comments []*Comment
+	reviews  map[int][]PullReview
+	statuses map[string][]Status
+	labels   map[string]Label
+	events   map[int][]Event
+	comments map[int][]Comment
 	files    map[string][]byte
-	// failUpload は、添付を上げるのを失敗させる回数である。
-	failUpload int
+	canPush  map[string]bool
+	calls    map[string]int
 	// noAttachments は、添付を持てない GitForge にする。
 	noAttachments bool
 }
 
 func newFake() *fake {
-	return &fake{writer: "bot", next: 1, pulls: map[int]*Pull{}, issues: map[int]*Issue{}, files: map[string][]byte{}}
+	return &fake{actor: "alice", now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), next: 1, pulls: map[int]*Pull{}, issues: map[int]*Issue{},
+		reviews: map[int][]PullReview{}, statuses: map[string][]Status{}, labels: map[string]Label{}, events: map[int][]Event{},
+		comments: map[int][]Comment{}, files: map[string][]byte{}, canPush: map[string]bool{"alice": true, "bob": true}, calls: map[string]int{}}
 }
 
-func (f *fake) RepoID(_ context.Context, repo string) (string, error) {
-	return "id-" + repo, nil
+func (f *fake) tick() time.Time {
+	f.now = f.now.Add(time.Second)
+	return f.now
 }
+func (f *fake) call(name string) { f.calls[name]++ }
+func (f *fake) total() int {
+	n := 0
+	for _, c := range f.calls {
+		n += c
+	}
+	return n
+}
+
 func (f *fake) CreatePull(_ context.Context, _, head, title, body string) (Pull, error) {
-	p := &Pull{Number: f.next, Title: title, Body: body, Head: head, HeadSHA: "h-" + head, State: "open", Author: f.writer}
+	f.call("CreatePull")
+	p := &Pull{Number: f.next, Title: title, Body: body, Head: head, HeadSHA: "h-" + head, State: "open", Base: "main", Author: f.actor, CreatedAt: f.tick(), UpdatedAt: f.now}
 	f.pulls[p.Number] = p
 	f.next++
 	return *p, nil
 }
-func (f *fake) GetPull(_ context.Context, _ string, n int) (Pull, error) { return *f.pulls[n], nil }
-func (f *fake) ListPulls(context.Context, string) ([]Pull, error) {
+func (f *fake) GetPull(_ context.Context, _ string, n int) (Pull, error) {
+	f.call("GetPull")
+	p, ok := f.pulls[n]
+	if !ok {
+		return Pull{}, ports.ErrNotFound
+	}
+	x := *p
+	x.Labels = slices.Clone(p.Labels)
+	return x, nil
+}
+func (f *fake) ListPulls(_ context.Context, _, state string) ([]Pull, error) {
+	f.call("ListPulls")
 	var out []Pull
 	for i := 1; i < f.next; i++ {
-		if p, ok := f.pulls[i]; ok {
+		if p, ok := f.pulls[i]; ok && (state == "all" || p.State == state) {
 			out = append(out, *p)
 		}
 	}
 	return out, nil
 }
+func (f *fake) ClosedPullsPage(_ context.Context, _ string, page int) ([]Pull, bool, error) {
+	f.call("ClosedPullsPage")
+	var all []Pull
+	for i := f.next - 1; i >= 1; i-- {
+		if p, ok := f.pulls[i]; ok && p.State == "closed" {
+			all = append(all, *p)
+		}
+	}
+	slices.SortStableFunc(all, func(a, b Pull) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
+	const size = 2
+	lo := (page - 1) * size
+	if lo >= len(all) {
+		return nil, false, nil
+	}
+	hi := min(lo+size, len(all))
+	return all[lo:hi], hi < len(all), nil
+}
 func (f *fake) EditPullBody(_ context.Context, _ string, n int, b string) error {
+	f.call("EditPullBody")
 	f.pulls[n].Body = b
 	return nil
 }
 func (f *fake) ClosePull(_ context.Context, _ string, n int) error {
+	f.call("ClosePull")
 	f.pulls[n].State = "closed"
+	f.events[n] = append(f.events[n], Event{Kind: "closed", Actor: f.actor, CreatedAt: f.tick()})
 	return nil
 }
 func (f *fake) MergePull(_ context.Context, _ string, n int, head, _, _ string) (string, error) {
+	f.call("MergePull")
 	p := f.pulls[n]
 	if p.HeadSHA != head {
 		return "", ports.ErrHeadMoved
 	}
-	p.Merged, p.State, p.Base, p.MergeCommit = true, "closed", "main", "merge-"+head
+	p.State, p.Merged, p.MergeCommit, p.UpdatedAt = "closed", true, "m-"+head, f.tick()
 	return p.MergeCommit, nil
 }
-func (f *fake) MergedPull(_ context.Context, _, sha string) (Pull, bool, error) {
-	for _, p := range f.pulls {
-		if p.Merged && p.MergeCommit == sha && p.Base == "main" {
-			return *p, true, nil
-		}
-	}
-	return Pull{}, false, nil
+func (f *fake) ListReviews(_ context.Context, _ string, n int) ([]PullReview, error) {
+	f.call("ListReviews")
+	return slices.Clone(f.reviews[n]), nil
 }
-func (f *fake) addComment(author string, n int, body string) *Comment {
-	c := &Comment{ID: int64(len(f.comments) + 1), IssueNumber: n, Body: body, Author: author, CreatedAt: time.Unix(int64(len(f.comments)), 0)}
-	f.comments = append(f.comments, c)
-	return c
+func (f *fake) CreateReview(_ context.Context, _ string, n int, kind ports.ReviewKind, body, commit string) (PullReview, error) {
+	f.call("CreateReview")
+	if f.pulls[n].Author == f.actor && kind == ports.ReviewApprove {
+		return PullReview{}, errors.New("approve your own pull is not allowed")
+	}
+	r := PullReview{ID: int64(len(f.reviews[n]) + 1), Kind: kind, Body: body, Author: f.actor, CommitID: commit, SubmittedAt: f.tick()}
+	f.reviews[n] = append(f.reviews[n], r)
+	return r, nil
+}
+func (f *fake) ReviewerCanPush(_ context.Context, _ string, r PullReview) (bool, error) {
+	f.call("ReviewerCanPush")
+	return f.canPush[r.Author], nil
+}
+func (f *fake) SetStatus(_ context.Context, _, sha string, s Status) error {
+	f.call("SetStatus")
+	s.Creator, s.CreatedAt = f.actor, f.tick()
+	f.statuses[sha] = append([]Status{s}, f.statuses[sha]...)
+	return nil
+}
+func (f *fake) ListStatuses(_ context.Context, _, sha string) ([]Status, error) {
+	f.call("ListStatuses")
+	return slices.Clone(f.statuses[sha]), nil
+}
+func (f *fake) EnsureLabel(_ context.Context, _ string, l Label) error {
+	f.call("EnsureLabel")
+	if _, ok := f.labels[l.Name]; !ok {
+		f.labels[l.Name] = l
+	}
+	return nil
+}
+func (f *fake) labelsOf(n int) *[]string {
+	if p, ok := f.pulls[n]; ok {
+		return &p.Labels
+	}
+	return &f.issues[n].Labels
+}
+func (f *fake) AddLabel(_ context.Context, _ string, n int, name string) error {
+	f.call("AddLabel")
+	if _, ok := f.labels[name]; !ok {
+		return errors.New("ない名前のラベル")
+	}
+	ls := f.labelsOf(n)
+	if !slices.Contains(*ls, name) {
+		*ls = append(*ls, name)
+	}
+	f.events[n] = append(f.events[n], Event{Kind: "labeled", Label: name, Actor: f.actor, CreatedAt: f.tick()})
+	return nil
+}
+func (f *fake) RemoveLabel(_ context.Context, _ string, n int, name string) error {
+	f.call("RemoveLabel")
+	ls := f.labelsOf(n)
+	*ls = slices.DeleteFunc(*ls, func(x string) bool { return x == name })
+	f.events[n] = append(f.events[n], Event{Kind: "unlabeled", Label: name, Actor: f.actor, CreatedAt: f.tick()})
+	return nil
+}
+func (f *fake) ListEvents(_ context.Context, _ string, n int) ([]Event, error) {
+	f.call("ListEvents")
+	return slices.Clone(f.events[n]), nil
 }
 func (f *fake) CreateComment(_ context.Context, _ string, n int, body string) (Comment, error) {
-	return *f.addComment(f.writer, n, body), nil
+	f.call("CreateComment")
+	c := Comment{ID: int64(100 + len(f.comments[n])), IssueNumber: n, Body: body, Author: f.actor, CreatedAt: f.tick()}
+	f.comments[n] = append(f.comments[n], c)
+	return c, nil
 }
 func (f *fake) ListComments(_ context.Context, _ string, n int) ([]Comment, error) {
-	var out []Comment
-	for _, c := range f.comments {
-		if c.IssueNumber == n {
-			out = append(out, *c)
+	f.call("ListComments")
+	return slices.Clone(f.comments[n]), nil
+}
+func (f *fake) CreateIssue(_ context.Context, _, title, body string, labels []string) (Issue, error) {
+	f.call("CreateIssue")
+	for _, l := range labels {
+		if _, ok := f.labels[l]; !ok {
+			return Issue{}, errors.New("ない名前のラベル")
 		}
 	}
-	return out, nil
-}
-func (f *fake) ListRepoComments(context.Context, string) ([]Comment, error) {
-	var out []Comment
-	for _, c := range f.comments {
-		out = append(out, *c)
-	}
-	return out, nil
-}
-
-// reviewComments は、pull request n のコメントのうち、レビューの記録の目印のあるものを返す。
-func (f *fake) reviewComments(n int) []*Comment {
-	var out []*Comment
-	for _, c := range f.comments {
-		if c.IssueNumber == n && strings.Contains(c.Body, reviewMark) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// remove は、コメントを消す。
-func (f *fake) remove(c *Comment) {
-	f.comments = slices.DeleteFunc(f.comments, func(x *Comment) bool { return x == c })
-}
-
-func (f *fake) CreateIssue(_ context.Context, _, title, body string, _ []string) (Issue, error) {
-	is := &Issue{Number: f.next, Title: title, Body: body, State: "open", Author: f.writer}
+	is := &Issue{Number: f.next, Title: title, Body: body, State: "open", Author: f.actor, Labels: slices.Clone(labels), CreatedAt: f.tick()}
 	f.issues[is.Number] = is
 	f.next++
 	return *is, nil
 }
 func (f *fake) ListIssues(context.Context, string) ([]Issue, error) {
+	f.call("ListIssues")
 	var out []Issue
 	for i := 1; i < f.next; i++ {
 		if is, ok := f.issues[i]; ok {
@@ -129,399 +209,287 @@ func (f *fake) ListIssues(context.Context, string) ([]Issue, error) {
 	}
 	return out, nil
 }
-func (f *fake) GetIssue(_ context.Context, _ string, n int) (Issue, error) { return *f.issues[n], nil }
+func (f *fake) GetIssue(_ context.Context, _ string, n int) (Issue, error) {
+	f.call("GetIssue")
+	is, ok := f.issues[n]
+	if !ok {
+		return Issue{}, ports.ErrNotFound
+	}
+	return *is, nil
+}
 func (f *fake) CloseIssue(_ context.Context, _ string, n int) error {
-	f.issues[n].State = "closed"
+	f.call("CloseIssue")
+	f.issues[n].State, f.issues[n].ClosedAt = "closed", f.tick()
+	f.events[n] = append(f.events[n], Event{Kind: "closed", Actor: f.actor, CreatedAt: f.now})
 	return nil
 }
 func (f *fake) AttachmentsSupported() bool { return !f.noAttachments }
-func (f *fake) UploadAttachment(_ context.Context, _ string, id int64, name string, content []byte) (string, error) {
-	if f.failUpload > 0 {
-		f.failUpload--
-		return "", errors.New("upload failed")
+func (f *fake) UploadAttachment(_ context.Context, _ string, commentID int64, name string, content []byte) (string, error) {
+	f.call("UploadAttachment")
+	for n, cs := range f.comments {
+		for i := range cs {
+			if cs[i].ID == commentID {
+				if cs[i].Attachments == nil {
+					cs[i].Attachments = map[string]string{}
+				}
+				id := "a" + strconv.Itoa(len(f.files))
+				cs[i].Attachments[name] = id
+				f.files[id] = content
+				f.comments[n] = cs
+				return id, nil
+			}
+		}
 	}
-	c := f.comments[id-1]
-	if c.Attachments == nil {
-		c.Attachments = map[string]string{}
-	}
-	key := fmt.Sprintf("%d/%s", id, name)
-	c.Attachments[name] = key
-	f.files[key] = content
-	return key, nil
+	return "", ports.ErrNotFound
 }
-func (f *fake) DownloadAttachment(_ context.Context, _ string, _ int64, key string) ([]byte, error) {
-	return f.files[key], nil
+func (f *fake) DownloadAttachment(_ context.Context, _ string, _ int64, id string) ([]byte, error) {
+	f.call("DownloadAttachment")
+	return f.files[id], nil
 }
 
-const repo = "o/r"
+func adapter(f *fake) *Adapter { return &Adapter{API: f, Now: func() time.Time { return f.now }} }
 
-func newAdapter() (*Adapter, *fake) {
+func TestApplyRequestLifecycle(t *testing.T) {
+	ctx := context.Background()
 	f := newFake()
-	return &Adapter{API: f, Keys: ring}, f
-}
+	a := adapter(f)
+	ar, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b", Description: "説明", Opener: "alice"})
+	if err != nil || ar.ID != "1" || ar.Opener != "alice" || ar.Waiting != ports.WaitingReview || ar.ReviewWaitingAt.IsZero() {
+		t.Fatalf("作成：%+v %v", ar, err)
+	}
+	if l := f.labels[LabelReviewWaiting]; l.Color != "#1d76db" || l.Description == "" {
+		t.Fatalf("ラベルの色と説明：%+v", l)
+	}
+	// 送り直し：同じ主体なら同じものを返す。ほかの主体なら受け付けない。
+	if again, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b", Opener: "Alice"}); err != nil || again.ID != "1" || len(f.pulls) != 1 {
+		t.Fatalf("送り直し：%+v %v", again, err)
+	}
+	if _, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b", Opener: "bob"}); !errors.Is(err, ports.ErrBranchHasOpen) {
+		t.Fatalf("ほかの主体：%v", err)
+	}
 
-func create(t *testing.T, a *Adapter, id, branch string) ports.ApplyRequest {
-	t.Helper()
-	ar, err := a.CreateApplyRequest(context.Background(), repo, ports.NewApplyRequest{ID: id, Branch: branch, FirstRevision: "h-" + branch, Opener: "alice"})
-	if err != nil {
+	// 修正待ちに付け替えると、ラベルは 1 つだけになる。
+	if err := a.SetWaiting(ctx, "o/r", "1", ports.WaitingFix); err != nil || !slices.Equal(f.pulls[1].Labels, []string{LabelFixWaiting}) {
+		t.Fatalf("修正待ち：%v %v", f.pulls[1].Labels, err)
+	}
+	if err := a.RecordMergeFailure(ctx, "o/r", "1", ports.MergeFailure{Revision: "h-b", Reason: "conflict", Detail: "衝突"}); err != nil {
 		t.Fatal(err)
 	}
-	return ar
+	got, err := a.GetApplyRequest(ctx, "o/r", "1")
+	if err != nil || got.Waiting != ports.WaitingFix || len(got.MergeFailures) != 1 || got.MergeFailures[0].Reason != "conflict" || got.MergeFailures[0].At.IsZero() {
+		t.Fatalf("反映の失敗：%+v %v", got, err)
+	}
+	if cs := f.comments[1]; len(cs) != 1 || !strings.Contains(cs[0].Body, "衝突") {
+		t.Fatalf("反映の失敗のコメント：%+v", cs)
+	}
+
+	if err := a.Close(ctx, "o/r", "1", "取り\n下げる", "s1"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = a.GetApplyRequest(ctx, "o/r", "1")
+	if got.State != ports.StateClosed || got.CloseReason != "取り 下げる" || got.CloseSession != "s1" || len(f.pulls[1].Labels) != 0 {
+		t.Fatalf("close：%+v %v", got, f.pulls[1].Labels)
+	}
+	if _, err := a.GetApplyRequest(ctx, "o/r", "apr_1"); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("番号でない識別子：%v", err)
+	}
 }
 
-func TestApplyRequestStates(t *testing.T) {
+func TestRepairKindLabel(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
-	create(t, a, "apr_open", "o")
-	create(t, a, "apr_merged", "m")
-	create(t, a, "apr_closed", "c")
-	create(t, a, "apr_gone", "g")
-	if _, err := a.Merge(ctx, repo, "apr_merged", "h-m", "t", "m"); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Close(ctx, repo, "apr_closed", "理由", "s"); err != nil {
-		t.Fatal(err)
-	}
-	f.pulls[3].State = "open" // 画面から reopen されても、close の記録があれば closed
-	f.pulls[4].State = "closed"
-	want := map[string]ports.State{"apr_open": ports.StateOpen, "apr_merged": ports.StateMerged, "apr_closed": ports.StateClosed, "apr_gone": ports.StateClosed}
-	all, err := a.ListApplyRequests(ctx, repo)
-	if err != nil || len(all) != 4 {
-		t.Fatalf("list: %v %v", all, err)
-	}
-	for _, ar := range all {
-		if ar.State != want[ar.ID] {
-			t.Fatalf("%s: %s", ar.ID, ar.State)
-		}
+	f := newFake()
+	a := adapter(f)
+	ar, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "fix", Kind: "repair.revert", Opener: "alice"})
+	if err != nil || ar.Kind != "repair.revert" {
+		t.Fatalf("直すための apply request：%+v %v", ar, err)
 	}
 }
 
-// 正しい記録を、ほかの pull request や issue に写しても数えない。
-func TestCopiedRecordsAreNotCounted(t *testing.T) {
+func TestReviewsCounted(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
-	create(t, a, "apr_a", "a")
-	create(t, a, "apr_b", "b")
-	if err := a.Close(ctx, repo, "apr_a", "理由", "s"); err != nil {
+	f := newFake()
+	a := adapter(f)
+	if _, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b", Opener: "alice"}); err != nil {
 		t.Fatal(err)
 	}
-	// close の記録を、apr_b の pull request に写す。
-	closeRec := f.comments[len(f.comments)-1].Body
-	f.addComment(f.writer, 2, closeRec)
-	b, err := a.GetApplyRequest(ctx, repo, "apr_b")
-	if err != nil || b.State != ports.StateOpen || len(b.Warnings) != 1 {
-		t.Fatalf("写した close の記録を数えた：%+v %v", b, err)
+	f.actor = "bob"
+	r, err := a.AddReview(ctx, "o/r", "1", ports.Review{Kind: ports.ReviewApprove, Body: "良い", Revision: "h-b", Session: "s9", PromptRevision: "p1"})
+	if err != nil || r.Session != "s9" || r.PromptRevision != "p1" || r.Body != "良い" || r.Reviewer != "bob" || r.ID == "" {
+		t.Fatalf("review：%+v %v", r, err)
 	}
-
-	// 識別子の違う close の記録は、MAC が合っても数えない。
-	text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, "apr_a"}}}, Scope{RepoID: "id-" + repo, Number: 2})
-	f.addComment(f.writer, 2, text)
-	if b, _ := a.GetApplyRequest(ctx, repo, "apr_b"); b.State != ports.StateOpen {
-		t.Fatalf("識別子の違う close の記録を数えた：%+v", b)
+	f.reviews[1] = append(f.reviews[1],
+		PullReview{ID: 10, Kind: ports.ReviewApprove, Body: "行なし", Author: "bob", CommitID: "h-b"},
+		PullReview{ID: 11, Kind: ports.ReviewRequestChanges, Body: "x\n\nSession-Id: s8", Author: "mallory", CommitID: "h-b"},
+		PullReview{ID: 12, Kind: ports.ReviewRequestChanges, Body: "y\n\nSession-Id: s8", Author: "bob", CommitID: "h-b", Dismissed: true},
+		PullReview{ID: 13, Kind: ports.ReviewApprove, Body: "z\n\nSession-Id: s7", Author: "mallory", CommitID: "h-b"},
+		PullReview{ID: 14, Kind: ports.ReviewApprove, Body: "w\n\nSession-Id: s9", Author: "bob", CommitID: "h-b"},
+	)
+	// 数える：bob の approve 2 つと、mallory の request changes（request changes は、だれのものでも数える）。
+	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の approve。
+	rs, err := a.ListReviews(ctx, "o/r", "1")
+	if err != nil || len(rs.Items) != 3 || rs.Items[0].ID != "1" || rs.Items[1].ID != "11" || rs.Items[2].ID != "14" || len(rs.Warnings) != 2 {
+		t.Fatalf("数える review：%+v %v", rs, err)
 	}
+	if f.calls["ReviewerCanPush"] != 2 {
+		t.Fatalf("書く権限は、approve を書いた人ごとに 1 回だけ読む：%d", f.calls["ReviewerCanPush"])
+	}
+}
 
-	// 回答を、ほかの issue に写しても数えない。
-	for _, id := range []string{"hrq_1", "hrq_2"} {
-		if _, err := a.CreateHumanRequest(ctx, repo, ports.NewHumanRequest{ID: id, Kind: ports.HumanRequestPVR, Body: "b"}); err != nil {
+func TestMergedApplyRequestStopsAtCommitDate(t *testing.T) {
+	ctx := context.Background()
+	f := newFake()
+	a := adapter(f)
+	for _, b := range []string{"a", "b", "c", "d", "e"} {
+		if _, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: b, Opener: "alice"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", nil); err != nil {
-		t.Fatal(err)
+	for n := 1; n <= 5; n++ {
+		f.pulls[n].State, f.pulls[n].Merged, f.pulls[n].MergeCommit, f.pulls[n].UpdatedAt = "closed", true, "m"+strconv.Itoa(n), f.now.Add(time.Duration(n)*time.Hour)
 	}
-	ans := f.comments[len(f.comments)-1].Body
-	f.addComment(f.writer, 4, ans)
-	if hr, _ := a.GetHumanRequest(ctx, repo, "hrq_2"); hr.Answer != nil || len(hr.Warnings) != 1 {
-		t.Fatalf("写した回答を数えた：%+v", hr)
+	committed := f.now.Add(2 * time.Hour)
+	f.now = f.now.Add(10 * time.Hour)
+	ar, err := a.MergedApplyRequest(ctx, "o/r", "m2", committed)
+	if err != nil || ar.ID != "2" {
+		t.Fatalf("見つける：%+v %v", ar, err)
 	}
-
-	// ほかの人が写しても、数えない（だれが書いたかは見ない。署名の場所で決まる）。
-	f.addComment("mallory", 2, closeRec)
-	if b, _ := a.GetApplyRequest(ctx, repo, "apr_b"); b.State != ports.StateOpen {
-		t.Fatalf("写した記録を数えた：%+v", b)
+	// 直接 push したコミット（どの pull request にもない）は、committed より前の更新まで読んだら、そこでやめる。
+	f.calls = map[string]int{}
+	if _, err := a.MergedApplyRequest(ctx, "o/r", "direct", f.now.Add(-6*time.Hour)); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("見つからない：%v", err)
+	}
+	if f.calls["ClosedPullsPage"] != 2 {
+		t.Fatalf("読むのをやめる位置：%d ページ読んだ", f.calls["ClosedPullsPage"])
+	}
+	// committer date が未来なら、今の時刻を使う。
+	f.calls = map[string]int{}
+	if _, err := a.MergedApplyRequest(ctx, "o/r", "direct", f.now.Add(1000*time.Hour)); !errors.Is(err, ports.ErrNotFound) || f.calls["ClosedPullsPage"] != 1 {
+		t.Fatalf("未来の committer date：%v %d", err, f.calls["ClosedPullsPage"])
 	}
 }
 
-func TestEditedRecordIsWarned(t *testing.T) {
+// 一覧は、pull request の一覧だけから読む。項目の数によらず、呼ぶ回数は同じである（design/backend/list-reads.md の「呼び出しの回数のテスト」）。
+func TestListCallCount(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
-	create(t, a, "apr_a", "a")
-	if err := a.RecordMergeFailure(ctx, repo, "apr_a", ports.MergeFailure{Revision: "h-a", Reason: "conflict", Detail: "d"}); err != nil {
-		t.Fatal(err)
-	}
-	c := f.comments[len(f.comments)-1]
-	c.Body = c.Body[:len(c.Body)-1] + "0" // MAC を壊す
-	ar, _ := a.GetApplyRequest(ctx, repo, "apr_a")
-	if len(ar.MergeFailures) != 0 || len(ar.Warnings) != 1 {
-		t.Fatalf("got %+v", ar)
-	}
-}
-
-func TestCreateApplyRequestResumes(t *testing.T) {
-	ctx := context.Background()
-	a, f := newAdapter()
-	// pull request を作ったあと、記録を書く前に止まった。
-	if _, err := f.CreatePull(ctx, repo, "a", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	ar := create(t, a, "apr_a", "a")
-	if ar.Number != 1 || len(f.pulls) != 1 {
-		t.Fatalf("新しく作った：%+v", ar)
-	}
-	if again := create(t, a, "apr_a", "a"); again.Number != 1 {
-		t.Fatal("送り直しで、別の apply request になった")
-	}
-	if _, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{ID: "apr_x", Branch: "a"}); !errors.Is(err, ports.ErrBranchHasOpen) {
-		t.Fatalf("got %v", err)
-	}
-
-	// 記録のない pull request を、2 つの要求が同時に引き取ったら、最初の記録が勝つ。
-	if _, err := f.CreatePull(ctx, repo, "b", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordApplyRequest}, {KeyApplyRequest, "apr_first"}}}, Scope{RepoID: "id-" + repo, Number: 2})
-	racing := &racingAPI{fake: f, before: func() { f.addComment(f.writer, 2, text) }}
-	b := &Adapter{API: racing, Keys: ring}
-	if _, err := b.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{ID: "apr_second", Branch: "b"}); !errors.Is(err, ports.ErrBranchHasOpen) {
-		t.Fatalf("got %v", err)
-	}
-}
-
-// racingAPI は、最初のコメントを書く直前に、別の要求の記録を割り込ませる。
-type racingAPI struct {
-	*fake
-	before func()
-}
-
-func (r *racingAPI) CreateComment(ctx context.Context, repo string, n int, body string) (Comment, error) {
-	if r.before != nil {
-		r.before()
-		r.before = nil
-	}
-	return r.fake.CreateComment(ctx, repo, n, body)
-}
-
-func TestReviewChain(t *testing.T) {
-	ctx := context.Background()
-	a, f := newAdapter()
-	create(t, a, "apr_a", "a")
-	add := func(id string, kind ports.ReviewKind) {
-		t.Helper()
-		if err := a.AddReview(ctx, repo, "apr_a", ports.Review{ID: id, Kind: kind, Revision: "h-a", Reviewer: "bob", Session: "s2"}); err != nil {
-			t.Fatal(err)
+	count := func(n int) (int, int) {
+		f := newFake()
+		a := adapter(f)
+		for i := 0; i < n; i++ {
+			if _, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b" + strconv.Itoa(i), Opener: "alice"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.CreateHumanRequest(ctx, "o/r", ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-1", Body: "b", Requester: "alice"}); err != nil {
+				t.Fatal(err)
+			}
 		}
-	}
-	add("rev_1", ports.ReviewApprove)
-	add("rev_2", ports.ReviewRequestChanges)
-	got, err := a.ListReviews(ctx, repo, "apr_a")
-	if err != nil || got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
-		t.Fatalf("reviews: %+v %v", got, err)
-	}
-
-	// 後の request_changes を壊すと、前の approve に戻るのではなく、鎖が切れる。
-	f.reviewComments(1)[1].Body += "x"
-	got, _ = a.ListReviews(ctx, repo, "apr_a")
-	if !got.ChainBroken || len(got.Items) != 1 {
-		t.Fatalf("壊したのに鎖が切れていない：%+v", got)
-	}
-	if err := a.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_3", Revision: "h-a"}); err == nil {
-		t.Fatal("鎖が切れているのに、レビューを足した")
-	}
-
-	// 間のレビューが消えても、鎖が切れる。
-	f.remove(f.reviewComments(1)[1])
-	add2 := func(prev, id string) {
-		text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordReview}, {KeyApplyRequest, "apr_a"}, {KeyReviewID, id}, {KeyPreviousReview, prev}, {KeyReviewRevision, "h-a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
-		f.addComment("mallory", 1, text)
-	}
-	add2("rev_2", "rev_3")
-	if got, _ := a.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
-		t.Fatalf("間が消えたのに鎖が切れていない：%+v", got)
-	}
-
-	// 最後のレビューを、署名の合わない本文に書き換えると、鎖が切れる（記録の目印が残っているとき）。
-	// 目印も消されたら、GitForge のコメントだけでは気づけない。記録の控えで気づく（TestReviewsWithLog）。
-	c, h := newAdapter()
-	create(t, c, "apr_a", "a")
-	for _, id := range []string{"rev_1", "rev_2"} {
-		if err := c.AddReview(ctx, repo, "apr_a", ports.Review{ID: id, Revision: "h-a"}); err != nil {
-			t.Fatal(err)
+		f.calls = map[string]int{}
+		ars, err := a.ListApplyRequests(ctx, "o/r", "open")
+		if err != nil || len(ars) != n {
+			t.Fatalf("一覧：%d %v", len(ars), err)
 		}
+		arCalls := f.total()
+		f.calls = map[string]int{}
+		hrs, err := a.ListHumanRequests(ctx, "o/r")
+		if err != nil || len(hrs) != n {
+			t.Fatalf("人への依頼の一覧：%d %v", len(hrs), err)
+		}
+		return arCalls, f.total()
 	}
-	h.reviewComments(1)[1].Body = "ただの本文 " + reviewMark
-	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
-		t.Fatalf("最後を本文に書き換えたのに、鎖が切れていない：%+v", got)
-	}
-	// 種類が review でない、正しい記録に書き換えても、鎖が切れる。
-	h.reviewComments(1)[0].Body, _ = ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, "apr_a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
-	if got, _ := c.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken {
-		t.Fatalf("種類を変えたのに、鎖が切れていない：%+v", got)
-	}
-
-	// 同時に 2 つのレビューが、同じ直前のレビューを指しても、鎖は切れない。
-	d, k := newAdapter()
-	create(t, d, "apr_a", "a")
-	if err := d.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_1", Revision: "h-a"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"rev_2", "rev_3"} {
-		text, _ := ring.Format(Record{Trailers: []Trailer{{KeyRecord, RecordReview}, {KeyApplyRequest, "apr_a"}, {KeyReviewID, id}, {KeyPreviousReview, "rev_1"}, {KeyReviewRevision, "h-a"}}}, Scope{RepoID: "id-" + repo, Number: 1})
-		k.addComment("bob", 1, text)
-	}
-	if got, _ := d.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 3 {
-		t.Fatalf("同時の 2 つで鎖が切れた：%+v", got)
-	}
-	if err := d.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_4", Revision: "h-a"}); err != nil {
-		t.Fatal(err)
-	}
-
-	// 識別子が重なったものも、鎖を切る。
-	b, g := newAdapter()
-	create(t, b, "apr_a", "a")
-	if err := b.AddReview(ctx, repo, "apr_a", ports.Review{ID: "rev_1", Revision: "h-a"}); err != nil {
-		t.Fatal(err)
-	}
-	g.addComment("mallory", 1, g.reviewComments(1)[0].Body)
-	if got, _ := b.ListReviews(ctx, repo, "apr_a"); !got.ChainBroken || len(got.Items) != 1 {
-		t.Fatalf("重なり：%+v", got)
+	ar2, hr2 := count(2)
+	ar40, hr40 := count(40)
+	if ar2 != ar40 || hr2 != hr40 || ar2 != 1 || hr2 != 1 {
+		t.Fatalf("呼ぶ回数が、項目の数で変わる：apply request %d と %d、人への依頼 %d と %d", ar2, ar40, hr2, hr40)
 	}
 }
 
-// 記録の控えにあるレビューは、GitForge から消されても数える（design/backend/verify/records.md）。
-func TestReviewsWithLog(t *testing.T) {
+func TestHumanRequestAndAnswer(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
-	create(t, a, "apr_a", "a")
-	for i, kind := range []ports.ReviewKind{ports.ReviewApprove, ports.ReviewRequestChanges} {
-		if err := a.AddReview(ctx, repo, "apr_a", ports.Review{ID: fmt.Sprintf("rev_%d", i+1), Kind: kind, Revision: "h-a"}); err != nil {
-			t.Fatal(err)
-		}
+	f := newFake()
+	a := adapter(f)
+	hr, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "決めて", Requester: "alice", Session: "s1"})
+	if err != nil || hr.ID != "1" || hr.Kind != ports.HumanRequestDecision || hr.TargetNode != "h-1" || hr.Body != "決めて" || hr.Session != "s1" || hr.Requester != "alice" {
+		t.Fatalf("起票：%+v %v", hr, err)
 	}
-	log := memLog{}
-	for _, c := range f.comments {
-		log[c.IssueNumber] = append(log[c.IssueNumber], *c)
+	if !slices.Contains(f.issues[1].Labels, "logiforge/logiforge/x") {
+		t.Fatalf("ディレクトリのラベル：%v", f.issues[1].Labels)
 	}
-	a.Log = log
-	// request_changes を、記録でない本文に書き換え、さらに消す。
-	rc := f.reviewComments(1)[1]
-	rc.Body = "ただの本文"
-	if got, _ := a.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
-		t.Fatalf("書き換え：%+v", got)
+	if again, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "違う", Requester: "alice"}); err != nil || again.ID != "1" {
+		t.Fatalf("送り直し：%+v %v", again, err)
 	}
-	f.remove(rc)
-	if got, _ := a.ListReviews(ctx, repo, "apr_a"); got.ChainBroken || len(got.Items) != 2 || got.Items[1].Kind != ports.ReviewRequestChanges {
-		t.Fatalf("消した：%+v", got)
+	// ほかのディレクトリの repository からは見えない。
+	if hrs, _ := a.ListHumanRequests(ctx, "o/r:logiforge/y"); len(hrs) != 0 {
+		t.Fatalf("ほかのディレクトリ：%+v", hrs)
 	}
-	// merge した pull request から、apply request を引ける。
-	if _, err := a.Merge(ctx, repo, "apr_a", "h-a", "t", "m"); err != nil {
+
+	f.actor = "bob"
+	files := []ports.NewAttachment{{Name: "写真.jpg", Content: []byte("jpg")}}
+	if err := a.Answer(ctx, "o/r:logiforge/x", "1", "答え", "bob", files); err != nil {
 		t.Fatal(err)
 	}
-	ar, err := a.MergedApplyRequest(ctx, repo, "merge-h-a")
-	if err != nil || ar.ID != "apr_a" || ar.HeadRevision != "h-a" {
-		t.Fatalf("merged: %+v %v", ar, err)
+	got, err := a.GetHumanRequest(ctx, "o/r:logiforge/x", "1")
+	if err != nil || got.Answer == nil || got.Answer.Body != "答え" || got.Answer.AnsweredBy != "bob" || len(got.Answer.Attachments) != 1 {
+		t.Fatalf("回答：%+v %v", got.Answer, err)
 	}
-	if _, err := a.MergedApplyRequest(ctx, repo, "other"); !errors.Is(err, ports.ErrNotFound) {
-		t.Fatalf("got %v", err)
+	if err := a.Answer(ctx, "o/r:logiforge/x", "1", "答え", "bob", files); err != nil {
+		t.Fatalf("同じ回答の送り直し：%v", err)
+	}
+	if err := a.Answer(ctx, "o/r:logiforge/x", "1", "別", "bob", nil); !errors.Is(err, ports.ErrAlreadyAnswered) {
+		t.Fatalf("違う回答：%v", err)
+	}
+	data, err := a.ReadAttachment(ctx, "o/r:logiforge/x", "1", got.Answer.Attachments[0].SHA256)
+	if err != nil || string(data) != "jpg" {
+		t.Fatalf("添付：%q %v", data, err)
+	}
+	list, _ := a.ListHumanRequests(ctx, "o/r:logiforge/x")
+	if len(list) != 1 || list[0].Answer == nil || list[0].Answer.CreatedAt.IsZero() {
+		t.Fatalf("一覧の回答済み：%+v", list)
 	}
 }
 
-// 控えと今のコメントを合わせるとき、本文は控えのもの、添付は今のものを使う。
-func TestMergeCommentsKeepsAttachments(t *testing.T) {
-	logged := []Comment{{ID: 2, Body: "控え"}, {ID: 1, Body: "消された"}}
-	cur := []Comment{{ID: 2, Body: "書き換えた", Attachments: map[string]string{"a.txt": "9"}}, {ID: 3, Body: "新しい"}}
-	got := MergeComments(logged, cur)
-	if len(got) != 3 || got[0].Body != "消された" || got[1].Body != "控え" || got[1].Attachments["a.txt"] != "9" || got[2].Body != "新しい" {
-		t.Fatalf("%+v", got)
-	}
-}
-
-type memLog map[int][]Comment
-
-func (l memLog) Comments(_ context.Context, _ string, n int) ([]Comment, error) { return l[n], nil }
-
+// コメントを書いたあと、閉じる前に止まったときは、送り直しで書き直さずに閉じる。
 func TestAnswerResumes(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
-	if _, err := a.CreateHumanRequest(ctx, repo, ports.NewHumanRequest{ID: "hrq_1", Kind: ports.HumanRequestPVR, Body: "b"}); err != nil {
+	f := newFake()
+	a := adapter(f)
+	if _, err := a.CreateHumanRequest(ctx, "o/r", ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-1", Body: "b", Requester: "alice"}); err != nil {
 		t.Fatal(err)
 	}
-	files := []ports.NewAttachment{{Name: "a.jpg", Content: []byte("A")}, {Name: "b.jpg", Content: []byte("B")}}
-	f.failUpload = 1
-	if err := a.Answer(ctx, repo, "hrq_1", "答え\r\n", "alice", files); err == nil {
-		t.Fatal("上げるのが失敗したのに成功した")
+	f.actor = "bob"
+	if _, err := f.CreateComment(ctx, "o/r", 1, "答え"); err != nil {
+		t.Fatal(err)
 	}
-	if f.issues[1].State != "open" {
-		t.Fatal("途中で閉じた")
+	if err := a.Answer(ctx, "o/r", "1", "答え", "bob", nil); err != nil {
+		t.Fatal(err)
 	}
-	if err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", files); err != nil {
-		t.Fatalf("続きから：%v", err)
-	}
-	if f.issues[1].State != "closed" || len(f.files) != 2 {
-		t.Fatalf("state %s files %d", f.issues[1].State, len(f.files))
-	}
-	if err := a.Answer(ctx, repo, "hrq_1", "違う答え", "alice", files); !errors.Is(err, ports.ErrAlreadyAnswered) {
-		t.Fatalf("got %v", err)
-	}
-	if err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", files[:1]); !errors.Is(err, ports.ErrAlreadyAnswered) {
-		t.Fatalf("添付が違う：%v", err)
-	}
-	hr, _ := a.GetHumanRequest(ctx, repo, "hrq_1")
-	data, err := a.ReadAttachment(ctx, repo, "hrq_1", hr.Answer.Attachments[1].SHA256)
-	if err != nil || string(data) != "B" {
-		t.Fatalf("read: %q %v", data, err)
-	}
-	// 中身を差し替えられた添付は、返さない。
-	for k := range f.files {
-		f.files[k] = []byte("X")
-	}
-	if _, err := a.ReadAttachment(ctx, repo, "hrq_1", hr.Answer.Attachments[1].SHA256); !errors.Is(err, ports.ErrAttachmentTamper) {
-		t.Fatalf("got %v", err)
+	if len(f.comments[1]) != 1 || f.issues[1].State != "closed" {
+		t.Fatalf("続きから：%+v %s", f.comments[1], f.issues[1].State)
 	}
 }
 
-// 添付を持てない GitForge では、ファイルの添付を、記録を書く前に断る。添付のない回答は受け付ける。
-func TestAnswerWithoutAttachmentSupport(t *testing.T) {
+func TestAnswerAttachmentsUnsupported(t *testing.T) {
 	ctx := context.Background()
-	a, f := newAdapter()
+	f := newFake()
 	f.noAttachments = true
-	if _, err := a.CreateHumanRequest(ctx, repo, ports.NewHumanRequest{ID: "hrq_1", Kind: ports.HumanRequestPVR, Body: "b"}); err != nil {
+	a := adapter(f)
+	if _, err := a.CreateHumanRequest(ctx, "o/r", ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-1", Body: "b", Requester: "alice"}); err != nil {
 		t.Fatal(err)
 	}
-	n := len(f.comments)
-	err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", []ports.NewAttachment{{Name: "a.jpg", Content: []byte("A")}})
-	if !errors.Is(err, ports.ErrAttachmentsUnsupported) {
-		t.Fatalf("got %v", err)
-	}
-	if len(f.comments) != n {
-		t.Fatal("断ったのに記録を書いた")
-	}
-	if err := a.Answer(ctx, repo, "hrq_1", "答え", "alice", nil); err != nil {
-		t.Fatal(err)
+	if err := a.Answer(ctx, "o/r", "1", "答え", "bob", []ports.NewAttachment{{Name: "x", Content: []byte("x")}}); !errors.Is(err, ports.ErrAttachmentsUnsupported) || len(f.comments[1]) != 0 {
+		t.Fatalf("添付を持てない GitForge：%v", err)
 	}
 }
 
-// 用意のコミットの署名は、種類と欄ごとに違う。ある種類の署名を、ほかの種類や、欄をずらしたものに使い回せない。
-func TestInitSignature(t *testing.T) {
-	files := []InitFile{{Path: "tree/h-a/hypothesis.md", SHA256: "aa"}}
-	root := InitScope{Kind: ports.InitRoot, RepoID: "r1"}
-	sig, err := ring.SignInit(root, files)
-	if err != nil {
-		t.Fatal(err)
+func TestLines(t *testing.T) {
+	body := withLines("本文\n", line{lineSession, "s1"}, line{linePrompt, ""}, line{lineTargetNode, "h-1"})
+	if body != "本文\n\nSession-Id: s1\nTarget-Node: h-1" {
+		t.Fatalf("書く：%q", body)
 	}
-	pub := ring.VerifyOnly()
-	if pub.VerifyInit(root, files, sig) != nil {
-		t.Fatal("合うはずの署名が合わない")
+	rest, ls := splitLines(body + "\n")
+	if rest != "本文" || lineValue(ls, lineSession) != "s1" || lineValue(ls, lineTargetNode) != "h-1" {
+		t.Fatalf("読む：%q %+v", rest, ls)
 	}
-	for name, other := range map[string]InitScope{
-		"種類":         {Kind: ports.InitSecond, RepoID: "r1"},
-		"repository": {Kind: ports.InitRoot, RepoID: "r2"},
-		"欄のずれ":       {Kind: ports.InitRoot, RepoID: "", Directory: "r1"},
-	} {
-		if pub.VerifyInit(other, files, sig) == nil {
-			t.Errorf("%s が違うのに合った", name)
-		}
-	}
-	if pub.VerifyInit(root, []InitFile{{Path: "tree/h-a/hypothesis.md", SHA256: "ab"}}, sig) == nil {
-		t.Error("中身が違うのに合った")
+	// 知らない名前の行は、本文として残す。
+	if rest, ls := splitLines("a\n\nFoo: bar"); rest != "a\n\nFoo: bar" || len(ls) != 0 {
+		t.Fatalf("知らない行：%q %+v", rest, ls)
 	}
 }

@@ -76,8 +76,11 @@ func TestCreateApplyRequest(t *testing.T) {
 	if err != nil || again.Value.ID != out.Value.ID {
 		t.Fatalf("送り直し：%+v %v", again.Value, err)
 	}
-	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Session: "s", IdempotencyKey: "k2"}); code(err) != CodeValidationFailed {
-		t.Fatalf("同じブランチの 2 つ目：%v", err)
+	// 同じブランチに、ほかの主体の open の apply request があれば、受け付けない。
+	other := c
+	other.Principal.Login = "other"
+	if _, err := b.CreateApplyRequest(ctx, other, "q", NewApplyRequest{Branch: "c", Session: "s"}); code(err) != CodeValidationFailed {
+		t.Fatalf("同じブランチの、ほかの主体の 2 つ目：%v", err)
 	}
 
 	// 4 種類の操作として読めない差分は、受け付けない。
@@ -131,13 +134,15 @@ func TestReviewAndMerge(t *testing.T) {
 		t.Fatalf("merged へのレビュー：%v", err)
 	}
 
-	// reviewer の主体が、apply request を作った主体と同じなら、警告する。
+	// apply request を作ったアカウントでは approve できない（GitForge が拒む。design/adapters/pull-requests.md の「数える review」）。
 	f.branch("d", "s4", map[string][]byte{dH1 + "/background.md": []byte("背景\n")})
 	d, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "d", Session: "s4"})
 	f.waitVersion(t, d)
-	self, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit, Session: "s5"})
-	if err != nil || !strings.Contains(strings.Join(self.Value.ApplyRequest.Warnings, "\n"), "同じ") {
-		t.Fatalf("同じ主体：%+v %v", self.Value.ApplyRequest.Warnings, err)
+	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "approve", Commit: d.Value.HeadCommit, Session: "s5", PromptRevision: "p"}); code(err) != CodeValidationFailed {
+		t.Fatalf("同じアカウントの approve：%v", err)
+	}
+	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit, Session: "s5"}); err != nil {
+		t.Fatalf("同じアカウントの comment：%v", err)
 	}
 }
 
@@ -167,16 +172,11 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	}
 }
 
-func TestChainBrokenAndClose(t *testing.T) {
+func TestClose(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
 	b := f.b
 	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
-	f.forge.reviews["apr_2"] = ports.Reviews{ChainBroken: true}
-	_, err := b.ReviewApplyRequest(ctx, agent, "q", "apr_2", NewReview{Kind: "comment", Commit: f.head, Session: "s9"})
-	if code(err) != CodeNotOpen || !strings.Contains(err.Error(), "close し、同じブランチから") {
-		t.Fatalf("鎖が切れている：%v", err)
-	}
 	closed, err := b.CloseApplyRequest(ctx, agent, "q", "apr_2", "s9", "作り直す")
 	if err != nil || closed.State != "closed" || closed.ClosedReason == nil || *closed.ClosedReason != "作り直す" {
 		t.Fatalf("close: %+v %v", closed, err)

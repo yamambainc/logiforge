@@ -45,9 +45,12 @@ review と issue の本文に書くことは、[review と issue の本文](text
 
 - 数えるのは、次のすべてを満たす review である。
   - 出された review である（pending でない）。dismiss されていない。
-  - 書いた人が、repository に書く権限を持つ。GitHub は `authorCanPushToRepository`、Forgejo は `official` で見る。
-    - なぜ：public の repository では、書く権限のない人も review を出せるから。
-  - `approve` と `request changes` は、本文に、書いたセッションの行がある（[review の本文](texts.md#review-の本文)）。行のない `approve` は数えず、警告する。
+  - `approve` は、次の 2 つも満たす。`request changes` と `comment` は、だれのものでも数える。
+    - 書いた人が、repository に書く権限を持つ。GitHub は、`GET /repos/{owner}/{repo}/collaborators/{user}/permission` で読み、読む主体のトークンで読めなければ、review の `author_association`（OWNER、MEMBER、COLLABORATOR）で決める。Forgejo は、review の `official` で見る。
+      - なぜ：public の repository では、書く権限のない人も review を出せるから。
+      - なぜ Forgejo は `official` か：ほかの人の権限を読む API は、repository の admin しか使えないから。Forgejo は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` を `official` にする。
+    - 本文に、書いたセッションの行がある（[review の本文](texts.md#review-の本文)）。行のない `approve` は数えず、警告する。
+  - なぜ `request changes` は、だれのものでも数えるか：数えすぎても、反映の条件が厳しくなるだけだから。
 - review は、それを出した head のコミット（review の `commit_id`）への review である。
 - GitForge は、pull request の作者が自分の pull request を `approve` することを拒む（GitHub と Forgejo）。そのため、opener と reviewer は、別の GitForge のアカウントにする。
 

@@ -41,9 +41,9 @@
 ## 人への依頼
 
 - 人への依頼の issue は、git リポジトリ全体の repository と同じく、種類のラベル（`logiforge/pvr`、`logiforge/decision`）で見分ける（[人への依頼の issue](../adapters/texts.md#人への依頼の-issue)）。種類のラベルのない issue（コードの issue）は数えない。
-- ディレクトリの repository の依頼には、ラベル `logiforge/<repository の名前>` も付ける。どの repository の依頼かは、このラベルで決める。
-  - なぜラベルか：issue の一覧の API は、ラベルで絞れるので、repository ごとの依頼を、1 回の一覧で読めるから。
-  - なぜ名前でよいか：登録した repository の名前は、変えられないから（[設定のコマンド](../settings/README.md#設定のコマンド)）。
+- ディレクトリの repository の依頼には、ラベル `logiforge/<ディレクトリのパス>`（例：`logiforge/logiforge/cache-strategy`）も付ける。どの repository の依頼かは、このラベルで決める。
+  - なぜラベルか：issue の一覧に入っているので、repository ごとの依頼を、1 回の一覧で読めるから。
+  - なぜパスか：1 つの git リポジトリの中で、ディレクトリの repository を 1 つに決め、GitForge のアダプタが gitforge_ref から求められるから。登録したディレクトリのパスは、変えられない。
   - ラベルは、Write を持つ主体が付け替えられる。これは受け入れる（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。
 
 ## 別リポジトリ方式から移すこと

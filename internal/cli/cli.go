@@ -163,6 +163,7 @@ func commands() []command {
 		{"ar material", "<apply request>", "レビューの材料", (*App).arMaterial},
 		{"ar review", "<apply request> --approve|--request-changes|--comment --commit <SHA> [--body <本文>] [--prompt-revision <リビジョン>]", "レビューを付ける（approve なら反映する）", (*App).arReview},
 		{"ar close", "<apply request> --reason <理由>", "apply request を close する", (*App).arClose},
+		{"ar fixed", "<apply request>", "修正待ちの apply request を、直し終えたと申告する（先に push しておく）", (*App).arFixed},
 		{"ar cleanup", "", "反映か close された apply request の、手元のブランチを消す", (*App).arCleanup},
 		{"work list", "[--subtree <ノード>] [--kind <種類>,...] [--include-claimed]", "着手できる作業", (*App).workList},
 		{"human-request create", "--node <ノード> --kind pvr|decision --body <ファイル>", "人への依頼を起票する", (*App).hrCreate},

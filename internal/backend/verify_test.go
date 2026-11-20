@@ -27,7 +27,7 @@ func TestVerifyMerge(t *testing.T) {
 					t.Fatal(err)
 				}
 				parents := strings.Fields(f.r.git("rev-list", "--parents", "-n", "1", sha))[1:]
-				v, err := f.b.VerifyMerge(ctx, "q", "o/q", sha, parents, parents[0], files, nil)
+				v, err := f.b.VerifyMerge(ctx, "q", "o/q", sha, parents, parents[0], time.Now(), files, nil)
 				if err != nil {
 					t.Fatal(err)
 				}

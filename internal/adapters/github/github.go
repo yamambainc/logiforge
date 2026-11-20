@@ -55,13 +55,13 @@ func (f *forge) w(ctx context.Context, _ string, method, path string, in, out an
 	return f.c.do(ctx, ports.TokenFrom(ctx), method, path, in, out)
 }
 
-// New は、GitHub の GitForge アダプタと認証のアダプタを作る。keys は、記録と、用意の 2 つ目のコミットの署名に使う。
+// New は、GitHub の GitForge アダプタと認証のアダプタを作る。keys は、用意のコミットの署名に使う。
 func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth, error) {
 	if err := cfg.check(); err != nil {
 		return nil, nil, err
 	}
 	f := &forge{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP), keys: keys}
-	return &pullreq.Adapter{Repos: repos{f}, API: api{f}, Keys: keys}, &Auth{f: f}, nil
+	return &pullreq.Adapter{Repos: repos{f}, API: api{f}}, &Auth{f: f}, nil
 }
 
 func (c Config) check() error {

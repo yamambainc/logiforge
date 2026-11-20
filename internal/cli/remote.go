@@ -619,6 +619,27 @@ func (a *App) arClose(ctx context.Context, args []string) error {
 	return a.show(res, a.printAR)
 }
 
+// arFixed は、修正待ちの apply request を、直し終えたと申告する（design/api/endpoints/apply-request/fixed.md）。
+func (a *App) arFixed(ctx context.Context, args []string) error {
+	f := newFlags("ar fixed")
+	repo := repoFlag(f)
+	if err := f.parse(args); err != nil {
+		return err
+	}
+	if err := f.need(1, "<apply request>"); err != nil {
+		return err
+	}
+	name, err := a.repo(*repo)
+	if err != nil {
+		return err
+	}
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]) + "/fixed"})
+	if err != nil {
+		return err
+	}
+	return a.show(res, a.printAR)
+}
+
 // arCleanup は、反映か close された apply request のブランチのうち、手元にあるものだけを、手元と remote から消す。
 func (a *App) arCleanup(ctx context.Context, args []string) error {
 	f := newFlags("ar cleanup")

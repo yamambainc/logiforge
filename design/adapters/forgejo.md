@@ -66,6 +66,12 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 
 アダプタと worker が前提にする、Forgejo の挙動である。
 
+- pull request の作者は、自分の pull request を `approve` できない（422）。
+- 同じ人があとで `approve` すると、その人の前の `request changes` は `dismissed` になる。`official` は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` にだけ付く。`comment` の review には付かない。
+- ほかの人の権限を読む API（`GET /repos/{owner}/{repo}/collaborators/{user}/permission`）は、repository の admin しか使えない。
+- draft の項目はなく、タイトルの接頭辞（`WIP: ` など）で決まる。Logiforge は、draft を使わない。
+- timeline のラベルの出来事は、付けたときに本文が `1` になる。
+
 - 空の repository にも、`POST /repos/{owner}/{repo}/contents` で最初のコミットを置ける。`auto_init` は要らない。
 - `enable_push: false` の `main` には、repository の admin も Forgejo の site admin も push できない。pre-receive で拒まれる。
 - ブランチを消すと、そのブランチの pull request は閉じる。

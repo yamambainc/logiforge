@@ -107,7 +107,7 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 	} else if broken != nil {
 		problems = append(problems, "元の repository が壊れている")
 	}
-	ars, err := b.Forge.ListApplyRequests(ctx, srcRef)
+	ars, err := b.Forge.ListApplyRequests(ctx, srcRef, "open")
 	if err != nil {
 		return out, err
 	}

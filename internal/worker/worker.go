@@ -52,12 +52,8 @@ type Config struct {
 	MaxFileSize int64
 	// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify/README.md）。nil なら決めない（trailer で決める）。
 	Verifier Verifier
-	// Records は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify/records.md）。nil なら足さない。
-	Records RecordLog
-	// RecordInterval は、記録を読んで控えに足す間隔。0 なら見回りごと。
-	RecordInterval time.Duration
-	Now            func() time.Time
-	Log            *slog.Logger
+	Now      func() time.Time
+	Log      *slog.Logger
 }
 
 // DefaultInterval は、見回りの間隔の既定である。
@@ -92,8 +88,6 @@ type Worker struct {
 	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
 	repos []ports.Repository
-	// recordsAt は、repository ごとに、最後に記録の控えに足した時刻である。
-	recordsAt map[string]time.Time
 }
 
 // New は、worker を作る。
@@ -348,10 +342,6 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 	if err := w.markDeleted(ctx, r.Name, heads); err != nil {
 		return err
 	}
-	// 記録の控えは、main より先に足す。反映かの判定に使うから。
-	if err := w.syncRecords(ctx, r); err != nil {
-		return fmt.Errorf("記録の控え: %w", err)
-	}
 	if mainSHA, ok := heads["main"]; ok {
 		if err := w.syncMain(ctx, g, r, mainSHA); err != nil {
 			return fmt.Errorf("main: %w", err)
@@ -370,30 +360,6 @@ func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {
 			w.cfg.Log.Error("ブランチを読めない", "repository", r.Name, "branch", name, "err", err)
 		}
 	}
-	return nil
-}
-
-// syncRecords は、前に足してから RecordInterval が過ぎていれば、記録の控えに、GitForge の新しい記録を足す。
-func (w *Worker) syncRecords(ctx context.Context, r ports.Repository) error {
-	if w.cfg.Records == nil {
-		return nil
-	}
-	now := w.cfg.Now()
-	w.mu.Lock()
-	last, ok := w.recordsAt[r.Name]
-	w.mu.Unlock()
-	if ok && now.Sub(last) < w.cfg.RecordInterval {
-		return nil
-	}
-	if err := w.cfg.Records.Sync(ctx, r.GitForgeRef); err != nil {
-		return err
-	}
-	w.mu.Lock()
-	if w.recordsAt == nil {
-		w.recordsAt = map[string]time.Time{}
-	}
-	w.recordsAt[r.Name] = now
-	w.mu.Unlock()
 	return nil
 }
 
@@ -640,16 +606,11 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 //
 // prevVersion は、1 つ前の版の SHA である。判定は、その版の木に重ねて行う。
 type Verifier interface {
-	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
+	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
 	// VerifyInit は、用意のコミットの trailer Logiforge-Init-Signature: が、種類 kind（ports.InitRoot、ports.InitSecond、ports.InitDirectory）、
 	// repository（ディレクトリを含む）、1 つ前のコミット parent（init-second のほかは空）、移した元 migratedFrom、
 	// 加えたファイル（パスから中身の sha256。ディレクトリの repository では、ディレクトリの中のパス）に対する署名かを確かめる。
 	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error)
-}
-
-// RecordLog は、記録の控えに、GitForge の新しい記録を足す（design/backend/verify/records.md）。
-type RecordLog interface {
-	Sync(ctx context.Context, gitForgeRef string) error
 }
 
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
@@ -679,7 +640,7 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 	if sig := trailerOf(info, snapshot.TrailerInitSignature); r.Directory() == "" && version == 1 && sig != "" && len(parents) == 1 {
 		return w.initVerdict(ctx, r, ports.InitSecond, parents[0], sig, info, changes, outside, files)
 	}
-	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, files, br)
+	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, info.CommittedAt, files, br)
 	if err != nil {
 		return nil, err
 	}
@@ -700,7 +661,7 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 			if err := w.buildBranch(ctx, g, r.Name, base, v.MissingHead); err != nil {
 				return nil, err
 			}
-			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, files, br); err != nil {
+			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, info.CommittedAt, files, br); err != nil {
 				return nil, err
 			}
 			if v.MissingHead != "" {

@@ -369,7 +369,9 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 	if err != nil {
 		return Page[ApplyRequest]{}, err
 	}
-	all, err := b.Forge.ListApplyRequests(ctx, ref)
+	// GitForge の状態で先に絞る（design/backend/list-reads.md）。ブランチが消えた open のものは closed に数えるので、closed では open も読む。
+	forgeState := map[string]string{"": "all", "open": "open", "merged": "closed", "closed": "all"}[state]
+	all, err := b.Forge.ListApplyRequests(ctx, ref, forgeState)
 	if err != nil {
 		return Page[ApplyRequest]{}, err
 	}
@@ -383,9 +385,15 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 		if ar.Number <= after {
 			continue
 		}
-		d, err := b.applyRequest(ctx, repo, ref, ar, false, latest)
+		if state == "merged" && ar.State != ports.StateMerged || state == "closed" && ar.State == ports.StateMerged {
+			continue
+		}
+		d, err := b.applyRequest(ctx, repo, ref, ar, readList, latest)
 		if err != nil {
 			return Page[ApplyRequest]{}, err
+		}
+		if !inRepository(ref, d.history) {
+			continue
 		}
 		if state != "" && d.model.State != state {
 			continue
@@ -415,10 +423,11 @@ func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string
 	if err != nil {
 		return ApplyRequest{}, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true, latest)
+	d, err := b.applyRequest(ctx, repo, ref, ar, readDetail, latest)
 	if err != nil {
 		return ApplyRequest{}, err
 	}
+	b.repairWaiting(ctx, ref, d)
 	d.model.OpenedByCaller = ar.Opener != "" && strings.EqualFold(ar.Opener, c.Principal.Login)
 	return d.model, nil
 }

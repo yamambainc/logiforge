@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,17 +22,31 @@ type user struct {
 	Login string `json:"login"`
 }
 
+type labelJSON struct {
+	Name string `json:"name"`
+}
+
+func labelNames(ls []labelJSON) []string {
+	out := make([]string, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, l.Name)
+	}
+	return out
+}
+
 type pullJSON struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	Body      string    `json:"body"`
-	State     string    `json:"state"`
-	Merged    bool      `json:"merged"`
-	MergedAt  *string   `json:"merged_at"`
-	Mergeable *bool     `json:"mergeable"`
-	MergeSHA  string    `json:"merge_commit_sha"`
-	User      user      `json:"user"`
-	CreatedAt time.Time `json:"created_at"`
+	Number    int         `json:"number"`
+	Title     string      `json:"title"`
+	Body      string      `json:"body"`
+	State     string      `json:"state"`
+	Merged    bool        `json:"merged"`
+	MergedAt  *string     `json:"merged_at"`
+	Mergeable *bool       `json:"mergeable"`
+	MergeSHA  string      `json:"merge_commit_sha"`
+	User      user        `json:"user"`
+	Labels    []labelJSON `json:"labels"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 	Head      struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
@@ -48,14 +61,15 @@ func (p pullJSON) merged() bool { return p.Merged || p.MergedAt != nil }
 
 func (p pullJSON) pull() pullreq.Pull {
 	pr := pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
-		State: p.State, Merged: p.merged(), Base: p.Base.Ref, Author: p.User.Login, CreatedAt: p.CreatedAt}
+		State: p.State, Merged: p.merged(), Base: p.Base.Ref, Author: p.User.Login, Labels: labelNames(p.Labels),
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 	if pr.Merged {
 		pr.MergeCommit = p.MergeSHA
 	}
 	return pr
 }
 
-// RepoID は、GitHub の repository の node_id を返す。名前を変えても、owner を移しても変わらない。
+// RepoID は、GitHub の repository の node_id を返す。名前を変えても、owner を移しても変わらない。用意のコミットの署名に使う。
 func (a api) RepoID(ctx context.Context, repo string) (string, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
@@ -105,13 +119,12 @@ func (a api) GetPull(ctx context.Context, repo string, number int) (pullreq.Pull
 	return p.pull(), err
 }
 
-func (a api) ListPulls(ctx context.Context, repo string) ([]pullreq.Pull, error) {
+func (a api) ListPulls(ctx context.Context, repo, state string) ([]pullreq.Pull, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
 		return nil, err
 	}
-	tok := ports.TokenFrom(ctx)
-	ps, err := list[pullJSON](ctx, a.c, tok, rp+"/pulls?state=all&sort=created&direction=asc")
+	ps, err := list[pullJSON](ctx, a.c, ports.TokenFrom(ctx), rp+"/pulls?state="+url.QueryEscape(state)+"&sort=created&direction=asc")
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +134,26 @@ func (a api) ListPulls(ctx context.Context, repo string) ([]pullreq.Pull, error)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out, nil
+}
+
+// closedPageSize は、反映した pull request の一覧の 1 ページの件数である。
+const closedPageSize = 100
+
+func (a api) ClosedPullsPage(ctx context.Context, repo string, page int) ([]pullreq.Pull, bool, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	var ps []pullJSON
+	path := fmt.Sprintf("%s/pulls?state=closed&sort=updated&direction=desc&per_page=%d&page=%d", rp, closedPageSize, page)
+	if err := a.w(ctx, repo, http.MethodGet, path, nil, &ps); err != nil {
+		return nil, false, err
+	}
+	out := make([]pullreq.Pull, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.pull())
+	}
+	return out, len(ps) == closedPageSize, nil
 }
 
 func (a api) EditPullBody(ctx context.Context, repo string, number int, body string) error {
@@ -211,16 +244,10 @@ type commentJSON struct {
 	Body      string    `json:"body"`
 	User      user      `json:"user"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	IssueURL  string    `json:"issue_url"`
 }
 
-func (c commentJSON) comment() pullreq.Comment {
-	out := pullreq.Comment{ID: c.ID, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
-	if i := strings.LastIndex(c.IssueURL, "/"); i >= 0 {
-		out.IssueNumber, _ = strconv.Atoi(c.IssueURL[i+1:])
-	}
-	return out
+func (c commentJSON) comment(number int) pullreq.Comment {
+	return pullreq.Comment{ID: c.ID, IssueNumber: number, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt}
 }
 
 func (a api) CreateComment(ctx context.Context, repo string, number int, body string) (pullreq.Comment, error) {
@@ -232,9 +259,7 @@ func (a api) CreateComment(ctx context.Context, repo string, number int, body st
 	if err := a.w(ctx, repo, http.MethodPost, fmt.Sprintf("%s/issues/%d/comments", rp, number), map[string]string{"body": body}, &c); err != nil {
 		return pullreq.Comment{}, err
 	}
-	out := c.comment()
-	out.IssueNumber = number
-	return out, nil
+	return c.comment(number), nil
 }
 
 func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullreq.Comment, error) {
@@ -242,74 +267,223 @@ func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullr
 	if err != nil {
 		return nil, err
 	}
-	tok := ports.TokenFrom(ctx)
-	cs, err := list[commentJSON](ctx, a.c, tok, fmt.Sprintf("%s/issues/%d/comments", rp, number))
+	cs, err := list[commentJSON](ctx, a.c, ports.TokenFrom(ctx), fmt.Sprintf("%s/issues/%d/comments", rp, number))
 	if err != nil {
 		return nil, err
 	}
 	out := make([]pullreq.Comment, 0, len(cs))
 	for _, c := range cs {
-		x := c.comment()
-		x.IssueNumber = number
-		out = append(out, x)
+		out = append(out, c.comment(number))
 	}
 	return out, nil
 }
 
-func (a api) ListRepoComments(ctx context.Context, repo string) ([]pullreq.Comment, error) {
+// reviewState は、GitHub の review の state と、ports.ReviewKind の対応である。
+var reviewState = map[string]ports.ReviewKind{"APPROVED": ports.ReviewApprove, "CHANGES_REQUESTED": ports.ReviewRequestChanges, "COMMENTED": ports.ReviewComment}
+
+var reviewEvent = map[ports.ReviewKind]string{ports.ReviewApprove: "APPROVE", ports.ReviewRequestChanges: "REQUEST_CHANGES", ports.ReviewComment: "COMMENT"}
+
+type reviewJSON struct {
+	ID          int64     `json:"id"`
+	User        user      `json:"user"`
+	Body        string    `json:"body"`
+	State       string    `json:"state"`
+	CommitID    string    `json:"commit_id"`
+	Association string    `json:"author_association"`
+	SubmittedAt time.Time `json:"submitted_at"`
+}
+
+func (r reviewJSON) review() (pullreq.PullReview, bool) {
+	if r.State == "DISMISSED" {
+		return pullreq.PullReview{ID: r.ID, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: true, Association: r.Association, SubmittedAt: r.SubmittedAt}, true
+	}
+	k, ok := reviewState[r.State]
+	if !ok {
+		return pullreq.PullReview{}, false
+	}
+	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Association: r.Association, SubmittedAt: r.SubmittedAt}, true
+}
+
+func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
 		return nil, err
 	}
-	tok := ports.TokenFrom(ctx)
-	cs, err := list[commentJSON](ctx, a.c, tok, rp+"/issues/comments?sort=created&direction=asc")
+	rs, err := list[reviewJSON](ctx, a.c, ports.TokenFrom(ctx), fmt.Sprintf("%s/pulls/%d/reviews", rp, number))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]pullreq.Comment, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.comment())
+	var out []pullreq.PullReview
+	for _, r := range rs {
+		if x, ok := r.review(); ok {
+			out = append(out, x)
+		}
 	}
 	return out, nil
 }
 
-// MergedPull は、sha を merge のコミットにした、merge 済みで向き先が main の pull request を返す（design/backend/verify/README.md の「GitForge の API」）。
-// GET /commits/{sha}/pulls は、そのコミットを含む pull request を返す。merge のコミットが sha のものだけを選ぶ。
-func (a api) MergedPull(ctx context.Context, repo, sha string) (pullreq.Pull, bool, error) {
+func (a api) CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (pullreq.PullReview, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
-		return pullreq.Pull{}, false, err
+		return pullreq.PullReview{}, err
 	}
-	ps, err := list[pullJSON](ctx, a.c, ports.TokenFrom(ctx), rp+"/commits/"+url.PathEscape(sha)+"/pulls")
+	var r reviewJSON
+	err = a.w(ctx, repo, http.MethodPost, fmt.Sprintf("%s/pulls/%d/reviews", rp, number),
+		map[string]string{"event": reviewEvent[event], "body": body, "commit_id": commitID}, &r)
 	if err != nil {
-		if s := statusOf(err); s == http.StatusNotFound || s == http.StatusUnprocessableEntity {
-			return pullreq.Pull{}, false, nil
-		}
-		return pullreq.Pull{}, false, err
+		return pullreq.PullReview{}, err
 	}
-	for _, p := range ps {
-		if p.merged() && p.MergeSHA == sha && p.Base.Ref == "main" {
-			return p.pull(), true, nil
+	x, _ := r.review()
+	return x, nil
+}
+
+// ReviewerCanPush は、approve を書いた人の、repository の権限を読む（GET /collaborators/{user}/permission）。
+// 1 件の apply request を読むときに、approve を書いた人ごとに 1 回だけ呼ぶ。
+func (a api) ReviewerCanPush(ctx context.Context, repo string, r pullreq.PullReview) (bool, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return false, err
+	}
+	var res struct {
+		Permission string `json:"permission"`
+	}
+	err = a.w(ctx, repo, http.MethodGet, rp+"/collaborators/"+url.PathEscape(r.Author)+"/permission", nil, &res)
+	// 読む主体のトークンで権限を読めなければ、review の author_association で決める。
+	if s := statusOf(err); s == http.StatusNotFound || s == http.StatusForbidden {
+		return r.Association == "OWNER" || r.Association == "MEMBER" || r.Association == "COLLABORATOR", nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return res.Permission == "admin" || res.Permission == "write" || res.Permission == "maintain", nil
+}
+
+type statusJSON struct {
+	Context     string    `json:"context"`
+	State       string    `json:"state"`
+	Description string    `json:"description"`
+	Creator     user      `json:"creator"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (a api) SetStatus(ctx context.Context, repo, sha string, s pullreq.Status) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	return a.w(ctx, repo, http.MethodPost, rp+"/statuses/"+url.PathEscape(sha),
+		map[string]string{"state": s.State, "context": s.Context, "description": s.Description}, nil)
+}
+
+func (a api) ListStatuses(ctx context.Context, repo, sha string) ([]pullreq.Status, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	ss, err := list[statusJSON](ctx, a.c, ports.TokenFrom(ctx), rp+"/commits/"+url.PathEscape(sha)+"/statuses")
+	if statusOf(err) == http.StatusNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pullreq.Status, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, pullreq.Status{Context: s.Context, State: s.State, Description: s.Description, Creator: s.Creator.Login, CreatedAt: s.CreatedAt})
+	}
+	return out, nil
+}
+
+// EnsureLabel は、ラベルがなければ作る。GitHub は、ない名前のラベルを付けると既定の色で作るので、付ける前に呼ぶ。
+func (a api) EnsureLabel(ctx context.Context, repo string, l pullreq.Label) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	err = a.w(ctx, repo, http.MethodGet, rp+"/labels/"+url.PathEscape(l.Name), nil, nil)
+	if err == nil {
+		return nil
+	}
+	if statusOf(err) != http.StatusNotFound {
+		return err
+	}
+	err = a.w(ctx, repo, http.MethodPost, rp+"/labels",
+		map[string]string{"name": l.Name, "color": strings.TrimPrefix(l.Color, "#"), "description": l.Description}, nil)
+	// 同時に作られていれば 422（already_exists）。
+	if statusOf(err) == http.StatusUnprocessableEntity {
+		return nil
+	}
+	return err
+}
+
+func (a api) AddLabel(ctx context.Context, repo string, number int, name string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	return a.w(ctx, repo, http.MethodPost, fmt.Sprintf("%s/issues/%d/labels", rp, number), map[string][]string{"labels": {name}}, nil)
+}
+
+func (a api) RemoveLabel(ctx context.Context, repo string, number int, name string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	err = a.w(ctx, repo, http.MethodDelete, fmt.Sprintf("%s/issues/%d/labels/%s", rp, number, url.PathEscape(name)), nil, nil)
+	if statusOf(err) == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
+type eventJSON struct {
+	Event     string    `json:"event"`
+	Actor     user      `json:"actor"`
+	Label     labelJSON `json:"label"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListEvents は、issue の events（GET /issues/{number}/events）を読む。pull request も issue として読める。
+func (a api) ListEvents(ctx context.Context, repo string, number int) ([]pullreq.Event, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	es, err := list[eventJSON](ctx, a.c, ports.TokenFrom(ctx), fmt.Sprintf("%s/issues/%d/events", rp, number))
+	if err != nil {
+		return nil, err
+	}
+	var out []pullreq.Event
+	for _, e := range es {
+		switch e.Event {
+		case "labeled", "unlabeled", "closed", "reopened":
+			out = append(out, pullreq.Event{Kind: e.Event, Label: e.Label.Name, Actor: e.Actor.Login, CreatedAt: e.CreatedAt})
 		}
 	}
-	return pullreq.Pull{}, false, nil
+	return out, nil
 }
 
 type issueJSON struct {
-	Number      int       `json:"number"`
-	Title       string    `json:"title"`
-	Body        string    `json:"body"`
-	State       string    `json:"state"`
-	User        user      `json:"user"`
-	CreatedAt   time.Time `json:"created_at"`
-	PullRequest *struct{} `json:"pull_request"`
+	Number      int         `json:"number"`
+	Title       string      `json:"title"`
+	Body        string      `json:"body"`
+	State       string      `json:"state"`
+	User        user        `json:"user"`
+	Labels      []labelJSON `json:"labels"`
+	CreatedAt   time.Time   `json:"created_at"`
+	ClosedAt    *time.Time  `json:"closed_at"`
+	PullRequest *struct{}   `json:"pull_request"`
 }
 
 func (i issueJSON) issue() pullreq.Issue {
-	return pullreq.Issue{Number: i.Number, Title: i.Title, Body: i.Body, State: i.State, Author: i.User.Login, CreatedAt: i.CreatedAt}
+	is := pullreq.Issue{Number: i.Number, Title: i.Title, Body: i.Body, State: i.State, Author: i.User.Login, Labels: labelNames(i.Labels), CreatedAt: i.CreatedAt}
+	if i.ClosedAt != nil {
+		is.ClosedAt = *i.ClosedAt
+	}
+	return is
 }
 
-// CreateIssue は、issue を作る。ラベルは名前で渡す。GitHub は、ないラベルを作って付ける。ラベルは表示のためだけに付ける。
+// CreateIssue は、issue を作る。ラベルは名前で渡す。ラベルは、先に EnsureLabel で作っておく。
 func (a api) CreateIssue(ctx context.Context, repo, title, body string, labels []string) (pullreq.Issue, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
@@ -329,8 +503,7 @@ func (a api) ListIssues(ctx context.Context, repo string) ([]pullreq.Issue, erro
 	if err != nil {
 		return nil, err
 	}
-	tok := ports.TokenFrom(ctx)
-	is, err := list[issueJSON](ctx, a.c, tok, rp+"/issues?state=all&sort=created&direction=asc")
+	is, err := list[issueJSON](ctx, a.c, ports.TokenFrom(ctx), rp+"/issues?state=all&sort=created&direction=asc")
 	if err != nil {
 		return nil, err
 	}

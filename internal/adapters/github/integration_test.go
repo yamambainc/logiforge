@@ -39,10 +39,12 @@ type live struct {
 	a                 *pullreq.Adapter
 	auth              *Auth
 	asUser, asReader  context.Context
+	// asReviewer は、review を出す主体（opener と別のアカウント）。GitHub は、作者自身の approve を拒む。
+	asReviewer context.Context
 }
 
 func liveEnv(t *testing.T) *live {
-	for _, n := range []string{"GITHUB_TEST_REPO", "GITHUB_TEST_TOKEN"} {
+	for _, n := range []string{"GITHUB_TEST_REPO", "GITHUB_TEST_TOKEN", "GITHUB_TEST_REVIEWER_TOKEN"} {
 		if os.Getenv(n) == "" {
 			t.Skipf("%s がない（実際の GitHub での結合テスト）", n)
 		}
@@ -70,6 +72,7 @@ func liveEnv(t *testing.T) *live {
 	}
 	l.asUser = ports.WithToken(context.Background(), l.token)
 	l.asReader = ports.WithToken(context.Background(), l.read)
+	l.asReviewer = ports.WithToken(context.Background(), os.Getenv("GITHUB_TEST_REVIEWER_TOKEN"))
 	return l
 }
 
@@ -100,12 +103,12 @@ type verifier struct {
 	keys pullreq.Keyring
 }
 
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
 	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
 	if err != nil {
 		return ports.MergeVerdict{}, err
 	}
-	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
+	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, committed, files, broken)
 }
 
 func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, sig string, added map[string]string) (bool, error) {
@@ -132,9 +135,8 @@ func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	forge.Log = snapstore.RecordLog{Store: st}
 	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
-	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Verifier: v, Records: snapstore.LogSyncer{Source: src, Keys: pub, Store: st}}, src, st)
+	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Verifier: v}, src, st)
 	return w, st, v
 }
 
@@ -197,9 +199,8 @@ func (l *live) branch(dir, name, line string) ports.ApplyRequest {
 	}
 	l.must(dir, "add", "-A")
 	l.must(dir, "commit", "--quiet", "-m", line, "--trailer", "Logiforge-Session-Id: s-open")
-	head := l.must(dir, "rev-parse", "HEAD")
 	l.must(dir, "push", "--quiet", "--force", "origin", name)
-	ar, err := l.a.CreateApplyRequest(l.asUser, l.repo, ports.NewApplyRequest{ID: "apr_" + name, Branch: name, Description: "試験", FirstRevision: head, Opener: "agent"})
+	ar, err := l.a.CreateApplyRequest(l.asUser, l.repo, ports.NewApplyRequest{Branch: name, Description: "試験", Opener: "agent"})
 	if err != nil {
 		l.t.Fatal(err)
 	}
@@ -208,7 +209,8 @@ func (l *live) branch(dir, name, line string) ports.ApplyRequest {
 
 func (l *live) review(ar ports.ApplyRequest, kind ports.ReviewKind, session string) {
 	l.t.Helper()
-	if err := l.a.AddReview(l.asUser, l.repo, ar.ID, ports.Review{ID: "rev_" + session + fmt.Sprint(time.Now().UnixNano()), Kind: kind, Revision: ar.HeadRevision,
+	// GitHub は、作者自身の approve を拒む。approve には、opener と別のアカウントのトークンが要る（GITHUB_TEST_REVIEWER_TOKEN）。
+	if _, err := l.a.AddReview(l.asReviewer, l.repo, ar.ID, ports.Review{Kind: kind, Revision: ar.HeadRevision,
 		Reviewer: "reviewer", Session: session, PromptRevision: "p1"}); err != nil {
 		l.t.Fatal(err)
 	}
@@ -253,7 +255,7 @@ func (l *live) verdict(v verifier, st *store.Dir, dir, sha string) ports.MergeVe
 	if err != nil || c.Parent == nil {
 		l.t.Fatalf("%s のコミットの記録：%v", sha, err)
 	}
-	got, err := v.VerifyMerge(context.Background(), ports.Repository{Name: "q", GitForgeRef: l.repo}, sha, parents, *c.Parent, files, nil)
+	got, err := v.VerifyMerge(context.Background(), ports.Repository{Name: "q", GitForgeRef: l.repo}, sha, parents, *c.Parent, time.Now(), files, nil)
 	if err != nil {
 		l.t.Fatal(err)
 	}
@@ -318,12 +320,6 @@ func TestGitHubLive(t *testing.T) {
 		t.Error("壊れた状態にならない")
 	}
 
-	// 記録の控え：worker が見たあとに request_changes の記録を消しても、控えに残り、判定は変わらない。
-	logged, _ := store.GetRecords(context.Background(), st, mustRepoID(t, l), c.Number)
-	if len(logged) < 3 {
-		t.Fatalf("控えに記録がない：%+v", logged)
-	}
-
 	// 認証：GitHub の OAuth App のトークンでないので client。読める repository を読める。
 	p, err := l.auth.Authenticate(context.Background(), l.token)
 	if err != nil || p.Kind != ports.PrincipalClient {
@@ -377,14 +373,11 @@ func TestGitHubLiveApp(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "refs/heads/main") {
 		t.Fatalf("App のトークンで git を読めない：%v %s", err, out)
 	}
-	// REST：RepoID と記録のコメントを読める。
+	// REST：RepoID を読める。
 	if _, err := src.RepoID(ctx, l.repo); err != nil {
 		t.Fatalf("App のトークンで RepoID を読めない：%v", err)
 	}
-	if _, err := src.CommentsSince(ctx, l.repo, time.Time{}); err != nil {
-		t.Fatalf("App のトークンでコメントを読めない：%v", err)
-	}
-	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository、コメント）を読める")
+	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository）を読める")
 
 	// 書けない：issue を作ろうとすると断られる。
 	tok, err := src.ReadToken(ctx, l.repo)
@@ -409,7 +402,7 @@ func TestGitHubLiveApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = anon.CommentsSince(ctx, l.repo, time.Time{})
+	_, err = anon.RepoID(ctx, l.repo)
 	switch {
 	case repo.Private && err == nil:
 		t.Fatal("private をトークンなしで読めた")

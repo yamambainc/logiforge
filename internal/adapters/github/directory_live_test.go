@@ -66,8 +66,8 @@ func TestGitHubLiveDirectory(t *testing.T) {
 			}
 		}
 	}
-	h := branch("lf-dir-ar-"+stamp, appendBg("反映 "+stamp))
-	ar, err := l.a.CreateApplyRequest(l.asUser, l.repo, ports.NewApplyRequest{ID: "apr_dir" + stamp, Branch: "lf-dir-ar-" + stamp, FirstRevision: h, Opener: "agent"})
+	branch("lf-dir-ar-"+stamp, appendBg("反映 "+stamp))
+	ar, err := l.a.CreateApplyRequest(l.asUser, l.repo, ports.NewApplyRequest{Branch: "lf-dir-ar-" + stamp, Opener: "agent"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
@@ -20,7 +19,7 @@ const (
 	gitforgeGitHub  = settings.GitForgeGitHub
 )
 
-// readSource は、git を読む URL と資格情報と、記録を読むための読み方である。worker と、バックエンドの作業用の複製が使う。
+// readSource は、git を読む URL と資格情報と、用意のコミットを確かめるための読み方である。worker と、バックエンドの作業用の複製が使う。
 // 読むのは、いつも、読むだけのトークン（GitHub では、読むだけの App の installation token。public のリポジトリでは、トークンなしでもよい）である。
 type readSource interface {
 	ListRepositories(ctx context.Context) ([]ports.Repository, error)
@@ -30,7 +29,6 @@ type readSource interface {
 	GitEnv(ctx context.Context, gitForgeRef string) ([]string, error)
 	ReadToken(ctx context.Context, gitForgeRef string) (string, error)
 	RepoID(ctx context.Context, gitForgeRef string) (string, error)
-	CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error)
 }
 
 // forgeSetup は、構成から作った、GitForge のアダプタと認証と、読むだけの側である。

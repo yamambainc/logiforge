@@ -21,7 +21,7 @@ type checkedSource struct {
 	err    error
 }
 
-func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha string, _ []string, _ string, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha string, _ []string, _ string, _ time.Time, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
 	if r.GitForgeRef != "o/q" {
 		return ports.MergeVerdict{}, errors.New("ref が違う：" + r.GitForgeRef)
 	}

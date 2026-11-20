@@ -51,7 +51,7 @@ func TestBenchOverlayBranch(t *testing.T) {
 	top := f.r.commit("上\n\nLogiforge-Session-Id: s4")
 	f.r.git("checkout", "--quiet", "main")
 	syncFixture(t, f)
-	f.forge.ars = append(f.forge.ars, ports.ApplyRequest{ID: "apr_3", Number: 3, Branch: "b2", Target: "develop", State: ports.StateOpen, FirstRevision: top, HeadRevision: top})
+	f.forge.ars = append(f.forge.ars, ports.ApplyRequest{ID: "apr_3", Number: 3, Branch: "b2", Target: "develop", State: ports.StateOpen, HeadRevision: top})
 
 	at := At{ApplyRequest: "apr_3"}
 	var ds []time.Duration

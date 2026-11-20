@@ -70,17 +70,6 @@ func (b *Backend) now() time.Time {
 	return time.Now()
 }
 
-// requestID は、Idempotency-Key があれば決定的に、なければ ULID で、識別子を作る。
-func (b *Backend) requestID(prefix, repo string, c Caller, key string) (string, error) {
-	if key == "" {
-		return ids.NewULID(prefix, b.now()), nil
-	}
-	if len(key) > 128 {
-		return "", fail(CodeValidationFailed, "Idempotency-Key は 128 文字まで")
-	}
-	return ids.FromKey(prefix, repo, c.Principal.Login, key), nil
-}
-
 // waitLatest は、done が真になるまで、上限つきで待つ。上限を過ぎたら false を返す。
 // worker は起こさない。worker が見回りで git を見て、latest を進める（design/api/writes.md の「書いた直後の読み」）。
 func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest string) bool) bool {
@@ -299,17 +288,22 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 		return out, err
 	}
 
-	id, err := b.requestID(ids.PrefixApplyRequest, repo, c, n.IdempotencyKey)
-	if err != nil {
+	// 送り直し：同じブランチに、同じ主体が作った open の pull request があれば、それを返す。中身は比べない
+	// （design/api/writes.md の「同じ要求の繰り返し」）。違う主体のものがあれば、受け付けない。
+	if ars, err := b.Forge.ListApplyRequests(ctx, ref, "open"); err != nil {
 		return out, err
-	}
-	// 同じ識別子のものがあれば、それを返す。中身は比べない。
-	if ar, err := b.Forge.GetApplyRequest(ctx, ref, id); err == nil {
-		v, err := b.GetApplyRequest(ctx, c, repo, ar.ID)
-		out.Value = v
-		return out, err
-	} else if !errors.Is(err, ports.ErrNotFound) {
-		return out, err
+	} else {
+		for _, ar := range ars {
+			if ar.Branch != n.Branch {
+				continue
+			}
+			if !strings.EqualFold(ar.Opener, c.Principal.Login) {
+				return out, fail(CodeValidationFailed, "ブランチ %s に、ほかの主体の open の apply request %s がすでにある", n.Branch, ar.ID)
+			}
+			v, err := b.GetApplyRequest(ctx, c, repo, ar.ID)
+			out.Value = v
+			return out, err
+		}
 	}
 	// ブランチは、worker を待たずに、作業用の複製から git を読んで検査する（design/backend/apply-request/create.md の「作成」）。
 	br, err := b.Git.ReadBranch(ctx, repo, ref, n.Branch)
@@ -344,7 +338,7 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 		if problem != "" {
 			return out, fail(CodeValidationFailed, "%s", problem)
 		}
-		return b.createForge(ctx, c, repo, ref, id, kind, n, head, nil)
+		return b.createForge(ctx, c, repo, ref, kind, n, nil)
 	}
 	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
 	if err != nil {
@@ -363,13 +357,13 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if len(res.Operations) == 0 {
 		return out, fail(CodeValidationFailed, "差分がない")
 	}
-	return b.createForge(ctx, c, repo, ref, id, "", n, head, res.Operations)
+	return b.createForge(ctx, c, repo, ref, "", n, res.Operations)
 }
 
 // createForge は、検査を通った apply request を、GitForge に作る。ops は、いま検査した操作（worker の取り込みの前に返すため）。
-func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, id, kind string, n NewApplyRequest, head string, ops []tree.Operation) (Written[ApplyRequest], error) {
+func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, kind string, n NewApplyRequest, ops []tree.Operation) (Written[ApplyRequest], error) {
 	var out Written[ApplyRequest]
-	_, err := b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{ID: id, Kind: kind, Branch: n.Branch, Description: n.Description, FirstRevision: head, Opener: c.Principal.Login})
+	created, err := b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{Kind: kind, Branch: n.Branch, Description: n.Description, Opener: c.Principal.Login})
 	if errors.Is(err, ports.ErrBranchHasOpen) {
 		return out, fail(CodeValidationFailed, "ブランチ %s に、open の apply request がすでにある", n.Branch)
 	}
@@ -377,7 +371,8 @@ func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, id, kind
 		return out, err
 	}
 	// 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker は、次の見回りでブランチを取り込む。
-	v, err := b.GetApplyRequest(ctx, c, repo, id)
+	v, err := b.GetApplyRequest(ctx, c, repo, created.ID)
+	v.Warnings = append(v.Warnings, created.Warnings...)
 	if err == nil && len(v.Operations) == 0 {
 		// worker が、まだブランチのスナップショットを作っていない。操作の一覧は、いま検査した結果から返す。
 		for i, op := range ops {
@@ -426,7 +421,7 @@ func (b *Backend) openApplyRequest(ctx context.Context, repo, ref, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true, nil)
+	d, err := b.applyRequest(ctx, repo, ref, ar, readDetail, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -456,6 +451,31 @@ func (b *Backend) CloseApplyRequest(ctx context.Context, c Caller, repo, id, ses
 	}
 	if err := b.Forge.Close(ctx, ref, id, reason, session); err != nil {
 		return ApplyRequest{}, err
+	}
+	return b.GetApplyRequest(ctx, c, repo, id)
+}
+
+// MarkApplyRequestFixed は、修正待ちの apply request を、直し終えたと申告する（design/api/endpoints/apply-request/fixed.md）。
+// 呼べるのは、pull request の作者（opener）だけである。ラベルを、修正待ちからレビュー待ちに付け替える。
+func (b *Backend) MarkApplyRequestFixed(ctx context.Context, c Caller, repo, id string) (ApplyRequest, error) {
+	if c.Principal.Kind != ports.PrincipalClient {
+		return ApplyRequest{}, fail(CodeForbidden, "client だけが使える")
+	}
+	ref, err := b.access(ctx, c, repo)
+	if err != nil {
+		return ApplyRequest{}, err
+	}
+	d, err := b.openApplyRequest(ctx, repo, ref, id)
+	if err != nil {
+		return ApplyRequest{}, err
+	}
+	if !strings.EqualFold(d.port.Opener, c.Principal.Login) {
+		return ApplyRequest{}, fail(CodeForbidden, "直し終えたと申告できるのは、apply request を作った %s だけである", d.port.Opener)
+	}
+	if d.port.Waiting != ports.WaitingReview && targetsMain(d.port) {
+		if err := b.Forge.SetWaiting(ctx, ref, id, ports.WaitingReview); err != nil {
+			return ApplyRequest{}, err
+		}
 	}
 	return b.GetApplyRequest(ctx, c, repo, id)
 }
@@ -491,14 +511,8 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 		return HumanRequest{}, err
 	}
 
-	id, err := b.requestID(ids.PrefixHumanRequest, repo, c, n.IdempotencyKey)
-	if err != nil {
-		return HumanRequest{}, err
-	}
-	if hr, err := b.Forge.GetHumanRequest(ctx, ref, id); err == nil {
-		return b.toHumanRequest(repo, hr), nil
-	} else if !errors.Is(err, ports.ErrNotFound) {
-		return HumanRequest{}, err
+	if len(n.IdempotencyKey) > 128 {
+		return HumanRequest{}, fail(CodeValidationFailed, "Idempotency-Key は 128 文字まで")
 	}
 	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
@@ -516,8 +530,8 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 	case !node.Leaf && !node.NeedsReconsideration:
 		return HumanRequest{}, fail(CodeValidationFailed, "仮説 %s は、葉でも要再検討でもない", n.NodeID)
 	}
-	hr, err := b.Forge.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{ID: id, Kind: ports.HumanRequestKind(n.Kind), TargetNode: n.NodeID,
-		Body: n.Body, Requester: c.Principal.Login, Session: n.Session})
+	hr, err := b.Forge.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{IdempotencyKey: n.IdempotencyKey, Kind: ports.HumanRequestKind(n.Kind),
+		TargetNode: n.NodeID, Body: n.Body, Requester: c.Principal.Login, Session: n.Session})
 	if err != nil {
 		return HumanRequest{}, err
 	}

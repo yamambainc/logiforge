@@ -87,6 +87,7 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("PATCH "+repo+"/apply-requests/{applyRequestId}", s.updateApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/reviews", s.reviewApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
+	route("POST "+repo+"/apply-requests/{applyRequestId}/fixed", s.markApplyRequestFixed)
 	route("POST "+repo+"/human-requests", s.createHumanRequest)
 	route("POST "+repo+"/human-requests/{humanRequestId}/answer", s.answerHumanRequest)
 	// ヘルスチェック。/v1 の外に置き、認証を求めない。GitForge や置き場には触れない（design/deploy/README.md）。
@@ -432,6 +433,10 @@ func (s *server) closeApplyRequest(ctx context.Context, c backend.Caller, r *htt
 		return nil, err
 	}
 	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), in.Reason)
+}
+
+func (s *server) markApplyRequestFixed(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	return s.b.MarkApplyRequestFixed(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"))
 }
 
 func (s *server) createHumanRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {

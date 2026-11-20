@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"errors"
-	"slices"
 	"sort"
 	"time"
 
@@ -30,20 +29,26 @@ func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 const clockSlack = 5 * time.Minute
 
 // headCommits は、ブランチの履歴から、apply request のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request/README.md の「先頭のコミット」）。
-//   - apply request を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
+//   - pull request を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
 //   - 先頭が前に見た SHA に戻ったら（A → B → A）、一覧に足さない。
 //
 // GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、それを、base と時刻のない最後の項目として足す。
 func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
-	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、worker が先頭を見つけた時刻と apply request を作った時刻の間を見込み、
-	// 作った時刻に余裕を足して比べる。
-	created := ar.CreatedAt.Add(clockSlack)
+	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。
+	//   作ったときの先頭は、worker が作った時刻の前後どちらで見たかわからないので、作った時刻から時計のずれを引いた時刻のあとに見た、
+	//   最初の先頭から並べる。その前にしか見ていなければ、最後に見た先頭から並べる。並べる先頭が多くても、レビューのセッションの条件が厳しくなるだけである。
+	from := ar.CreatedAt.Add(-clockSlack)
 	start := -1
 	for i, e := range h.Entries {
 		if e.Deleted {
+			start = -1
 			continue
 		}
-		if e.Head == ar.FirstRevision && (start < 0 || !e.SeenAt.After(created)) {
+		// ブランチが main と同じ（まだ自分のコミットがない）ときの先頭は、apply request の先頭ではない。
+		if e.Head == e.Base {
+			continue
+		}
+		if start < 0 || h.Entries[start].SeenAt.Before(from) {
 			start = i
 		}
 	}
@@ -54,7 +59,7 @@ func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
 			if e.Deleted {
 				break
 			}
-			if seen[e.Head] {
+			if seen[e.Head] || e.Head == e.Base {
 				continue
 			}
 			seen[e.Head] = true
@@ -72,25 +77,41 @@ func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
 type arDetail struct {
 	port     ports.ApplyRequest
 	reviews  ports.Reviews
+	history  store.BranchHistory
 	branch   *snapshot.Branch // 先頭のコミットのスナップショット。まだなければ nil
 	model    ApplyRequest
 	current  HeadCommit
 	baseView *view
 }
 
+// arRead は、apply request を読むときに、何を読むかである。
+type arRead struct {
+	// ops は、操作の一覧を作るか。reviews は、その pull request の review を GitForge から読むか。
+	// 一覧では、どちらも読まない（design/backend/list-reads.md）。review は、1 件の読みと、反映と、反映かの判定でだけ読む。
+	ops, reviews bool
+}
+
+var (
+	readList   = arRead{}
+	readDetail = arRead{ops: true, reviews: true}
+	readVerify = arRead{reviews: true}
+)
+
 // applyRequest は、apply request を読み、応答を作る。
 // latest は、呼ぶ側が 1 度だけ読んだ、今の main の木である（merged の apply request の、反映のコミットを探すのに使う）。
 // 1 回の要求の中で、同じものを読み直さないため。
-func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports.ApplyRequest, withOps bool, latest *view) (*arDetail, error) {
+func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports.ApplyRequest, how arRead, latest *view) (*arDetail, error) {
 	h, err := b.Snap.BranchHistory(ctx, repo, ar.Branch)
 	if err != nil {
 		return nil, err
 	}
-	reviews, err := b.Forge.ListReviews(ctx, gfRef, ar.ID)
-	if err != nil {
-		return nil, err
+	var reviews ports.Reviews
+	if how.reviews {
+		if reviews, err = b.Forge.ListReviews(ctx, gfRef, ar.ID); err != nil {
+			return nil, err
+		}
 	}
-	d := &arDetail{port: ar, reviews: reviews}
+	d := &arDetail{port: ar, reviews: reviews, history: h}
 	vs := headCommits(ar, h)
 	m := &d.model
 	target := ar.Target
@@ -127,13 +148,13 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	for _, r := range reviews.Items {
 		m.Reviews = append(m.Reviews, reviewOf(r, r.Revision == d.current.Commit))
 	}
-	if reviews.ChainBroken {
-		m.Warnings = append(m.Warnings, "レビューの鎖が切れている。反映できない。close して、同じブランチから作り直す")
-	}
 	m.Warnings = append(m.Warnings, reviews.Warnings...)
 	// 向き先が main でない apply request は、Logiforge の検査と反映の対象でないので、レビュー待ちにも修正待ちにもしない。
 	if m.State == string(ports.StateOpen) && targetsMain(ar) {
-		m.Awaiting = awaiting(d.current.Commit, reviews.Items, ar.MergeFailures)
+		m.Awaiting = awaiting(ar.Waiting)
+		if ar.Waiting == ports.WaitingBoth {
+			m.Warnings = append(m.Warnings, "レビュー待ちと修正待ちのラベルが、両方付いている。修正待ちとみなす")
+		}
 	}
 	// 反映したコミットは、GitForge の merge のコミットである。worker が取り込んで、読む側に出ているときだけ返す。
 	if m.State == string(ports.StateMerged) && latest != nil && ar.MergedRevision != "" {
@@ -156,7 +177,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		}
 	}
 	// 向き先が main でなければ、差分を検査しないので、操作の一覧は空にする（design/backend/apply-request/target.md の「向き先」）。
-	if withOps && d.branch != nil && targetsMain(ar) {
+	if how.ops && d.branch != nil && targetsMain(ar) {
 		ops, base, err := b.operations(ctx, repo, d.branch)
 		if err != nil {
 			return nil, err
@@ -166,24 +187,55 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	return d, nil
 }
 
-// awaiting は、open で向き先が main の apply request が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/compute.md）。
-//   - 修正待ち：先頭のコミットへの最後の決めるレビュー（approve か request_changes）が request_changes か、
-//     先頭のコミットの反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
-//   - レビュー待ち：修正待ちでないもの。決めるレビューがないか、最後の決めるレビューが approve なのに、まだ open である
-//     （snapshot_pending などで反映に失敗した、向き先が main でないあいだに approve され、あとで main に戻した、など。approve し直しを待つ）。
-func awaiting(current string, reviews []ports.Review, failures []ports.MergeFailure) *string {
-	var last ports.ReviewKind
-	for _, r := range reviews {
-		if r.Revision == current && (r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges) {
-			last = r.Kind
-		}
-	}
-	failed := slices.ContainsFunc(failures, func(f ports.MergeFailure) bool { return f.Revision == current && openerFixes[f.Reason] })
+// awaiting は、open で向き先が main の apply request が、レビュー待ち（review）か修正待ち（fix）かを、pull request のラベルで決める
+// （design/backend/compute.md の「レビュー待ちと修正待ち」）。ラベルがなければレビュー待ち、両方あれば修正待ちとみなす。
+func awaiting(w ports.Waiting) *string {
 	s := "review"
-	if last == ports.ReviewRequestChanges || failed {
+	if w == ports.WaitingFix || w == ports.WaitingBoth {
 		s = "fix"
 	}
 	return &s
+}
+
+// desiredWaiting は、その pull request の出来事のうち、いちばん新しいもので、正しいラベルを決める
+// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+//   - 数える request changes の review と、opener が直すべき理由の反映の失敗：修正待ち
+//   - レビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）：レビュー待ち
+func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
+	var fixAt time.Time
+	for _, r := range reviews {
+		if r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt) {
+			fixAt = r.CreatedAt
+		}
+	}
+	for _, f := range ar.MergeFailures {
+		if openerFixes[f.Reason] && f.At.After(fixAt) {
+			fixAt = f.At
+		}
+	}
+	if !fixAt.IsZero() && fixAt.After(ar.ReviewWaitingAt) {
+		return ports.WaitingFix
+	}
+	return ports.WaitingReview
+}
+
+// repairWaiting は、1 件の apply request を読んだときに、ラベルがずれていれば、要求を送った主体のトークンで直す
+// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。d は、review を読んだもの（readDetail）である。
+// 直せなければ（主体に書く権限がない、など）、応答に警告を付ける。
+func (b *Backend) repairWaiting(ctx context.Context, gfRef string, d *arDetail) {
+	if d.model.State != string(ports.StateOpen) || !targetsMain(d.port) {
+		return
+	}
+	want := desiredWaiting(d.port, d.reviews.Items)
+	if d.port.Waiting == want {
+		return
+	}
+	if err := b.Forge.SetWaiting(ctx, gfRef, d.port.ID, want); err != nil {
+		d.model.Warnings = append(d.model.Warnings, "レビュー待ちか修正待ちかのラベルがずれているが、直せない："+err.Error())
+		return
+	}
+	d.port.Waiting = want
+	d.model.Awaiting = awaiting(want)
 }
 
 // openerFixes は、opener が直すべき反映の失敗の理由である。修正待ちにする。
@@ -264,9 +316,18 @@ type openState struct {
 	arTargets map[string][]string
 }
 
+// inRepository は、pull request が、その repository の apply request かを返す。ディレクトリの repository では、
+// ディレクトリの中を変えるブランチだけが、worker のブランチの履歴に入る（design/directory/README.md の「apply request とみなす PR」）。
+func inRepository(gfRef string, h store.BranchHistory) bool {
+	if _, dir := ports.SplitRef(gfRef); dir == "" {
+		return true
+	}
+	return len(h.Entries) > 0
+}
+
 // readOpen は、GitForge から apply request と人への依頼を読み、open のものが対象にするノードを求める。
 func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*openState, error) {
-	all, err := b.Forge.ListApplyRequests(ctx, gfRef)
+	all, err := b.Forge.ListApplyRequests(ctx, gfRef, "open")
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +345,7 @@ func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*o
 		if err != nil {
 			return nil, err
 		}
-		if arState(ar, h) != ports.StateOpen {
+		if arState(ar, h) != ports.StateOpen || !inRepository(gfRef, h) {
 			continue
 		}
 		// 向き先が main でないものも、回答を引用した検証結果を探すのに使う（積み上げた変更は、いずれ main 向きの apply request に含まれるから）。

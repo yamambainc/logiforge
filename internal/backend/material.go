@@ -29,10 +29,11 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true, v)
+	d, err := b.applyRequest(ctx, repo, ref, ar, readDetail, v)
 	if err != nil {
 		return ReviewMaterial{}, err
 	}
+	b.repairWaiting(ctx, ref, d)
 	if d.branch == nil {
 		return ReviewMaterial{}, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない", d.current.Commit)
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,10 @@ type fakeForge struct {
 	mainHead string
 	// archived は、archive の git リポジトリ（gitforge_ref）。
 	archived map[string]bool
+	// waitingErr があれば、SetWaiting はそれを返す（ラベルを書けない主体の場合を作るため）。
+	waitingErr error
+	// keys は、人への依頼の Idempotency-Key（主体と改行とキー）から、作った依頼を引く。
+	keys map[string]ports.HumanRequest
 }
 
 func (f *fakeForge) ListRepositories(context.Context) ([]ports.Repository, error) { return nil, nil }
@@ -122,8 +127,13 @@ func (f *fakeForge) CreateApplyRequest(_ context.Context, _ string, n ports.NewA
 			return ports.ApplyRequest{}, ports.ErrBranchHasOpen
 		}
 	}
-	ar := ports.ApplyRequest{ID: n.ID, Number: f.number(), Branch: n.Branch, Description: n.Description, FirstRevision: n.FirstRevision,
-		HeadRevision: n.FirstRevision, State: ports.StateOpen, Opener: n.Opener, CreatedAt: time.Now().UTC()}
+	num := f.number()
+	head := ""
+	if f.remote != nil {
+		head = f.remote.git("rev-parse", n.Branch)
+	}
+	ar := ports.ApplyRequest{ID: strconv.Itoa(num), Number: num, Branch: n.Branch, Description: n.Description, Kind: n.Kind,
+		HeadRevision: head, State: ports.StateOpen, Opener: n.Opener, Waiting: ports.WaitingReview, CreatedAt: time.Now().UTC()}
 	f.ars = append(f.ars, ar)
 	return ar, nil
 }
@@ -143,7 +153,7 @@ func (f *fakeForge) GetApplyRequest(_ context.Context, _, id string) (ports.Appl
 	}
 	return ports.ApplyRequest{}, ports.ErrNotFound
 }
-func (f *fakeForge) MergedApplyRequest(_ context.Context, _, sha string) (ports.ApplyRequest, error) {
+func (f *fakeForge) MergedApplyRequest(_ context.Context, _, sha string, _ time.Time) (ports.ApplyRequest, error) {
 	for _, ar := range f.ars {
 		if ar.State == ports.StateMerged && ar.MergedRevision == sha {
 			return ar, nil
@@ -151,8 +161,31 @@ func (f *fakeForge) MergedApplyRequest(_ context.Context, _, sha string) (ports.
 	}
 	return ports.ApplyRequest{}, ports.ErrNotFound
 }
-func (f *fakeForge) ListApplyRequests(context.Context, string) ([]ports.ApplyRequest, error) {
-	return f.ars, nil
+func (f *fakeForge) ListApplyRequests(_ context.Context, _, state string) ([]ports.ApplyRequest, error) {
+	var out []ports.ApplyRequest
+	for _, ar := range f.ars {
+		if state == "open" && ar.State != ports.StateOpen || state == "closed" && ar.State == ports.StateOpen {
+			continue
+		}
+		x := ar
+		x.CloseReason, x.CloseSession, x.MergeFailures = "", "", nil
+		out = append(out, x)
+	}
+	return out, nil
+}
+func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting) error {
+	if f.waitingErr != nil {
+		return f.waitingErr
+	}
+	ar := f.ar(id)
+	if ar == nil {
+		return ports.ErrNotFound
+	}
+	ar.Waiting = w
+	if w == ports.WaitingReview {
+		ar.ReviewWaitingAt = time.Now().UTC()
+	}
+	return nil
 }
 func (f *fakeForge) UpdateDescription(_ context.Context, _, id, d string) error {
 	f.ar(id).Description = d
@@ -186,23 +219,35 @@ func (f *fakeForge) Close(_ context.Context, _, id, reason, session string) erro
 }
 func (f *fakeForge) RecordMergeFailure(_ context.Context, _, id string, mf ports.MergeFailure) error {
 	ar := f.ar(id)
+	mf.At = time.Now().UTC()
 	ar.MergeFailures = append(ar.MergeFailures, mf)
 	return nil
 }
-func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) error {
+func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) (ports.Review, error) {
 	rs := f.reviews[id]
-	if rs.ChainBroken {
-		return errors.New("鎖が切れている")
-	}
+	f.next++
+	r.ID, r.CreatedAt = strconv.Itoa(f.next), time.Now().UTC()
 	rs.Items = append(rs.Items, r)
 	f.reviews[id] = rs
-	return nil
+	return r, nil
 }
 func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews, error) {
 	return f.reviews[id], nil
 }
 func (f *fakeForge) CreateHumanRequest(_ context.Context, _ string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
-	hr := ports.HumanRequest{ID: n.ID, Number: f.number(), Kind: n.Kind, TargetNode: n.TargetNode, Body: n.Body, Requester: n.Requester, Session: n.Session}
+	if n.IdempotencyKey != "" {
+		if hr, ok := f.keys[n.Requester+"\n"+n.IdempotencyKey]; ok {
+			return hr, nil
+		}
+	}
+	num := f.number()
+	hr := ports.HumanRequest{ID: strconv.Itoa(num), Number: num, Kind: n.Kind, TargetNode: n.TargetNode, Body: n.Body, Requester: n.Requester, Session: n.Session}
+	if n.IdempotencyKey != "" {
+		if f.keys == nil {
+			f.keys = map[string]ports.HumanRequest{}
+		}
+		f.keys[n.Requester+"\n"+n.IdempotencyKey] = hr
+	}
 	f.hrs = append(f.hrs, hr)
 	return hr, nil
 }
@@ -316,11 +361,11 @@ func setup(t *testing.T) *fixture {
 	forge := &fakeForge{
 		ars: []ports.ApplyRequest{
 			{ID: "apr_1", Number: 1, Branch: "a", Target: "main", State: ports.StateMerged, MergedRevision: c2},
-			{ID: "apr_2", Number: 2, Branch: "b", State: ports.StateOpen, FirstRevision: head, HeadRevision: head, CreatedAt: now.Add(time.Hour), Description: "説明"},
+			{ID: "apr_2", Number: 2, Branch: "b", State: ports.StateOpen, HeadRevision: head, CreatedAt: now.Add(time.Hour), Description: "説明"},
 		},
 		reviews: map[string]ports.Reviews{},
 		hrs: []ports.HumanRequest{
-			{ID: "hrq_1", Number: 3, Kind: ports.HumanRequestPVR, TargetNode: H2, Body: "測って",
+			{ID: "3", Number: 3, Kind: ports.HumanRequestPVR, TargetNode: H2, Body: "測って",
 				Answer: &ports.Answer{Body: "測った", AnsweredBy: "alice", CreatedAt: now, Attachments: []ports.Attachment{{Name: "p.jpg", SHA256: tree.SHA256Hex([]byte("jpg")), ID: "1"}}}},
 		},
 		files: map[string][]byte{tree.SHA256Hex([]byte("jpg")): []byte("jpg")},
@@ -440,7 +485,7 @@ func TestReads(t *testing.T) {
 	if got, _ := b.ListHumanRequests(ctx, c, "q", "", "open", "", "", 0); len(got.Items) != 0 {
 		t.Fatalf("open: %+v", got)
 	}
-	att, err := b.GetAnswerAttachment(ctx, c, "q", "hrq_1", tree.SHA256Hex([]byte("jpg")))
+	att, err := b.GetAnswerAttachment(ctx, c, "q", "3", tree.SHA256Hex([]byte("jpg")))
 	if err != nil || string(att) != "jpg" {
 		t.Fatalf("attachment: %v", err)
 	}
@@ -460,7 +505,7 @@ func TestWorkAndCompletion(t *testing.T) {
 		kinds[it.Kind] = it.SubjectID
 	}
 	// H2 は apr_2 が対象にしているので、未決の葉に出ない。
-	if _, ok := kinds["undecided_leaf"]; ok || kinds["review_waiting"] != "apr_2" || kinds["human_request_answered"] != "hrq_1" {
+	if _, ok := kinds["undecided_leaf"]; ok || kinds["review_waiting"] != "apr_2" || kinds["human_request_answered"] != "3" {
 		t.Fatalf("work: %+v", w.Items)
 	}
 	if w.Counts["review_waiting"] != 1 {
@@ -481,8 +526,8 @@ func TestWorkAndCompletion(t *testing.T) {
 		t.Fatalf("page 2: %+v", p2)
 	}
 
-	// 修正待ち：先頭のコミットへの最後の決めるレビューが request_changes。
-	f.forge.reviews["apr_2"] = ports.Reviews{Items: []ports.Review{{ID: "rev_1", Kind: ports.ReviewRequestChanges, Revision: f.head}}}
+	// 修正待ち：pull request に修正待ちのラベルがある（一覧は review を読まない）。
+	f.forge.ar("apr_2").Waiting = ports.WaitingFix
 	w2, _ := b.ListWork(ctx, c, "q", WorkQuery{Kinds: []string{"fix_waiting", "review_waiting"}})
 	if len(w2.Items) != 1 || w2.Items[0].Kind != "fix_waiting" {
 		t.Fatalf("fix: %+v", w2.Items)
@@ -513,25 +558,33 @@ func TestExport(t *testing.T) {
 }
 
 func TestAwaiting(t *testing.T) {
-	approve := []ports.Review{{Kind: ports.ReviewApprove, Revision: "h"}}
+	for w, want := range map[ports.Waiting]string{ports.WaitingNone: "review", ports.WaitingReview: "review", ports.WaitingFix: "fix", ports.WaitingBoth: "fix"} {
+		if got := awaiting(w); got == nil || *got != want {
+			t.Fatalf("%q: %v", w, got)
+		}
+	}
+}
+
+// ずれたラベルの正しいもの：出来事のうち、いちばん新しいもので決める（design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+func TestDesiredWaiting(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	rc := func(at time.Time) ports.Review { return ports.Review{Kind: ports.ReviewRequestChanges, CreatedAt: at} }
 	cases := []struct {
-		name     string
-		reviews  []ports.Review
-		failures []ports.MergeFailure
-		want     string
+		name    string
+		ar      ports.ApplyRequest
+		reviews []ports.Review
+		want    ports.Waiting
 	}{
-		{"決めるレビューなし", nil, nil, "review"},
-		{"request_changes", []ports.Review{{Kind: ports.ReviewRequestChanges, Revision: "h"}}, nil, "fix"},
-		{"approve したが open のまま（approve し直しを待つ）", approve, nil, "review"},
-		{"conflict で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "conflict"}}, "fix"},
-		{"stale_target で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "stale_target"}}, "fix"},
-		{"snapshot_pending で失敗", approve, []ports.MergeFailure{{Revision: "h", Reason: "snapshot_pending"}}, "review"},
-		{"前の版の失敗は数えない", approve, []ports.MergeFailure{{Revision: "old", Reason: "conflict"}}, "review"},
+		{"何もない", ports.ApplyRequest{}, nil, ports.WaitingReview},
+		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
+		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
+		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
+		{"conflict で失敗", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "conflict", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
+		{"snapshot_pending は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "snapshot_pending", At: t0.Add(time.Minute)}}}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {
-		got := awaiting("h", c.reviews, c.failures)
-		if (got == nil && c.want != "") || (got != nil && *got != c.want) {
-			t.Fatalf("%s: %v", c.name, got)
+		if got := desiredWaiting(c.ar, c.reviews); got != c.want {
+			t.Fatalf("%s: %q", c.name, got)
 		}
 	}
 }
@@ -553,7 +606,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	sha := tree.SHA256Hex([]byte("jpg"))
 	// 背景情報に識別子を書いても、外れない（open の apply request apr_2 の差分に足す）。
 	f.r.git("checkout", "--quiet", "b")
-	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("hrq_1 の回答を見た\n"))
+	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("3 の回答を見た\n"))
 	head := f.r.commit("版 2")
 	f.forge.ars[1].HeadRevision = head
 	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
@@ -563,7 +616,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	}
 	// 検証結果が回答の添付の URL を引用すると、外れる。
 	f.r.write(dH2+"/"+S2+"/"+H3+"/verdicts/v-8888888888.md", tree.MarshalVerdict(tree.VerdictContent{ID: "v-8888888888", Value: true, Report: "r\n",
-		Artifacts: []tree.ArtifactRef{{Kind: "link", Name: "写真", URI: "https://logiforge.example.com/v1/repositories/q/human-requests/hrq_1/attachments/" + sha, SHA256: sha}}}))
+		Artifacts: []tree.ArtifactRef{{Kind: "link", Name: "写真", URI: "https://logiforge.example.com/v1/repositories/q/human-requests/3/attachments/" + sha, SHA256: sha}}}))
 	head = f.r.commit("版 3")
 	f.forge.ars[1].HeadRevision = head
 	w.SyncAll(ctx)

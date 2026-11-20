@@ -19,7 +19,7 @@ import (
 // New は、Forgejo の GitForge アダプタと認証のアダプタを作る。
 func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth) {
 	c := &client{cfg: cfg}
-	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}, Keys: keys}, &Auth{c: c}
+	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}}, &Auth{c: c}
 }
 
 // repos は、organization の repository の列挙と用意である。
