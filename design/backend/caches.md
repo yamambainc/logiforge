@@ -8,7 +8,7 @@
 | 何か | 何に使うか | それで省ける GitForge の呼び出し | どこに置くか | いつ書き換わるか（誰が書くか） | いつ捨ててよいか | 失ったときにどうなるか |
 |---|---|---|---|---|---|---|
 | `latest` | 設定の repository の一覧の `prepared`。木の読み | repository ごとの `main` の ref と contents の読み | 置き場（[latest](snapshot/main.md#latest)） | `main` を取り込むたび（worker） | いつでも | worker が git から作り直すまで、repository が見えず、`prepared` が `false` に見える |
-| 権限のキャッシュ | 認可。repository の一覧で、読めるかを決める | repository ごとの `GET /repos/{owner}/{repo}` | バックエンドのメモリ（[権限のキャッシュ](../settings/users.md#権限のキャッシュ)） | 60 秒たったあとの、次の要求で問い合わせ直す（バックエンド） | 60 秒たったら | 次の要求で問い合わせ直す |
+| 権限のキャッシュ | 認可。repository の一覧で、主体が読めるかを決める。主体ごとに、主体の読めるリポジトリの一覧（GitHub の `GET /user/repos`）と、その一覧にない登録した repository の、1 つずつの読めるかの結果を持つ | repository ごとの `GET /repos/{owner}/{repo}`（一覧にない repository は、1 度だけ） | バックエンドのメモリ。鍵はトークンの SHA-256（[権限のキャッシュ](../settings/users.md#権限のキャッシュ)） | 60 秒たったあとの、次の要求で問い合わせ直す（バックエンド） | 60 秒たったら | 次の要求で問い合わせ直す |
 
 - どちらも、今あるものに使い道を足すだけである。新しく足すキャッシュはない。
 - どちらも、GitForge か git から作り直せる写しである。捨てても、正しさは変わらない。

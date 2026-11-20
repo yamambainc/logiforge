@@ -22,8 +22,7 @@ var (
 	ErrAlreadyAnswered = errors.New("すでに回答がある")
 	ErrUnauthenticated = errors.New("この主体は、Logiforge の主体でない")
 	// ErrNotRegistered は、repository の名前が、サーバの設定に登録されていないことを表す（GitHub を使う構成）。
-	ErrNotRegistered    = errors.New("repository の名前が、サーバの設定に登録されていない")
-	ErrAttachmentTamper = errors.New("添付の sha256 が、回答のコメントに書いたものと合わない")
+	ErrNotRegistered = errors.New("repository の名前が、サーバの設定に登録されていない")
 	// ErrAttachmentsUnsupported は、回答の添付をファイルで受け付けない GitForge であることを表す（添付はリンクだけ）。
 	ErrAttachmentsUnsupported = errors.New("この GitForge は、回答の添付をファイルで受け付けない")
 )

@@ -128,49 +128,35 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 	return items, arTargets, nil
 }
 
-// answerRefPattern は、回答の添付を読む API の URL である（design/files/artifacts.md：回答の引用は、この URL の link にする）。
-var answerRefPattern = regexp.MustCompile(`/human-requests/([1-9][0-9]*)/attachments/([0-9a-f]{64})`)
+// answerRefPattern は、回答の添付を読む API の URL と、人への依頼を読む API の URL である（design/files/artifacts.md の「人への依頼の回答」）。
+// 検証結果は、この URL の link で回答を引用する。URL が依頼の識別子を持つので、issue ごとにコメントを読まずに引用を決められる。
+var answerRefPattern = regexp.MustCompile(`/human-requests/([1-9][0-9]*)(?:/attachments/[0-9a-f]{64})?(?:$|[/?#])`)
 
-// answerRefs は、検証結果が引用している回答である。依頼の識別子と、添付の sha256 を持つ。
+// answerRefs は、検証結果が引用している回答の、依頼の識別子である。
 type answerRefs struct {
-	ids  map[string]bool
-	shas map[string]bool
+	ids map[string]bool
 }
 
 func (r answerRefs) add(v tree.VerdictContent) {
 	for _, a := range v.Artifacts {
+		if a.Kind != "link" {
+			continue
+		}
 		if m := answerRefPattern.FindStringSubmatch(a.URI); m != nil {
 			r.ids[m[1]] = true
-			r.shas[m[2]] = true
-		}
-		if a.SHA256 != "" {
-			r.shas[a.SHA256] = true
-		}
-	}
-	for _, c := range v.Citations {
-		if c.TargetKind == "artifact" {
-			r.shas[c.SHA256] = true
 		}
 	}
 }
 
 func (r answerRefs) cites(hr ports.HumanRequest) bool {
-	if r.ids[hr.ID] {
-		return true
-	}
-	for _, a := range hr.Answer.Attachments {
-		if r.shas[a.SHA256] {
-			return true
-		}
-	}
-	return false
+	return r.ids[hr.ID]
 }
 
 // usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
 //   - 今の main の木の検証結果（反映された）
 //   - open の apply request の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
 func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
-	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
+	refs := answerRefs{ids: map[string]bool{}}
 	for _, tv := range v.tree.Verdicts {
 		refs.add(tv.VerdictContent)
 	}

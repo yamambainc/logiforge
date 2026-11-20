@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -73,13 +74,9 @@ const (
 	lineCloseReason    = "Close-Reason"
 	lineTargetNode     = "Target-Node"
 	lineIdempotencyKey = "Idempotency-Key"
-	lineAttachment     = "Attachment"
-	// lineAnswerAttachment は、回答の添付の sha256 を、依頼の issue の本文に写す行である。
-	// なぜ：回答を引用した検証結果を、issue の一覧だけで見つけるため（design/adapters/texts.md の「回答」）。
-	lineAnswerAttachment = "Answer-Attachment"
 )
 
-var knownLines = []string{lineSession, linePrompt, lineCloseReason, lineTargetNode, lineIdempotencyKey, lineAttachment, lineAnswerAttachment}
+var knownLines = []string{lineSession, linePrompt, lineCloseReason, lineTargetNode, lineIdempotencyKey}
 
 type line struct{ key, value string }
 
@@ -516,12 +513,6 @@ func toHumanRequest(is Issue, kind ports.HumanRequestKind) ports.HumanRequest {
 	}
 	if is.State == "closed" {
 		hr.Answer = &ports.Answer{CreatedAt: is.ClosedAt}
-		for _, l := range ls {
-			if l.key == lineAnswerAttachment {
-				name, sha := splitAttachment(l.value)
-				hr.Answer.Attachments = append(hr.Answer.Attachments, ports.Attachment{Name: name, SHA256: sha})
-			}
-		}
 	}
 	return hr
 }
@@ -568,12 +559,10 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// answered は、閉じた issue の回答のコメントである。
+// answered は、閉じた issue の回答のコメントである。添付は、コメントの添付である（名前 → GitForge の添付の識別子）。
 type answered struct {
 	comment Comment
 	body    string
-	shas    map[string]string // 名前 → sha256
-	names   []string
 }
 
 // readAnswer は、閉じた issue の回答を読む。回答は、issue を閉じた人が、閉じる前に書いた最後のコメントである（design/adapters/texts.md の「回答」）。
@@ -601,31 +590,20 @@ func (a *Adapter) readAnswer(ctx context.Context, repo string, is Issue) (*answe
 	if found == nil {
 		return nil, closer, nil
 	}
-	return parseAnswer(*found), closer, nil
+	return &answered{comment: *found, body: normalize(found.Body)}, closer, nil
 }
 
-func parseAnswer(c Comment) *answered {
-	body, ls := splitLines(c.Body)
-	ans := &answered{comment: c, body: body, shas: map[string]string{}}
-	for _, l := range ls {
-		if l.key != lineAttachment {
-			continue
+// attachmentSHAs は、回答のコメントの添付を読み、名前ごとの sha256 を求める。添付の中身を読むのは、1 件の読みのときだけである。
+func (a *Adapter) attachmentSHAs(ctx context.Context, repo string, c Comment) (map[string]string, error) {
+	out := map[string]string{}
+	for name, aid := range c.Attachments {
+		data, err := a.API.DownloadAttachment(ctx, repo, c.ID, aid)
+		if err != nil {
+			return nil, err
 		}
-		name, sha := splitAttachment(l.value)
-		ans.shas[name] = sha
-		ans.names = append(ans.names, name)
+		out[name] = sha256Hex(data)
 	}
-	return ans
-}
-
-func attachmentLine(name, sha string) string { return name + " sha256:" + sha }
-
-func splitAttachment(v string) (name, sha string) {
-	i := strings.LastIndex(v, " sha256:")
-	if i < 0 {
-		return v, ""
-	}
-	return v[:i], v[i+len(" sha256:"):]
+	return out, nil
 }
 
 func (a *Adapter) getIssue(ctx context.Context, repo, id string) (Issue, ports.HumanRequestKind, error) {
@@ -666,8 +644,17 @@ func (a *Adapter) GetHumanRequest(ctx context.Context, repo, id string) (ports.H
 	if hr.Answer.CreatedAt.IsZero() {
 		hr.Answer.CreatedAt = ans.comment.CreatedAt
 	}
-	for _, name := range ans.names {
-		hr.Answer.Attachments = append(hr.Answer.Attachments, ports.Attachment{Name: name, SHA256: ans.shas[name], ID: ans.comment.Attachments[name]})
+	shas, err := a.attachmentSHAs(ctx, repo, ans.comment)
+	if err != nil {
+		return ports.HumanRequest{}, err
+	}
+	names := make([]string, 0, len(shas))
+	for n := range shas {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		hr.Answer.Attachments = append(hr.Answer.Attachments, ports.Attachment{Name: name, SHA256: shas[name], ID: ans.comment.Attachments[name]})
 	}
 	return hr, nil
 }
@@ -716,48 +703,66 @@ func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string,
 		names = append(names, file.Name)
 		shas[file.Name] = sha256Hex(file.Content)
 	}
-	same := func(ans *answered) bool {
-		if ans == nil || ans.body != normalize(body) || !strings.EqualFold(ans.comment.Author, answeredBy) || len(ans.shas) != len(shas) {
-			return false
+	// same は、回答のコメントが、この要求と同じ回答かを返す。添付は、中身の sha256 で比べる（送り直しのときだけ読む）。
+	same := func(ans *answered) (bool, error) {
+		if ans == nil || ans.body != normalize(body) || !strings.EqualFold(ans.comment.Author, answeredBy) || len(ans.comment.Attachments) > len(shas) {
+			return false, nil
 		}
-		for n, s := range shas {
-			if ans.shas[n] != s {
-				return false
+		for n := range ans.comment.Attachments {
+			if _, ok := shas[n]; !ok {
+				return false, nil
 			}
 		}
-		return true
+		got, err := a.attachmentSHAs(ctx, repo, ans.comment)
+		if err != nil {
+			return false, err
+		}
+		for n, s := range got {
+			if shas[n] != s {
+				return false, nil
+			}
+		}
+		return true, nil
 	}
 	if is.State == "closed" {
 		ans, _, err := a.readAnswer(ctx, repo, is)
 		if err != nil {
 			return err
 		}
-		if !same(ans) {
+		ok, err := same(ans)
+		if err != nil {
+			return err
+		}
+		if !ok || len(ans.comment.Attachments) != len(shas) {
 			return ports.ErrAlreadyAnswered
 		}
 		return nil
 	}
-	// コメントを書いたあと、閉じる前に止まった送り直しなら、書き直さない。
+	// コメントを書いたあと、閉じる前に止まった送り直しなら、書き直さない。添付は、まだ上がっていない分だけ上げる。
 	comments, err := a.API.ListComments(ctx, repo, is.Number)
 	if err != nil {
 		return err
 	}
 	var ans *answered
 	for _, c := range comments {
-		if x := parseAnswer(c); same(x) {
+		if !strings.EqualFold(c.Author, answeredBy) || normalize(c.Body) != normalize(body) {
+			continue
+		}
+		x := &answered{comment: c, body: normalize(c.Body)}
+		ok, err := same(x)
+		if err != nil {
+			return err
+		}
+		if ok {
 			ans = x
 		}
 	}
 	if ans == nil {
-		ls := make([]line, 0, len(names))
-		for _, n := range names {
-			ls = append(ls, line{lineAttachment, attachmentLine(n, shas[n])})
-		}
-		c, err := a.API.CreateComment(ctx, repo, is.Number, withLines(body, ls...))
+		c, err := a.API.CreateComment(ctx, repo, is.Number, body)
 		if err != nil {
 			return err
 		}
-		ans = parseAnswer(c)
+		ans = &answered{comment: c, body: normalize(c.Body)}
 	}
 	for _, file := range files {
 		if ans.comment.Attachments[file.Name] != "" {
@@ -767,26 +772,7 @@ func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string,
 			return err
 		}
 	}
-	if err := a.copyAnswerAttachments(ctx, repo, is, names, shas); err != nil {
-		return err
-	}
 	return a.API.CloseIssue(ctx, repo, is.Number)
-}
-
-// copyAnswerAttachments は、回答の添付の名前と sha256 を、依頼の issue の本文の最後に `Answer-Attachment:` の行で写す。
-// すでに写してあれば、書き直さない。添付がなければ、何もしない。
-func (a *Adapter) copyAnswerAttachments(ctx context.Context, repo string, is Issue, names []string, shas map[string]string) error {
-	if len(names) == 0 {
-		return nil
-	}
-	body, ls := splitLines(is.Body)
-	if lineValue(ls, lineAnswerAttachment) != "" {
-		return nil
-	}
-	for _, n := range names {
-		ls = append(ls, line{lineAnswerAttachment, attachmentLine(n, shas[n])})
-	}
-	return a.API.EditIssueBody(ctx, repo, is.Number, withLines(body, ls...))
 }
 
 // ReadAttachment は、回答の添付を sha256 で引いて読み、中身の sha256 を確かめる。
@@ -805,22 +791,20 @@ func (a *Adapter) ReadAttachment(ctx context.Context, repo, humanRequestID, sha 
 	if ans == nil {
 		return nil, ports.ErrNotFound
 	}
-	for name, s := range ans.shas {
-		if s != sha {
-			continue
-		}
-		aid := ans.comment.Attachments[name]
-		if aid == "" {
-			return nil, ports.ErrNotFound
-		}
-		data, err := a.API.DownloadAttachment(ctx, repo, ans.comment.ID, aid)
+	// 添付の sha256 は、中身から求める。名前の順に読み、合うものを返す。
+	names := make([]string, 0, len(ans.comment.Attachments))
+	for n := range ans.comment.Attachments {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		data, err := a.API.DownloadAttachment(ctx, repo, ans.comment.ID, ans.comment.Attachments[name])
 		if err != nil {
 			return nil, err
 		}
-		if sha256Hex(data) != sha {
-			return nil, ports.ErrAttachmentTamper
+		if sha256Hex(data) == sha {
+			return data, nil
 		}
-		return data, nil
 	}
 	return nil, ports.ErrNotFound
 }

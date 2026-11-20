@@ -36,9 +36,9 @@ artifact の種類と大きさの上限は、[artifact](../../docs/tree/verdict.
 - `link` の添付は、GitForge に置かず、回答の本文の末尾に「添付（リンク）」として書く。
   - なぜ：リンクは中身を持たないので、本文に書けば足りるから。
 - opener が検証結果で回答を引用するときは、`link` の artifact にする。
-  - URL は、その添付を読む API の URL である。
-  - `sha256` も書く。
-  - 回答の本文を引用するときも、人への依頼を読む API の URL の `link` にする。
+  - URL は、その添付を読む API の URL（`getAnswerAttachment`）である。
+  - 回答の本文を引用するときは、人への依頼を読む API の URL の `link` にする。
+  - 回答を引用したとみなすのは、この 2 つの URL の `link` だけである（[回答済みの人への依頼](../backend/compute.md#回答済みの人への依頼)）。中身が回答の添付と同じ `file` の artifact は、回答の引用とみなさない。
 
 ## 検証結果からの参照
 

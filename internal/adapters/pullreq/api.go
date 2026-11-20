@@ -50,8 +50,6 @@ type API interface {
 	ListIssues(ctx context.Context, repo string) ([]Issue, error)
 	GetIssue(ctx context.Context, repo string, number int) (Issue, error)
 	CloseIssue(ctx context.Context, repo string, number int) error
-	// EditIssueBody は、issue の本文を書き換える。
-	EditIssueBody(ctx context.Context, repo string, number int, body string) error
 
 	// AttachmentsSupported は、コメントにファイルを添付できるかを返す。できなければ、回答の添付はリンクだけである。
 	AttachmentsSupported() bool

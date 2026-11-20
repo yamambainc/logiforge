@@ -548,11 +548,7 @@ func (b *Backend) GetAnswerAttachment(ctx context.Context, c Caller, repo, id, s
 	if err != nil {
 		return nil, err
 	}
-	data, err := b.Forge.ReadAttachment(ctx, ref, id, sha)
-	if errors.Is(err, ports.ErrAttachmentTamper) {
-		return nil, fail(CodeNotFound, "添付の中身が、記録の sha256 と合わない")
-	}
-	return data, err
+	return b.Forge.ReadAttachment(ctx, ref, id, sha)
 }
 
 // ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「WebUI のための API」）。
