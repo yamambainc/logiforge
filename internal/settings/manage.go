@@ -2,13 +2,10 @@ package settings
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // Changed は、設定を最後に変えた利用者と時刻である（design/settings/users.md の「記録」）。
@@ -17,7 +14,7 @@ type Changed struct {
 	At string
 }
 
-// Changes は、settings の表の行ごとの、最後に変えた利用者と時刻と、設定の全体（settings、repositories、record_keys）で最後のものを返す。
+// Changes は、settings の表の行ごとの、最後に変えた利用者と時刻と、設定の全体（settings、repositories）で最後のものを返す。
 func (d *DB) Changes(ctx context.Context) (map[string]Changed, Changed, error) {
 	out := map[string]Changed{}
 	var last Changed
@@ -45,8 +42,7 @@ func (d *DB) Changes(ctx context.Context) (map[string]Changed, Changed, error) {
 	if err := rows.Err(); err != nil {
 		return nil, last, err
 	}
-	for _, q := range []string{`SELECT updated_at, updated_by FROM repositories ORDER BY updated_at DESC LIMIT 1`,
-		`SELECT created_at, '' FROM record_keys ORDER BY created_at DESC LIMIT 1`} {
+	for _, q := range []string{`SELECT updated_at, updated_by FROM repositories ORDER BY updated_at DESC LIMIT 1`} {
 		var c Changed
 		if err := d.db.QueryRowContext(ctx, q).Scan(&c.At, &c.By); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, last, err
@@ -104,63 +100,6 @@ func (d *DB) UnregisterRepository(ctx context.Context, name, by string) error {
 	})
 }
 
-// RecordKeyInfo は、記録の署名の鍵の、秘密でないものである。
-type RecordKeyInfo struct {
-	ID        string
-	PublicKey string // base64
-	CreatedAt string
-	Primary   bool
-}
-
-// ListRecordKeys は、記録の署名の鍵を、書くときの鍵を先頭にして返す。秘密鍵は読まない。
-func (d *DB) ListRecordKeys(ctx context.Context) ([]RecordKeyInfo, error) {
-	rows, err := d.db.QueryContext(ctx, `SELECT key_id, public_key, created_at, is_primary FROM record_keys ORDER BY is_primary DESC, created_at, key_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []RecordKeyInfo
-	for rows.Next() {
-		var k RecordKeyInfo
-		if err := rows.Scan(&k.ID, &k.PublicKey, &k.CreatedAt, &k.Primary); err != nil {
-			return nil, err
-		}
-		out = append(out, k)
-	}
-	return out, rows.Err()
-}
-
-// CreateRecordKey は、新しい記録の署名の鍵を作り、書くときの鍵にする。古い鍵は消さない（それまでの記録を確かめるため）。
-func (d *DB) CreateRecordKey(ctx context.Context, keys Keys) (RecordKeyInfo, error) {
-	if keys.Backend == nil {
-		return RecordKeyInfo{}, errors.New("settings: 記録の鍵を作るには、バックエンドの鍵が要る")
-	}
-	seed := make([]byte, 32)
-	suffix := make([]byte, 3)
-	if _, err := rand.Read(seed); err != nil {
-		return RecordKeyInfo{}, err
-	}
-	if _, err := rand.Read(suffix); err != nil {
-		return RecordKeyInfo{}, err
-	}
-	id := "rk-" + time.Now().UTC().Format("20060102") + "-" + hex.EncodeToString(suffix)
-	if err := d.write(ctx, func(tx *sql.Tx) error {
-		return saveRecordKeys(ctx, tx, keys.Backend, []RecordKey{{ID: id, Seed: seed}}, now())
-	}); err != nil {
-		return RecordKeyInfo{}, err
-	}
-	ks, err := d.ListRecordKeys(ctx)
-	if err != nil {
-		return RecordKeyInfo{}, err
-	}
-	for _, k := range ks {
-		if k.ID == id {
-			return k, nil
-		}
-	}
-	return RecordKeyInfo{}, fmt.Errorf("settings: 作った記録の鍵 %s を読めない", id)
-}
-
 // Apply は、values（設定の名前と値。Put に渡すもの）を、c に当てる。書く前に、当てたあとの設定で確かめるために使う。
 func (c *Config) Apply(values map[string]string) {
 	for _, f := range fields {
@@ -170,10 +109,9 @@ func (c *Config) Apply(values map[string]string) {
 	}
 }
 
-// Clone は、c の写しを返す。repository の一覧と記録の鍵も写す。
+// Clone は、c の写しを返す。repository の一覧も写す。
 func (c *Config) Clone() *Config {
 	out := *c
 	out.Repositories = append([]Repository(nil), c.Repositories...)
-	out.RecordKeys = append([]RecordKey(nil), c.RecordKeys...)
 	return &out
 }

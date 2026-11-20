@@ -75,12 +75,3 @@ func (s *WorkerSource) GitEnv(ctx context.Context, gitForgeRef string) ([]string
 		"LOGIFORGE_GIT_PASSWORD=" + tok,
 	}, nil
 }
-
-// RepoID は、用意のコミットの署名の場所に使う、repository の node_id を返す。
-func (s *WorkerSource) RepoID(ctx context.Context, gitForgeRef string) (string, error) {
-	tok, err := s.ReadToken(ctx, gitForgeRef)
-	if err != nil {
-		return "", err
-	}
-	return api{&forge{cfg: s.cfg, c: s.c}}.RepoID(ports.WithToken(ctx, tok), gitForgeRef)
-}

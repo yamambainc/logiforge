@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/cli"
 	"github.com/yamambainc/logiforge/internal/ports"
@@ -85,22 +84,8 @@ func env(name string) (string, error) {
 
 // verifier は、worker の反映かの判定を、バックエンドの規則で、worker のトークンで行う。
 type verifier struct {
-	b    *backend.Backend
-	src  readSource
-	keys pullreq.Keyring
-}
-
-// VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify/init.md の「用意のコミットの署名」）。
-func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error) {
-	id, err := v.src.RepoID(ctx, r.GitForgeRef)
-	if err != nil {
-		return false, err
-	}
-	files := make([]pullreq.InitFile, 0, len(added))
-	for p, sum := range added {
-		files = append(files, pullreq.InitFile{Path: p, SHA256: sum})
-	}
-	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Directory: r.Directory(), Parent: parent, MigratedFrom: migratedFrom}, files, signature) == nil, nil
+	b   *backend.Backend
+	src readSource
 }
 
 func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {

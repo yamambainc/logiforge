@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/forgejotest"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/store"
@@ -166,8 +165,6 @@ func (e *env) commitPush(dir, branch, path, content string) string {
 	return mustGit(e.t, dir, "rev-parse", "HEAD")
 }
 
-var keys, _ = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"secret"})
-
 const root = "tree/h-0000000000/hypothesis.md"
 
 func TestForgejo(t *testing.T) {
@@ -186,7 +183,7 @@ func TestForgejo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Config{URL: e.url, Org: e.org, ClientID: app.ClientID, ClientSecret: app.ClientSecret, WorkerLogin: e.login("reader"), MergeWait: 5 * time.Second}
-	gf, auth := New(cfg, keys)
+	gf, auth := New(cfg)
 
 	// ---- repository の用意 ----
 	ref, _ := gf.GitForgeRef(ctx, "q")

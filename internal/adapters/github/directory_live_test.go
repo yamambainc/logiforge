@@ -29,7 +29,7 @@ func TestGitHubLiveDirectory(t *testing.T) {
 	l := liveEnv(t)
 	l.cfg.Repositories = []ports.Repository{{Name: "q", GitForgeRef: project + ":logiforge/cache"}}
 	var err error
-	if l.a, l.auth, err = New(l.cfg, l.keys); err != nil {
+	if l.a, l.auth, err = New(l.cfg); err != nil {
 		t.Fatal(err)
 	}
 	// 用意：ディレクトリがなければ、利用者のトークンで、用意のコミットを main に置く（init-directory の署名）。

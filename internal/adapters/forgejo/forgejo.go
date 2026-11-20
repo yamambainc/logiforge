@@ -17,16 +17,14 @@ import (
 )
 
 // New は、Forgejo の GitForge アダプタと認証のアダプタを作る。
-func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth) {
+func New(cfg Config) (*pullreq.Adapter, *Auth) {
 	c := &client{cfg: cfg}
-	return &pullreq.Adapter{Repos: repos{c, keys}, API: api{c}}, &Auth{c: c}
+	return &pullreq.Adapter{Repos: repos{c}, API: api{c}}, &Auth{c: c}
 }
 
 // repos は、organization の repository の列挙と用意である。
 type repos struct {
 	*client
-	// keys は、用意のコミットの署名に使う。
-	keys pullreq.Keyring
 }
 
 func (r repos) w(ctx context.Context, method, path string, in, out any) error {
@@ -127,14 +125,6 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 	mainExisted := true
 	if err := r.w(ctx, http.MethodGet, rp+"/branches/main", nil, nil); statusOf(err) == http.StatusNotFound {
 		mainExisted = false
-		// 根のコミットにも、署名を付ける。worker は、それで用意のコミットと決める（design/backend/verify/README.md）。
-		repoID, err := api{r.client}.RepoID(ctx, gitForgeRef)
-		if err != nil {
-			return err
-		}
-		if message, err = r.keys.InitMessage(message, pullreq.InitScope{Kind: ports.InitRoot, RepoID: repoID}, files); err != nil {
-			return err
-		}
 		var ops []map[string]string
 		for _, f := range files {
 			ops = append(ops, map[string]string{"operation": "create", "path": f.Path, "content": base64.StdEncoding.EncodeToString(f.Content)})
@@ -400,28 +390,11 @@ func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []
 	} else if statusOf(err) != http.StatusNotFound {
 		return err
 	}
-	repoID, err := api{r.client}.RepoID(ctx, ref)
-	if err != nil {
-		return err
-	}
-	if message, err = r.keys.InitMessage(message, pullreq.InitScope{Kind: ports.InitDirectory, RepoID: repoID, Directory: dir, MigratedFrom: migratedFrom(message)}, files); err != nil {
-		return err
-	}
 	var ops []map[string]string
 	for _, f := range files {
 		ops = append(ops, map[string]string{"operation": "create", "path": dir + "/" + f.Path, "content": base64.StdEncoding.EncodeToString(f.Content)})
 	}
 	return r.w(ctx, http.MethodPost, rp+"/contents", map[string]any{"branch": "main", "message": message, "files": ops}, nil)
-}
-
-// migratedFrom は、メッセージの trailer Logiforge-Migrated-From: の値を返す。なければ空（design/directory/migrate.md）。
-func migratedFrom(message string) string {
-	for _, l := range strings.Split(message, "\n") {
-		if v, ok := strings.CutPrefix(l, "Logiforge-Migrated-From: "); ok {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func escapePath(p string) string {

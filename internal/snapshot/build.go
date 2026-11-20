@@ -18,10 +18,6 @@ const TrailerApplyRequest = "Logiforge-Apply-Request"
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"
 
-// TrailerInitSignature は、repository の用意の 2 つ目のコミット（GitHub で背景情報を置く）の署名の trailer である
-// （design/backend/verify/init.md の「repository の用意のコミット」）。
-const TrailerInitSignature = "Logiforge-Init-Signature"
-
 // TrailerMigratedFrom は、別リポジトリ方式から移したときの、用意のコミットの trailer である（design/directory/migrate.md）。
 const TrailerMigratedFrom = "Logiforge-Migrated-From"
 

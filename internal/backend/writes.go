@@ -63,13 +63,6 @@ func requireSession(session string) error {
 	return nil
 }
 
-func (b *Backend) now() time.Time {
-	if b.Now != nil {
-		return b.Now()
-	}
-	return time.Now()
-}
-
 // waitLatest は、done が真になるまで、上限つきで待つ。上限を過ぎたら false を返す。
 // worker は起こさない。worker が見回りで git を見て、latest を進める（design/api/writes.md の「書いた直後の読み」）。
 func (b *Backend) waitLatest(ctx context.Context, repo string, done func(latest string) bool) bool {

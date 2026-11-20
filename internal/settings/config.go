@@ -2,10 +2,7 @@ package settings
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"sort"
@@ -57,7 +54,6 @@ var fields = []field{
 	{"github.client_secret", backendOnly, func(c *Config) *string { return &c.GitHub.ClientSecret }},
 	{"interval.patrol", plain, func(c *Config) *string { return &c.Intervals.Patrol }},
 	{"interval.list", plain, func(c *Config) *string { return &c.Intervals.List }},
-	{"interval.record", plain, func(c *Config) *string { return &c.Intervals.Record }},
 	{"interval.git_timeout", plain, func(c *Config) *string { return &c.Intervals.GitTimeout }},
 	{"interval.wait_timeout", plain, func(c *Config) *string { return &c.Intervals.WaitTimeout }},
 }
@@ -72,8 +68,6 @@ type Config struct {
 	Intervals Intervals     `json:"intervals,omitzero"`
 	// Repositories は、登録した repository（GitHub リポジトリの repository と、ディレクトリの repository）である。
 	Repositories []Repository `json:"repositories,omitempty"`
-	// RecordKeys は、記録の署名の鍵である。最初のものが、書くときの鍵。
-	RecordKeys []RecordKey `json:"record_keys,omitempty"`
 }
 
 // ForgejoConfig は、Forgejo を使う構成の設定である。
@@ -102,7 +96,6 @@ type GitHubConfig struct {
 type Intervals struct {
 	Patrol      string `json:"patrol,omitempty"`
 	List        string `json:"list,omitempty"`
-	Record      string `json:"record,omitempty"`
 	GitTimeout  string `json:"git_timeout,omitempty"`
 	WaitTimeout string `json:"wait_timeout,omitempty"`
 }
@@ -112,15 +105,6 @@ type Repository struct {
 	Name        string `json:"name"`
 	GitForgeRef string `json:"gitforge_ref"`
 	Directory   string `json:"directory,omitempty"`
-}
-
-// RecordKey は、記録の署名の鍵である。Seed は Ed25519 の種（32 バイト）で、バックエンドの鍵で読めたときだけ入る。
-// 読み込みの JSON では、Seed のかわりに Secret（任意の文字列。種はその SHA-256）でも渡せる。
-type RecordKey struct {
-	ID     string            `json:"id"`
-	Seed   []byte            `json:"seed,omitempty"`
-	Secret string            `json:"secret,omitempty"`
-	Public ed25519.PublicKey `json:"-"`
 }
 
 // Keys は、DB を読み書きする鍵である。worker は Shared だけを持つ。
@@ -191,9 +175,6 @@ func (d *DB) Load(ctx context.Context, keys Keys) (*Config, error) {
 	if c.Repositories, err = loadRepositories(ctx, tx); err != nil {
 		return nil, err
 	}
-	if c.RecordKeys, err = loadRecordKeys(ctx, tx, keys.Backend); err != nil {
-		return nil, err
-	}
 	return c, nil
 }
 
@@ -214,38 +195,10 @@ func loadRepositories(ctx context.Context, tx *sql.Tx) ([]Repository, error) {
 	return out, rows.Err()
 }
 
-// loadRecordKeys は、記録の署名の鍵を、書くときの鍵を先頭にして読む。backend がなければ、公開鍵だけを読む。
-func loadRecordKeys(ctx context.Context, tx *sql.Tx, backend *Key) ([]RecordKey, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT key_id, public_key, private_key FROM record_keys ORDER BY is_primary DESC, created_at, key_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []RecordKey
-	for rows.Next() {
-		var id, pub, priv string
-		if err := rows.Scan(&id, &pub, &priv); err != nil {
-			return nil, err
-		}
-		k := RecordKey{ID: id}
-		if k.Public, err = base64.StdEncoding.DecodeString(pub); err != nil || len(k.Public) != ed25519.PublicKeySize {
-			return nil, fmt.Errorf("settings: 記録の鍵 %s の公開鍵の形が正しくない", id)
-		}
-		if backend != nil {
-			if k.Seed, err = backend.open("record_key."+id, priv); err != nil {
-				return nil, err
-			}
-		}
-		out = append(out, k)
-	}
-	return out, rows.Err()
-}
-
 // Save は、c を設定の DB に書く。渡した設定の全体で置き換える。空の値は、その設定を消す。by は、書いた主体（コマンドなら空でもよい）。
 // `logiforge settings load` のためのものである。設定の API からは使わない。
 // なぜ：API と画面は秘密を返さないので、読んだものを書き直すと、秘密が消えるから。API には、送った項目だけを置き換える書き方を別に作る。
 // repository の一覧は、c にあるものを足し（同じ名前なら同じ組であることを確かめる）、c にないものは外す。
-// 記録の鍵は、足すだけで、消さない（それまでの記録を確かめるため）。
 func (d *DB) Save(ctx context.Context, keys Keys, c *Config, by string) error {
 	if err := c.check(); err != nil {
 		return err
@@ -277,7 +230,8 @@ func (d *DB) Save(ctx context.Context, keys Keys, c *Config, by string) error {
 		if err := saveRepositories(ctx, tx, c.Repositories, at, by); err != nil {
 			return err
 		}
-		return saveRecordKeys(ctx, tx, keys.Backend, c.RecordKeys, at)
+		// `settings load` で入れた設定は、セットアップを終わったものとする（design/settings/README.md）。
+		return markSetupDone(ctx, tx, at)
 	})
 }
 
@@ -344,53 +298,6 @@ func dirSuffix(d string) string {
 	return ":" + d
 }
 
-// minSecretLen は、記録の鍵の secret の短さの下限（バイト）である。
-const minSecretLen = 32
-
-// saveRecordKeys は、まだない記録の鍵を足す。先頭の鍵を、書くときの鍵にする。
-func saveRecordKeys(ctx context.Context, tx *sql.Tx, backend *Key, ks []RecordKey, at string) error {
-	if len(ks) == 0 {
-		return nil
-	}
-	if backend == nil {
-		return errors.New("settings: 記録の鍵を書くには、バックエンドの鍵が要る")
-	}
-	for i, k := range ks {
-		seed := k.Seed
-		if len(seed) == 0 && k.Secret != "" {
-			// 短い文字列から作ると、弱い鍵になる。32 バイト以上に限る。
-			if len(k.Secret) < minSecretLen {
-				return fmt.Errorf("settings: 記録の鍵 %s の secret は、%d バイト以上の乱数にする", k.ID, minSecretLen)
-			}
-			h := sha256.Sum256([]byte(k.Secret))
-			seed = h[:]
-		}
-		if len(seed) != ed25519.SeedSize {
-			return fmt.Errorf("settings: 記録の鍵 %s には、32 バイトの seed か secret が要る", k.ID)
-		}
-		pub := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
-		var have string
-		err := tx.QueryRowContext(ctx, `SELECT public_key FROM record_keys WHERE key_id = ?`, k.ID).Scan(&have)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			if _, err := tx.ExecContext(ctx, `INSERT INTO record_keys (key_id, public_key, private_key, created_at, is_primary) VALUES (?, ?, ?, ?, 0)`,
-				k.ID, base64.StdEncoding.EncodeToString(pub), backend.seal("record_key."+k.ID, seed), at); err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		case have != base64.StdEncoding.EncodeToString(pub):
-			return fmt.Errorf("settings: 記録の鍵 %s は、ほかの鍵で登録してある。鍵の ID を変える", k.ID)
-		}
-		if i == 0 {
-			if _, err := tx.ExecContext(ctx, `UPDATE record_keys SET is_primary = (key_id = ?)`, k.ID); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // check は、書く前に、値の形を確かめる。
 func (c *Config) check() error {
 	switch c.GitForge {
@@ -398,7 +305,7 @@ func (c *Config) check() error {
 	default:
 		return fmt.Errorf("settings: gitforge は %s か %s：%q", GitForgeForgejo, GitForgeGitHub, c.GitForge)
 	}
-	for _, f := range []struct{ name, v string }{{"patrol", c.Intervals.Patrol}, {"list", c.Intervals.List}, {"record", c.Intervals.Record},
+	for _, f := range []struct{ name, v string }{{"patrol", c.Intervals.Patrol}, {"list", c.Intervals.List},
 		{"git_timeout", c.Intervals.GitTimeout}, {"wait_timeout", c.Intervals.WaitTimeout}} {
 		if f.v == "" {
 			continue
@@ -440,9 +347,6 @@ func (c *Config) Ready() error {
 		}
 	default:
 		miss = append(miss, "gitforge")
-	}
-	if len(c.RecordKeys) == 0 {
-		miss = append(miss, "record_keys")
 	}
 	if len(miss) == 0 {
 		return nil

@@ -25,8 +25,6 @@ type Backend struct {
 	Git GitReader
 	// WaitTimeout は、書いたものが読む側に出るまで待つ時間の上限（design/api/writes.md の「書いた直後の読み」）。0 なら 10 秒。
 	WaitTimeout time.Duration
-	// Now は、時刻を返す。nil なら time.Now。
-	Now func() time.Time
 }
 
 // GitReader は、apply request の作成で、git からブランチを読むことである。実装は internal/workcopy の作業用の複製で、

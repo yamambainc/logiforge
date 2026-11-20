@@ -32,7 +32,6 @@ func sample() *Config {
 			OAuthClientID: "cid", OAuthClientSecret: "csecret"},
 		Intervals:    Intervals{Patrol: "1s", List: "10s"},
 		Repositories: []Repository{{Name: "q", GitForgeRef: "acme/app", Directory: "logiforge/q"}},
-		RecordKeys:   []RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef-test"}},
 	}
 }
 
@@ -58,13 +57,13 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Forgejo.WorkerToken != "wtok" || got.Forgejo.OAuthClientSecret != "csecret" || len(got.RecordKeys) != 1 || len(got.RecordKeys[0].Seed) != 32 {
+	if got.Forgejo.WorkerToken != "wtok" || got.Forgejo.OAuthClientSecret != "csecret" {
 		t.Fatalf("読めない：%+v", got)
 	}
 	if err := got.Ready(); err != nil {
 		t.Fatal(err)
 	}
-	// worker は、共有の鍵だけで、読むだけで開く。バックエンドだけの秘密と、記録の秘密鍵は読めない。
+	// worker は、共有の鍵だけで、読むだけで開く。バックエンドだけの秘密は読めない。
 	ro, err := Open(p, true)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +73,7 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Forgejo.WorkerToken != "wtok" || w.Forgejo.OAuthClientSecret != "" || w.RecordKeys[0].Seed != nil || len(w.RecordKeys[0].Public) != 32 {
+	if w.Forgejo.WorkerToken != "wtok" || w.Forgejo.OAuthClientSecret != "" {
 		t.Fatalf("worker が読めるものが違う：%+v", w)
 	}
 	if err := ro.Save(ctx, Keys{Shared: keys.Shared}, sample(), ""); err == nil {
@@ -151,14 +150,14 @@ func TestRevisionAndRekey(t *testing.T) {
 	}
 	next := testKeys(t)
 	n, err := d.Rekey(ctx, keys, next)
-	if err != nil || n != 3 {
+	if err != nil || n != 2 { // 秘密 2 つ（worker のトークンと client secret）
 		t.Fatalf("rekey：%d %v", n, err)
 	}
 	if n, err := d.Rekey(ctx, keys, next); err != nil || n != 0 {
 		t.Fatalf("2 度目の rekey：%d %v", n, err)
 	}
 	got, err := d.Load(ctx, next)
-	if err != nil || got.Forgejo.OAuthClientSecret != "csecret" || len(got.RecordKeys[0].Seed) != 32 {
+	if err != nil || got.Forgejo.OAuthClientSecret != "csecret" {
 		t.Fatalf("新しい鍵で読めない：%+v %v", got, err)
 	}
 	if _, err := d.Load(ctx, keys); err == nil {
@@ -243,8 +242,8 @@ func TestReadOnlyConnectionCannotWrite(t *testing.T) {
 	if _, err := ro.db.ExecContext(ctx, `INSERT INTO settings (name, value, updated_at) VALUES ('x', 'y', 'z')`); err == nil {
 		t.Fatal("読むだけの接続で、SQLite に書けた")
 	}
-	if _, err := ro.db.ExecContext(ctx, `UPDATE record_keys SET public_key = 'x'`); err == nil {
-		t.Fatal("読むだけの接続で、記録の公開鍵を書き換えられた")
+	if _, err := ro.db.ExecContext(ctx, `UPDATE repositories SET gitforge_ref = 'x/y'`); err == nil {
+		t.Fatal("読むだけの接続で、repository の一覧を書き換えられた")
 	}
 }
 
@@ -261,16 +260,6 @@ func TestPathWithSpecialCharacters(t *testing.T) {
 	d.Close()
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("そのパスに作られていない：%v", err)
-	}
-}
-
-// 記録の鍵の secret は、短い文字列を断る。
-func TestShortRecordSecret(t *testing.T) {
-	d, _ := openRW(t)
-	c := sample()
-	c.RecordKeys = []RecordKey{{ID: "k1", Secret: "short"}}
-	if err := d.Save(context.Background(), testKeys(t), c, ""); err == nil {
-		t.Fatal("短い secret で、記録の鍵を作れた")
 	}
 }
 
@@ -376,5 +365,53 @@ func TestWebUISessions(t *testing.T) {
 	}
 	if _, ok, _ := d.WebUISessionOf(ctx, keys, "h1"); ok {
 		t.Fatal("rekey でセッションを消していない")
+	}
+}
+
+// 前の版（記録の署名の鍵と、記録を読む間隔があった版 1）の DB を開くと、それらを消し、版を 2 に上げる。
+func TestMigrateDropsRecordKeys(t *testing.T) {
+	ctx := context.Background()
+	p := filepath.Join(t.TempDir(), "old.db")
+	d, err := Open(p, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE record_keys (key_id TEXT PRIMARY KEY, public_key TEXT NOT NULL, private_key TEXT NOT NULL, created_at TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0)`,
+		`INSERT INTO record_keys VALUES ('k1', 'pub', 'priv', 'now', 1)`,
+		`INSERT INTO settings (name, value, updated_at) VALUES ('interval.record', '30s', 'now')`,
+		`UPDATE meta SET value = '1' WHERE name = 'schema_version'`,
+	} {
+		if _, err := d.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.Close()
+	if d, err = Open(p, false); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var n int
+	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE name = 'record_keys'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("record_keys が残った：%d %v", n, err)
+	}
+	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE name = 'interval.record'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("interval.record が残った：%d %v", n, err)
+	}
+	var v string
+	if err := d.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE name = 'schema_version'`).Scan(&v); err != nil || v != "2" {
+		t.Fatalf("版：%q %v", v, err)
+	}
+}
+
+// `settings load`（Save）で設定を入れると、セットアップを終わったものとする。
+func TestSaveMarksSetupDone(t *testing.T) {
+	d, _ := openRW(t)
+	ctx := context.Background()
+	if err := d.Save(ctx, testKeys(t), sample(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if done, err := d.SetupDone(ctx); err != nil || !done {
+		t.Fatalf("終わっていない：%v %v", done, err)
 	}
 }

@@ -293,16 +293,6 @@ func WithFresh(ctx context.Context) context.Context { return context.WithValue(c
 // Fresh は、ctx が、キャッシュを使わない問い合わせかを返す。
 func Fresh(ctx context.Context) bool { v, _ := ctx.Value(freshKey{}).(bool); return v }
 
-// 用意のコミットの種類（design/backend/verify/init.md の「用意のコミットの署名」）。
-const (
-	// InitRoot は、根のコミットである。
-	InitRoot = "init-root"
-	// InitSecond は、GitHub で、根の次に背景情報を置くコミットである。
-	InitSecond = "init-second"
-	// InitDirectory は、ディレクトリの repository の用意のコミットである。
-	InitDirectory = "init-directory"
-)
-
 // tokenKey は、GitForge を呼ぶ主体のトークンを、ctx で渡す鍵である。
 type tokenKey struct{}
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
@@ -78,22 +76,6 @@ func openSettings(backend bool) (*settings.DB, settings.Keys, error) {
 		return nil, keys, err
 	}
 	return db, keys, nil
-}
-
-// keyringOf は、設定の DB の記録の鍵から、Keyring を作る。種がなければ（worker）、公開鍵だけの Keyring にする。
-func keyringOf(ks []settings.RecordKey) (pullreq.Keyring, error) {
-	if len(ks) > 0 && ks[0].Seed != nil {
-		ids, seeds := make([]string, len(ks)), make([][]byte, len(ks))
-		for i, k := range ks {
-			ids[i], seeds[i] = k.ID, k.Seed
-		}
-		return pullreq.NewKeyring(ids, seeds)
-	}
-	ring := pullreq.Keyring{Public: map[string]ed25519.PublicKey{}}
-	for _, k := range ks {
-		ring.Public[k.ID] = k.Public
-	}
-	return ring, nil
 }
 
 // runServe は、バックエンドの API を動かす。
@@ -236,11 +218,7 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if err := c.Ready(); err != nil {
 		return nil, nil, err
 	}
-	ring, err := keyringOf(c.RecordKeys)
-	if err != nil {
-		return nil, nil, err
-	}
-	fs, err := setupForge(c, ring, true, nil)
+	fs, err := setupForge(c, true, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -446,20 +424,15 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 	if err := c.Ready(); err != nil {
 		return nil, 0, err
 	}
-	pub, err := keyringOf(c.RecordKeys)
-	if err != nil {
-		return nil, 0, err
-	}
-	pub = pub.VerifyOnly()
 	interval := settings.Duration(c.Intervals.Patrol, worker.DefaultInterval)
 	gitTimeout := settings.Duration(c.Intervals.GitTimeout, worker.DefaultGitTimeout)
 	listInterval := settings.Duration(c.Intervals.List, worker.DefaultListInterval)
-	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
+	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。
 	var tokens github.TokenSource
 	if c.GitForge == gitforgeGitHub && c.GitHub.AppID != "" {
 		tokens = dbTokens{db: db, keys: keys}
 	}
-	fs, err := setupForge(c, pub, false, tokens)
+	fs, err := setupForge(c, false, tokens)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -469,7 +442,7 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 		return nil, 0, fmt.Errorf("git の操作の時間の上限（%v）は、GitHub を使う構成では %v より短くする", gitTimeout, github.RefreshBefore)
 	}
 	src := fs.reader
-	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
+	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src}
 	w := worker.New(worker.Config{Dir: dir, GitEnv: gitEnv, GitCredentials: src.GitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
 		Verifier: v}, src, st)
 	slog.Info("worker の設定を読んだ", "interval", interval, "git_timeout", gitTimeout)

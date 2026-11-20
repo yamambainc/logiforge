@@ -44,7 +44,4 @@ func TestPutAndFinishSetup(t *testing.T) {
 	if err := db.FinishSetup(ctx, keys, "alice"); err != ErrSetupDone {
 		t.Fatalf("2 回目：%v", err)
 	}
-	if c, _ := db.Load(ctx, keys); len(c.RecordKeys) != 1 || c.RecordKeys[0].Seed == nil {
-		t.Fatalf("記録の鍵：%+v", c.RecordKeys)
-	}
 }

@@ -15,7 +15,7 @@ import (
 )
 
 // schemaVersion は、DB の中の表の形の版である。値の形を変えるときは上げ、migrate で移す（design/settings/database.md の「表」）。
-const schemaVersion = 1
+const schemaVersion = 2
 
 // ErrNoDB は、読むだけで開こうとした設定の DB のファイルが、まだないことである。
 var ErrNoDB = errors.New("設定の DB のファイルがない")
@@ -75,12 +75,14 @@ func (d *DB) migrate(ctx context.Context) error {
 			updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE IF NOT EXISTS repositories (name TEXT PRIMARY KEY, gitforge_ref TEXT NOT NULL, directory TEXT NOT NULL DEFAULT '',
 			removed INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')`,
-		`CREATE TABLE IF NOT EXISTS record_keys (key_id TEXT PRIMARY KEY, public_key TEXT NOT NULL, private_key TEXT NOT NULL,
-			created_at TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS worker_tokens (owner TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL, repositories TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS webui_sessions (id_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, access_token TEXT NOT NULL,
 			access_expires_at TEXT NOT NULL, refresh_token TEXT NOT NULL, created_at TEXT NOT NULL, used_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS setup (id INTEGER PRIMARY KEY CHECK (id = 1), token_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, done_at TEXT NOT NULL DEFAULT '')`,
+		// 版 2：記録の署名の鍵と、記録を読む間隔をなくした（design/settings/database.md）。前の版の DB からも消す。
+		// なぜ消すか：使わない秘密鍵を、暗号文でも残さないため。
+		`DROP TABLE IF EXISTS record_keys`,
+		`DELETE FROM settings WHERE name = 'interval.record'`,
 	}
 	return d.write(ctx, func(tx *sql.Tx) error {
 		for _, s := range stmts {
@@ -97,8 +99,13 @@ func (d *DB) migrate(ctx context.Context) error {
 		case err != nil:
 			return err
 		}
-		if n, _ := strconv.Atoi(v); n > schemaVersion {
+		n, _ := strconv.Atoi(v)
+		if n > schemaVersion {
 			return fmt.Errorf("設定の DB の版（%s）が、このバイナリ（%d）より新しい。新しいバイナリで動かす", v, schemaVersion)
+		}
+		if n < schemaVersion {
+			_, err = tx.ExecContext(ctx, `UPDATE meta SET value = ? WHERE name = 'schema_version'`, strconv.Itoa(schemaVersion))
+			return err
 		}
 		return nil
 	})

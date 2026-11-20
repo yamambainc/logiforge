@@ -34,11 +34,6 @@ func (s *checkedSource) VerifyMerge(_ context.Context, r ports.Repository, sha s
 	return ports.MergeVerdict{Pending: true, Detail: "merge した pull request が見つからない"}, nil
 }
 
-// VerifyInit は、署名が "ok" のときだけ合うとする。
-func (s *checkedSource) VerifyInit(_ context.Context, _ ports.Repository, _, _, _, sig string, _ map[string]string) (bool, error) {
-	return sig == "ok", nil
-}
-
 func checked(dir string) *checkedSource {
 	return &checkedSource{source: source{dir}, merged: map[string]bool{}, kinds: map[string]string{}}
 }
@@ -207,23 +202,19 @@ func TestBrokenWaitsForMergeLookup(t *testing.T) {
 	}
 }
 
-// 根のコミットは、署名（Logiforge-Init-Signature:）で用意のコミットと決める。署名がなければ、取り込まない。
-func TestRootNeedsInitSignature(t *testing.T) {
+// 根のコミットは、位置と trailer Logiforge-Init: で用意のコミットと決める（design/backend/verify/init.md）。trailer がなければ、取り込まない。
+func TestRootNeedsInitTrailer(t *testing.T) {
 	ctx := context.Background()
-	for sig, ok := range map[string]bool{"ok": true, "": false, "bad": false} {
+	for msg, ok := range map[string]bool{"用意\n\nLogiforge-Init: 1": true, "用意": false} {
 		r := newRemote(t)
 		r.write(h0+"/hypothesis.md", []byte("x"))
-		msg := "用意\n\nLogiforge-Init: 1"
-		if sig != "" {
-			msg += "\nLogiforge-Init-Signature: " + sig
-		}
 		r.commit(msg)
 		src := checked(r.dir)
 		st := &store.Dir{Root: t.TempDir()}
 		w := New(Config{Dir: t.TempDir(), Verifier: src}, src, st)
 		err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"})
 		if latest, _ := store.GetLatest(ctx, st, "q"); (err == nil) != ok || (latest != "") != ok {
-			t.Errorf("署名 %q：err %v latest %q", sig, err, latest)
+			t.Errorf("メッセージ %q：err %v latest %q", msg, err, latest)
 		}
 	}
 }

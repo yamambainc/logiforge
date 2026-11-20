@@ -69,24 +69,6 @@ func (p pullJSON) pull() pullreq.Pull {
 	return pr
 }
 
-// RepoID は、GitHub の repository の node_id を返す。名前を変えても、owner を移しても変わらない。用意のコミットの署名に使う。
-func (a api) RepoID(ctx context.Context, repo string) (string, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return "", err
-	}
-	var r struct {
-		NodeID string `json:"node_id"`
-	}
-	if err := a.w(ctx, repo, http.MethodGet, rp, nil, &r); err != nil {
-		if statusOf(err) == http.StatusNotFound {
-			return "", ports.ErrNotFound
-		}
-		return "", err
-	}
-	return "github:" + r.NodeID, nil
-}
-
 func (a api) CreatePull(ctx context.Context, repo, head, title, body string) (pullreq.Pull, error) {
 	rp, err := repoPath(repo)
 	if err != nil {

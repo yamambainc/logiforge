@@ -35,7 +35,6 @@ type live struct {
 	repo, token, read string
 	app               *App
 	cfg               Config
-	keys              pullreq.Keyring
 	a                 *pullreq.Adapter
 	auth              *Auth
 	asUser, asReader  context.Context
@@ -64,10 +63,7 @@ func liveEnv(t *testing.T) *live {
 			t.Fatal(err)
 		}
 	}
-	if l.keys, err = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"github-integration-test"}); err != nil {
-		t.Fatal(err)
-	}
-	if l.a, l.auth, err = New(l.cfg, l.keys); err != nil {
+	if l.a, l.auth, err = New(l.cfg); err != nil {
 		t.Fatal(err)
 	}
 	l.asUser = ports.WithToken(context.Background(), l.token)
@@ -98,9 +94,8 @@ func (l *live) must(dir string, args ...string) string {
 
 // verifier は、cmd/logiforge の verifier と同じく、worker の判定をバックエンドの規則で、読むだけのトークンで行う。
 type verifier struct {
-	b    *backend.Backend
-	src  *WorkerSource
-	keys pullreq.Keyring
+	b   *backend.Backend
+	src *WorkerSource
 }
 
 func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
@@ -111,18 +106,6 @@ func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha strin
 	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, committed, files, broken)
 }
 
-func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, sig string, added map[string]string) (bool, error) {
-	id, err := v.src.RepoID(ctx, r.GitForgeRef)
-	if err != nil {
-		return false, err
-	}
-	var fs []pullreq.InitFile
-	for p, s := range added {
-		fs = append(fs, pullreq.InitFile{Path: p, SHA256: s})
-	}
-	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Directory: r.Directory(), Parent: parent, MigratedFrom: migratedFrom}, fs, sig) == nil, nil
-}
-
 // worker は、読むだけのトークン（なければトークンなし）で、repository を取り込む worker と、その置き場を作る。
 func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
 	src, err := NewWorkerSource(l.cfg, l.app)
@@ -130,12 +113,11 @@ func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
 		l.t.Fatal(err)
 	}
 	st := &store.Dir{Root: l.t.TempDir()}
-	pub := l.keys.VerifyOnly()
-	forge, _, err := New(l.cfg, pub)
+	forge, _, err := New(l.cfg)
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
+	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, src: src}
 	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Verifier: v}, src, st)
 	return w, st, v
 }
@@ -333,14 +315,6 @@ func TestGitHubLive(t *testing.T) {
 	}
 }
 
-func mustRepoID(t *testing.T, l *live) string {
-	id, err := api{&forge{cfg: l.cfg, c: newClient("", nil)}}.RepoID(l.asReader, l.repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return id
-}
-
 func hasWarning(c snapshot.Commit, rule tree.Rule) bool {
 	for _, w := range c.Warnings {
 		if w.Rule == rule {
@@ -373,18 +347,18 @@ func TestGitHubLiveApp(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "refs/heads/main") {
 		t.Fatalf("App のトークンで git を読めない：%v %s", err, out)
 	}
-	// REST：RepoID を読める。
-	if _, err := src.RepoID(ctx, l.repo); err != nil {
-		t.Fatalf("App のトークンで RepoID を読めない：%v", err)
-	}
-	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository）を読める")
-
-	// 書けない：issue を作ろうとすると断られる。
+	// REST：repository を読める。
 	tok, err := src.ReadToken(ctx, l.repo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rp, _ := repoPath(l.repo)
+	if err := newClient("", nil).do(ctx, tok, "GET", rp, nil, nil); err != nil {
+		t.Fatalf("App のトークンで repository を読めない：%v", err)
+	}
+	t.Log("確かめた：installation token で、git（ls-remote）と REST（repository）を読める")
+
+	// 書けない：issue を作ろうとすると断られる。
 	err = newClient("", nil).do(ctx, tok, "POST", rp+"/issues", map[string]string{"title": "書けてはいけない"}, nil)
 	if s := statusOf(err); s != http.StatusForbidden && s != http.StatusNotFound {
 		t.Fatalf("App のトークンで issue を作れた、か違う誤り：%v", err)
@@ -398,11 +372,7 @@ func TestGitHubLiveApp(t *testing.T) {
 	if err := newClient("", nil).do(ctx, l.token, "GET", rp, nil, &repo); err != nil {
 		t.Fatal(err)
 	}
-	anon, err := NewWorkerSource(l.cfg, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = anon.RepoID(ctx, l.repo)
+	err = newClient("", nil).do(ctx, "", "GET", rp, nil, nil)
 	switch {
 	case repo.Private && err == nil:
 		t.Fatal("private をトークンなしで読めた")

@@ -607,16 +607,11 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 // prevVersion は、1 つ前の版の SHA である。判定は、その版の木に重ねて行う。
 type Verifier interface {
 	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
-	// VerifyInit は、用意のコミットの trailer Logiforge-Init-Signature: が、種類 kind（ports.InitRoot、ports.InitSecond、ports.InitDirectory）、
-	// repository（ディレクトリを含む）、1 つ前のコミット parent（init-second のほかは空）、移した元 migratedFrom、
-	// 加えたファイル（パスから中身の sha256。ディレクトリの repository では、ディレクトリの中のパス）に対する署名かを確かめる。
-	VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error)
 }
 
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
-// 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、trailer Logiforge-Init-Signature: の署名と、
-// 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。
-// なぜ根も署名で決めるか：GitHub では、repository の admin が Write を与えてから用意するまでのあいだに、ほかの人が根を push できるから。
+// 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、位置と trailer Logiforge-Init: と、
+// 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。署名は使わない。
 //
 // version は、このコミットの前の版の数（最初の版なら 0）、prevVersion は 1 つ前の版の SHA である。git リポジトリ全体の repository では、
 // どのコミットも版なので、git の first-parent と同じである。ディレクトリの repository では、1 つ前の版は、git の親とは限らない。
@@ -626,19 +621,15 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 		return nil, nil
 	}
 	if version == 0 {
-		sig := trailerOf(info, snapshot.TrailerInitSignature)
-		if !hasTrailer(info, snapshot.TrailerInit) || sig == "" {
-			return &ports.MergeVerdict{Detail: "最初の版に、Logiforge-Init: と Logiforge-Init-Signature: がない"}, nil
+		// 根のコミットか、ディレクトリの repository の版の 1 番（design/directory/history.md の「用意のコミット」）。
+		if !hasTrailer(info, snapshot.TrailerInit) {
+			return &ports.MergeVerdict{Detail: "最初の版に、Logiforge-Init: がない"}, nil
 		}
-		kind := ports.InitRoot
-		if r.Directory() != "" {
-			// ディレクトリの repository の用意のコミット（design/directory/history.md の「用意のコミット」）。
-			kind = ports.InitDirectory
-		}
-		return w.initVerdict(ctx, r, kind, "", sig, info, changes, outside, files)
+		return initVerdict(changes, outside), nil
 	}
-	if sig := trailerOf(info, snapshot.TrailerInitSignature); r.Directory() == "" && version == 1 && sig != "" && len(parents) == 1 {
-		return w.initVerdict(ctx, r, ports.InitSecond, parents[0], sig, info, changes, outside, files)
+	// GitHub で背景情報を置く、根の次のコミット。1 つ前の版（根）は、用意のコミットとして取り込み済みである。
+	if r.Directory() == "" && version == 1 && hasTrailer(info, snapshot.TrailerInit) && len(parents) == 1 {
+		return initVerdict(changes, outside), nil
 	}
 	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, info.CommittedAt, files, br)
 	if err != nil {
@@ -699,34 +690,17 @@ func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repositor
 	return &v, nil
 }
 
-// initVerdict は、用意のコミットを確かめる。差分は、ファイルを加えることだけで、その中身の sha256 に署名が合う。parent は、根では空。
-func (w *Worker) initVerdict(ctx context.Context, r ports.Repository, kind, parent, sig string, info snapshot.CommitInfo, changes []gitx.Change, outside []string, files tree.Files) (*ports.MergeVerdict, error) {
+// initVerdict は、用意のコミットを確かめる。差分は、ファイルを加えることだけである。
+func initVerdict(changes []gitx.Change, outside []string) *ports.MergeVerdict {
 	if len(outside) > 0 {
-		return &ports.MergeVerdict{Detail: "用意のコミットが、ディレクトリの外も変えている（" + strings.Join(outside, "、") + "）"}, nil
+		return &ports.MergeVerdict{Detail: "用意のコミットが、ディレクトリの外も変えている（" + strings.Join(outside, "、") + "）"}
 	}
-	added := map[string]string{}
 	for _, ch := range changes {
 		if ch.Status != "A" {
-			return &ports.MergeVerdict{Detail: "用意のコミットが、ファイルを加えること以外の変更（" + ch.Path + "）を含む"}, nil
-		}
-		f, ok := files[ch.Path]
-		switch {
-		case ok && f.Content != nil:
-			added[ch.Path] = tree.SHA256Hex(f.Content)
-		case ok && f.SHA256 != "":
-			added[ch.Path] = f.SHA256
-		default:
-			return &ports.MergeVerdict{Detail: "用意のコミットの " + ch.Path + " の中身を読めない"}, nil
+			return &ports.MergeVerdict{Detail: "用意のコミットが、ファイルを加えること以外の変更（" + ch.Path + "）を含む"}
 		}
 	}
-	ok, err := w.cfg.Verifier.VerifyInit(ctx, r, kind, parent, trailerOf(info, snapshot.TrailerMigratedFrom), sig, added)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return &ports.MergeVerdict{Detail: "Logiforge-Init-Signature: の署名が合わない"}, nil
-	}
-	return &ports.MergeVerdict{Authorized: true}, nil
+	return &ports.MergeVerdict{Authorized: true}
 }
 
 func trailerOf(info snapshot.CommitInfo, key string) string {

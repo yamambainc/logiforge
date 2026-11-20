@@ -4,12 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"slices"
@@ -20,17 +19,14 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/ports"
-	"github.com/yamambainc/logiforge/internal/snapshot"
 )
-
-var testKeys, _ = pullreq.KeyringFromSecrets([]string{"k1"}, []string{"secret"})
 
 // agentCtx は、テストの主体（fakeAgent）のトークンで GitForge を呼ぶ ctx である。
 func agentCtx() context.Context { return ports.WithToken(context.Background(), fakeAgent) }
 
 func newTestAdapter(t *testing.T) (*fakeGitHub, *pullreq.Adapter, *Auth) {
 	f := newFakeGitHub(t)
-	a, auth, err := New(f.config(), testKeys)
+	a, auth, err := New(f.config())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +34,7 @@ func newTestAdapter(t *testing.T) (*fakeGitHub, *pullreq.Adapter, *Auth) {
 	return f, a, auth
 }
 
-// 用意：空の repository に、根のファイルを contents API で置き、残り（背景情報）を 2 つ目のコミットにまとめ、署名を付ける。
+// 用意：空の repository に、根のファイルを contents API で置き、残り（背景情報）を 2 つ目のコミットにまとめる。署名は付けない。
 // 2 回目は ErrMainExists。
 func TestSetupRepository(t *testing.T) {
 	ctx := agentCtx()
@@ -56,16 +52,8 @@ func TestSetupRepository(t *testing.T) {
 	if !strings.Contains(f.messages[1], "Logiforge-Init: 1") {
 		t.Fatalf("2 つ目のメッセージ：%q", f.messages[1])
 	}
-	// 署名は、repository の識別子、根のコミット、加えたファイルの sha256 に対して合う。
-	sig := lastLine(f.messages[1])
-	value, ok := strings.CutPrefix(sig, snapshot.TrailerInitSignature+": ")
-	sum := sha256.Sum256([]byte("背景"))
-	added := []pullreq.InitFile{{Path: "tree/h-aaaaaaaaaa/background.md", SHA256: hex.EncodeToString(sum[:])}}
-	if !ok || testKeys.VerifyOnly().VerifyInit(pullreq.InitScope{Kind: ports.InitSecond, RepoID: "github:R_x", Parent: mainSHA(1)}, added, value) != nil {
-		t.Fatalf("署名が合わない：%q", sig)
-	}
-	if testKeys.VerifyOnly().VerifyInit(pullreq.InitScope{Kind: ports.InitSecond, RepoID: "github:R_x", Parent: mainSHA(1)}, []pullreq.InitFile{{Path: "tree/h-aaaaaaaaaa/background.md", SHA256: "00"}}, value) == nil {
-		t.Fatal("違う中身でも署名が合った")
+	if strings.Contains(f.messages[0]+f.messages[1], "Logiforge-Init-Signature") {
+		t.Fatalf("署名を付けた：%q", f.messages)
 	}
 	if err := a.SetupRepository(ctx, fakeRepo, files, "m"); !errors.Is(err, ports.ErrMainExists) {
 		t.Fatalf("2 回目：%v", err)
@@ -116,11 +104,6 @@ func TestSetupRepositoryResume(t *testing.T) {
 	if err := a2.SetupRepository(ctx, fakeRepo, other, "m\n\nLogiforge-Init: 1"); !errors.Is(err, ports.ErrMainExists) || f2.commits != 1 {
 		t.Fatalf("別の用意を続けた：%v commits %d", err, f2.commits)
 	}
-}
-
-func lastLine(s string) string {
-	s = strings.TrimRight(s, "\n")
-	return s[strings.LastIndex(s, "\n")+1:]
 }
 
 func TestRegistration(t *testing.T) {
@@ -376,8 +359,8 @@ func TestWorkerSource(t *testing.T) {
 	if got := fill(s, "https://elsewhere.example/acme/x.git"); got != "" {
 		t.Errorf("ほかの URL にトークンを渡した：%q", got)
 	}
-	if id, err := s.RepoID(ctx, fakeRepo); err != nil || id != "github:R_x" {
-		t.Fatalf("RepoID：%q %v", id, err)
+	if err := readRepo(ctx, s); err != nil {
+		t.Fatalf("App のトークンで repository を読めない：%v", err)
 	}
 	// 有効な間は使い回す。登録したリポジトリだけと、読む権限だけを求める。
 	if f.appMinted != 1 {
@@ -416,14 +399,14 @@ func TestWorkerSource(t *testing.T) {
 	if env := gitEnv(anon); len(env) != 0 {
 		t.Fatalf("トークンなしなのに GitEnv：%v", env)
 	}
-	if _, err := anon.RepoID(ctx, fakeRepo); err != nil {
+	if err := readRepo(ctx, anon); err != nil {
 		t.Fatalf("public をトークンなしで読めない：%v", err)
 	}
 	f.private = true
-	if _, err := anon.RepoID(ctx, fakeRepo); err == nil {
+	if err := readRepo(ctx, anon); err == nil {
 		t.Fatal("private をトークンなしで読めた")
 	}
-	if _, err := s.RepoID(ctx, fakeRepo); err != nil {
+	if err := readRepo(ctx, s); err != nil {
 		t.Fatalf("private を App で読めない：%v", err)
 	}
 }
@@ -492,4 +475,13 @@ func TestMergeForbidden(t *testing.T) {
 	if err == nil || errors.Is(err, ports.ErrMergeForbidden) {
 		t.Fatalf("制限の 403：%v", err)
 	}
+}
+
+// readRepo は、worker の読むトークン（なければトークンなし）で、repository を REST で読む。
+func readRepo(ctx context.Context, s *WorkerSource) error {
+	tok, err := s.ReadToken(ctx, fakeRepo)
+	if err != nil {
+		return err
+	}
+	return s.c.do(ctx, tok, http.MethodGet, "/repos/"+fakeRepo, nil, nil)
 }
