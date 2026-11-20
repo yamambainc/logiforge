@@ -21,7 +21,7 @@
 
 ## 受け持つ要件
 
-| ルール | 要件 | 実現 |
+| 受け持つもの | 要件 | 実現 |
 |---|---|---|
 | 不変条件 | [仮説とストーリーの木](../../docs/tree/README.md)、[inactive 化](../../docs/tree/inactive.md) | [差分の検査](checks.md) |
 | 反映の条件 | [論理レビュー](../../docs/apply-request/review.md) | [反映の手順](merge.md) |
