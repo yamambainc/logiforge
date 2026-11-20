@@ -85,6 +85,7 @@
 ## 鍵を取り替える
 
 - `logiforge settings rekey` で、新しい鍵で、すべての秘密を暗号化し直す。
+  - WebUI のサインインのセッションは、暗号化し直さずに消す。利用者は、1 度だけサインインし直す（[サインインのセッション](../webui/session.md#消すとき)）。
   - 古い鍵を `--old-backend-key-file` と `--old-shared-key-file` で、新しい鍵を `LOGIFORGE_BACKEND_KEY_FILE` と `LOGIFORGE_SHARED_KEY_FILE` で渡す（[環境変数と秘密](../deploy/env.md)）。
   - 動かすあいだ、バックエンドと worker を止める。
 - 鍵が漏れたときは、鍵を取り替えたうえで、その鍵で守っていた秘密も作り直す。

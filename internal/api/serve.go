@@ -65,6 +65,8 @@ func mountCommon(mux *http.ServeMux, opt Options) {
 	if o := opt.OAuth; o != nil {
 		mux.HandleFunc("GET /v1/oauth/config", o.config)
 		mux.HandleFunc("POST /v1/oauth/token", o.token)
+		mux.HandleFunc("POST /v1/oauth/session", o.session)
+		mux.HandleFunc("POST /v1/oauth/signout", o.signOut)
 	}
 	if opt.WebUI != nil {
 		mux.Handle("/", webUI(opt.WebUI, opt.SetupFormAction))

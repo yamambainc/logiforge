@@ -18,7 +18,8 @@ sequenceDiagram
   B->>BE: POST /v1/oauth/token
   BE->>G: トークンの交換
   G-->>BE: アクセストークンとリフレッシュトークン
-  BE-->>B: アクセストークンと寿命
+  BE->>BE: セッション
+  BE-->>B: アクセストークンと寿命と cookie
   B->>B: 戻り先の URL
 ```
 
@@ -29,7 +30,7 @@ sequenceDiagram
 5. ブラウザは、BE に `code` と `code_verifier` を送る。
 6. BE は、GitForge のトークンのエンドポイントに、`grant_type`、`client_id`、`client_secret`、`code`、`code_verifier`、`redirect_uri` を送る。
 7. GitForge は、アクセストークンとリフレッシュトークンを返す。
-8. BE は、アクセストークンと寿命だけを返す。BE は、どちらのトークンも保持しない。
+8. BE は、リフレッシュトークンをセッションに置き、アクセストークンと寿命を返す。セッションの cookie を付ける（[サインインのセッション](session.md)）。
 9. ブラウザは、アクセストークンをメモリに置き、戻り先の URL を開く。
 
 - GitForge は、構成によって GitHub か Forgejo である。流れは同じである。
@@ -47,10 +48,11 @@ sequenceDiagram
 
 ## authorize とサインインの画面
 
-- WebUI は、次のとき、サインインの画面を出さずに、そのまま authorize に行く。許可済みなら、押す操作なしに、今の URL に戻る。
+- WebUI は、次のとき、まずセッションからアクセストークンをもらう（[サインインのセッション](session.md#webui)）。
   - メモリにアクセストークンがないとき（新しいタブ、リロード、共有されたリンク）
-  - アクセストークンの期限が来たとき
+  - アクセストークンの期限が近いとき
   - API が `unauthenticated`（401）を返したとき。ただし、そのアクセストークンで、API が 1 度は成功したあとに限る（[organization と team に入っていないとき](#organization-と-team-に入っていないとき)）
+- セッションがないか、切れていれば、サインインの画面を出さずに、そのまま authorize に行く。許可済みなら、押す操作なしに、今の URL に戻る。
 - `state`、`code_verifier`、戻り先の URL は、`sessionStorage` に置き、戻ってきたら消す。
   - なぜ `sessionStorage` でよいか：トークンではなく、1 回のサインインのあいだだけ使う値だから。戻り先の URL を `state` に結び付けて持つので、共有されたリンクの画面に戻れる。
 - 戻ってきたら、交換の前に、`history.replaceState` で URL から `code` と `state` を消す。
@@ -81,6 +83,7 @@ sequenceDiagram
 
 モバイルで、共有されたリンクを開いたときは、次のとおりになる。
 
-- そのブラウザで GitForge にログインしていて、許可済みなら、GitForge へ行って、押す操作なしに、リンクの画面に戻る。
+- そのブラウザに、セッションの cookie があれば、GitForge に行かずに、リンクの画面を開く。
+- cookie がなくても、そのブラウザで GitForge にログインしていて、許可済みなら、GitForge へ行って、押す操作なしに、リンクの画面に戻る。
   - かかるのは、画面の行き来 2 回と、BE への 1 回の要求である。
 - チャットのアプリの中のブラウザは、ふだんのブラウザと cookie が別である。初めて開いたときは、GitForge のログインの画面が出る。

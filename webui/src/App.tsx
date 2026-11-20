@@ -37,7 +37,7 @@ export function App() {
         <span className="spacer" />
         {access === 'yes' && <a className={`tab ${route.name === 'settings' ? 'on' : ''}`} href={settingsPath('repository')}
           onClick={(e) => { e.preventDefault(); navigate(settingsPath('repository')); }}>設定</a>}
-        <button className="link" onClick={signOut}>サインアウト</button>
+        <button className="link" onClick={() => void signOut().then((ok) => { if (!ok) window.alert('サインアウトできませんでした。サーバにつながるか確かめて、もう一度押してください。'); })}>サインアウト</button>
       </header>
       {'repo' in route && <BrokenBanner key={route.repo} repo={route.repo} />}
       {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} />

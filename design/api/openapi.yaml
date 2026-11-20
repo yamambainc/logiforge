@@ -70,7 +70,9 @@ paths:
       tags: [oauth]
       operationId: exchangeOAuthCode
       summary: 認可コードをアクセストークンに交換する（BE が client secret を足して GitForge に中継する）
-      description: 認証を求めない。BE は、受け取ったものも返すものも保持しない。決まりは ../../design/webui/oauth-relay.md に従う。GitForge が拒んだら unauthenticated。
+      description: |
+        認証を求めない。決まりは ../../design/webui/oauth-relay.md に従う。GitForge が拒んだら unauthenticated。
+        リフレッシュトークンがあれば、BE がセッションに置き、セッションの cookie（__Host-lf_session、HttpOnly、Secure、SameSite=Strict）を付ける（../../design/webui/session.md）。
       security: []
       requestBody:
         required: true
@@ -88,6 +90,35 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OAuthToken' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+        '5XX': { $ref: '#/components/responses/Problem' }
+  /oauth/session:
+    post:
+      tags: [oauth]
+      operationId: getOAuthSession
+      summary: セッションの cookie から、アクセストークンをもらう（期限が近ければ、BE が GitForge で refresh する）
+      description: |
+        cookie（__Host-lf_session）で認可する。Content-Type: application/json と、WebUI のオリジンの Origin を求める（違えば forbidden）。
+        セッションがない、切れた、GitForge が refresh を断ったときは、セッションと cookie を消して unauthenticated。決まりは ../../design/webui/session.md に従う。
+      security: []
+      responses:
+        '200':
+          description: アクセストークンと、その残りの寿命
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthToken' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+        '5XX': { $ref: '#/components/responses/Problem' }
+  /oauth/signout:
+    post:
+      tags: [oauth]
+      operationId: signOutOAuthSession
+      summary: セッションを消し、cookie を消す
+      description: "Content-Type が application/json で、Origin が WebUI のオリジンであることを求める。GitForge での取り消しはしない（../../design/webui/session.md）。"
+      security: []
+      responses:
+        '204':
+          description: 消した（セッションがなくても 204）
         '4XX': { $ref: '#/components/responses/Problem' }
         '5XX': { $ref: '#/components/responses/Problem' }
 

@@ -15,7 +15,8 @@ import (
 )
 
 // OAuth は、WebUI のサインインの中継の設定である（design/webui/oauth-relay.md）。
-// BE は、Forgejo の OAuth2 の認可コードを、client secret を足してアクセストークンに交換する。状態は持たない。
+// BE は、GitForge の OAuth2 の認可コードを、client secret を足してアクセストークンに交換する。
+// リフレッシュトークンは、セッションの置き場に持ち、ブラウザには渡さない（design/webui/session.md）。
 type OAuth struct {
 	ForgejoURL string // BE から Forgejo への URL。トークンのエンドポイントは、ここから作る
 	// PublicURL は、ブラウザから Forgejo への URL。authorize の URL は、ここから作る。空なら ForgejoURL を使う。
@@ -27,6 +28,8 @@ type OAuth struct {
 	GitForge string
 	// Client は、Forgejo を呼ぶ HTTP のクライアントである。nil なら、10 秒で切るクライアントを使う。
 	Client *http.Client
+	// Sessions は、WebUI のサインインのセッションの置き場である。nil なら、セッションを作らない（再読み込みのたびに authorize に行く）。
+	Sessions SessionStore
 }
 
 // OAuthScope は、WebUI が求めるスコープである（design/webui/auth.md の「スコープ」）。BE は、主体を確かめるほか、
@@ -34,8 +37,9 @@ type OAuth struct {
 const OAuthScope = "read:user read:organization write:organization write:repository write:issue"
 
 // GitHubOAuthScope は、GitHub を使う構成で WebUI が求めるスコープである（design/webui/auth.md の「スコープ」）。
-// repo は private のリポジトリを読み書きするため、read:org は team の所属を確かめるため。
-const GitHubOAuthScope = "repo read:org"
+// GitHub App のトークンの権限は、スコープでは決まらない。offline_access は、App の設定で期限を切っていなくても、
+// 期限つきのアクセストークンとリフレッシュトークンを返させる。
+const GitHubOAuthScope = "offline_access"
 
 func (o *OAuth) scope() string {
 	if o.gitforge() == "github" {
@@ -74,8 +78,9 @@ func (o *OAuth) config(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// token は、POST /v1/oauth/token である。code と code_verifier だけを受け取り、ほかは設定から付けて Forgejo で交換する。
-// 返すのは、アクセストークンと寿命だけである。リフレッシュトークンは返さない（design/webui/auth.md の「トークンの持ち方」）。
+// token は、POST /v1/oauth/token である。code と code_verifier だけを受け取り、ほかは設定から付けて GitForge で交換する。
+// 返すのは、アクセストークンと寿命だけである。リフレッシュトークンは返さず、セッションに置いて cookie を付ける
+// （design/webui/session.md）。
 func (o *OAuth) token(w http.ResponseWriter, r *http.Request) {
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
 		writeProblem(w, &backend.Error{Code: backend.CodeValidationFailed, Detail: "Content-Type は application/json"})
@@ -110,13 +115,16 @@ func (o *OAuth) token(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, &backend.Error{Code: backend.CodeUnavailable, Detail: "Forgejo につながらない"})
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	o.startSession(r.Context(), w, r, out)
+	writeJSON(w, http.StatusOK, map[string]any{"access_token": out.AccessToken, "token_type": out.TokenType, "expires_in": out.ExpiresIn})
 }
 
+// oauthToken は、GitForge の交換の応答である。RefreshToken は、ブラウザに返さない。
 type oauthToken struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 var (

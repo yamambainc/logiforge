@@ -5,12 +5,13 @@ BE の、WebUI のサインインのための要求を実装するときに読�
 
 ## 要求
 
-BE は、WebUI のサインインのために、次の 2 つの要求を持つ。どちらも認証を求めず、状態を持たない。
+BE は、WebUI のサインインのために、次の 2 つの要求を持つ。どちらも認証を求めない。
+セッションの要求（`POST /v1/oauth/session`、`POST /v1/oauth/signout`）は、[サインインのセッション](session.md) に書く。
 
 | 要求 | すること |
 |---|---|
 | `GET /v1/oauth/config` | authorize の URL、`client_id`、`redirect_uri`、スコープ、GitForge の種類（`github` か `forgejo`）を返す |
-| `POST /v1/oauth/token` | `code` と `code_verifier` を受け取り、client secret を足して GitForge で交換し、アクセストークンと寿命だけを返す |
+| `POST /v1/oauth/token` | `code` と `code_verifier` を受け取り、client secret を足して GitForge で交換し、アクセストークンと寿命だけを返す。リフレッシュトークンは、セッションに置く |
 
 ## 設定の読み方
 
@@ -34,19 +35,20 @@ BE は、WebUI のサインインのために、次の 2 つの要求を持つ�
 - 送り先は、設定の DB にある GitForge のトークンのエンドポイントだけである。要求から送り先を受け取らない。
 - 受け取るのは `code` と `code_verifier` だけである。`grant_type`（`authorization_code`）、`client_id`、client secret、`redirect_uri` は、BE が設定の DB から付ける。
 - `Content-Type: application/json` だけを受け付け、本文は 4 KiB までにする。
-- cookie を使わないので、ほかのサイトから呼ばれても、利用者の権限は使われない。JSON だけを受け付けるので、フォームからの送信も通らない。
+- 交換は、cookie で認可しない。ほかのサイトから呼ばれても、利用者の権限は使われない。JSON だけを受け付けるので、フォームからの送信も通らない。
+  - 交換の応答で、セッションの cookie を付ける。ほかのサイトが code を持っていても、cookie は `SameSite=Strict` なので、そのサイトの要求には付かない。
 
 ## GitForge の応答の扱い
 
-- 交換の応答から、`access_token`、`token_type`、`expires_in` だけを返す。`refresh_token` と `refresh_token_expires_in` は返さない（[トークンの持ち方](auth.md#トークンの持ち方)）。
+- 交換の応答から、`access_token`、`token_type`、`expires_in` だけを返す。`refresh_token` と `refresh_token_expires_in` は返さず、`refresh_token` はセッションに置く（[トークンの持ち方](auth.md#トークンの持ち方)）。
 - GitHub には、`Accept: application/json` を付けて交換する。
   - なぜ：付けないと、GitHub は、フォームの形で返すから。
-- GitHub は、交換を拒んだときも、200 で `error` を返す。BE は、`error` があれば、拒まれたものとして扱う。
+- GitHub は、交換や refresh を拒んだときも、200 で `error` を返す。BE は、`access_token` がなければ、拒まれたものとして扱う。
 - GitForge が交換を拒んだら（code が正しくない、使い済み、PKCE が合わない）、BE は `unauthenticated`（401）を返す。
 - GitForge につながらないとき、または GitForge が 5xx を返したときは、`unavailable`（503）を返す。WebUI は、「しばらくしてから、もう一度サインインしてください」と示す。
 
 ## ほかの決まり
 
-- BE は、受け取った code とトークンをログに書かない。
+- BE は、受け取った code、トークン、セッション ID をログに書かない。
 - 詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig` と `exchangeOAuthCode` に書く。
 - サインインに使うアプリを作り、client_id と client secret を設定の DB に置く手順は、[初回のセットアップ](../settings/setup.md) に書く。

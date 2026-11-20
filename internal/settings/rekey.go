@@ -90,6 +90,10 @@ func (d *DB) Rekey(ctx context.Context, old, next Keys) (int, error) {
 			}
 			rows.Close()
 		}
+		// WebUI のセッションは、暗号化し直さずに消す。利用者は、次に開いたときに 1 度だけサインインし直す（design/webui/session.md）。
+		if _, err := tx.ExecContext(ctx, `DELETE FROM webui_sessions`); err != nil && !isNoTable(err) {
+			return err
+		}
 		keyCol := map[string]string{"settings": "name", "record_keys": "key_id", "worker_tokens": "owner"}
 		for _, u := range ups {
 			if _, err := tx.ExecContext(ctx, `UPDATE `+u.table+` SET `+u.col+` = ? WHERE `+keyCol[u.table]+` = ?`, u.val, u.key); err != nil {

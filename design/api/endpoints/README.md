@@ -7,7 +7,7 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 
 ## サインイン（WebUI）
 
-- WebUI のサインインの中継（[サインインの中継](../../webui/oauth-relay.md)）→ `GET /oauth/config`、`POST /oauth/token`
+- WebUI のサインインの中継（[サインインの中継](../../webui/oauth-relay.md)）→ `GET /oauth/config`、`POST /oauth/token`、`POST /oauth/session`、`POST /oauth/signout`（[サインインのセッション](../../webui/session.md)）
 
 ## セットアップと設定（WebUI）
 

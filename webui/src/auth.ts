@@ -1,7 +1,8 @@
-// サインイン（design/webui/auth.md）。Forgejo の OAuth2（認可コードと PKCE）。
+// サインイン（design/webui/auth.md、design/webui/session.md）。GitForge の OAuth2（認可コードと PKCE）。
 // - state、code_verifier、戻り先の URL は sessionStorage に置き、戻ってきたら消す。
-// - アクセストークンはメモリだけに持つ。リフレッシュトークンは受け取らない。
-// - トークンがない・期限が来た・401（1 度は成功したあと）のときは、自動で authorize に行く。
+// - アクセストークンはメモリだけに持つ。リフレッシュトークンは受け取らない（BE が持ち、ブラウザには HttpOnly の cookie だけが来る）。
+// - トークンがない・期限が近い・401（1 度は成功したあと）のときは、まず POST /v1/oauth/session で黙ってもらう。
+//   セッションがないか切れていたときだけ、authorize に行く。
 
 import { clearAllDrafts } from './files';
 
@@ -26,8 +27,10 @@ const SIGNED_OUT = 'lf-signed-out';
 let state: AuthState = { kind: 'starting' };
 let verified = false; // このアクセストークンで、API が 1 度は成功したか
 let retryTo: string | null = null; // サインインの画面のボタンで戻る先（コールバックで分かった、もとの URL）
-// 期限のどれだけ前に authorize に行くか（送っている途中の要求が 401 にならないように）
+// 期限のどれだけ前に、新しいアクセストークンをもらうか（送っている途中の要求が 401 にならないように）
 export const EXPIRY_MARGIN_MS = 60_000;
+// セッションの BE が答えなかったときに、もらい直すまで待つ時間
+export const RENEW_RETRY_MS = 30_000;
 const listeners = new Set<() => void>();
 
 export const getAuth = () => state;
@@ -89,13 +92,34 @@ export async function signIn(returnTo = location.pathname + location.search): Pr
   location.assign(authorizeURL(cfg, st, await codeChallenge(verifier)));
 }
 
-/** 起動したとき。コールバックなら交換し、トークンがなければ authorize に行く。 */
+/** 起動したとき。コールバックなら交換する。そうでなければ、セッションからアクセストークンをもらい、なければ authorize に行く。 */
 export async function start(): Promise<void> {
   if (location.pathname === '/oauth/callback') { await callback(); return; }
   // authorize に行ったまま戻らなかったときの、使われずに残ったものを消す
   clearPending();
   if (sessionStorage.getItem(SIGNED_OUT)) { set({ kind: 'signed-out', reason: 'signed-out' }); return; }
-  await signIn();
+  verified = false;
+  const r = await renew();
+  if (r === 'none') await signIn();
+  else if (r === 'unavailable') set({ kind: 'signed-out', reason: 'unavailable' });
+}
+
+const postJSON = (path: string) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' });
+
+/**
+ * セッション（HttpOnly の cookie）から、アクセストークンをもらう（design/webui/session.md）。
+ * none：セッションがないか切れた（authorize に行く）。unavailable：BE が答えない。
+ */
+async function renew(): Promise<'ok' | 'none' | 'unavailable'> {
+  let r: Response;
+  try { r = await postJSON('/v1/oauth/session'); } catch { return 'unavailable'; }
+  // 403 は、設定の WebUI の URL と違うホストで開いたとき（Origin が合わない）。authorize に行けば、設定のホストに戻る
+  if (r.status === 401 || r.status === 403) return 'none';
+  if (!r.ok) return 'unavailable';
+  const t = (await r.json()) as { access_token: string; expires_in: number };
+  set({ kind: 'signed-in', token: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 });
+  scheduleExpiry();
+  return 'ok';
 }
 
 async function callback(): Promise<void> {
@@ -126,8 +150,21 @@ let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleExpiry() {
   clearTimeout(expiryTimer);
   if (state.kind !== 'signed-in') return;
-  // 期限が来たら、サインインの画面を出さずに authorize に行き、今の URL に戻る
-  expiryTimer = setTimeout(() => { void reauthorize(); }, Math.max(0, state.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
+  // 期限の前に、セッションから新しいアクセストークンをもらう。セッションが切れていたら、authorize に行き、今の URL に戻る
+  expiryTimer = setTimeout(() => { void renewOrRetry(); }, Math.max(0, state.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
+}
+
+async function renewOrRetry() {
+  const r = await renew();
+  if (r === 'none') { await goAuthorize(); return; }
+  // BE が答えなければ、しばらくして、もう 1 度
+  if (r === 'unavailable') { clearTimeout(expiryTimer); expiryTimer = setTimeout(() => { void renewOrRetry(); }, RENEW_RETRY_MS); }
+}
+
+async function goAuthorize() {
+  clearTimeout(expiryTimer);
+  set({ kind: 'starting' });
+  await signIn();
 }
 
 /** アクセストークンの残りの時間（ミリ秒）。サインインしていなければ 0 */
@@ -135,18 +172,32 @@ export function remainingMs(): number {
   return state.kind === 'signed-in' ? state.expiresAt - Date.now() : 0;
 }
 
-/** 今すぐ authorize に行き直す（回答を送る直前に、残りが少ないとき）。戻り先は今の URL */
-export async function reauthorize() {
-  set({ kind: 'starting' });
-  await signIn();
+/**
+ * 今すぐ新しいアクセストークンをもらう（回答を送る直前に、残りが少ないとき）。
+ * もらえたら true。セッションが切れていたら authorize に行き（戻り先は今の URL）、false を返す。
+ */
+export async function reauthorize(): Promise<boolean> {
+  const r = await renew();
+  if (r === 'ok') return true;
+  if (r === 'none') await goAuthorize();
+  return false;
 }
 
-export function signOut() {
+/**
+ * サインアウト。BE のセッションと cookie を消してから、メモリのトークンと回答の書きかけを消す。
+ * BE が消せなかったら false を返し、サインインしたままにする（押し直せるように）。
+ * なぜ：セッションが残ると、共用の端末で、次の人が新しいタブを開いたときに、前の人としてサインインするから。
+ */
+export async function signOut(): Promise<boolean> {
+  let ok = false;
+  try { ok = (await postJSON('/v1/oauth/signout')).ok; } catch { /* 下で false を返す */ }
+  if (!ok) return false;
   clearTimeout(expiryTimer);
   // 回答の書きかけも消す（同じタブで、ほかの人がサインインすることがあるため）
   clearAllDrafts();
   sessionStorage.setItem(SIGNED_OUT, '1');
   set({ kind: 'signed-out', reason: 'signed-out' });
+  return true;
 }
 
 const verifiedListeners = new Set<() => void>();
@@ -167,13 +218,29 @@ export function onVerified(f: () => void): () => void {
   return () => { verifiedListeners.delete(f); };
 }
 
-/** API が 401 を返した。1 度は成功したあとなら authorize に行き直し、まだなら organization にいないと示す。 */
+/**
+ * API が 401 を返した。1 度は成功したあとなら、セッションから新しいトークンをもらう。
+ * もらえないか、同じトークンしか返らなければ（GitForge で取り消されたなど）、authorize に行き直す。
+ * まだ 1 度も成功していなければ、organization にいないと示す。
+ */
 export function onUnauthorized() {
   if (state.kind !== 'signed-in') return;
-  if (verified) { void reauthorize(); return; }
+  if (verified) {
+    if (renewing) return;
+    const before = state.token;
+    renewing = true;
+    void renew().then(async (r) => {
+      renewing = false;
+      if (r === 'none' || (r === 'ok' && getToken() === before)) await goAuthorize();
+    });
+    return;
+  }
   clearTimeout(expiryTimer);
   set({ kind: 'signed-out', reason: 'not-member' });
 }
+
+let renewing = false;
+const getToken = () => (state.kind === 'signed-in' ? state.token : null);
 
 function clearPending() {
   for (let i = sessionStorage.length - 1; i >= 0; i--) {

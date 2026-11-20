@@ -1,5 +1,5 @@
 // ブラウザの E2E（internal/e2e/webui_test.go から動かす）。
-// WebUI を開く → Forgejo にログイン → 許可 → repository の一覧 → 選ぶ → リロードしても押す操作なしに戻る → サインアウト。
+// WebUI を開く → Forgejo にログイン → 許可 → repository の一覧 → 選ぶ → リロードしても Forgejo に行かずに戻る → サインアウト。
 // organization にいない人は「organization に入っていません」で止まる（authorize への行き来が止まらなくならない）ことも確かめる。
 // 環境変数：BASE（serve の URL）、LOGIN、PASSWORD、CHROME（Chrome のパス）、OUT（スクリーンショットの置き場）、REPO、
 // OUTSIDER_LOGIN、OUTSIDER_PASSWORD（organization にいない Forgejo のユーザー）、NODE_A（検証結果のある仮説）、NODE_B（検証結果のない葉）。
@@ -440,18 +440,20 @@ try {
   await signedIn(page);
   await page.waitForSelector('.row', { timeout: 20000 });
 
-  step('期限が近いときに回答すると、先に authorize に行き、書きかけ（本文とリンク）が戻る。forbidden と not_open は言葉で示す');
+  step('期限が近いときに回答すると、先にセッションから新しいトークンをもらう。セッションが切れていれば authorize に行き、書きかけ（本文とリンク）が戻る。forbidden と not_open は言葉で示す');
   const exp = await browser.newPage();
   logErrors(exp);
   await exp.setViewport({ width: 1280, height: 800 });
   await exp.setRequestInterception(true);
-  let shortened = false, answerFake = [];
+  // セッション（cookie）は、最初のタブでサインインしたときのもの。1 回目は寿命を 200 秒に縮めて返し（残りが 5 分より少ない）、
+  // 2 回目（回答の前のもらい直し）は 401 にする（セッションが切れた）
+  let sessionCalls = 0, answerFake = [];
   exp.on('request', async (r) => {
     const u = new URL(r.url());
-    // 最初のトークンの交換だけ、寿命を 200 秒に縮める（残りが 5 分より少ない）
-    if (u.pathname === '/v1/oauth/token' && !shortened) {
-      shortened = true;
-      const res = await fetch(r.url(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: r.postData() });
+    if (u.pathname === '/v1/oauth/session' && sessionCalls < 2) {
+      sessionCalls++;
+      if (sessionCalls === 2) return r.respond({ status: 401, contentType: 'application/json', body: '{"code":"unauthenticated"}' });
+      const res = await fetch(r.url(), { method: 'POST', headers: { ...r.headers() }, body: r.postData() });
       const t = await res.json();
       return r.respond({ status: res.status, contentType: 'application/json', body: JSON.stringify({ ...t, expires_in: 200 }) });
     }
@@ -469,9 +471,15 @@ try {
   await exp.type('input[aria-label="リンクの URL"]', 'https://example.com/minutes');
   await exp.evaluate(() => [...document.querySelectorAll('.link-add button')].find((b) => b.textContent === 'リンクを添える').click());
   ew.reset();
-  await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
-  await exp.waitForFunction(() => document.querySelector('.answer-form textarea')?.value === '広告は続けない', { timeout: 30000 });
-  if (ew.states.size !== 1) throw new Error('期限が近いのに、authorize に行かない：' + ew.states.size);
+  // 移る前の文書に印を置く。戻った文書には印がないので、前の文書で待ちが通らない
+  await exp.evaluate(() => { window.__before = 1; document.querySelector('.answer-form button[type="submit"]').click(); });
+  // authorize に行って戻るのを待つ（行く前の画面にも、同じ書きかけが出ているため、移動を先に待つ）
+  for (let i = 0; ew.states.size < 1; i++) {
+    if (i > 300) throw new Error(`セッションが切れたのに、authorize に行かない：session ${sessionCalls} 回`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await exp.waitForFunction(() => !window.__before && location.pathname.includes('/human-requests') && document.querySelector('.answer-form textarea')?.value === '広告は続けない', { timeout: 30000 });
+  if (ew.states.size !== 1 || sessionCalls !== 2) throw new Error(`セッションが切れたのに、authorize に行かない：authorize ${ew.states.size} 回、session ${sessionCalls} 回`);
   if (!(await exp.$eval('ul.attached', (u) => u.textContent)).includes('議事録')) throw new Error('リンクの添付が戻らない');
   answerFake = [[403, 'forbidden'], [409, 'not_open']];
   await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
@@ -538,23 +546,58 @@ try {
   await page.goForward();
   await page.waitForFunction(() => [...document.querySelectorAll('.seg.mini button.on')].some((b) => b.textContent === '縦'), { timeout: 5000 });
 
-  step('リロードしても、押す操作なしに同じ画面に戻る（トークンはメモリだけ）');
+  step('リロードしても、Forgejo に行かずに同じ画面に戻る（アクセストークンはメモリだけ。セッションの cookie からもらい直す）');
   watched.reset();
+  const authorizeNav = [];
+  const onNav = (r) => { if (r.isNavigationRequest() && r.url().includes('/login/oauth/authorize')) authorizeNav.push(r.url()); };
+  page.on('request', onNav);
   await page.reload({ waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForFunction((r) => location.pathname === `/r/${r}/tree`, { timeout: 20000 }, REPO);
   // 表示（図、縦）と選んだノードも、URL から戻る
   await page.waitForSelector('.gnode.sel', { timeout: 20000 });
-  if (watched.states.size !== 1) throw new Error('リロードで、authorize に ' + watched.states.size + ' 回行った（1 回のはず）');
-  if (watched.consent !== 0) throw new Error('リロードで、同意の画面が出た');
+  page.off('request', onNav);
+  if (authorizeNav.length !== 0) throw new Error('リロードで、authorize に ' + authorizeNav.length + ' 回行った（0 回のはず）');
+  const cookies = await page.cookies();
+  const sc = cookies.find((c) => c.name === '__Host-lf_session');
+  if (!sc || !sc.httpOnly || !sc.secure || sc.sameSite !== 'Strict') throw new Error('セッションの cookie：' + JSON.stringify(sc));
+  if (await page.evaluate(() => document.cookie.includes('lf_session'))) throw new Error('セッションの cookie を JavaScript から読める');
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   if (/eyJ|access_token|gta_/.test(stored)) throw new Error('トークンをストレージに置いている：' + stored);
 
-  step('新しいタブ（モバイルの幅）で開いても、押す操作なしにサインインする');
+  step('アクセストークンの期限が来ても、Forgejo に行かずに、セッションから黙って新しいものをもらう（GitHub の 8 時間ごとの更新にあたる）');
+  const ren = await browser.newPage();
+  await ren.setRequestInterception(true);
+  let renCalls = 0;
+  ren.on('request', async (r) => {
+    const u = new URL(r.url());
+    // 1 回目だけ、寿命を 65 秒にする（期限の 1 分前、つまり 5 秒後に、もらい直す）
+    if (u.pathname === '/v1/oauth/session' && ++renCalls === 1) {
+      const res = await fetch(r.url(), { method: 'POST', headers: { ...r.headers() }, body: r.postData() });
+      const t = await res.json();
+      return r.respond({ status: res.status, contentType: 'application/json', body: JSON.stringify({ ...t, expires_in: 65 }) });
+    }
+    r.continue();
+  });
+  const rw = watch(ren);
+  await ren.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await ren.waitForSelector('.repo-list', { timeout: 20000 });
+  for (let i = 0; renCalls < 2; i++) {
+    if (i > 200) throw new Error('期限の前に、セッションからもらい直さない');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await ren.reload({ waitUntil: 'networkidle0' });
+  await ren.waitForSelector('.repo-list', { timeout: 20000 });
+  if (rw.states.size !== 0) throw new Error('期限の更新か再読み込みで、authorize に ' + rw.states.size + ' 回行った（0 回のはず）');
+  await ren.close();
+
+  step('新しいタブ（モバイルの幅）で開いても、Forgejo に行かずにサインインする');
   const mobile = await browser.newPage();
   await mobile.setViewport({ width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const mw = watch(mobile);
   await mobile.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await mobile.waitForSelector('.repo-list', { timeout: 20000 });
+  if (mw.states.size !== 0) throw new Error('新しいタブで、authorize に行った');
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   if (overflow) throw new Error('幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/signin-mobile.png' });
@@ -622,6 +665,19 @@ try {
   await mobile.click('button.link');
   await mobile.waitForSelector('.signin-box');
   if (await mobile.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith('lf-draft:')))) throw new Error('サインアウトしても、書きかけが残る');
+  // サインアウトの要求は、画面を変えたあとに送る。cookie が消えるまで待つ
+  for (let i = 0; (await mobile.cookies()).some((c) => c.name === '__Host-lf_session'); i++) {
+    if (i > 50) throw new Error('サインアウトしても、セッションの cookie が残る');
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  step('サインアウトしたあとに新しいタブで開くと、セッションがないので authorize に行く（Forgejo にログインしたままなので、押す操作なしに戻る）');
+  const after = await browser.newPage();
+  const aw = watch(after);
+  await after.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await after.waitForSelector('.repo-list', { timeout: 20000 });
+  if (aw.states.size !== 1) throw new Error('サインアウトのあと、authorize に ' + aw.states.size + ' 回行った（1 回のはず）');
+  await after.close();
 
   step('organization にいない人は、「organization に入っていません」で止まる（authorize へは 1 回だけ）');
   const ctx = await browser.createBrowserContext();
