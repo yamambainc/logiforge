@@ -24,12 +24,18 @@ WebUI の要件（画面と、利用者ができること）は、[docs/webui](.
 
 セットアップと設定の画面が従う決まり（設定の DB、利用者）は、[設定](../settings/README.md) に書く。
 
-## WebUI の決まり
+## 呼ぶ API
 
 - WebUI は、BE の API だけを使うクライアントである（[クライアントの要件との対応](../api/clients.md)）。
   - GitForge の API と、静的ファイルストレージを、直接は呼ばない。
   - なぜ：構成（Forgejo か GitHub か）の違いを、BE のアダプタだけに閉じ込めるため（[レイヤー構成](../architecture.md)）。
+
+## スナップショットツリーの変更
+
 - WebUI は、スナップショットツリーを変えない。例外は repository の作成である（[WebUI](../../docs/webui/README.md)）。
+
+## 表示の状態
+
 - WebUI は、状態をサーバに持たない。表示の状態（開いたノード、検索の語）は、ブラウザの中と URL にだけ持つ。
   - なぜ：BE が状態を持たない決まりを崩さないため（[状態を持たない](../backend/README.md)）。
 
