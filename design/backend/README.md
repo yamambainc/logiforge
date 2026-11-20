@@ -85,8 +85,6 @@
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 - バックエンドが持つ唯一の永続のデータは、設定の DB である（[設定の DB](../settings/database.md)）。
   - なぜ持つか：repository の一覧と GitForge とのつなぎ方は、git にも GitForge にも正本がなく、利用者が WebUI から変えるから（[設定](../settings/README.md)）。
-  - 識別子のカウンタも、設定の DB に置く（[識別子](ids/numbering.md#カウンタ)）。
-    - なぜ：repository ごとに詰まった番号を数える仕組みが、GitForge にないから。
   - 設定の DB は、要求ごとに読み、メモリに保持しない（[設定を読むとき](../settings/README.md#設定を読むとき)）。
     - そのため、同じ設定の DB を読むバックエンドどうしで、設定は食い違わない。
   - 設定の DB の SQLite のファイルは、NFS などで、ほかのノードと共有しない（[DB の種類](../settings/database.md#db-の種類)）。
@@ -94,8 +92,11 @@
   - 作業用の git の複製は、プロセスの間で共有しないので、何台並べても互いに影響しない。
   - 書き込みの正しさは、ロックではなく、git の ref の CAS で守る（[反映の手順](merge.md)、[apply request](apply-request/README.md)）。
 - git を読むのは、apply request の作成の検査のときだけで、作業用の複製から読む。要求ごとに clone せず、fetch だけにする。
-- git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
-  - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
+- git に書くのは、次のものだけである（[GitForge のポート](ports/gitforge.md)）。
+  - GitForge の API による、repository の用意と pull request の merge
+  - git の push による、識別子の番号の ref（[番号の ref](ids/numbering.md#番号の-ref)）
+- ブランチと `main` には、git の push で書かない。
+  - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の pull request の仕組みにそのまま任せるため。
 - 置き場と GitForge から読んだものも、要求ごとに読み直す。
   - 置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。

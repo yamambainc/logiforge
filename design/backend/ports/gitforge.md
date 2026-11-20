@@ -49,5 +49,6 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 
 - apply request、レビュー、人への依頼の識別子は、バックエンドが決める。
   - 形と決め方は、[識別子](../ids/README.md) に書く。
+- 番号の ref を読み、compare-and-swap で進める。キーの ref を、すでにあれば失敗する形で作る（[番号の ref](../ids/numbering.md#番号の-ref)）。
 - GitForge は、受け取った識別子で置き、その識別子で返す。
 - GitForge は、一覧を作った順に返す。識別子の順ではない。
