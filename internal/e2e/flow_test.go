@@ -248,7 +248,7 @@ func TestE2E(t *testing.T) {
 	agent.commitPush("b3", "B を検証")
 	ar3 := agent.create("b3")
 	if hasWork("human_request_answered", hr.ID) {
-		t.Fatal("回答を引用した提案があるのに、作業から外れない")
+		t.Fatal("回答を引用した apply request があるのに、作業から外れない")
 	}
 	if got, code, out := reviewer.review(ar3.ID, "approve", 1); code != 0 || got.State != "merged" {
 		t.Fatalf("B の approve：%d %s", code, out)

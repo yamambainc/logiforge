@@ -116,7 +116,7 @@ func withRepository(ts []Trailer, ref string) []Trailer {
 
 // forRepository は、記録のうち、apply_request と human_request の記録で、Logiforge-Repository: が ref のディレクトリと違うもの
 // （ほかの repository の記録）を除く。1 つの git リポジトリに、repository がいくつもあるからである。
-// 除いた記録の提案や依頼は、ほかの記録があっても、この repository のものにならない。
+// 除いた記録の apply request や依頼は、ほかの記録があっても、この repository のものにならない。
 func forRepository(recs []parsed, ref string) []parsed {
 	_, dir := ports.SplitRef(ref)
 	out := recs[:0:0]
@@ -132,10 +132,10 @@ func forRepository(recs []parsed, ref string) []parsed {
 	return out
 }
 
-// ---- 提案 ----
+// ---- apply request ----
 
-// applyRequest は、pull request と、その記録から提案を組み立てる。
-// 最初の apply_request の記録が、提案の識別子を決める。ほかの記録は、その識別子を持つものだけを数える。
+// applyRequest は、pull request と、その記録から apply request を組み立てる。
+// 最初の apply_request の記録が、apply request の識別子を決める。ほかの記録は、その識別子を持つものだけを数える。
 func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest, bool) {
 	ar := ports.ApplyRequest{Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body, HeadRevision: p.HeadSHA, CreatedAt: p.CreatedAt, Warnings: warnings}
 	found, closed := false, false
@@ -151,7 +151,7 @@ func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest,
 			continue
 		}
 		if !found || r.Get(KeyApplyRequest) != ar.ID {
-			ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：提案の識別子が合わない記録", r.Comment.ID))
+			ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：apply request の識別子が合わない記録", r.Comment.ID))
 			continue
 		}
 		switch kind {
@@ -238,7 +238,7 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 	return ar, nil
 }
 
-// findPull は、識別子の提案を探す。タイトルを手がかりに、その pull request のコメントだけを読む。
+// findPull は、識別子の apply request を探す。タイトルを手がかりに、その pull request のコメントだけを読む。
 // 見つからなければ、repository のコメントの一覧から探す。
 func (a *Adapter) findPull(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
 	pulls, err := a.API.ListPulls(ctx, repo)
@@ -465,9 +465,9 @@ func MergeComments(logged, cur []Comment) []Comment {
 // reviewMark は、レビューの記録の目印である。これを含むのに署名が合わないコメントは、書き換えられたレビューとみなす。
 const reviewMark = KeyRecord + ": " + RecordReview
 
-// Reviews は、pull request のコメントから、その提案のレビューを、コメントの id の順に読む。worker も使う。
-//   - 署名の合う、その提案のレビューの記録だけを数える。だれが書いたかは見ない。
-//   - レビューの記録の目印があるのに数えないもの（署名が合わない、提案の識別子が違う、識別子が重なる）があれば、鎖が切れたとする。
+// Reviews は、pull request のコメントから、その apply request のレビューを、コメントの id の順に読む。worker も使う。
+//   - 署名の合う、その apply request のレビューの記録だけを数える。だれが書いたかは見ない。
+//   - レビューの記録の目印があるのに数えないもの（署名が合わない、apply request の識別子が違う、識別子が重なる）があれば、鎖が切れたとする。
 //   - 各レビューの Logiforge-Previous-Review: が、それより前に数えたレビューのどれか（最初は `-`）でなければ、鎖が切れたとする。
 //     同時に 2 つのレビューが同じ直前のレビューを指すのは、正しい。鎖が見つけるのは、途中のレビューが丸ごと消されたことである。
 //
@@ -494,7 +494,7 @@ func Reviews(keys Keyring, at Scope, id string, comments []Comment) ports.Review
 			continue
 		}
 		if r.Get(KeyApplyRequest) != id {
-			broken("提案の識別子が合わない")
+			broken("apply request の識別子が合わない")
 			continue
 		}
 		rev, rid := r.Get(KeyReviewRevision), r.Get(KeyReviewID)

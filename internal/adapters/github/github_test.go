@@ -139,7 +139,7 @@ func TestRegistration(t *testing.T) {
 	}
 }
 
-// 提案の作成、レビュー、反映、close、人への依頼を、共通の部分（pullreq）を通して確かめる。
+// apply request の作成、レビュー、反映、close、人への依頼を、共通の部分（pullreq）を通して確かめる。
 func TestApplyRequestFlow(t *testing.T) {
 	ctx := agentCtx()
 	f, a, _ := newTestAdapter(t)
@@ -415,7 +415,7 @@ func TestParseRepositories(t *testing.T) {
 	}
 }
 
-// 反映かの判定：merge のコミットから、merge した pull request の提案を引く。だれが merge したかは見ない。
+// 反映かの判定：merge のコミットから、merge した pull request の apply request を引く。だれが merge したかは見ない。
 func TestMergedApplyRequest(t *testing.T) {
 	ctx := agentCtx()
 	f, a, _ := newTestAdapter(t)

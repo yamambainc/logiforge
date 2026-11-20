@@ -26,7 +26,7 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - 利用者がブランチを消すと、apply request は close になる。
   - head のブランチがない open の pull request は、バックエンドが closed として扱う。worker の [ブランチの履歴](../snapshot/branch.md#ブランチの履歴) で、消えたことがわかる。
   - なぜ：ブランチを消したときに、GitForge が pull request を閉じるかどうかによらずに、同じ結果にするため。
-- 状態（open、merged、closed）は、pull request の状態と、署名の合う記録から決める（[提案の状態](../../adapters/pull-requests.md)）。
+- 状態（open、merged、closed）は、pull request の状態と、署名の合う記録から決める（[apply request の状態](../../adapters/pull-requests.md)）。
 - apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、記録のコメントに置く（[記録のコメント](../../adapters/records.md#記録のコメント)）。
 - pull request は、apply request を作る主体（opener）のトークンで作る。
   - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。

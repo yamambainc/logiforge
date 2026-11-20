@@ -15,7 +15,7 @@ pull request との対応は [apply request](README.md) に書く。
 
 ## 向き先が main でない apply request
 
-- バックエンドは、提案を読むときに、向き先を GitForge から読み、apply request の `target` として返す（[GitForge のポート](../ports/gitforge.md)）。
+- バックエンドは、apply request を読むときに、向き先を GitForge から読み、apply request の `target` として返す（[GitForge のポート](../ports/gitforge.md)）。
 - 操作の一覧は返さない（空にする）。差分を検査しないからである。
 - 差分と先頭のコミットの一覧は、ほかの apply request と同じく返す。
 - レビューは、GitForge に記録する。`approve` しても、反映の手順に進まない。応答の警告に、Logiforge の反映の対象でないことを書く（[反映の手順](../merge.md)）。

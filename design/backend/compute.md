@@ -21,7 +21,7 @@
 
 - 木の作業は、スナップショットツリーから計算する。
 - 向き先が `main` でない apply request は、作業に数えない（[向き先](apply-request/target.md)）。
-- apply request と人への依頼の作業は、[ブランチの履歴](snapshot/branch.md#ブランチの履歴) と、GitForge から読んだ提案、レビュー、人への依頼から計算する。
+- apply request と人への依頼の作業は、[ブランチの履歴](snapshot/branch.md#ブランチの履歴) と、GitForge から読んだ apply request、レビュー、人への依頼から計算する。
 
 ### apply request の対象ノード
 

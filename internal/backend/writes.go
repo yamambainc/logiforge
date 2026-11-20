@@ -420,7 +420,7 @@ func (b *Backend) UpdateApplyRequest(ctx context.Context, c Caller, repo, id, se
 	return b.GetApplyRequest(ctx, c, repo, id)
 }
 
-// openApplyRequest は、open の提案を読む。open でなければ not_open にする。
+// openApplyRequest は、open の apply request を読む。open でなければ not_open にする。
 func (b *Backend) openApplyRequest(ctx context.Context, repo, ref, id string) (*arDetail, error) {
 	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
 	if err != nil {

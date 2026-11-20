@@ -28,7 +28,7 @@ type WorkQuery struct {
 	Limit          int
 }
 
-// work は、木と、GitForge から読んだ提案と人への依頼から、着手できる作業を計算する。
+// work は、木と、GitForge から読んだ apply request と人への依頼から、着手できる作業を計算する。
 // 返すのは、active なノードに関わる作業だけである。並びは、種類、ノードの識別子、subject_id の順。
 func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *openState, includeClaimed bool) ([]WorkItem, map[string][]string, error) {
 	var items []WorkItem
@@ -68,14 +68,14 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 		}
 	}
 
-	// 壊れた repository を直すこと（design/backend/broken.md）。直すための提案が open なら、返さない。
+	// 壊れた repository を直すこと（design/backend/broken.md）。直すための apply request が open なら、返さない。
 	if broken, err := b.Snap.Broken(ctx, repo); err != nil {
 		return nil, nil, err
 	} else if broken != nil && !slices.ContainsFunc(open.ars, func(ar ports.ApplyRequest) bool { return ar.Kind != "" }) {
 		items = append(items, WorkItem{Kind: "repair_repository", SubjectID: broken.First})
 	}
 
-	// レビュー待ちと修正待ちの提案。
+	// レビュー待ちと修正待ちの apply request。
 	for _, ar := range open.ars {
 		d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
 		if err != nil {
@@ -168,7 +168,7 @@ func (r answerRefs) cites(hr ports.HumanRequest) bool {
 
 // usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
 //   - 今の main の木の検証結果（反映された）
-//   - open の提案の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
+//   - open の apply request の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
 func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
 	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
 	for _, tv := range v.tree.Verdicts {
@@ -192,7 +192,7 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 }
 
 // answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/compute.md）。
-//   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
+//   - その回答を引用した検証結果が、反映されたか、open の apply request の差分にある。
 //   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
 //     反映の記録のある最初のコミットである。
 func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
@@ -331,7 +331,7 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 			out.RemainingWork++
 		}
 	}
-	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの提案があれば、根拠部分木にあるかもしれないので、終わりとしない。
+	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの apply request があれば、根拠部分木にあるかもしれないので、終わりとしない。
 	unknown := slices.ContainsFunc(all, func(it WorkItem) bool {
 		ts, ok := arTargets[it.SubjectID]
 		return ok && len(ts) == 0

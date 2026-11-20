@@ -16,7 +16,7 @@ import (
 // trailer の名前（design/files/revisions.md）。
 const trailerSession = "Logiforge-Session-Id"
 
-// arState は、提案の状態を決める。head のブランチが消えた open の提案は、closed として扱う（design/adapters/pull-requests.md の「提案の状態」）。
+// arState は、apply request の状態を決める。head のブランチが消えた open の apply request は、closed として扱う（design/adapters/pull-requests.md の「apply request の状態」）。
 func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 	if ar.State == ports.StateOpen {
 		if n := len(h.Entries); n > 0 && h.Entries[n-1].Deleted {
@@ -29,13 +29,13 @@ func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
 // clockSlack は、worker と GitForge の時計のずれとして見込む時間である。
 const clockSlack = 5 * time.Minute
 
-// headCommits は、ブランチの履歴から、提案のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request/README.md の「先頭のコミット」）。
-//   - 提案を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
+// headCommits は、ブランチの履歴から、apply request のブランチに push された先頭のコミットの一覧を作る（design/backend/apply-request/README.md の「先頭のコミット」）。
+//   - apply request を作ったときの先頭のコミットから後の、ブランチの先頭を、初めて見た順に並べる。
 //   - 先頭が前に見た SHA に戻ったら（A → B → A）、一覧に足さない。
 //
 // GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、それを、base と時刻のない最後の項目として足す。
 func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
-	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、worker が先頭を見つけた時刻と提案を作った時刻の間を見込み、
+	// SeenAt は worker の時計、CreatedAt は GitForge の時計である。時計のずれと、worker が先頭を見つけた時刻と apply request を作った時刻の間を見込み、
 	// 作った時刻に余裕を足して比べる。
 	created := ar.CreatedAt.Add(clockSlack)
 	start := -1
@@ -68,7 +68,7 @@ func headCommits(ar ports.ApplyRequest, h store.BranchHistory) []HeadCommit {
 	return out
 }
 
-// arDetail は、提案と、その計算に使ったものである。
+// arDetail は、apply request と、その計算に使ったものである。
 type arDetail struct {
 	port     ports.ApplyRequest
 	reviews  ports.Reviews
@@ -78,8 +78,8 @@ type arDetail struct {
 	baseView *view
 }
 
-// applyRequest は、提案を読み、応答を作る。
-// latest は、呼ぶ側が 1 度だけ読んだ、今の main の木である（merged の提案の、反映のコミットを探すのに使う）。
+// applyRequest は、apply request を読み、応答を作る。
+// latest は、呼ぶ側が 1 度だけ読んだ、今の main の木である（merged の apply request の、反映のコミットを探すのに使う）。
 // 1 回の要求の中で、同じものを読み直さないため。
 func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports.ApplyRequest, withOps bool, latest *view) (*arDetail, error) {
 	h, err := b.Snap.BranchHistory(ctx, repo, ar.Branch)
@@ -166,7 +166,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	return d, nil
 }
 
-// awaiting は、open で向き先が main の提案が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/compute.md）。
+// awaiting は、open で向き先が main の apply request が、レビュー待ち（review）か修正待ち（fix）かを決める（design/backend/compute.md）。
 //   - 修正待ち：先頭のコミットへの最後の決めるレビュー（approve か request_changes）が request_changes か、
 //     先頭のコミットの反映が、opener が直すべき理由（stale_target、invariant_violation、conflict）で失敗した。
 //   - レビュー待ち：修正待ちでないもの。決めるレビューがないか、最後の決めるレビューが approve なのに、まだ open である
@@ -234,7 +234,7 @@ func toOperation(pos int, op tree.Operation) Operation {
 	return o
 }
 
-// claims は、ノードを対象にした open の提案と人への依頼である。
+// claims は、ノードを対象にした open の apply request と人への依頼である。
 type claims struct {
 	ars map[string][]string
 	hrs map[string][]string
@@ -254,17 +254,17 @@ func (c claims) hr(id string) []string {
 	return c.hrs[id]
 }
 
-// openState は、GitForge から読んだ、open の提案と人への依頼である。
+// openState は、GitForge から読んだ、open の apply request と人への依頼である。
 type openState struct {
-	ars    []ports.ApplyRequest // open の提案（head のブランチが消えたものを除く）
+	ars    []ports.ApplyRequest // open の apply request（head のブランチが消えたものを除く）
 	all    []ports.ApplyRequest
 	hrs    []ports.HumanRequest
 	claims claims
-	// arTargets は、open の提案の対象ノードである。先頭のコミットのスナップショットがなければ、空。
+	// arTargets は、open の apply request の対象ノードである。先頭のコミットのスナップショットがなければ、空。
 	arTargets map[string][]string
 }
 
-// readOpen は、GitForge から提案と人への依頼を読み、open のものが対象にするノードを求める。
+// readOpen は、GitForge から apply request と人への依頼を読み、open のものが対象にするノードを求める。
 func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*openState, error) {
 	all, err := b.Forge.ListApplyRequests(ctx, gfRef)
 	if err != nil {
@@ -287,7 +287,7 @@ func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*o
 		if arState(ar, h) != ports.StateOpen {
 			continue
 		}
-		// 向き先が main でないものも、回答を引用した検証結果を探すのに使う（積み上げた変更は、いずれ main 向きの提案に含まれるから）。
+		// 向き先が main でないものも、回答を引用した検証結果を探すのに使う（積み上げた変更は、いずれ main 向きの apply request に含まれるから）。
 		// ただし、検査と反映の対象でないので、ノードを対象にしたもの（作業から外すもの）には数えない。
 		st.ars = append(st.ars, ar)
 		if !targetsMain(ar) {
