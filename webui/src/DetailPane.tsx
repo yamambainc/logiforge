@@ -5,6 +5,7 @@ import { abortAfter, fetchArtifact, getNode, getNodeHistory, getRepository, type
 import { saveBlob } from './files';
 import { ancestors, textOf, vLabel, type Change, type Index, type Node, type TruthValue } from './model';
 import { Markdown } from './MarkdownLazy';
+import { navigate, screenPath } from './router';
 
 interface Props {
   repo: string; ix: Index; id: string | null; onReveal: (id: string) => void; mobile: boolean; onClose: () => void;
@@ -90,8 +91,9 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
       <div className="d-tags">
         {n.inactive && <span className="tag t-inactive">inactive</span>}
         {isH && n.needs_reconsideration && <span className="tag t-nr">要再検討</span>}
-        {n.open_apply_request_ids.map((a) => <span key={a} className="tag t-ar">審査中 {a}</span>)}
-        {n.open_human_request_ids.map((h) => <span key={h} className="tag t-hr">依頼 {h}</span>)}
+        {/* 押すと、その画面でその apply request か人への依頼を開く（design/webui/snapshot-tree-viewer.md の「詳細のパネル」） */}
+        {n.open_apply_request_ids.map((a) => <ItemLink key={a} to={`${screenPath(repo, 'apply-requests')}?id=${encodeURIComponent(a)}`}>審査中 {a}</ItemLink>)}
+        {n.open_human_request_ids.map((h) => <ItemLink key={h} to={`${screenPath(repo, 'human-requests')}?id=${encodeURIComponent(h)}`}>依頼 {h}</ItemLink>)}
       </div>
 
       {change && (
@@ -266,4 +268,8 @@ function FileIcon({ link }: { link: boolean }) {
   ) : (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M4 1.5h5l3 3v10H4z M9 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
   );
+}
+
+function ItemLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return <a className="d-link" href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}>{children}</a>;
 }
