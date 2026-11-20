@@ -22,7 +22,9 @@ cd "$(git rev-parse --show-toplevel)"
 
 VERSION=$(git describe --tags --always --dirty)
 COMMIT=$(git rev-parse HEAD)
-echo "ビルドする：$(git rev-parse --abbrev-ref HEAD) の $VERSION（$COMMIT）"
+# 変数の直後に日本語（全角）の括弧を置くときは ${} で区切る。区切らないと、UTF-8 のロケールで bash 3.2 が
+# 変数名に全角の最初のバイトまで読み、set -u と組み合わさって「VERSION�: unbound variable」になる。
+echo "ビルドする：$(git rev-parse --abbrev-ref HEAD) の ${VERSION}（${COMMIT}）"
 if [ -n "$(git status --porcelain)" ]; then
 	echo "注意：コミットしていない変更も、ビルドに入る。" >&2
 fi
@@ -63,7 +65,7 @@ ssh -t "$HOST" "sudo install -m 0755 '$REMOTE_TMP' /usr/local/bin/logiforge && s
 # 起動してすぐ落ちるときに気づけるように、少し待ってから確かめる
 sleep 3
 if ssh "$HOST" systemctl is-active logiforge-serve logiforge-worker; then
-	echo "入れ替えた：$VERSION（$COMMIT）"
+	echo "入れ替えた：${VERSION}（${COMMIT}）"
 	exit 0
 fi
 echo "serve か worker が動いていない。ログを見る：ssh -t $HOST sudo journalctl -u logiforge-serve -u logiforge-worker -n 100 --no-pager" >&2
