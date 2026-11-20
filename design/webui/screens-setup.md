@@ -29,11 +29,13 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
   - `/settings` を直接開いて `forbidden` なら、利用者でないことを示す。
 - repository のタブ：`listRegisteredRepositories`、`registerRepository`、`unregisterRepository`。
   - `registerRepository` が `validation_failed` を返し、`detail` に install の URL があれば、そのリンクを示す。
-  - 一覧で `prepared` が `false` の repository に、「最初の問いを入れる」を示す。
+  - 一覧で `prepared` が `false` の repository に、「取り込み待ちか、最初の問いがない」と示し、「最初の問いを入れる」を示す。
+    - なぜ：一覧の `prepared` は、worker が `main` を取り込むまで `false` に見えるから（[一覧の読み](../backend/list-reads.md#置き場の読み)）。
 - repository を足す（[repository を足す](../../docs/webui/settings.md#repository-を足す)）：
   - 1 段目：登録するものは `registerRepository`。Forgejo に新しく作るものは、呼ばずに 2 段目へ進む。
   - 登録の応答の `prepared` が `true` なら、2 段目を飛ばす。`prepared` がなければ（GitForge に聞けなかった）、2 段目へ進む。
-  - 2 段目：`createRepository`。`Logiforge-Pending-Commit` で応答しても、用意は済んでいる。開いたビュワーが「取り込み中」と示す（[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
+  - 2 段目：`createRepository`。`Logiforge-Pending-Commit` で応答しても、用意は済んでいる。
+    - `repository_exists` が返ったら、用意は済んでいるものとして 2 段目を終える。なぜ：取り込み待ちで `prepared` が `false` に見えた repository だから。開いたビュワーが「取り込み中」と示す（[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)）。
   - `?add=new` で開くと、1 段目から始める。`?add=first` で開くと、`prepared` が `false` の repository があれば、その 2 段目から始める。なければ 1 段目から始める。
   - 開いたら、`history.replaceState` で URL から `add` を消す。なぜ：読み直したときに、また開かないため。
 - GitForge のタブ：`getSettings` と `updateGitForgeSettings`。秘密は、置いたかどうかだけを示し、入れたときだけ送る。

@@ -16,8 +16,7 @@
 | `keep/<repository>/branches/<ブランチの名前>` | ブランチの履歴（[ブランチの履歴](../snapshot/branch.md#ブランチの履歴)）。ブランチの名前は、パスとしてエスケープする（`/` を `%2F` に） | 変わる |
 | `keep/<repository>/branch-snapshots/<SHA>` | ブランチの先頭のスナップショット（コミットの記録と差分を 1 つにまとめたもの）。中に自分のフォーマットバージョンを持つ | 変わらない |
 | `keep/<repository>/branch-index` | 履歴のあるブランチの名前の一覧。消えたブランチを見つけるのに使う | 変わる |
-| `keep/records/<GitForge の repository の識別子>/records` | worker が見た、署名の合う記録の控え。repository のすべての pull request と issue の分を 1 つに持つ。追記だけで、消さない（[記録の控え](../verify/records.md)）。識別子は、記録の署名に使うもの（Forgejo の id、GitHub の node_id）で、パスとしてエスケープする | 増える |
-| `keep/records/<GitForge の repository の識別子>/cursor` | 記録の控えの、次に読む位置（コメントの `updated_at`） | 変わる |
+| `keep/records/<GitForge の repository の識別子>/log` | worker が見た記録の控えと、次に読む位置（コメントの `updated_at`）を、1 つに持つもの。repository のすべての pull request と issue の分を持つ。記録は足すだけで、消さない（[記録の控え](../verify/records.md)）。識別子は、記録の署名に使うもの（Forgejo の id、GitHub の node_id）で、パスとしてエスケープする | 変わる |
 | `keep/<repository>/broken` | 壊れていることの記録（[壊れた repository](../broken.md)）。壊れていなければ、空の記録 | 変わる |
 | `keep/<repository>/migrated_to` | 別リポジトリ方式から移した元の repository だけ。移した先の repository の名前（[別リポジトリ方式から移す](../../directory/migrate.md)） | 変わらない |
 

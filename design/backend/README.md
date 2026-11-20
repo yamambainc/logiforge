@@ -81,7 +81,7 @@
 
 ## 状態を持たない
 
-- バックエンドは、木と apply request と人への依頼のデータを保持しない。プロセスのメモリのキャッシュは、権限を問い合わせた結果（60 秒）と、GitForge の repository の識別子（10 分）のほかに持たない（[キャッシュ](caches.md)）。
+- バックエンドは、木と apply request と人への依頼のデータを保持しない。プロセスのメモリのキャッシュは、権限を問い合わせた結果（60 秒）のほかに持たない（[権限のキャッシュ](../settings/users.md#権限のキャッシュ)）。
   - 要求のほかにする仕事は、worker のトークンを 1 分ごとに作り直すことだけである（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。何台並べてもよい（[バックエンドだけを増やすとき](../deploy/README.md#バックエンドだけを増やすとき)）。
   - 保持するのは、外のサービス（正本）、worker（clone）、静的ファイルストレージ（スナップショット）である。
 - バックエンドが持つ唯一の永続のデータは、設定の DB である（[設定の DB](../settings/database.md)）。
@@ -95,7 +95,7 @@
 - git を読むのは、apply request の作成の検査のときだけで、作業用の複製から読む。要求ごとに clone せず、fetch だけにする。
 - git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
   - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
-- 置き場と GitForge から読んだものも、要求ごとに読み直す。上の 2 つのキャッシュだけが例外である。
+- 置き場と GitForge から読んだものも、要求ごとに読み直す。
   - 一覧は、GitForge の一覧の API で読み、項目ごとに GitForge を呼ばない（[一覧の読み](list-reads.md)）。
   - 置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
