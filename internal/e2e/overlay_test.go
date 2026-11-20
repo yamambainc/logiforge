@@ -78,16 +78,5 @@ func TestStackedApplyRequest(t *testing.T) {
 func (w *world) retarget(repo, arID, base string) {
 	w.t.Helper()
 	ref := w.org + "/" + repo
-	var pulls []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-	}
-	w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/pulls?state=open&limit=50", nil, &pulls, 200)
-	for _, p := range pulls {
-		if strings.Contains(p.Title, arID) {
-			w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/pulls/%d", ref, p.Number), map[string]any{"base": base}, nil, 201)
-			return
-		}
-	}
-	w.t.Fatalf("%s の pull request がない：%+v", arID, pulls)
+	w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/pulls/%d", ref, w.pullNumber(repo, arID)), map[string]any{"base": base}, nil, 201)
 }

@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -196,19 +197,12 @@ func TestE2EHumanMerge(t *testing.T) {
 	}
 }
 
-// pullNumber は、apply request の pull request の番号を返す。
+// pullNumber は、apply request の pull request の番号を返す。apply request の識別子は、pull request の番号である。
 func (w *world) pullNumber(repo, arID string) int {
 	w.t.Helper()
-	var pulls []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
+	n, err := strconv.Atoi(arID)
+	if err != nil || n <= 0 {
+		w.t.Fatalf("%s は pull request の番号でない", arID)
 	}
-	w.forgejoCall(w.admin, "GET", "/repos/"+w.org+"/"+repo+"/pulls?state=all&limit=50", nil, &pulls, 200)
-	for _, p := range pulls {
-		if strings.Contains(p.Title, arID) {
-			return p.Number
-		}
-	}
-	w.t.Fatalf("%s の pull request がない", arID)
-	return 0
+	return n
 }

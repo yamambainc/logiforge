@@ -146,12 +146,13 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - その仮説に、`false` の `verdict.submit` を出す。
   - 同じブランチで、先に `story inactivate` をすべて行い、そのあと `verdict new --value false` を作る。子ストーリーがすべて inactive になると、その仮説は葉になるから。
   - 仮説を直接否定する証拠が要る。「別のストーリーが見つからない」だけでは、偽と結論できない。
-- `ar create` が失敗して送り直すときは、出力された `Idempotency-Key` を `--idempotency-key` に渡す。
+- `ar create` が失敗して送り直すときは、同じコマンドをもう一度実行する。同じブランチに自分の open の apply request があれば、それが返る。
 
 ## apply request を直す
 
 `logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、反映の失敗（`merge_failures`）を読む。
 直したら、同じブランチに push する。push すると新しい先頭のコミットになり、どの理由で直した場合も、レビューからやり直しになる。
+修正待ち（`fix_waiting`）の apply request は、push しただけではレビュー待ちに戻らない。直し終えたら、`logiforge ar fixed <apply request>` で申告する。
 
 - `request_changes`、`invariant_violation`：同じブランチでファイルを直し、`logiforge commit` して push する。
 - `stale_target`、`conflict`：ブランチを今の `origin/main` に合わせて直す。

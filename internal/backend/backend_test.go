@@ -580,6 +580,8 @@ func TestDesiredWaiting(t *testing.T) {
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
 		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
 		{"conflict で失敗", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "conflict", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
+		{"同じ秒なら今の修正待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix}, []ports.Review{rc(t0.Add(300 * time.Millisecond))}, ports.WaitingFix},
+		{"同じ秒なら今のレビュー待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0.Add(500 * time.Millisecond), Waiting: ports.WaitingReview}, []ports.Review{rc(t0)}, ports.WaitingReview},
 		{"snapshot_pending は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "snapshot_pending", At: t0.Add(time.Minute)}}}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {

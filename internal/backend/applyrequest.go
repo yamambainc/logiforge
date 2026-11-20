@@ -213,7 +213,12 @@ func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting
 			fixAt = f.At
 		}
 	}
-	if !fixAt.IsZero() && fixAt.After(ar.ReviewWaitingAt) {
+	fixAt, reviewAt := fixAt.Truncate(time.Second), ar.ReviewWaitingAt.Truncate(time.Second)
+	// GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
+	if !fixAt.IsZero() && fixAt.Equal(reviewAt) && (ar.Waiting == ports.WaitingFix || ar.Waiting == ports.WaitingReview) {
+		return ar.Waiting
+	}
+	if !fixAt.IsZero() && fixAt.After(reviewAt) {
 		return ports.WaitingFix
 	}
 	return ports.WaitingReview

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -205,6 +206,16 @@ func TestE2E(t *testing.T) {
 	_ = os.WriteFile(reports[0], []byte(strings.Replace(string(old), "初版", "直した版", 1)), 0o644)
 	agent.commitPush("b2", "A の検証を直した")
 	w.eventually("2 つ目の先頭のコミットが読む側に出る", 30*time.Second, func() bool { return agent.headReady(ar2.ID, 2) })
+	// push しただけでは、修正待ちのままである。opener が直し終えたと申告すると、レビュー待ちに戻る。
+	var viewed applyRequest
+	agent.must(&viewed, "ar", "view", ar2.ID)
+	if viewed.Awaiting != "fix" || !w.hasLabel("q", ar2.ID, "logiforge/fix-waiting") {
+		t.Fatalf("push のあと：%+v", viewed)
+	}
+	agent.must(&viewed, "ar", "fixed", ar2.ID)
+	if viewed.Awaiting != "review" || !w.hasLabel("q", ar2.ID, "logiforge/review-waiting") || w.hasLabel("q", ar2.ID, "logiforge/fix-waiting") {
+		t.Fatalf("直し終えたという申告のあと：%+v", viewed)
+	}
 	if got, code, out := reviewer.review(ar2.ID, "approve", 2); code != 0 || got.State != "merged" {
 		t.Fatalf("版 2 の approve：%d %s", code, out)
 	}
@@ -262,33 +273,29 @@ func TestE2E(t *testing.T) {
 		t.Fatalf("作業の終わり：%+v", comp)
 	}
 
-	// ---- レビューの鎖が切れたら、close して、同じブランチから作り直す ----
-	// worker が控えに足したレビューは、書き換えられても控えのものを使うので、鎖は切れない。
-	// 鎖が切れるのは、控えに足す前に書き換えられたときである。worker を止めて、その場合を作る。
+	// ---- ラベルのずれ：GitForge の画面でラベルを付け替えても、1 件読んだときに直る ----
 	agent.session = "s-agent-4"
 	agent.branch("b4")
 	agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("bg.md", "背景を足す\n"))
 	agent.commitPush("b4", "背景")
 	ar4 := agent.create("b4")
-	w.stopWorker()
-	for i := 0; i < 2; i++ {
-		if _, code, _ := reviewer.review(ar4.ID, "comment", 1); code != 0 {
-			t.Fatal("comment")
-		}
+	if ar4.Awaiting != "review" || !w.hasLabel("q", ar4.ID, "logiforge/review-waiting") {
+		t.Fatalf("作ったときのラベル：%+v", ar4)
 	}
-	w.tamperFirstReview("q", ar4.ID)
-	w.restartWorker()
-	if _, code, out := reviewer.review(ar4.ID, "comment", 1); code != 1 || !strings.Contains(out, "not_open") || !strings.Contains(out, "作り直す") {
-		t.Fatalf("鎖が切れたときのレビュー：%d %s", code, out)
+	w.setLabels("q", ar4.ID, "logiforge/fix-waiting")
+	var listed struct {
+		Items []applyRequest `json:"items"`
 	}
-	agent.must(nil, "ar", "close", ar4.ID, "--reason", "鎖が切れたので作り直す")
-	var ar5 applyRequest
-	agent.must(&ar5, "ar", "create", "--branch", "b4")
-	if ar5.ID == ar4.ID || ar5.State != "open" {
-		t.Fatalf("作り直しで、閉じた apply request が返った：%+v", ar5)
+	agent.must(&listed, "ar", "list", "--state", "open")
+	if len(listed.Items) != 1 || listed.Items[0].ID != ar4.ID || listed.Items[0].Awaiting != "fix" {
+		t.Fatalf("一覧は、ラベルのとおりに見せる：%+v", listed)
 	}
-	if got, code, out := reviewer.review(ar5.ID, "approve", 1); code != 0 || got.State != "merged" {
-		t.Fatalf("作り直したものの approve：%d %s", code, out)
+	reviewer.must(&viewed, "ar", "view", ar4.ID, "--repo", "q")
+	if viewed.Awaiting != "review" || !w.hasLabel("q", ar4.ID, "logiforge/review-waiting") || w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {
+		t.Fatalf("1 件読んだときに、ずれたラベルが直らない：%+v", viewed)
+	}
+	if got, code, out := reviewer.review(ar4.ID, "approve", 1); code != 0 || got.State != "merged" {
+		t.Fatalf("b4 の approve：%d %s", code, out)
 	}
 
 	// ---- 読めない変化は、check もバックエンドも、同じ規則で拒む ----
@@ -320,20 +327,26 @@ func TestE2E(t *testing.T) {
 	}
 }
 
-// tamperFirstReview は、管理者として、apply request の pull request の最初のレビューの記録を書き換える（署名が合わなくなる）。
-func (w *world) tamperFirstReview(repo, arID string) {
+// labelsOf は、apply request の pull request のラベルを、Forgejo から読む。
+func (w *world) labelsOf(repo, arID string) []string {
 	w.t.Helper()
-	ref := w.org + "/" + repo
-	var comments []struct {
-		ID   int64  `json:"id"`
-		Body string `json:"body"`
+	var labels []struct {
+		Name string `json:"name"`
 	}
-	w.forgejoCall(w.admin, "GET", fmt.Sprintf("/repos/%s/issues/%d/comments", ref, w.pullNumber(repo, arID)), nil, &comments, 200)
-	for _, c := range comments {
-		if strings.Contains(c.Body, "Logiforge-Record: review") {
-			w.forgejoCall(w.admin, http.MethodPatch, fmt.Sprintf("/repos/%s/issues/comments/%d", ref, c.ID), map[string]string{"body": c.Body + "x"}, nil, 200)
-			return
-		}
+	w.forgejoCall(w.admin, "GET", fmt.Sprintf("/repos/%s/%s/issues/%d/labels", w.org, repo, w.pullNumber(repo, arID)), nil, &labels, 200)
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		out = append(out, l.Name)
 	}
-	w.t.Fatalf("%s のレビューの記録がない", arID)
+	return out
+}
+
+func (w *world) hasLabel(repo, arID, name string) bool {
+	return slices.Contains(w.labelsOf(repo, arID), name)
+}
+
+// setLabels は、管理者として、GitForge の画面と同じように、pull request のラベルを置き換える。
+func (w *world) setLabels(repo, arID string, names ...string) {
+	w.t.Helper()
+	w.forgejoCall(w.admin, http.MethodPut, fmt.Sprintf("/repos/%s/%s/issues/%d/labels", w.org, repo, w.pullNumber(repo, arID)), map[string]any{"labels": names}, nil, 200)
 }
