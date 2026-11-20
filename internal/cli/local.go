@@ -139,19 +139,27 @@ func (a *App) authSetupGit(ctx context.Context, args []string) error {
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // authGitCredential は、git の credential helper の「get」に答える。パスワードにトークンを入れる（design/cli/auth.md の「git の credential helper」）。
-func (a *App) authGitCredential(_ context.Context, args []string) error {
+func (a *App) authGitCredential(ctx context.Context, args []string) error {
 	if len(args) != 1 || args[0] != "get" {
 		return nil // store と erase は、何もしない
 	}
-	// git が渡す属性（protocol、host など）は、読み捨てる。helper は、設定した URL にだけ使われる。
+	// git が渡す属性のうち、host だけを使う。helper は、設定した URL にだけ使われる。
+	var host string
 	if a.Stdin != nil {
 		sc := bufio.NewScanner(a.Stdin)
 		for sc.Scan() && sc.Text() != "" {
+			if v, ok := strings.CutPrefix(sc.Text(), "host="); ok {
+				host = v
+			}
 		}
 	}
-	tok, err := a.token()
+	tok, err := a.token(ctx)
 	if err != nil {
 		return err
+	}
+	// gh のトークンは、その GitHub のホストにだけ渡す。
+	if a.ghHost != "" && host != "" && host != a.ghHost {
+		return fmt.Errorf("gh のトークンは %s にだけ渡す。%s には渡さない", a.ghHost, host)
 	}
 	fmt.Fprintf(a.Stdout, "username=logiforge\npassword=%s\n", tok)
 	return nil

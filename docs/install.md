@@ -26,6 +26,7 @@ logiforge は、1 つのバイナリである。次のものが入っている�
 - この repository は private である。取るには、yamambainc/logiforge を読む権限のある GitHub のアカウントが要る。
 - [gh](https://cli.github.com/) で取る。
   - 先に `gh auth login` で、読む権限のあるアカウントにサインインしておく。
+- GitHub を使う構成では、CLI も、gh のトークンを使う（[利用者とエージェント](adoption/github/README.md#利用者とエージェント)）。
 
 ```sh
 # 最新の版。Linux の amd64 の例（ほかは darwin・windows、arm64）

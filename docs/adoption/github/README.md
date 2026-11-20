@@ -91,13 +91,28 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
   - 人もエージェントも、`gh auth login` でサインインして得たトークン（OAuth）を使う。スコープ `repo` が要る（`gh auth login` の既定に入っている）。personal access token は使わない。
   - エージェントの機械用アカウントは、`gh auth login` が出すコードを、そのアカウントでサインインしたブラウザで入れる。
   - エージェントの機械用アカウントは、WebUI でサインインしない。なぜ：Write を持つので、サインインすると利用者になり、設定を変えられるから。
-  - organization が OAuth App のアクセスを制限しているときは、organization の owner が GitHub CLI（OAuth App である）を許す。
+  - organization が OAuth App のアクセスを制限しているときは、organization の owner が GitHub CLI（OAuth App である）を許す（[CLI がつながらないとき](#cli-がつながらないとき)）。
+
+- CLI は、トークンを渡さなくても、`gh auth token` を読む（[gh のトークン](../../../design/cli/auth.md#gh-のトークン)）。そのため、`gh auth login` のあとは、バックエンドの URL だけを置く。
+  - gh のトークンが変わっても、置き直さなくてよい。
 
 ```sh
 gh auth login --hostname github.com --git-protocol https --web
-gh auth token | logiforge auth login --with-token --host https://logiforge.example.com
+logiforge auth login --host https://logiforge.example.com
 logiforge auth setup-git --url https://github.com
 logiforge repo clone myapp-cache-strategy
 ```
 
 - このあとは、共通の手順の「プロジェクトとつなぐ」に戻る。
+
+### CLI がつながらないとき
+
+- gh がない、またはログインしていない。
+  - CLI は「gh がない」か「gh auth token --hostname <ホスト> でトークンを得られなかった」と示して止まる。
+  - gh を入れて、`gh auth login --hostname github.com --git-protocol https --web` でログインする。
+- gh のトークンに、スコープ `repo` がない。
+  - `gh auth status` で、トークンのスコープを確かめる。
+  - 足りなければ、`gh auth refresh --hostname github.com --scopes repo` で足す。
+- organization が OAuth App のアクセスを制限している。
+  - `repo` があっても、その organization のリポジトリの push や pull request が GitHub に断られる。
+  - organization の owner が、organization の設定の Third-party Access（OAuth application policy）で、GitHub CLI を許す。

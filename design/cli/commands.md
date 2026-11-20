@@ -15,6 +15,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | `repo view <repository>` | `getRepository` | なし |
 | `repo clone <repository> [<ディレクトリ>]` | `getRepository`（`git_url` を得る） | `git clone`。clone の git の設定に `logiforge.repository` を書く |
 
+- トークンが環境変数にも設定ファイルにもなければ、API を呼ぶコマンドと `auth git-credential get` は、先に `getOAuthConfig` を呼ぶ（[gh のトークン](auth.md#gh-のトークン)）。
 - repository の作成は、利用者が WebUI で行う（[役割](../../docs/roles/README.md)）。
   - そのため、CLI には置かない。
 

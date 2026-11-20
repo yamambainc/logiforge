@@ -34,10 +34,34 @@ CLI の全体は、[CLI](README.md) に書く。
 - トークンの置き場所は、次の順に探す。
   1. 環境変数 `LOGIFORGE_TOKEN`
   2. 設定ファイル（`~/.config/logiforge/config.yaml`）の `token`
+  3. `gh auth token --hostname <GitHub のホスト>` の出力。バックエンドが GitHub を使う構成のときだけ（[gh のトークン](#gh-のトークン)）。
+- 1 回の実行では、1 度だけ探す。
+- どこにもなければ、`logiforge auth login --with-token` か `LOGIFORGE_TOKEN` で渡すように示して、誤りにする。
 - `logiforge auth login --with-token` は、トークンを標準入力から読んで、設定ファイルに書く。
   - 設定ファイルは、本人だけが読めるようにする。
   - `--token <トークン>` でも渡せる。ただし、コマンドの履歴に残るので、`--with-token` を勧める。
 - バックエンドの URL は、環境変数 `LOGIFORGE_HOST` か、設定ファイルの `host` に置く。
+
+### gh のトークン
+
+- 想定用途：GitHub を使う構成で、`gh auth login` だけで CLI と git の push を使えるようにする。
+  - なぜ：トークンを設定ファイルに写すと、gh のトークンが変わるたびに写し直すことになるから。
+- CLI は、トークンが環境変数にも設定ファイルにもないときだけ、バックエンドの `GET /v1/oauth/config`（認証を求めない）を呼んで、構成を確かめる（[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig`）。
+- 次のすべてを満たすときだけ、`gh auth token --hostname <ホスト>` を呼ぶ。
+  - 応答が 200 で、`gitforge` が `github` である。
+  - `authorize_url` が https である。
+- ホストは、`authorize_url` のホストにする。バックエンドの設定の GitHub の URL（既定は `github.com`）から作られる。
+  - なぜ `--hostname` を付けるか：gh がほかのホストにもログインしていても、その GitHub のトークンだけを使うため。
+- 次のときは、gh を呼ばない。トークンがないときの誤りにする。
+  - Forgejo を使う構成。
+  - バックエンドの URL が https でない。構成も確かめない。
+    - なぜ：gh のトークンは広いスコープを持つので、平文で送らないため。
+  - バックエンドの URL がない、バックエンドにつながらない、応答が 200 でない（セットアップの前、中継を動かしていないなど）、応答が読めない。
+  - なぜ：GitHub の構成だと確かめられないときに、gh のトークンをほかに渡さないため。Forgejo の構成の動きを、gh の有無で変えないため。
+- gh がないか、そのホストにログインしていなければ、`gh auth login --hostname <ホスト>` か `logiforge auth login --with-token` を示して、誤りにする。
+- 構成の確かめは、覚えない。トークンが要る実行のたびに、1 回呼ぶ。
+  - なぜ：構成を変えたときに、古い構成で gh のトークンを渡さないため。増えるのは、認証のない要求 1 回だけなので、git の credential helper から呼ぶときも受け入れる。
+  - 待つのは 3 秒までにする。つながらなければ、トークンがないときの誤りにする。
 
 ## git の credential helper
 
@@ -50,3 +74,5 @@ CLI の全体は、[CLI](README.md) に書く。
 - URL が https でなければ、`--insecure` なしでは設定しない。
   - なぜ：トークンが平文で流れるため。
 - helper の本体は、`logiforge auth git-credential` である。
+  - トークンは、[置き場所](#置き場所) と同じ順に探す。そのため、GitHub を使う構成では、`gh auth login` だけで push できる。
+  - gh のトークンは、git が求めるホストが、その GitHub のホストと同じときだけ渡す。
