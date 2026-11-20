@@ -128,7 +128,7 @@ func TestE2EHumanMerge(t *testing.T) {
 		t.Fatalf("人の merge のコミットが、%s の反映にならない：%v", ok.ID, id)
 	}
 
-	// ---- merge の権限のない reviewer の approve：GitForge が merge を断り、反映の失敗 merge_forbidden として記録する ----
+	// ---- コードを書く権限のない reviewer の approve は、数えない ----
 	// コードを読むだけで、pull request と issue を書ける team の、エージェント（client）。
 	var nm struct {
 		ID int64 `json:"id"`
@@ -149,21 +149,23 @@ func TestE2EHumanMerge(t *testing.T) {
 	fb := agent.create("forbidden")
 	var forbidden struct {
 		ApplyRequest struct {
-			State         string  `json:"state"`
-			Awaiting      *string `json:"awaiting"`
+			State         string   `json:"state"`
+			Awaiting      *string  `json:"awaiting"`
+			Warnings      []string `json:"warnings"`
 			MergeFailures []struct {
 				Reason string `json:"reason"`
 			} `json:"merge_failures"`
 		} `json:"apply_request"`
 	}
+	// 書く権限（コード）のない人の approve は、数える review にならない（design/adapters/pull-requests.md の「数える review」）。
+	// そのため、反映を試さず、レビュー待ちのままで、警告を返す。
 	_, code, out = weak.review(fb.ID, "approve", 1)
 	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
-		t.Fatalf("merge の権限のない reviewer の approve：%d %s", code, out)
+		t.Fatalf("書く権限のない reviewer の approve：%d %s", code, out)
 	}
-	fs := forbidden.ApplyRequest.MergeFailures
-	if forbidden.ApplyRequest.State != "open" || len(fs) == 0 || fs[len(fs)-1].Reason != "merge_forbidden" ||
-		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" {
-		t.Fatalf("merge_forbidden として記録しない：%s", out)
+	if forbidden.ApplyRequest.State != "open" || len(forbidden.ApplyRequest.MergeFailures) != 0 ||
+		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" || !strings.Contains(strings.Join(forbidden.ApplyRequest.Warnings, " "), "数えない") {
+		t.Fatalf("書く権限のない reviewer の approve を数えている：%s", out)
 	}
 	// merge の権限のある reviewer が approve し直せば、反映される。
 	reviewer.session = "s-rev-hm-3"
