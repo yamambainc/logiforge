@@ -441,22 +441,69 @@ func (a *Auth) ownToken(ctx context.Context, token string) (bool, error) {
 }
 
 // CanRead は、主体のトークンで、登録した GitHub の repository を読めるかを確かめる。
+// まず、主体が読めるリポジトリの一覧（GET /user/repos。60 秒持つ）で決める。一覧にないもの（主体が関わっていない public のリポジトリなど）だけ、
+// そのリポジトリを 1 件読んで確かめ、その結果も 60 秒持つ（design/backend/list-reads.md の「置き場の読み」）。
+// なぜ：repository の一覧で、repository ごとに GET /repos を呼ばないため。
 func (a *Auth) CanRead(ctx context.Context, token, repo string) (bool, error) {
 	ref, err := lookup(a.f.cfg.Repositories, repo)
 	if err != nil {
 		return false, nil
 	}
+	git, _ := ports.SplitRef(ref)
+	git = strings.ToLower(git)
+	readable, err := a.readable(ctx, token)
+	if err != nil {
+		return false, err
+	}
+	if readable[git] {
+		return true, nil
+	}
+	q := "read:" + git
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, q); ok {
+			return v.(bool), nil
+		}
+	}
 	rp, err := repoPath(ref)
 	if err != nil {
 		return false, err
 	}
+	ok := true
 	if err := a.f.c.do(ctx, token, http.MethodGet, rp, nil, nil); err != nil {
 		if s := statusOf(err); s == http.StatusNotFound || s == http.StatusForbidden || s == http.StatusUnauthorized {
-			return false, nil
+			ok = false
+		} else {
+			return false, err
 		}
-		return false, err
 	}
-	return true, nil
+	a.cache.Put(token, q, ok)
+	return ok, nil
+}
+
+// readable は、主体のトークンで読めるリポジトリ（owner/name は小文字）を、GET /user/repos の一覧で返す。60 秒持つ。
+func (a *Auth) readable(ctx context.Context, token string) (map[string]bool, error) {
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, "read"); ok {
+			return v.(map[string]bool), nil
+		}
+	}
+	type repo struct {
+		FullName string `json:"full_name"`
+	}
+	rs, err := list[repo](ctx, a.f.c, token, "/user/repos?affiliation=owner,collaborator,organization_member")
+	if err != nil {
+		if s := statusOf(err); s == http.StatusUnauthorized || s == http.StatusForbidden {
+			rs = nil
+		} else {
+			return nil, err
+		}
+	}
+	out := map[string]bool{}
+	for _, r := range rs {
+		out[strings.ToLower(r.FullName)] = true
+	}
+	a.cache.Put(token, "read", out)
+	return out, nil
 }
 
 // setupDirectory は、ディレクトリの repository の用意のコミットを、利用者のトークンで、プロジェクトのリポジトリの main に置く

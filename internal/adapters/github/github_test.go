@@ -485,3 +485,58 @@ func readRepo(ctx context.Context, s *WorkerSource) error {
 	}
 	return s.c.do(ctx, tok, http.MethodGet, "/repos/"+fakeRepo, nil, nil)
 }
+
+// 読めるかは、主体の読めるリポジトリの一覧（GET /user/repos）で決め、repository ごとに GET /repos を呼ばない
+// （design/backend/list-reads.md の「置き場の読み」）。一覧にない public のリポジトリだけ、1 件読んで確かめ、その結果も持つ。
+func TestCanReadUsesList(t *testing.T) {
+	ctx := context.Background()
+	f, _, auth := newTestAdapter(t)
+	f.users["gho_dan"] = fakeUser{login: "dan"}
+	f.readable["gho_dan"] = true
+	for i := 0; i < 5; i++ {
+		if ok, err := auth.CanRead(ctx, "gho_dan", "study"); !ok || err != nil {
+			t.Fatalf("読める：%v %v", ok, err)
+		}
+	}
+	if f.userRepoCalls != 1 || f.repoGets != 0 {
+		t.Fatalf("一覧は 1 回、1 件の読みは 0 回のはず：%d %d", f.userRepoCalls, f.repoGets)
+	}
+	// 一覧に出ない（関わっていない public のリポジトリ）なら、1 件だけ読み、その結果を持つ。
+	f.hideFromUserRepos = true
+	f.users["gho_eve"] = fakeUser{login: "eve"}
+	f.readable["gho_eve"] = true
+	for i := 0; i < 3; i++ {
+		if ok, err := auth.CanRead(ctx, "gho_eve", "study"); !ok || err != nil {
+			t.Fatalf("読める：%v %v", ok, err)
+		}
+	}
+	if f.repoGets != 1 {
+		t.Fatalf("1 件の読みは 1 回のはず：%d", f.repoGets)
+	}
+}
+
+// repository の一覧の、呼び出しの回数のテスト（design/backend/list-reads.md の「呼び出しの回数のテスト」）。
+// 登録した repository が 2 つでも 40 個でも、読めるかを確かめる GitHub への要求は、同じ回数（一覧の 1 回）である。
+func TestCanReadCallCount(t *testing.T) {
+	for _, n := range []int{2, 40} {
+		ctx := context.Background()
+		f, _, auth := newTestAdapter(t)
+		f.users["gho_dan"] = fakeUser{login: "dan"}
+		f.readable["gho_dan"] = true
+		f.extraUserRepos = nil
+		for i := 0; i < n; i++ {
+			git := fmt.Sprintf("acme/r%d", i)
+			auth.f.cfg.Repositories = append(auth.f.cfg.Repositories, ports.Repository{Name: fmt.Sprintf("r%d", i), GitForgeRef: git})
+			f.extraUserRepos = append(f.extraUserRepos, git)
+		}
+		before := f.requests()
+		for i := 0; i < n; i++ {
+			if ok, err := auth.CanRead(ctx, "gho_dan", fmt.Sprintf("r%d", i)); !ok || err != nil {
+				t.Fatalf("%d 個：r%d を読める：%v %v", n, i, ok, err)
+			}
+		}
+		if got := f.requests() - before; got != 1 {
+			t.Fatalf("%d 個：GitHub への要求は 1 回のはず：%d", n, got)
+		}
+	}
+}

@@ -118,6 +118,12 @@ type fakeGitHub struct {
 	permCalls int
 	// readable は、トークンごとに読める repository。
 	readable map[string]bool
+	// userRepoCalls は、GET /user/repos の回数。hideFromUserRepos なら、読めても一覧に出さない（関わっていない public のリポジトリ）。
+	userRepoCalls     int
+	hideFromUserRepos bool
+	extraUserRepos    []string
+	served            int
+	repoGets          int
 	// limited は、次の要求を、制限の応答にする回数。
 	limited int
 	// failPut は、contents の PUT を失敗させる回数（その前の PUT は通す）：after 回通したあとに 1 回失敗させる。
@@ -287,9 +293,17 @@ func num(re *regexp.Regexp, p string) int {
 	return n
 }
 
+// requests は、受けた HTTP の要求の数である（呼び出しの回数のテスト）。
+func (f *fakeGitHub) requests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.served
+}
+
 func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.served++
 	if f.limited > 0 {
 		f.limited--
 		w.Header().Set("Retry-After", "1")
@@ -349,6 +363,17 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		write(w, http.StatusOK, map[string]string{"login": u.login})
 		return
+	case p == "/user/repos":
+		f.userRepoCalls++
+		var rs []map[string]any
+		if f.readable[tok] && !f.hideFromUserRepos {
+			rs = append(rs, map[string]any{"full_name": "acme/study"})
+			for _, n := range f.extraUserRepos {
+				rs = append(rs, map[string]any{"full_name": n})
+			}
+		}
+		write(w, http.StatusOK, rs)
+		return
 	case p == "/user/installations":
 		if _, ok := f.users[tok]; !ok {
 			fail(w, http.StatusUnauthorized, "Bad credentials")
@@ -383,6 +408,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	login := f.users[tok].login
 	switch {
 	case p == "/repos/acme/study" && r.Method == http.MethodGet:
+		f.repoGets++
 		write(w, http.StatusOK, map[string]string{"node_id": "R_x"})
 	case p == "/repos/acme/study/git/ref/heads/main":
 		if f.commits == 0 {
