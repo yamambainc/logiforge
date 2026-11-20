@@ -471,13 +471,14 @@ try {
   await exp.type('input[aria-label="リンクの URL"]', 'https://example.com/minutes');
   await exp.evaluate(() => [...document.querySelectorAll('.link-add button')].find((b) => b.textContent === 'リンクを添える').click());
   ew.reset();
-  await exp.evaluate(() => document.querySelector('.answer-form button[type="submit"]').click());
+  // 移る前の文書に印を置く。戻った文書には印がないので、前の文書で待ちが通らない
+  await exp.evaluate(() => { window.__before = 1; document.querySelector('.answer-form button[type="submit"]').click(); });
   // authorize に行って戻るのを待つ（行く前の画面にも、同じ書きかけが出ているため、移動を先に待つ）
   for (let i = 0; ew.states.size < 1; i++) {
     if (i > 300) throw new Error(`セッションが切れたのに、authorize に行かない：session ${sessionCalls} 回`);
     await new Promise((r) => setTimeout(r, 100));
   }
-  await exp.waitForFunction(() => location.pathname.includes('/human-requests') && document.querySelector('.answer-form textarea')?.value === '広告は続けない', { timeout: 30000 });
+  await exp.waitForFunction(() => !window.__before && location.pathname.includes('/human-requests') && document.querySelector('.answer-form textarea')?.value === '広告は続けない', { timeout: 30000 });
   if (ew.states.size !== 1 || sessionCalls !== 2) throw new Error(`セッションが切れたのに、authorize に行かない：authorize ${ew.states.size} 回、session ${sessionCalls} 回`);
   if (!(await exp.$eval('ul.attached', (u) => u.textContent)).includes('議事録')) throw new Error('リンクの添付が戻らない');
   answerFake = [[403, 'forbidden'], [409, 'not_open']];
