@@ -33,7 +33,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | 提案を作る | `POST /repos/{owner}/{repo}/pulls` |
 | 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
 | レビュー | pull request の記録のコメント（`POST /repos/{owner}/{repo}/issues/{index}/comments`。[レビューの書き方](records.md#レビューの書き方)） |
-| 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pull` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify/README.md)） |
+| 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify/README.md)） |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |
 | 回答の添付 | コメントの添付（`POST /repos/{owner}/{repo}/issues/comments/{id}/assets`）。上限は、artifact と同じ 10 MiB |
@@ -74,8 +74,6 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - merge の API は、head が `head_commit_id` と違えば、409 を返す。
 - merge の権限のない主体が merge を呼ぶと、405 で、`message` が `User not allowed to merge PR` になる。
   - アダプタは、待たずに反映の失敗 `merge_forbidden` にする（[反映の手順](../backend/merge.md)）。
-- merge のすぐあとは、`GET /repos/{owner}/{repo}/commits/{sha}/pull` が 404 を返すことがある。
-  - そのため、worker は、pull request が見つからないコミットを、すぐには反映によらないものと決めない（[反映かの判定](../backend/verify/README.md)）。
 - `GET /repos/{owner}/{repo}/issues/comments?since=` は、編集されたコメントも返す。`updated_at` は、編集の時刻になる。
 - コメントを読むには、`read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 になる。
 

@@ -5,9 +5,11 @@ worker が、GitForge の記録のコメントをどう読み、置き場に追�
 
 ## 控えに足す
 
-- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/records/<GitForge の repository の識別子>/<番号>` に追記する（[スナップショットの置き場](../ports/snapshot-store.md)）。
+- worker は、見回りのたびに、repository の記録のコメントを読み、署名の合うものを、置き場の `keep/records/<GitForge の repository の識別子>/records` に追記する。repository ごとに 1 つのキーである（[スナップショットの置き場](../ports/snapshot-store.md)）。
 - 識別子は、記録の署名に使うもの（Forgejo の id、GitHub の node_id）である。
   - なぜ：`owner/name` は、名前の変更や owner の移動で変わり、そのとき控えが古いキーに取り残されるから。
+- なぜ repository ごとに 1 つのキーか：バックエンドが一覧を返すとき、apply request ごとに置き場を読まずに済むから（[キャッシュ](../caches.md#記録の控え)）。
+  - 大きさは、記録 1 つで 1 KB ほどなので、記録 1,500 個で 1.5 MB ほどである。
 - 控えは、記録の識別子ごとに、最初に見た中身を持つ。同じ識別子で中身が違うものを見たら、最初のものを残し、警告する。
 - 控えからは、消さない。GitForge から記録が消えても、控えには残る。
 - 控えは、記録といっしょに、GitForge のコメントの id を持つ。レビューの順番（「最後の決めるレビュー」）は、この id の順で決める。
@@ -19,7 +21,9 @@ worker が、GitForge の記録のコメントをどう読み、置き場に追�
 - 読むのは、repository のコメントの一覧のうち、前に読んだあとに作られたか変わったもの（`since`）だけである。
 - `issues/comments?since=` は、編集されたコメントを、`updated_at` とともに返す。
 - `updated_at` は秒の単位なので、worker は、前に読んだ位置の 1 秒前から読む。同じものを読み直しても、控えには足さない。
-- 記録を読む間隔は、見回りの間隔と同じである。GitHub では、REST の上限のために、30 秒にする（[GitHub アダプタ](../../adapters/github.md) の「見回りの間隔」）。
+- 記録を読む間隔の既定は、GitHub では 30 秒、Forgejo では見回りの間隔と同じである。
+  - なぜ GitHub は 30 秒か：REST の上限のため（[GitHub アダプタ](../../adapters/github.md) の「見回りの間隔」）。設定で変えなくても、上限に当たらないようにする。
+  - 新しい `main` のコミットがある見回りでは、間隔を待たずに読む（[反映かの判定](README.md#gitforge-の-api)）。
 
 ## 判定に使う
 

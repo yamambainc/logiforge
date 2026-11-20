@@ -27,10 +27,8 @@ GitHub に固有のところだけを書く。
 | 反映する | reviewer のトークンで、`PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
 | レビュー | reviewer のトークンで、pull request の記録のコメント（[レビューの書き方](records.md#レビューの書き方)） |
 | 回答の添付 | リンクだけ。ファイルは受け付けない（[人への依頼の回答](../files/artifacts.md)） |
-| 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pulls`（[反映かの判定](../backend/verify/README.md)） |
+| 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify/README.md)） |
 
-- GitHub は、merge のすぐあとに、`GET /repos/{owner}/{repo}/commits/{sha}/pulls` で空の一覧を返すことがある。
-  - そのため、worker は、pull request が見つからないコミットを、すぐには反映によらないものと決めない（[反映かの判定](../backend/verify/README.md)）。
 - 根の仮説に背景情報があるときは、根のコミットのあとに、2 つ目のコミットで足す（[repository を用意する](#repository-を用意する)）。
   - 2 つ目のコミットには、`Logiforge-Init-Signature:` を付ける（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
   - なぜ 1 つのコミットにしないか：空のリポジトリでは、Git Data API（blob、tree、commit）が使えず（409）、contents API は 1 回に 1 つのファイルしか書けないから。

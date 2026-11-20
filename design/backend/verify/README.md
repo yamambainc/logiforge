@@ -56,12 +56,13 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 ## GitForge の API
 
-| GitForge | C を merge した pull request の読み方 |
-|---|---|
-| GitHub | `GET /repos/{owner}/{repo}/commits/{sha}/pulls` のうち、merge されていて、`merge_commit_sha` が C で、向き先が `main` のもの |
-| Forgejo | `GET /repos/{owner}/{repo}/commits/{sha}/pull` が返すもので、merge されていて、向き先が `main` のもの |
-
-- 記録は、repository のコメントの一覧（`GET /repos/{owner}/{repo}/issues/comments?since=`）から読む。GitHub と Forgejo の両方にある（[記録の控え](records.md)）。
+- worker は、見回りで新しい `main` のコミットがあるとき、反映した pull request の一覧を 1 回読み、`merge_commit_sha` で新しいコミットごとの pull request を引く（[一覧の読み](../list-reads.md#どの一覧の-api-で読むか)）。
+  - 引くのは、merge されていて、`merge_commit_sha` が C で、向き先が `main` のものである。
+  - なぜ：コミットごとに pull request を問い合わせると、取り込みが遅れて追いつくとき、REST の回数がコミットの数に比例するから。
+- 記録は、repository のコメントの一覧（`GET /repos/{owner}/{repo}/issues/comments?since=`）から読み、控えに足してから判定する。GitHub と Forgejo の両方にある（[記録の控え](records.md)）。
+  - 新しい `main` のコミットがある見回りでは、記録を読む間隔を待たずに読む。
+  - なぜ：merge の直前に書いたレビューを、判定に入れるため。
+  - 判定に使うレビューは、控えの記録から作る。pull request ごとのコメントの一覧は読まない。
 - API が答えないときは、C を取り込まずに、次の見回りでやり直す。`latest` は進めない。
   - なぜ：判定できないコミットを、正しいとも壊れているとも記録しないため。
 - C を merge した pull request が見つからないときは、worker が C を初めて見てから 60 秒までは、決めずにやり直す。
@@ -74,7 +75,7 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 | もの | 量 | 目安 |
 |---|---|---|
-| GitForge の API | C を merge した pull request の読み 1 回 | 100〜300 ms |
+| GitForge の API | 見回りごとに、反映した pull request の一覧 1 ページ（新しいコミットの数によらない） | 100〜300 ms |
 | 控えを読む | その pull request の記録（置き場のキー 1 つ） | 数 ms |
 | 署名を確かめる | 記録の数だけ（多くて数十） | 1 つ 0.1 ms より小さい |
 | 差分を重ねる計算 | 先頭のコミットの差分のファイルの数に比例する | 数 ms |
@@ -82,5 +83,5 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 
 - 合わせて、ノード 4,000 の木でも、コミット 1 つに 0.6 秒ほどである。1 コミットの取り込み（ノード 4,000 で約 460 ms）に足すと、約 2.3 倍になる。
 - 重ねた木は、そのコミットのスナップショットツリーと同じものになるので、検査の結果を、スナップショットツリーを作るのに使い回せる。そのときは、足す時間は、API の待ちのほかは数 ms になる。
-- 記録を読むのは、見回りごとに、repository ごとに REST が 1 回（変わったものがなければ、空の 1 ページ）である。GitHub で 30 秒ごとなら、repository 1 つで 1 時間に 120 回で、上限（1 時間に 5,000）に対して、repository 30 個ほどまで足りる。
+- 記録を読むのは、記録を読む間隔ごとに、repository ごとに REST が 1 回（変わったものがなければ、空の 1 ページ）である。GitHub で 30 秒ごとなら、repository 1 つで 1 時間に 120 回で、上限（1 時間に 5,000）に対して、repository 30 個ほどまで足りる。
 - 判定は、新しいコミットにだけ行う。取り込み済みのコミットは、判定し直さない。
