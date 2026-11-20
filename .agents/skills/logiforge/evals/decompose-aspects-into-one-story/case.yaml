@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: decompose-aspects-into-one-story
+expected_outcome: |
+  担当を分けたいと頼まれても、継続率と満足度を兄弟ストーリーに分けない。1 つの story.create の子仮説（--hypothesis を 2 つ）として並べる。理由として、仮説の値は子ストーリーの OR なので、片方だけのストーリーが true になると、もう片方を確かめないまま親仮説が true になることにふれる。子仮説はそれぞれ葉になるので、担当は別々に進められると説明する。

@@ -1,0 +1,28 @@
+{
+  "apply_request_id": "apr_d405",
+  "commit": "7c1e9a3b5d2f4e6a8b0c1d3e5f7a9b2c4d6e8f01",
+  "operations": [
+    {
+      "kind": "story.create",
+      "story_id": "s_r21",
+      "parent_hypothesis_id": "h_3b",
+      "title": "25℃ でのサイクル試験",
+      "summary": "25℃ で 500 サイクルの充放電試験を行い、容量維持率が 80% 以上であることを示す。",
+      "hypotheses": [
+        {"hypothesis_id": "h_r22", "statement": "25℃ で 500 サイクル後の容量維持率は 80% 以上である"},
+        {"hypothesis_id": "h_r23", "statement": "試験に使ったセルは量産と同じ工程で作られている"}
+      ]
+    }
+  ],
+  "targets": [
+    {"node_type": "hypothesis", "id": "h_3b", "statement": "試作セルは 25℃ と 45℃ で 500 サイクル後も容量 80% 以上を保つ", "value": null, "leaf": false}
+  ],
+  "ancestors": [
+    {"id": "h_3b", "statement": "試作セルは 25℃ と 45℃ で 500 サイクル後も容量 80% 以上を保つ"},
+    {"id": "h_root", "statement": "試作セルは量産の寿命の基準を満たす"}
+  ],
+  "siblings": [
+    {"id": "s_r10", "title": "45℃ でのサイクル試験", "summary": "45℃ で 500 サイクルの充放電試験を行い、容量維持率が 80% 以上であることを示す。", "value": null}
+  ],
+  "citations": []
+}

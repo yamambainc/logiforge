@@ -24,6 +24,11 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
 - スナップショットツリーへの変更は、すべて apply request で出す。apply request は、reviewer が `approve` すると反映される。
 - reviewer が審査するのは、論理と根拠である。
   - ストーリーの子仮説で、親仮説が本当に言えるか。
+    - 兄弟ストーリーに頼らず、このストーリーだけで判断する（[ストーリー](https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md#ストーリー)）。
+    - 親仮説の一部の場合や側面だけを言うストーリーは、`request_changes` にする。
+    - そのときの直し方は、分けたものをすべて、1 つのストーリーの子仮説として並べることである。
+    - なぜ：仮説の値は、子ストーリーの OR だから。
+    - 一部しか言えないストーリーを通すと、親仮説の残りを確かめないまま、親仮説が true になる。
   - 検証結果のレポートが、値を本当に支えているか。
   - 形の決まり（文字数、操作の種類など）は、Logiforge が検査する。
 
