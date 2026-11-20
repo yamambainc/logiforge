@@ -16,6 +16,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/settings"
+	"github.com/yamambainc/logiforge/internal/store"
 )
 
 // settingsService は、設定の API の中身である（design/api/endpoints/settings.md）。設定の版ごとに作る。
@@ -24,6 +25,8 @@ type settingsService struct {
 	db   *settings.DB
 	keys settings.Keys
 	auth ports.Authenticator
+	// store は、スナップショットの置き場。repository の一覧の prepared を、latest があるかで決めるのに使う。
+	store store.Reader
 }
 
 var _ api.SettingsService = (*settingsService)(nil)
@@ -307,11 +310,25 @@ func (s *settingsService) ListRepositories(ctx context.Context, token string) ([
 		return nil, err
 	}
 	var out []api.SetupRepository
-	prepared := preparedOf(ctx, c, token)
 	for _, r := range c.Repositories {
-		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: prepared(r.Name)})
+		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: s.latestPrepared(ctx, r.Name)})
 	}
 	return out, nil
+}
+
+// latestPrepared は、repository の一覧の prepared を、置き場の latest があるかで決める（design/backend/list-reads.md の「置き場の読み」）。
+// なぜ：repository ごとに GitForge に聞かずに分かるから。worker が取り込むまでは false に見える。読めなければ nil。
+func (s *settingsService) latestPrepared(ctx context.Context, name string) *bool {
+	if s.store == nil {
+		return nil
+	}
+	sha, err := store.GetLatest(ctx, s.store, name)
+	if err != nil {
+		slog.Warn("用意が済んでいるかを確かめられない", "repository", name, "err", err)
+		return nil
+	}
+	ok := sha != ""
+	return &ok
 }
 
 // preparedOf は、repository の名前から、スナップショットツリーがもうあるかを、利用者のトークンで GitForge に聞く関数を返す

@@ -226,7 +226,7 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}
-	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth}, slog.Default())
+	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth, store: l.store}, slog.Default())
 	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c, sessionStore{l.db, l.keys}), WebUI: webui.Dist(), Setup: l.setup, Settings: st}), fs.reader, nil
 }
 
