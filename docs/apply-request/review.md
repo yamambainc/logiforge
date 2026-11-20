@@ -8,7 +8,7 @@ apply request が、どういう条件で反映され、論理レビューがど
 [apply request](README.md) は、次の条件をすべて満たすと反映される。
 
 - 差分を書いたどのセッションとも別のセッションによる `approve` がある。
-  - push された先頭のコミットは、どれも、書いたセッションが記録される。
+  - push された先頭のコミットは、どれも、書いたセッションが残る。
 - `approve` が有効なのは、`approve` した時点の差分に対してだけである。
   - apply request が更新されたら、それまでの `approve` は無効になる。
 - 最新の差分に対するレビューのうち、最後のものが `approve` である。
@@ -84,12 +84,16 @@ Logiforge が確かめること：
   - 差分を書いたセッション ID は、差分を書いた主体の自己申告である。Logiforge は、それが正しいかを確かめない。
   - 差分を書いたセッションを正しく申告するのは、CLI を使う側の責任である。
   - 差分を書いたセッションを申告していない先頭のコミットは、`approve` できない。
-  - 短い間に何度も push されると、Logiforge が見なかった途中のコミットのセッションは、記録されない。
+  - 短い間に何度も push されると、Logiforge が見なかった途中のコミットのセッションは、残らない。
+- reviewer のセッション ID も、reviewer の自己申告である。review の本文に書かれる。
+  - GitForge の画面から直接出した review も、本文にセッション ID があれば、Logiforge を通した review と同じに数える。
+  - repository に書く権限（Write）を持つ人とエージェントは、review の本文を書けるので、セッション ID を偽れる。Write は、信頼できる人とエージェントにだけ配る。
+- reviewer は、apply request を作った人と別の GitForge のアカウントである。GitForge が、自分の pull request の `approve` を拒むから。
   - WebUI のレビューでは、セッションの分離は、文脈の分離を保証しない。WebUI のタブは、いつも別のセッションだから。
-    - 自分が書いた差分や、自分が指示した差分を、自分で `approve` しないのは、人の責任である。
+    - 自分が指示した差分を、自分で `approve` しないのは、人の責任である。
     - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request と履歴](../webui/history.md)）。
 
-Logiforge が記録すること：
+Logiforge が review の本文に書くこと：
 
 - `approve` ごとの、reviewer のセッション ID
 - `approve` ごとの、使ったプロンプトのリビジョン
@@ -97,4 +101,5 @@ Logiforge が記録すること：
 対応しないこと：
 
 - 同じ主体が、別のセッションを名乗るなりすまし
+- Write を持つ主体による、review の本文、コメント、ラベルの書き換え
   - 認証基盤は、この仕様の範囲外である（[目的と範囲](../concepts/README.md)）。

@@ -8,7 +8,7 @@
 
 ```
 +---------------------------------------------------------------+
-| 設定    [repository] [GitForge] [記録の鍵]                    |
+| 設定    [repository] [GitForge]                               |
 +---------------------------------------------------------------+
 | repository                                         [足す]     |
 | question-a   my-org/question-a                     [外す]     |
@@ -37,7 +37,6 @@
 |---|---|
 | repository | GitHub を使う構成の repository と、ディレクトリの repository の一覧 |
 | GitForge | GitHub App か Forgejo のつなぎ方。秘密の入れ直し。見回りの間隔 |
-| 記録の鍵 | 記録の署名の鍵の一覧。新しい鍵を作る |
 
 - 変えた設定は、サーバを起動し直さずに効く。
   - worker が読む設定（repository の一覧、見回りの間隔）は、worker が次に一覧を読み直したときに効く。画面に、そのことを示す。

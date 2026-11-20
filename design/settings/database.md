@@ -25,7 +25,7 @@ SQLite にする。
   - バックエンドが書く途中で落ちて、ホットジャーナル（書きかけの `-journal`）が残ると、読むだけの接続は戻せず、誤りになる。worker は、ログに出して次の読み直しまで待つ。バックエンドが次に開いたときに戻す。
 - バックエンドは読み書きする。worker は、OS の権限で、読むことしかできない。
   - DB のファイルは、バックエンドだけのボリュームかディレクトリに置き、worker には読むだけでマウントする（別の OS のユーザーで動かすときは、ファイルの権限で読むだけにする）。
-  - なぜ：worker が設定の DB に書けると、乗っ取った者が、記録の署名の公開鍵、repository の一覧、WebUI の URL を書き換えられるから。鍵を 2 つに分けても、守れない（[秘密の暗号化](secrets.md#2-つの鍵)）。
+  - なぜ：worker が設定の DB に書けると、乗っ取った者が、repository の一覧と WebUI の URL を書き換えられるから。鍵を 2 つに分けても、守れない（[秘密の暗号化](secrets.md#2-つの鍵)）。
 - DB のファイルは、NFS などの共有のボリュームに置かない。
   - なぜ：ネットワークのファイルシステムでは、SQLite のロックが効かないことがあるから。
 
@@ -40,7 +40,6 @@ SQLite にする。
 |---|---|---|
 | `settings` | `name`、`value`、`encrypted`、`updated_at`、`updated_by` | 名前と値の組。秘密は暗号文（[秘密の暗号化](secrets.md)） |
 | `repositories` | `name`、`gitforge_ref`、`directory` | 登録した repository（GitHub リポジトリの repository と、ディレクトリの repository）。Forgejo の構成のふつうの repository は置かない（[repository の登録](../adapters/README.md#repository-の登録)） |
-| `record_keys` | `key_id`、`public_key`、`private_key`、`created_at`、`primary` | 記録の署名の鍵。`private_key` は暗号文 |
 | `worker_tokens` | `owner`、`token`、`expires_at`、`repositories` | worker のための installation token（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。`token` は暗号文 |
 | `webui_sessions` | `id_hash`、`client_id`、`access_token`、`access_expires_at`、`refresh_token`、`created_at`、`used_at` | WebUI のサインインのセッション（[サインインのセッション](../webui/session.md)）。トークンは暗号文。worker は読まない |
 | `setup` | `token_hash`、`created_at`、`done_at` | 初回のセットアップ（[初回のセットアップ](setup.md)） |

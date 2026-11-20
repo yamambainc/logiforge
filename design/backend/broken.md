@@ -39,7 +39,7 @@
   - この誤りは、API の `Problem` の `code` ではなく、`cli_error` と同じ CLI の中の誤りである（[CLI](../cli/README.md) の「出力」）。
 - WebUI は、最後に正しかった時点の木を示し、壊れていることを画面の上に示す。
 - `commit` を指定した読みは、指定したコミットの木を返す。壊れていれば、ヘッダーを付ける。
-- 壊れているあいだ、反映の手順は、直すための apply request でなければ、反映の失敗の理由 `repository_broken` を記録して止まる（[反映の手順](merge.md)）。
+- 壊れているあいだ、反映の手順は、直すための apply request でなければ、反映の失敗の理由 `repository_broken` にして止まる（[反映の手順](merge.md)）。
 - apply request の作成は、壊れているあいだも受け付ける。
 - git を読む CLI のコマンド（`check`、ひな形、`repo clone`、`ar create`）も、`getRepository` の `broken` を見て、壊れていれば `repository_broken` の誤りを返す。
   - なぜ：壊れているあいだ、git で clone した木（壊れた木）と、API が返す木（最後に正しかった時点の木）が違うから。気づかずに、壊れた木の上で作業しないようにするため。
@@ -47,12 +47,13 @@
 
 ## 直すための apply request
 
-直すための apply request は、apply request の作成で種類（`kind`）を指定して作る。ふつうの apply request と同じく、論理レビューの `approve` で反映する。
+直すための apply request は、apply request の作成で種類（`kind`）を指定して作る。バックエンドは、pull request にラベル `logiforge/repair.revert` か `logiforge/repair.accept` を付ける。ふつうの apply request と同じく、論理レビューの `approve` で反映する。
 
 - 直すための apply request の reviewer の材料（`ar material` の `repair`）は、`last_good` のコミットから今の `main` の先頭までの、ファイルの変化である。
 - 反映のコミットに、trailer `Logiforge-Repair: revert` か `Logiforge-Repair: accept` を書く。表示のためで、判定には使わない。
-- worker は、反映によるコミットで、その pull request の `apply_request` の記録の種類（署名で守られる）が直すための apply request であり、下の条件が成り立てば、`last_good` を空に戻す。
-  - なぜ記録の種類で決めるか：人が GitForge の画面で merge すると、反映のコミットのメッセージに trailer が入らないから。
+- worker は、反映によるコミットで、その pull request のラベルが直すための apply request の種類であり、下の条件が成り立てば、`last_good` を空に戻す。
+  - なぜラベルで決めるか：人が GitForge の画面で merge すると、反映のコミットのメッセージに trailer が入らないから。
+  - ラベルは、Write を持つ主体なら付け替えられる。付け替えても、下の中身の条件（木の全体の比べ方）を満たさなければ、直したことにならない（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。
 
 ### repair.revert
 

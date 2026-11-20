@@ -1,6 +1,6 @@
 ---
 name: logiforge-review
-description: Logiforge の apply request を reviewer として審査し、approve、request_changes、comment のどれかを付けるときに使う。着手できる作業に review_waiting があるとき、apply request（AR、apr_…）のレビューや論理レビューを頼まれたとき、`logiforge ar material` や `logiforge ar review` を使う場面では、Logiforge の名前が無くても使う。ストーリーの十分性や、検証結果の根拠を審査するときも使う。apply request を出す・直すときは logiforge を使う。
+description: Logiforge の apply request を reviewer として審査し、approve、request_changes、comment のどれかを付けるときに使う。着手できる作業に review_waiting があるとき、apply request（AR、pull request の番号）のレビューや論理レビューを頼まれたとき、`logiforge ar material` や `logiforge ar review` を使う場面では、Logiforge の名前が無くても使う。ストーリーの十分性や、検証結果の根拠を審査するときも使う。apply request を出す・直すときは logiforge を使う。
 ---
 
 # Logiforge の apply request をレビューする
@@ -119,7 +119,8 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 - `same_session`：差分を書いたセッションと同じセッション ID を使っている。レビューをやめ、別のセッションでやり直す。
 - `commit_conflict`：材料を読んだあとに push された。手順 2 から、やり直す。
 - `snapshot_pending`：少し待って、送り直す。
-- `not_open`：レビューの鎖が切れたか、もう open でない。opener の作業なので、レビューをやめる。
+- `not_open`：もう open でない。レビューをやめる。
+- 自分の GitForge のアカウントが作った apply request は、GitForge が `approve` を拒む。別のアカウントの reviewer に任せる。
 
 ## 報告
 

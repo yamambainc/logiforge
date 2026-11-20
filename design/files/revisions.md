@@ -37,7 +37,7 @@
 
 | trailer | 内容 |
 |---|---|
-| `Logiforge-Apply-Request:` | apply request の識別子 |
+| `Logiforge-Apply-Request:` | apply request の識別子（pull request の番号） |
 | `Logiforge-Version:` | 反映した先頭のコミットの、先頭のコミットの一覧の中の位置と、その SHA（例：`3 <commit SHA>`） |
 | `Logiforge-Session-Id:` | 先頭のコミットを書いたセッション。自己申告である（下の「セッション」） |
 | `Logiforge-Repository:` | repository の名前。ディレクトリの repository だけに書く（[ディレクトリ方式の履歴](../directory/history.md)） |
@@ -48,7 +48,7 @@
 - `Logiforge-Version:` は、名前に Version とあるが、反映した先頭のコミットを指す。
   - 位置の数は、API には出さない。
 - 最初のコミットは、`Logiforge-Apply-Request:` を持たない。
-- 反映によるコミットかは、trailer でなく、中身（元の pull request の記録とレビュー、差分を重ねた木）で決める（[反映かの判定](../backend/verify/README.md)）。
+- 反映によるコミットかは、trailer でなく、中身（元の pull request と、その review、差分を重ねた木）で決める（[反映かの判定](../backend/verify/README.md)）。
   - なぜ：`main` を守る設定は求めないので、trailer はだれでも書けるから。
 - trailer に署名は付けない。
   - なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。
@@ -65,8 +65,8 @@
 
 ## 誰が、いつ、どの apply request で
 
-- 誰が：反映のコミットの `Logiforge-Session-Id:` と、pull request を作った主体
+- 誰が：反映のコミットの `Logiforge-Session-Id:` と、pull request の作者
 - いつ：コミットの時刻
 - どの apply request で：`Logiforge-Apply-Request:`
 
-レビューの記録は、[GitForge のポート](../backend/ports/gitforge.md) に置く。
+レビューは、GitForge の pull request の review である（[GitForge のポート](../backend/ports/gitforge.md)）。

@@ -13,10 +13,10 @@
 | 共有の鍵 | バックエンドと worker |
 
 - worker には、バックエンドの鍵を渡さない。
-- なぜ 2 つに分けるか：worker が、記録の署名の秘密鍵と、GitHub App の秘密鍵を読めないようにするため。
-  - worker は、記録の署名を確かめるだけで、記録を作らない（[反映かの判定](../backend/verify/README.md)）。
-  - worker が秘密鍵を読めると、worker を乗っ取った者が、反映の記録を偽れる（[記録のコメント](../adapters/records.md#記録のコメント)）。
-- 平文の設定（記録の署名の公開鍵、repository の一覧、URL）は、worker が設定の DB に書けないことで守る（[設定の DB](database.md#db-の種類)）。
+- なぜ 2 つに分けるか：worker が、GitHub App の秘密鍵と client secret を読めないようにするため。
+  - GitHub App の秘密鍵を読めると、worker を乗っ取った者が、書ける installation token を作り、GitHub に書けるから（下の「秘密ごとの鍵」）。
+  - worker は GitForge を読むだけなので、GitForge に書ける秘密は要らない（[反映かの判定](../backend/verify/README.md)）。
+- 平文の設定（repository の一覧、URL）は、worker が設定の DB に書けないことで守る（[設定の DB](database.md#db-の種類)）。
 - なぜ DB の権限で分けないか：
   - SQLite には、表ごとの権限がないから（[設定の DB](database.md)）。
   - 暗号化で分けると、DB の種類によらず、同じ決まりで守れるから。
@@ -30,9 +30,7 @@
 | GitHub App の client secret | GitHub | バックエンド | バックエンドの鍵 |
 | Forgejo の worker のユーザーのトークン | Forgejo | バックエンド、worker | 共有の鍵 |
 | Forgejo の OAuth2 のアプリケーションの client secret | Forgejo | バックエンド | バックエンドの鍵 |
-| 記録の署名の秘密鍵 | 両方 | バックエンド | バックエンドの鍵 |
 
-- 記録の署名の公開鍵は、秘密ではないので、暗号化しない。worker は、これで記録を確かめる。
 - GitHub App の秘密鍵は、バックエンドだけが読む。バックエンドは、これで installation token を作る（[installation token](../adapters/github-app.md#installation-token)）。
   - なぜ worker に渡さないか：秘密鍵を持つ者は、`permissions` を絞らずに、書ける installation token を作れるから。App の Contents と Issues は Read and write なので、install したすべてのリポジトリ（ディレクトリ方式では、プロジェクトのコードのリポジトリ）に書ける。
   - worker は、バックエンドが Read に絞って作ったトークンだけを読む（[worker のトークン](../adapters/github-app.md#worker-のトークン)）。
@@ -97,4 +95,4 @@
   - なぜ：DB のバックアップが漏れても、秘密を読めないようにするため。
 - 鍵を置く場所（バックエンドと worker を動かす環境）を読める人を信頼する。
   - ほかの主体には、鍵を置く場所を読ませない。
-- worker は、git と GitForge に書く鍵を持たない。記録を作る秘密鍵も持たない。
+- worker は、git と GitForge に書く鍵を持たない。

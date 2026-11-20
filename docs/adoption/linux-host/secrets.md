@@ -1,7 +1,7 @@
 # 設定と鍵を置く
 
 [1 台の Linux に置く](README.md) で、サービスが起動時に読むファイルと鍵を置くときに読む。
-ほかの設定と秘密（GitHub App の秘密鍵と client secret、記録の署名の鍵）は、設定の DB に暗号化して置く。WebUI のセットアップの画面で入れる（[秘密の暗号化](../../../design/settings/secrets.md)）。
+ほかの設定と秘密（GitHub App の秘密鍵と client secret など）は、設定の DB に暗号化して置く。WebUI のセットアップの画面で入れる（[秘密の暗号化](../../../design/settings/secrets.md)）。
 
 ## ファイル
 

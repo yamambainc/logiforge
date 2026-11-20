@@ -163,7 +163,6 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   3. `git push --force-with-lease`（rebase で履歴が変わるため）
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
 - `repository_broken`：repository が壊れているあいだは、直すための apply request しか反映されない。先に下の「壊れた repository を直す」で直し、そのあと reviewer の `approve` し直しを待つ。
-- レビューの鎖が切れた（レビューの API が `not_open` を返す）：`logiforge ar close <apply request> --reason <理由>` し、同じブランチから `ar create` し直す。
 - 取り下げるとき：`logiforge ar close <apply request> --reason <理由>`
 - 反映か close のあと、手元のブランチは `logiforge ar cleanup` で消せる。
 

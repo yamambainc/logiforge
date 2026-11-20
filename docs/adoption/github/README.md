@@ -70,7 +70,7 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 
 ## 見回りの間隔
 
-- 利用者が、設定の画面の「GitForge」で、見回りの間隔を 10 秒に、記録を読む間隔を 30 秒にする。既定の見回りの間隔は 1 秒である。
+- 利用者が、設定の画面の「GitForge」で、見回りの間隔を 10 秒にする。既定の見回りの間隔は 1 秒である。
   - なぜ：GitHub の git の操作と REST の上限に当たらないようにするため（[GitHub アダプタ](../../../design/adapters/github.md) の「見回りの間隔」）。
 
 ## main を守る

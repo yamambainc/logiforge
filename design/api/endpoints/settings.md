@@ -12,8 +12,6 @@
 | `GET /settings/repositories` | `listRegisteredRepositories` | 登録した repository の一覧を返す。それぞれに `prepared` を付ける |
 | `PUT /settings/repositories/{repository}` | `registerRepository` | repository を登録する。登録済みの名前の `gitforge_ref` とディレクトリは変えられない（`validation_failed`）。応答に `prepared` を付ける |
 | `DELETE /settings/repositories/{repository}` | `unregisterRepository` | repository を外す |
-| `GET /settings/record-keys` | `listRecordKeys` | 記録の署名の鍵の ID、公開鍵、作った時刻を返す |
-| `POST /settings/record-keys` | `createRecordKey` | 新しい鍵を作り、書くときの鍵にする |
 
 ## 認証と認可
 

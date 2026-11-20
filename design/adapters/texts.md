@@ -44,6 +44,7 @@ GitHub アダプタと Forgejo アダプタが、review、pull request のコメ
 |---|---|
 | `Target-Node:` | 対象ノードの識別子 |
 | `Session-Id:` | 起票したセッション |
+| `Idempotency-Key:` | 起票の要求の `Idempotency-Key`。あるときだけ（[同じ要求の繰り返し](../api/writes.md#同じ要求の繰り返し)） |
 
 - 依頼の種類は、ラベル（`logiforge/pvr`、`logiforge/decision`）で決める。起票した主体は、issue の作者である。
 - 対象ノードがないか、今の木にない依頼は、作業に出さず、一覧で警告する。

@@ -39,5 +39,4 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
   - `?add=new` で開くと、1 段目から始める。`?add=first` で開くと、`prepared` が `false` の repository があれば、その 2 段目から始める。なければ 1 段目から始める。
   - 開いたら、`history.replaceState` で URL から `add` を消す。なぜ：読み直したときに、また開かないため。
 - GitForge のタブ：`getSettings` と `updateGitForgeSettings`。秘密は、置いたかどうかだけを示し、入れたときだけ送る。
-- 記録の鍵のタブ：`listRecordKeys`、`createRecordKey`。
 - 最後に変えた利用者と時刻は、各応答の `updated_by` と `updated_at` を示す。

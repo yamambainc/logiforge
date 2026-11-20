@@ -43,7 +43,7 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - `client` の書き込みと、`user` のレビューには、`Logiforge-Session-Id` ヘッダーを必ず付ける。
   - 値は、クライアントが決める文字列（128 文字以下）である。
   - なぜ：差分を書いたセッションと reviewer のセッションが別であることを確かめるため（[保証の範囲](../../docs/apply-request/review.md)）。
-- バックエンドは、ヘッダーのセッション ID を、レビューと close と人への依頼に記録する。
+- バックエンドは、ヘッダーのセッション ID を、review、close のコメント、人への依頼の issue の本文に書く（[review と issue の本文](../adapters/texts.md)）。
 - 先頭のコミットを書いたセッションは、ヘッダーではなく、そのコミットの trailer の自己申告である（[セッション](../files/revisions.md#セッション)）。
 - 同じ主体が別のセッション ID を名乗ることは、防がない。
 

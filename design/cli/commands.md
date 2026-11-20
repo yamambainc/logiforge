@@ -37,7 +37,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 
 | コマンド | API | git |
 |---|---|---|
-| `ar create --branch <ブランチ> [--kind change\|repair.revert\|repair.accept] [--description] [--idempotency-key <キー>]` | `createApplyRequest` | なし（先に push しておく） |
+| `ar create --branch <ブランチ> [--kind change\|repair.revert\|repair.accept] [--description]` | `createApplyRequest` | なし（先に push しておく） |
 | `repair revert` | `getRepository`（`broken`）、`getRepairFiles` | `main` から分けたブランチに、木の全体を、`getRepairFiles` のファイルだけにしたコミットを作る（[壊れた repository](../backend/broken.md)） |
 | `repair accept` | `getRepository`（`broken`） | `main` から分けたブランチに、認めた記録の artifact を 1 つ加えるコミットを作る |
 | `ar edit <apply request> --description` | `updateApplyRequest` | なし |
@@ -60,11 +60,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
   - reviewer は、`ar material` が返すコミット（`commit`）を、そのまま `--commit` に渡す。
   - なぜ：材料を読んだあとに新しいコミットが push されると、読んでいないコミットをレビューしたことになるから。そのときは、`commit_conflict` で受け付けない。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
-- `ar create` は、`Idempotency-Key` を、呼び出しごとに乱数で作る（[同じ要求の繰り返し](../api/writes.md#同じ要求の繰り返し)）。
-  - その呼び出しの中で送り直すとき（通信の誤り、502、503、504）だけ、同じキーを使う。
-  - `--json` の出力に、使ったキー（`idempotency_key`）を書く。あとで送り直すときは、`--idempotency-key` にそのキーを渡す。
-  - なぜ呼び出しごとか：レビューの鎖が切れたときの「close して、同じブランチから作り直す」で、閉じた apply request が返らないようにするため（[反映の手順](../backend/merge.md)）。
-  - 同じブランチの二重の作成は、バックエンドが拒む。
+- `ar create` の送り直しは、同じブランチの open の pull request で見分ける。キーは使わない（[apply request の作成](../backend/apply-request/create.md#作成)）。
 - `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
 - どのコマンドも、`snapshot_pending` が返ったら、1 秒待って、3 回まで送り直す。
   - それでも `snapshot_pending` なら、そのまま返す。

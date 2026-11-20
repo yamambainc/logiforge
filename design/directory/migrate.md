@@ -9,7 +9,7 @@
 - 移さないもの：`main` の履歴、apply request、レビュー、人への依頼、ブランチの履歴。どれも、元の repository に残る。
   - なぜ：移した先は、別の git リポジトリなので、元のコミットと pull request と issue を持ち込めないから。
 - 移した先では、移したファイルを、1 つの用意のコミットとして置く（[履歴](history.md) の「用意のコミット」）。そのコミットが、移した先の[版](history.md#版)の 1 番である。
-  - 用意のコミットに、trailer `Logiforge-Migrated-From: <元の repository の名前> <移したコミットの SHA>` を書く。この値も、用意のコミットの署名に含める。
+  - 用意のコミットに、trailer `Logiforge-Migrated-From: <元の repository の名前> <移したコミットの SHA>` を書く。
     - なぜ：元の repository のノードの履歴へのリンクに使うので、書き換えられないようにするため（下の「ノードの履歴」）。
 
 ## 移す前の条件

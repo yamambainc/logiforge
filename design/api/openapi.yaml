@@ -279,7 +279,6 @@ paths:
       description: |
         WebUI のサインインで得たトークンを求める。
         トークンが、Logiforge の GitHub App か Forgejo の OAuth2 のアプリケーションのものでなければ unauthenticated。
-        記録の署名の鍵がなければ、1 つ作る（../../design/settings/setup.md の「流れ」）。
       security:
         - bearerAuth: []
           setupToken: []
@@ -385,35 +384,6 @@ paths:
       responses:
         '204':
           description: 外した
-        '4XX': { $ref: '#/components/responses/Problem' }
-  /settings/record-keys:
-    get:
-      tags: [settings]
-      operationId: listRecordKeys
-      summary: 記録の署名の鍵の一覧（user だけ。秘密鍵は返さない）
-      responses:
-        '200':
-          description: 鍵の一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/RecordKey' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-    post:
-      tags: [settings]
-      operationId: createRecordKey
-      summary: 新しい記録の署名の鍵を作り、書くときの鍵にする（user だけ）。古い鍵の公開鍵は残す
-      responses:
-        '201':
-          description: 作った鍵
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RecordKey' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories:
@@ -802,8 +772,7 @@ paths:
         反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
         先頭のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
         先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
-        レビューの鎖が切れていれば、not_open で受け付けない。opener は、close して、同じブランチから作り直す（../../design/backend/merge.md の「レビューの鎖が切れたとき」）。
-        reviewer の主体が、apply request を作った主体と同じなら、応答の apply_request.warnings に警告を入れる。
+        呼んだ主体が pull request の作者なら、GitForge が approve を拒む（../../design/adapters/pull-requests.md の「数える review」）。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
         - $ref: '#/components/parameters/SessionId'
@@ -822,7 +791,7 @@ paths:
                 body: { type: string }
                 prompt_revision:
                   type: string
-                  description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない（記録には - を書く）
+                  description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない（review の本文には - を書く）
       responses:
         '201':
           description: 付けたレビューと、その後の apply request
@@ -1134,12 +1103,12 @@ components:
       name: applyRequestId
       in: path
       required: true
-      schema: { type: string, pattern: '^apr_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     HumanRequestId:
       name: humanRequestId
       in: path
       required: true
-      schema: { type: string, pattern: '^hrq_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     Commit:
       name: commit
       in: query
@@ -1160,7 +1129,7 @@ components:
         向き先のブランチが消えていれば、not_found を返す。
         その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、not_found を返す。
         getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとのスナップショットツリーに、そのノードがないからである。
-      schema: { type: string, pattern: '^apr_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     Cursor:
       name: cursor
       in: query
@@ -1267,11 +1236,10 @@ components:
         worker_token: { type: string, writeOnly: true, description: 'read:repository、read:organization、read:issue' }
     IntervalSettings:
       type: object
-      description: 見回りの間隔、一覧を読み直す間隔、記録を読む間隔、git の操作の時間の上限は ../../design/backend/worker/patrol.md に従い、worker が次に一覧を読み直したときから効く
+      description: 見回りの間隔、一覧を読み直す間隔、git の操作の時間の上限は ../../design/backend/worker/patrol.md に従い、worker が次に一覧を読み直したときから効く
       properties:
         patrol_seconds: { type: number, exclusiveMinimum: 0, description: 見回りの間隔 }
         list_seconds: { type: number, exclusiveMinimum: 0, description: repository の一覧を読み直す間隔 }
-        records_seconds: { type: number, exclusiveMinimum: 0, description: 記録を読む間隔 }
         git_timeout_seconds: { type: number, exclusiveMinimum: 0, description: git の操作の時間の上限 }
         write_wait_seconds: { type: number, exclusiveMinimum: 0, description: 書いたものが読む側に出るまで待つ上限。バックエンドが、次の要求から使う（../../design/api/writes.md） }
     Settings:
@@ -1325,14 +1293,6 @@ components:
           description: |
             用意のコミットがもうあるか（スナップショットツリーがもうあるか）。listRegisteredRepositories と registerRepository の応答にだけ入る。
             GitForge に聞けなかったときは入らない（../../design/api/endpoints/settings.md の「prepared」）。
-    RecordKey:
-      type: object
-      required: [key_id, public_key, created_at, primary]
-      properties:
-        key_id: { type: string }
-        public_key: { type: string }
-        created_at: { type: string, format: date-time }
-        primary: { type: boolean, description: 書くときの鍵か }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
@@ -1429,7 +1389,7 @@ components:
             | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
             | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
-            | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
+            | not_open | 409 | open でない apply request を変えようとした。回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
             | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料を返せない |
             | overlay_conflict | 409 | apply request の差分を、今の main に重ねられない（向き先が main のときだけ）。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
@@ -1554,7 +1514,7 @@ components:
           type: array
           description: この検証結果が差し替えた検証結果の識別子
           items: { type: string, pattern: '^v-' }
-        apply_request_id: { type: string, pattern: '^apr_' }
+        apply_request_id: { type: string, pattern: '^[1-9][0-9]*$' }
         submitted_commit: { $ref: '#/components/schemas/Commit' }
         superseded_commit:
           type: [string, 'null']
@@ -1701,7 +1661,7 @@ components:
       type: object
       required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
       properties:
-        id: { type: string, pattern: '^apr_' }
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         kind:
           type: string
           enum: [change, repair.revert, repair.accept]
@@ -1717,7 +1677,7 @@ components:
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         opened_by_caller:
           type: boolean
-          description: 要求を送った主体が、この apply request を作った主体と同じか。WebUI は、approve の前に示す（../../design/settings/users.md の「WebUI からのレビュー」）
+          description: 要求を送った主体が、この apply request を作った主体（pull request の作者）と同じか。WebUI は、approve の前に示す（../../design/settings/users.md の「WebUI からのレビュー」）
         head_commit:
           $ref: '#/components/schemas/Commit'
           description: ブランチの今の先頭のコミット。レビューと反映は、このコミットを SHA で指す
@@ -1758,7 +1718,7 @@ components:
         closed_by_session_id: { type: [string, 'null'] }
         warnings:
           type: array
-          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった。向き先が main でないので、approve しても Logiforge は反映しない（../../design/backend/merge.md）
+          description: 警告。例：向き先が main でないので、approve しても Logiforge は反映しない（../../design/backend/merge.md）
           items: { type: string }
         merged_commit:
           type: [string, 'null']
@@ -1770,7 +1730,7 @@ components:
       type: object
       required: [id, kind, commit, reviewer_session_id, valid]
       properties:
-        id: { type: string, pattern: '^rev_' }
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         kind: { $ref: '#/components/schemas/ReviewKind' }
         commit:
           $ref: '#/components/schemas/Commit'
@@ -1807,7 +1767,7 @@ components:
       description: 材料に含めるものは ../../docs/apply-request/review.md に従う
       required: [apply_request_id, commit, operations, targets, ancestors, siblings, citations]
       properties:
-        apply_request_id: { type: string, pattern: '^apr_' }
+        apply_request_id: { type: string, pattern: '^[1-9][0-9]*$' }
         commit: { $ref: '#/components/schemas/Commit' }
         repair:
           type: object
@@ -1905,7 +1865,7 @@ components:
       required: [id, node_id, kind, body, state]
       description: 決まりは ../../docs/human-requests/README.md に従う
       properties:
-        id: { type: string, pattern: '^hrq_' }
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         node_id: { $ref: '#/components/schemas/NodeId' }
         kind: { $ref: '#/components/schemas/HumanRequestKind' }
         body: { type: string }

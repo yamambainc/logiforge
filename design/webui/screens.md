@@ -15,7 +15,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
 | セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
-| 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`、`record-keys`。`add` は `new` か `first` で、repository を足す段を開く） |
+| 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`。`add` は `new` か `first` で、repository を足す段を開く） |
 | サインインから戻る先 | `/oauth/callback`（[サインインの流れ](signin-flow.md)） |
 
 ## 画面ごとの API

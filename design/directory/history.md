@@ -1,6 +1,6 @@
 # 履歴（ディレクトリ方式）
 
-ディレクトリの repository で、スナップショットツリーの版をどう数え、worker が何を記録するかを確かめるときに読む。
+ディレクトリの repository で、スナップショットツリーの版をどう数え、worker が何を置き場に書くかを確かめるときに読む。
 git リポジトリ全体の repository の決まりは、[main のコミットと記録](../files/revisions.md) と [スナップショット](../backend/snapshot/README.md) に書く。
 
 ## 版
@@ -18,10 +18,8 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 - repository の用意は、利用者のトークンで、根のファイルをディレクトリに置くコミットを 1 つ作り、`main` に置く。
   - GitHub：Git Data API で、今の `main` の木にディレクトリのファイルを足したコミットを作り、`main` の ref を進める（fast-forward でなければ、`main` を読み直して作り直す）。
   - Forgejo：`POST /repos/{owner}/{repo}/contents` で、ディレクトリのファイルを 1 つのコミットにまとめて置く。
-  - なぜ pull request にしないか：用意のコミットは、元の apply request がないので、反映かの判定の「apply request の反映のコミット」にならないから。署名で、用意のコミットと決める（下の「反映かの判定」）。
-- 用意のコミットのメッセージに、`Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける。`Logiforge-Apply-Request:` は付けない。
-  - 署名の形は、[用意のコミットの署名](../backend/verify/init.md#用意のコミットの署名) の、種類 `init-directory` である。ディレクトリのパスと、移したときは `Logiforge-Migrated-From:` の値も含める（[別リポジトリ方式から移す](migrate.md)）。
-  - なぜ 1 つ前のコミットを含めないか：ディレクトリの repository では、1 つ前のコミットはコードのコミットで、Forgejo の contents API では、置く前に決められないから。署名を使い回せないことは、版の 1 番であること（そのディレクトリを変えた前のコミットがないこと）で守る。
+  - なぜ pull request にしないか：用意のコミットは、元の apply request がないので、反映かの判定の「apply request の反映のコミット」にならないから。版の位置と trailer と中身で、用意のコミットと決める（下の「反映かの判定」）。
+- 用意のコミットのメッセージに、`Logiforge-Init:` を付ける。`Logiforge-Apply-Request:` は付けない。移したときは、`Logiforge-Migrated-From:` も付ける（[別リポジトリ方式から移す](migrate.md)）。
 - 用意のコミットは、そのディレクトリの版の 1 番である。
   - そのディレクトリを変えた、前のコミットがあってはいけない。あれば、用意を断る（`repository_exists`）。
 - 守る設定は、用意のあとに、そのディレクトリに掛ける（[main の守り](main.md)）。用意のコミットは、`main` に直接置くからである。
@@ -31,7 +29,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 - 反映のコミットの trailer は、[記録の形式](../files/revisions.md#記録の形式) と同じである。表示のためで、判定には使わない。
   - `Logiforge-Version:` の意味は変わらない。先頭のコミットの一覧の中の位置と、その SHA である。
-  - バックエンドは、反映のコミットのメッセージに `Logiforge-Repository:` も書く。
+  - バックエンドは、反映のコミットのメッセージに `Logiforge-Repository:`（ディレクトリのパス）も書く。表示のためである。
 
 ## 反映かの判定
 
@@ -39,11 +37,11 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
 
 次のどちらかなら、反映によるものである。
 
-- 用意のコミット：版の 1 番で、`Logiforge-Init:` と `Logiforge-Init-Signature:` があり、種類 `init-directory` の署名が合い、C の変更がそのディレクトリにファイルを加えることだけである。
-- apply request の反映のコミット：[反映かの判定](../backend/verify/README.md) の「apply request の反映のコミット」の 1〜6 を、次のように読み替えて満たす。
-  - 3：控えの `apply_request` の記録の `Logiforge-Repository:` が、この repository のディレクトリのパスである。
-  - 5：P の木のディレクトリの中に、H の差分を重ね、重ねた木のディレクトリの中が、C の木のディレクトリの中と同じである。
-  - 6：差分の検査に、差分がディレクトリの中だけであること（`outside_directory`）を含める。
+- 用意のコミット：版の 1 番で、`Logiforge-Init:` があり、C の変更がそのディレクトリにファイルを加えることだけである（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
+- apply request の反映のコミット：[反映かの判定](../backend/verify/README.md) の「apply request の反映のコミット」の 1〜5 を、次のように読み替えて満たす。
+  - 1：その pull request が、この repository の apply request である。差分（base から H まで）が、このディレクトリの中のファイルを変える（[apply request とみなす PR](README.md#apply-request-とみなす-pr)）。
+  - 4：P の木のディレクトリの中に、H の差分を重ね、重ねた木のディレクトリの中が、C の木のディレクトリの中と同じである。
+  - 5：差分の検査に、差分がディレクトリの中だけであること（`outside_directory`）を含める。
 
 - どちらでもなければ、`no_apply_request` を付け、この repository を壊れた状態にする。
 - ディレクトリの外の変更は、判定に使わない。
@@ -51,7 +49,7 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
   - C がディレクトリの外も変えていたら、だれかが GitForge の merge でないやり方で作ったコミットである。ディレクトリの中が条件を満たせば、この repository では反映によるものとし、コミットの記録に警告（`outside_directory`）を付ける。
   - なぜ外で断らないか：ディレクトリの外は、プロジェクトのコードで、プロジェクトの PR とレビューと守る設定で守るものだから。Logiforge は、外を読まない。
 - 1 つのコミット C が、2 つのディレクトリ A と B を変えたら、A と B の repository で、別々に決める。
-  - 1 つの pull request の `apply_request` の記録は、1 つの repository のものなので、C は、多くても一方の反映である。
+  - apply request の差分は 1 つのディレクトリの中だけなので（`outside_directory`）、C は、多くても一方の反映である。
   - 例：A の apply request の反映のコミットが、B も変えていたら、A では反映によるもの、B では反映によらないものになり、B が壊れた状態になる。
   - なぜ repository まで比べるか：1 つの git リポジトリに repository が複数あるので、ほかの repository の反映が、このディレクトリも変えたことに気づくため。
 

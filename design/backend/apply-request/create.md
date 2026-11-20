@@ -5,19 +5,20 @@ pull request との対応は [apply request](README.md) に書く。
 
 ## 作成
 
-1. 識別子を求める（[同じ要求の繰り返し](../../api/writes.md)）。
-2. GitForge で、その識別子の apply request を読む。あれば、それを返して終わる。中身は比べない。
-3. 作業用の git の複製に、`main` とブランチを fetch する（下の「作業用の git の複製」）。
-4. ブランチの先頭と `main` の分かれた点（base）を求め、base から変わったファイルだけを読む。
+1. GitForge で、そのブランチの open の pull request を読む（[同じ要求の繰り返し](../../api/writes.md)）。
+   - あり、作者が要求した主体なら、送り直しとみなして、それを返して終わる。中身は比べない。
+   - あり、作者が違えば、`validation_failed` で受け付けない。
+2. 作業用の git の複製に、`main` とブランチを fetch する（下の「作業用の git の複製」）。
+3. ブランチの先頭と `main` の分かれた点（base）を求め、base から変わったファイルだけを読む。
    - 要求に `commit` があり、ブランチの先頭と違えば、`validation_failed` で受け付けない。
    - base の木は、置き場にスナップショットツリーがあれば、それを使う。なければ（worker が追いついていない）、作業用の複製から読む。
-5. 差分に、[差分の検査](../checks.md) を行う。4 種類の操作として読めない変化があれば、`validation_failed` で受け付けない。
+4. 差分に、[差分の検査](../checks.md) を行う。4 種類の操作として読めない変化があれば、`validation_failed` で受け付けない。
    - 解析のコードは、worker と CLI の `check` と同じものである。
-6. GitForge に、pull request を作り、識別子と、作ったときの先頭のコミットを、記録のコメントに書く。
-   - そのブランチに open の pull request がすでにあれば、`validation_failed` で受け付けない。
-7. 応答する。
+5. 要求した主体のトークンで、GitForge に pull request を作る。apply request の識別子は、その pull request の番号である。
+   - 手順 1 のあとに、同じブランチの open の pull request ができていれば、GitForge が拒む。そのときは、手順 1 からやり直す。
+6. 応答する。
    - 先頭のコミットの一覧とレビューの材料は、worker のスナップショットから読む。worker がブランチを取り込むまで、レビューは `snapshot_pending` になる（[レビュー](../../api/writes.md)）。
-   - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、手順 5 の検査の結果から返す。
+   - 応答の操作の一覧は、worker がまだブランチを取り込んでいなければ、手順 4 の検査の結果から返す。
 
 - 作成は、worker を待たない。
   - なぜ：検査をバックエンドで行えば、バックエンドを増やすだけで、作成の数に合わせて広げられるから。

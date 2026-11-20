@@ -9,7 +9,7 @@ opener が取り下げるとき、または reviewer が却下するときに、
 
 ## すること
 
-- 理由を付けて、apply request を closed にする。
+- 理由を付けて、apply request を closed にする。理由とセッションは、close する主体のトークンで書く pull request のコメントに残す（[close のコメント](../../../adapters/texts.md#close-のコメント)）。
 - 差分を書いたいずれかのセッションからなら、取り下げとして扱う。
 - それ以外のセッションからなら、却下として扱う。
 
