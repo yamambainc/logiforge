@@ -5,7 +5,7 @@
 
 このページで使う語は、次のとおりである。
 - 記録：Logiforge が、GitForge の pull request と issue に書く、署名つきのコメントである。apply request を作った、close した、反映に失敗した、レビュー、人への依頼、回答の 6 種類がある（[記録のコメントとレビュー](../adapters/records.md)）。
-- 記録の控え（控え）：worker が、GitForge から読んだ記録を、置き場（スナップショットの置き場）に写したものである。
+- 記録の控え（控え）：worker が、GitForge から読んだ記録を、置き場（スナップショットの置き場）に写したものである。GitForge で記録が消されたり書き換えられたりしても、最初に見た中身を残すために写す。
 - 読む位置：控えに持つ、次に GitForge のコメントを読み始める時刻（コメントの `updated_at`）である。
 - `latest`：worker が置き場に書く、取り込み終えたいちばん新しい `main` のコミットである（[latest](snapshot/main.md#latest)）。
 - 控えと読む位置の詳しいことは、[キャッシュ](caches.md) に書く。
