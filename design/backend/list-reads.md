@@ -1,50 +1,35 @@
 # 一覧の読み
 
-バックエンドと worker が、一覧を返すときや、多くの項目をまとめて扱うときに、GitForge と置き場をどう読むかを確かめるときに読む。
-1 回の要求で読む REST の回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) が正本である。
-
-このページで使う語は、次のとおりである。
-- 記録：Logiforge が、GitForge の pull request と issue に書く、署名つきのコメントである。apply request を作った、close した、反映に失敗した、レビュー、人への依頼、回答の 6 種類がある（[記録のコメントとレビュー](../adapters/records.md)）。
-- 記録の控え（控え）：worker が、GitForge から読んだ記録を、置き場（スナップショットの置き場）に写したものである。GitForge で記録が消されたり書き換えられたりしても、最初に見た中身を残すために写す。
-- 読む位置：控えに持つ、次に GitForge のコメントを読み始める時刻（コメントの `updated_at`）である。
-- `latest`：worker が置き場に書く、取り込み終えたいちばん新しい `main` のコミットである（[latest](snapshot/main.md#latest)）。
-- 控えと読む位置の詳しいことは、[キャッシュ](caches.md) に書く。
+バックエンドと worker が、一覧を返すときや、多くの項目をまとめて扱うときに、GitForge と置き場（スナップショットの置き場）をどう読むかを確かめるときに読む。
+1 回の要求で読む回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) が正本である。
 
 - 正本は GitForge である。一覧の読みでも、正本は変えない。
 - 一覧は、GitForge の一覧の API で読む。項目ごとに GitForge の API を呼ばない。
-  - なぜ：項目ごとに呼ぶと、REST の回数が項目の数に比例し、主体ごとの上限（1 時間に 5,000 回）に当たるから。
-  - 一覧の API のページ送り（`per_page=100`、Forgejo は 50）は、項目ごとの呼び出しに数えない。
-- 一覧の API だけで足りない情報は、置き場の記録の控えと `latest` から読む（[キャッシュ](caches.md)）。
+  - なぜ：項目ごとに呼ぶと、呼ぶ回数が項目の数に比例し、主体ごとの上限（GitHub は 1 時間に REST 5,000 回）に当たるから。
+  - 一覧の API のページ送りは、項目ごとの呼び出しに数えない。
+- 一覧の API だけで足りない情報は、置き場の `latest` と、権限のキャッシュから読む（[キャッシュ](caches.md)）。
 - 1 回の要求の中で、同じ一覧を二度読まない。読んだ一覧は、その要求の中で使い回す。
 
 ## どの一覧の API で読むか
 
 | 読むもの | GitHub | Forgejo |
 |---|---|---|
-| open の apply request | `pulls?state=open` | `pulls?state=open` |
-| merged の apply request | `pulls?state=closed` | `pulls?state=closed` |
-| closed の apply request、状態で絞らない一覧 | `pulls?state=all` | `pulls?state=all` |
-| 記録とレビュー | 記録の控えと `issues/comments?since=` | 記録の控えと `issues/comments?since=` |
-| 人への依頼 | `issues?state=all`（pull request も返る） | `issues?state=all&type=issues` |
-| GitForge の repository の識別子 | pull request の一覧の `base.repo.node_id` | pull request の一覧の `base.repo.id` |
-| 利用者が読める repository | `/user/installations/{installation_id}/repositories` | （問い合わせない。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)） |
-| 反映した pull request（worker） | `pulls?state=closed&sort=updated&direction=desc` | `pulls?state=closed&sort=recentupdate` |
+| apply request（pull request）と、そのレビュー待ちか修正待ちか | `GET /repos/{owner}/{repo}/pulls` | `GET /repos/{owner}/{repo}/pulls` |
+| 人への依頼（issue）と、回答済みか | `GET /repos/{owner}/{repo}/issues?state=all&labels=…`（pull request も返るので除く） | `GET /repos/{owner}/{repo}/issues?state=all&type=issues&labels=…` |
+| 利用者が読める repository | `GET /user/installations/{installation_id}/repositories` | （問い合わせない。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)） |
+| 反映した pull request（worker） | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc` | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` |
 
-- パスは、どれも `GET /repos/{owner}/{repo}/` の下である（利用者が読める repository を除く）。
-- GitForge で open の pull request は、バックエンドで open の apply request をすべて含む。そのため、open の一覧は `state=open` で足りる。
-  - ブランチが消えた open の apply request は `closed` に数える（[apply request](apply-request/README.md)）。そのため、`closed` の一覧では、GitForge で open のものも読む。
-- 記録とレビューは、記録の控えと、控えの読む位置より後のコメントを合わせて作る（[キャッシュ](caches.md#記録の控えの読み方)）。
-  - pull request ごとのコメントの一覧（`issues/{number}/comments`）は、一覧の読みでは使わない。
-  - repository のコメントの一覧を、はじめから全部は読まない。なぜ：コメントの数は pull request の数の数倍で、全部読むとページ送りだけで REST の回数が増えるから。
-- GitForge の repository の識別子は、その要求で読んだ pull request の一覧から取る。
-  - 一覧を読まない経路（1 件の読み、人への依頼の一覧、書き込み）と、一覧が空のときは、`GET /repos/{owner}/{repo}` を要求ごとに 1 回だけ呼び、その要求の中でだけ覚える。
-  - 一覧が空で、ほかに記録が要らないとき（open の apply request の一覧など）は、識別子も記録も読まない。
+- 一覧では、review を読まない。レビュー待ちか修正待ちかは、pull request の一覧に入っているラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。
+  - なぜ：review は、GitHub の REST でも Forgejo でも、pull request ごとにしか読めないから。review の状態で絞れる一覧もない。
+- pull request の一覧の各項目には、番号、作者、状態、merge のコミット、head の SHA とブランチ、向き先、ラベルが入っている（GitHub と Forgejo）。一覧に要るのは、これだけである。
+- open の一覧は、`state=open` で読む。ブランチが消えた open の apply request は `closed` に数える（[apply request の状態](../adapters/pull-requests.md#apply-request-の状態)）。そのため、`closed` の一覧では、GitForge で open のものも読む。
+- 人への依頼の種類はラベル、回答済みかは issue の状態、対象ノードは本文で決める（[人への依頼の issue](../adapters/texts.md#人への依頼の-issue)）。どれも issue の一覧に入っている。
 
-## 1 件の読み
+## 1 件の読みと書き込み
 
-- apply request を 1 件読むときは、記録の控えと `since` のコメントから、識別子に当たる pull request の番号を引き、`pulls/{number}` を読む。
-  - なぜ：pull request の一覧をたどってタイトルで探すと、REST の回数が P に比例するから。
-- 人への依頼の回答の添付は、その issue のコメント（`issues/{number}/comments`）から読む。控えは添付を持たないから（[記録の控え](verify/records.md)）。
+- apply request を 1 件読むときと、`approve` で反映するときは、その pull request と、その review の一覧と、head の commit status を、その場で読む。
+  - なぜ：反映の条件は、今の GitForge の review で決めるから（[反映の手順](merge.md)）。
+- 人への依頼を 1 件読むときは、その issue のコメントから回答を読む（[回答](../adapters/texts.md#回答)）。
 
 ## 反映した pull request の一覧（worker）
 

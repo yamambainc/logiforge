@@ -44,6 +44,7 @@ API を呼ぶのは、CLI と WebUI だけである。エージェント、外�
 - [apply request を更新する](apply-request/update.md) → `PATCH /repositories/{repository}/apply-requests/{applyRequestId}`
 - [apply request をレビューする](apply-request/review.md) → `POST /repositories/{repository}/apply-requests/{applyRequestId}/reviews`
 - [apply request を close する](apply-request/close.md) → `POST /repositories/{repository}/apply-requests/{applyRequestId}/close`
+- [直し終えたと申告する](apply-request/fixed.md) → `POST /repositories/{repository}/apply-requests/{applyRequestId}/fixed`
 - [レビューの材料を読む](apply-request/review-material.md) → `GET /repositories/{repository}/apply-requests/{applyRequestId}/review-material`
 
 ## 着手できる作業

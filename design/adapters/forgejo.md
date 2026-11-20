@@ -33,6 +33,7 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 | 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
 | レビュー | `POST /repos/{owner}/{repo}/pulls/{index}/reviews`（`event` は `APPROVED`、`REQUEST_CHANGES`、`COMMENT`。本文は [review の本文](texts.md#review-の本文)） |
 | 反映の失敗 | `POST /repos/{owner}/{repo}/statuses/{sha}`（context は `logiforge/merge`）と、pull request のコメント |
+| ラベルの付け外し | `POST /repos/{owner}/{repo}/issues/{index}/labels`（名前で付けられる）、`DELETE /repos/{owner}/{repo}/issues/{index}/labels/{id}`。付ける前に、なければ `POST /repos/{owner}/{repo}/labels` で作る。書く権限で足りる |
 | 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` と `GET /repos/{owner}/{repo}/pulls/{index}/reviews`（[反映かの判定](../backend/verify/README.md)） |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |

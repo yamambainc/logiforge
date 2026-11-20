@@ -33,10 +33,9 @@
 
 ### レビュー待ちと修正待ち
 
-- レビュー待ちと修正待ちは、先頭のコミットへの最後の決めるレビュー（`approve` か `request_changes`）と、先頭のコミットの反映の失敗で決める。
-- 修正待ち：`request_changes` か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗がある。
-- レビュー待ち：修正待ちでなく、決めるレビューがないか、最後の決めるレビューが `approve` なのに、まだ open である（`approve` し直しを待つ）。
-  - `approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗したときが、これに当たる。
+- レビュー待ちと修正待ちは、向き先が `main` の open の pull request のラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。review は読まない。
+- 修正待ち：`request changes` の review か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗のあと、opener が直し終えたと申告するまで。
+- レビュー待ち：修正待ちでないもの。`approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗し、`approve` し直しを待つものも含む。
   - 向き先が `main` でないあいだに `approve` され、あとで向き先を `main` に戻したときも、これに当たる（[向き先](apply-request/target.md)）。
 - [着手できる作業](../../docs/work/README.md) の「反映に失敗して `open` に戻った」は、opener が直すべき失敗のことである。
 

@@ -51,6 +51,55 @@ review と issue の本文に書くことは、[review と issue の本文](text
 - review は、それを出した head のコミット（review の `commit_id`）への review である。
 - GitForge は、pull request の作者が自分の pull request を `approve` することを拒む（GitHub と Forgejo）。そのため、opener と reviewer は、別の GitForge のアカウントにする。
 
+## レビュー待ちと修正待ちのラベル
+
+レビュー待ちか修正待ちかは、GitForge の pull request の状態からは決まらない。そのため、バックエンドが pull request のラベルに書く。一覧は、このラベルで決める（[計算](../backend/compute.md#レビュー待ちと修正待ち)）。
+
+| ラベル | 色 | 説明 | 意味 |
+|---|---|---|---|
+| `logiforge/review-waiting` | `#1d76db` | Logiforge：レビュー待ち | reviewer の review を待つ |
+| `logiforge/fix-waiting` | `#d93f0b` | Logiforge：修正待ち | opener が直すのを待つ |
+
+- 付けるのは、向き先が `main` の open の pull request だけである。付いているのは、どちらか 1 つだけである。
+  - `approve` されたのに open のもの（`snapshot_pending` や `merge_forbidden` のあと、`approve` し直しを待つもの）は、レビュー待ちである。別のラベルは作らない。なぜ：待っているのが reviewer の `approve` し直しだから。
+
+バックエンドは、次のときに、要求を送った主体のトークンでラベルを付け替える。付け替えるときは、もう一方を外す。
+
+| とき | 付けるラベル | だれのトークンか |
+|---|---|---|
+| apply request を作ったとき | レビュー待ち | opener |
+| `request changes` の review を出したとき | 修正待ち | reviewer |
+| opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）で反映に失敗したとき | 修正待ち | reviewer |
+| ほかの理由で反映に失敗したとき | レビュー待ち（変えない） | reviewer |
+| opener が直し終えたと申告したとき（[直し終えたと申告する](../api/endpoints/apply-request/fixed.md)） | レビュー待ち | opener |
+| 反映したとき、close したとき | 両方を外す | reviewer か、close した主体 |
+
+- push では、ラベルを変えない。なぜ：push しても、直し終えたとは限らないから。直し終えたかは、opener が申告する。
+- ラベルがなければ、付けるときに、上の色と説明で作る。repository の用意のときには作らない。
+  - なぜ付ける前に作るか：GitHub では、ない名前のラベルを pull request に付けると、既定の色で作られてしまうから。
+- ラベルを作り、付け、外すのに要る権限は、repository に書く権限である（GitHub と Forgejo）。読むだけの主体は、付け外しできない。
+
+### ラベルがずれたとき
+
+ラベルは表示（一覧のレビュー待ちと修正待ち）にだけ使う。反映できるかは、反映の手順で、その pull request の review をその場で読んで決める（[反映の手順](../backend/merge.md)）。
+ラベルがずれていると分かったら、そのときにラベルを直す。
+
+- 分かるのは、バックエンドが、その pull request を 1 件読むか、その pull request に書くときである。
+  - 1 件読むとき：apply request の詳細とレビューの材料を読む要求
+  - 書くとき：review、反映、close、直し終えたという申告
+  - 一覧を読むときは、review を読まないので、分からない。worker も、ずれを直さない（worker のトークンは読むだけである）。
+- 正しいラベルは、その pull request の次の出来事のうち、いちばん新しいもので決める。
+  - 数える `request changes` の review（GitForge の画面から直接出したものも含む）：修正待ち
+  - opener が直すべき理由の `logiforge/merge` の commit status：修正待ち
+  - バックエンドがレビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）：レビュー待ち
+  - どれもなければ、レビュー待ち
+  - ラベルを付けた時刻は、pull request の出来事の一覧（GitHub は issue の events、Forgejo は issue の timeline）で読む。
+- 直すときは、その要求を送った主体のトークンで書く。その主体に書く権限がなければ、直さずに、応答に警告を付ける。
+- 一覧での扱いは、直るまで次のとおりである。
+  - どちらのラベルもない：レビュー待ちとみなす。ラベルを付ける前に止まった apply request も、レビュー待ちに見えるようにするため。
+  - 2 つとも付いている：修正待ちとみなし、警告する。修正を求められたのに、レビュー待ちに見えて reviewer の手間になることを避けるため。
+  - 向き先が `main` でないのに付いている：ラベルを見ない。
+
 ## main を守る
 
 - `main` を守る設定は、勧めるが求めない。

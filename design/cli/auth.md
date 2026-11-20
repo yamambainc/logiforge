@@ -13,7 +13,7 @@ CLI の全体は、[CLI](README.md) に書く。
   - `read:user` と `read:organization`：バックエンドが、`GET /user` と `GET /user/teams` で主体を確かめるため（[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
   - `write:repository`：git でブランチを push し、バックエンドが pull request を作り、レビューを書き、merge するため。
     - バックエンドは、主体のトークンで GitForge に書く（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
-  - `write:issue`：バックエンドが、記録のコメントと人への依頼を、主体のトークンで書くため。
+  - `write:issue`：バックエンドが、人への依頼の issue、pull request と issue のコメントとラベルを、主体のトークンで書くため。
 - このトークンは、利用者が Forgejo で書けるすべての repository に書ける。この範囲の広さは受け入れる。
   - なぜ：Forgejo のスコープは、repository ごとに絞れないから。
   - 範囲を絞りたいときは、Logiforge のためだけの Forgejo のユーザーを作り、そのトークンを使う。
@@ -24,7 +24,7 @@ CLI の全体は、[CLI](README.md) に書く。
 - 人もエージェント（機械用アカウント）も、`gh auth login`（OAuth）で得たトークンを使う（`gh auth token`）。
   - personal access token は使わない。
 - スコープは `repo` が要る。
-  - なぜ：バックエンドが、主体のトークンで、pull request、記録のコメント、レビューを書き、reviewer のトークンで merge するから（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
+  - なぜ：バックエンドが、主体のトークンで、pull request、review、コメント、ラベル、commit status を書き、reviewer のトークンで merge するから（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
   - git の push も、同じトークンで行う。
 - `repo` は、そのアカウントが書けるすべてのリポジトリに及ぶ。
   - 範囲を絞りたいエージェントは、Logiforge のためだけの機械用アカウントにする（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。

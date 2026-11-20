@@ -837,6 +837,27 @@ paths:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
+  /repositories/{repository}/apply-requests/{applyRequestId}/fixed:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    post:
+      tags: [apply-request]
+      operationId: markApplyRequestFixed
+      summary: 修正待ちの apply request を、直し終えたと申告する（opener だけ）
+      description: |
+        pull request のラベルを、修正待ちからレビュー待ちに付け替える。push はしない。
+        呼べるのは pull request の作者だけで、違えば forbidden。open でなければ not_open。
+        すでにレビュー待ちなら、何もせずに成功とする。
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+      responses:
+        '200':
+          description: 付け替えたあとの apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
   /repositories/{repository}/apply-requests/{applyRequestId}/review-material:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'

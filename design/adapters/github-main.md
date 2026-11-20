@@ -19,7 +19,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | 使う者 | 使い方 | 数える上限 |
 |---|---|---|
 | バックエンド（認証） | 要求ごとに、主体のトークンで、主体、team の所属、リポジトリの権限を確かめる | 主体ごとの上限 |
-| バックエンド（GitForge のポートの読み） | 要求ごとに、主体のトークンで、PR と review の一覧は GraphQL で、1 件と issue とコメントは REST で読む | 主体ごとの上限 |
+| バックエンド（GitForge のポートの読み） | 要求ごとに、主体のトークンで、PR と issue の一覧と、1 件の PR、review、コメントを REST で読む | 主体ごとの上限 |
 | バックエンド（GitForge のポートの書き込み） | 主体のトークンで、REST で、repository の用意、PR の作成・merge・close、review、commit status、issue、コメントを書く | 主体ごとの上限 |
 | worker | `git ls-remote` と `git fetch`。反映かの判定で、新しい `main` のコミットがある見回りに、REST で反映した PR の一覧と、merge した PR の review を読む | Logiforge の App の installation の上限 |
 

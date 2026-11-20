@@ -26,7 +26,8 @@ GitHub に固有のところだけを書く。
 | 反映する | reviewer のトークンで、`PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
 | レビュー | reviewer のトークンで、`POST /repos/{owner}/{repo}/pulls/{number}/reviews`（`event` は `APPROVE`、`REQUEST_CHANGES`、`COMMENT`。本文は [review の本文](texts.md#review-の本文)） |
 | 反映の失敗 | reviewer のトークンで、`POST /repos/{owner}/{repo}/statuses/{sha}`（context は `logiforge/merge`）と、pull request のコメント |
-| apply request と review の一覧 | GraphQL の `repository.pullRequests`（[一覧の読み](../backend/list-reads.md#どの一覧の-api-で読むか)） |
+| apply request の一覧 | `GET /repos/{owner}/{repo}/pulls`。レビュー待ちか修正待ちかはラベル（[一覧の読み](../backend/list-reads.md#どの一覧の-api-で読むか)） |
+| ラベルの付け外し | `POST /repos/{owner}/{repo}/issues/{number}/labels`、`DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}`。ない名前を付けると既定の色で作られるので、先に `POST /repos/{owner}/{repo}/labels` で作る |
 | 回答の添付 | リンクだけ。ファイルは受け付けない（[人への依頼の回答](../files/artifacts.md)） |
 | 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc` と `GET /repos/{owner}/{repo}/pulls/{number}/reviews`（[反映かの判定](../backend/verify/README.md)） |
 
