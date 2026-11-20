@@ -422,10 +422,11 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 			continue
 		}
 		r := toReview(pr)
-		// approve だけは、書く権限を持つ人のもので、本文にセッションの行があるものだけを数える。
-		// request changes と comment は、だれのものでも数える。数えすぎても、反映の条件が厳しくなるだけだから。
-		if r.Kind == ports.ReviewApprove {
-			if r.Session == "" {
+		// approve と request changes は、書く権限を持つ人のものだけを数える。
+		// なぜ request changes も：public の repository では、書く権限のない人も review を出せ、反映を止められてしまうから。
+		// approve は、本文にセッションの行があるものだけを数える。comment は、反映の条件に効かないので、だれのものでも数える。
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			if r.Kind == ports.ReviewApprove && r.Session == "" {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：本文に %s: の行のない approve は、数えない", pr.ID, lineSession))
 				continue
 			}
@@ -438,7 +439,7 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 				canPush[key] = ok
 			}
 			if !ok {
-				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s は書く権限がないので、この approve は数えない", pr.ID, pr.Author))
+				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s は書く権限がないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
 				continue
 			}
 		}

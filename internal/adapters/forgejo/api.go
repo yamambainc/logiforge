@@ -327,7 +327,7 @@ func (a api) CreateReview(ctx context.Context, repo string, number int, event po
 	return x, nil
 }
 
-// ReviewerCanPush は、approve の review の official を返す。Forgejo は、書く権限を持つ人の、いちばん新しい approve と
+// ReviewerCanPush は、approve か request changes の review の official を返す。Forgejo は、書く権限を持つ人の、いちばん新しい approve と
 // request changes を official にする。ほかの人の権限を読む API（collaborators/{user}/permission）は、repository の admin しか使えないので、使わない。
 func (a api) ReviewerCanPush(_ context.Context, _ string, r pullreq.PullReview) (bool, error) {
 	return r.Official, nil

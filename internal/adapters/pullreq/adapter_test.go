@@ -324,14 +324,15 @@ func TestReviewsCounted(t *testing.T) {
 		PullReview{ID: 13, Kind: ports.ReviewApprove, Body: "z\n\nSession-Id: s7", Author: "mallory", CommitID: "h-b"},
 		PullReview{ID: 14, Kind: ports.ReviewApprove, Body: "w\n\nSession-Id: s9", Author: "bob", CommitID: "h-b"},
 	)
-	// 数える：bob の approve 2 つと、mallory の request changes（request changes は、だれのものでも数える）。
-	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の approve。
+	// 数える：bob の approve 2 つ。
+	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の request changes と approve
+	// （public の repository で、書く権限のない人が反映を止めたり、させたりできないように）。
 	rs, err := a.ListReviews(ctx, "o/r", "1")
-	if err != nil || len(rs.Items) != 3 || rs.Items[0].ID != "1" || rs.Items[1].ID != "11" || rs.Items[2].ID != "14" || len(rs.Warnings) != 2 {
+	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 3 {
 		t.Fatalf("数える review：%+v %v", rs, err)
 	}
 	if f.calls["ReviewerCanPush"] != 2 {
-		t.Fatalf("書く権限は、approve を書いた人ごとに 1 回だけ読む：%d", f.calls["ReviewerCanPush"])
+		t.Fatalf("書く権限は、approve か request changes を書いた人ごとに 1 回だけ読む：%d", f.calls["ReviewerCanPush"])
 	}
 }
 

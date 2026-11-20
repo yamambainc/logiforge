@@ -319,8 +319,8 @@ func (a api) CreateReview(ctx context.Context, repo string, number int, event po
 	return x, nil
 }
 
-// ReviewerCanPush は、approve を書いた人の、repository の権限を読む（GET /collaborators/{user}/permission）。
-// 1 件の apply request を読むときに、approve を書いた人ごとに 1 回だけ呼ぶ。
+// ReviewerCanPush は、approve か request changes を書いた人の、repository の権限を読む（GET /collaborators/{user}/permission）。
+// 1 件の apply request を読むときに、書いた人ごとに 1 回だけ呼ぶ。
 func (a api) ReviewerCanPush(ctx context.Context, repo string, r pullreq.PullReview) (bool, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
