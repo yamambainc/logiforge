@@ -48,7 +48,8 @@
 - pull request の `updated_at` が、探しているコミットの committer date より 5 分以上前になったら、そこで読むのをやめる。
   - なぜ：merge した時刻は `updated_at` より前にならないので、それより先のページに答えはないから。直接 push したコミットのために、closed の pull request を全部読まないため。
   - なぜ 5 分か：merge のコミットの時刻と `updated_at` を付ける時計のずれを見込むため。
-  - committer date を未来にできるのは、直接 push したコミットだけである。そのコミットは、どのみち反映した pull request が見つからない。
+  - committer date が今より後なら、今の時刻を使う。
+    - なぜ：committer date を未来にできるのは、直接 push したコミットだけである。そのコミットは、どのみち反映した pull request が見つからない。未来のままだと、やめる条件に当たらず、待つ 60 秒のあいだ、見回りごとに closed の pull request を全部読むから。
 
 ## 置き場の読み
 
