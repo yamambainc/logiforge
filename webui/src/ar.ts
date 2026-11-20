@@ -27,3 +27,6 @@ export const FAILURE: Record<string, string> = {
 
 /** 一覧の 1 行の見出し。説明の最初の行、なければブランチ */
 export const arTitle = (a: ApplyRequest) => (a.description ?? '').split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '') || a.branch;
+
+/** 作業としての絞り込み：apply request の一覧から、作業の対象（識別子の集まり）だけを、一覧の順のまま残す */
+export const filterBySubjects = (all: ApplyRequest[], ids: Set<string>) => all.filter((a) => ids.has(a.id));

@@ -3,8 +3,8 @@
 // 状態（見るもの、状態、選んだ apply request、作業の絞り込み）は URL に持つ。
 // open の apply request は、その repository に Write がある利用者が、ここでレビューできる（approve なら反映まで）。
 import { useEffect, useState } from 'react';
-import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, FAILURE, opLabel, REVIEW, STATE } from '../ar';
+import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
+import { arTitle, AWAITING, byTime, FAILURE, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -64,10 +64,10 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
     const live = () => alive;
     setItems(null); setNext(null); setError(null);
     if (work) {
-      // 作業としての絞り込み：作業の対象の apply request だけを、1 つずつ読む（数は件数と同じで、多くない）
-      workSubjects(repo, work)
-        .then((ids) => Promise.all([...ids].map((i) => getApplyRequest(repo, i))))
-        .then((r) => live() && setItems(r))
+      // 作業としての絞り込み：作業の一覧と、open の apply request の一覧を 1 回ずつ読み、識別子で絞る。
+      // 1 つずつは読まない（design/backend/list-reads.md）
+      Promise.all([workSubjects(repo, work), listOpenApplyRequests(repo)])
+        .then(([ids, all]) => live() && setItems(filterBySubjects(all, ids)))
         .catch((e) => live() && fail(e));
     } else void more(null, live);
     return () => { alive = false; };

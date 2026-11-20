@@ -92,6 +92,8 @@ function RepositoryTab({ settings, add, onChanged }: { settings: SettingsValue; 
               <span className="mono strong">{r.name}</span>
               <span className="mono">{r.gitforge_ref}{r.directory ? ` : ${r.directory}` : ''}</span>
               <span className="spacer" />
+              {/* prepared は、worker が取り込んだか（latest があるか）で決まるので、登録した直後は false に見える（design/webui/screens-setup.md） */}
+              {r.prepared === false && <span className="dim small">取り込み待ちか、最初の問いがない</span>}
               {r.prepared === false && <button className="btn primary" disabled={!!flow} onClick={() => setFlow({ at: 'question', name: r.name })}>最初の問いを入れる</button>}
               <button className="btn" disabled={busy === r.name} onClick={() => void remove(r.name)}>外す</button>
             </li>
@@ -114,7 +116,7 @@ function AddFlow({ github, step, onStep, onClose, onRegistered }: {
         <li className={second}>2. 最初の問い{step.at === 'exists' && '（もうある）'}</li>
       </ol>
       {step.at === 'repository' ? <RepositoryStep github={github} onNext={onStep} onCancel={onClose} onRegistered={onRegistered} />
-        : step.at === 'question' ? <QuestionStep name={step.name} onDone={() => { onStep({ at: 'done', name: step.name }); onRegistered(); }} onCancel={onClose} />
+        : step.at === 'question' ? <QuestionStep name={step.name} onDone={(exists) => { onStep({ at: exists ? 'exists' : 'done', name: step.name }); onRegistered(); }} onCancel={onClose} />
         : <Finished name={step.name} exists={step.at === 'exists'} onClose={onClose} />}
     </div>
   );
@@ -176,12 +178,11 @@ function RepositoryStep({ github, onNext, onCancel, onRegistered }: { github: bo
 }
 
 const CREATE_ERRORS: Record<string, string> = {
-  repository_exists: 'その名前の repository は、もうあります。',
   forbidden: 'repository を作れるのは、利用者だけです。',
   repository_not_registered: 'その名前の repository は、登録されていません。',
 };
 
-function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: () => void; onCancel: () => void }) {
+function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: (exists: boolean) => void; onCancel: () => void }) {
   const [statement, setStatement] = useState('');
   const [background, setBackground] = useState('');
   const [busy, setBusy] = useState(false);
@@ -195,10 +196,12 @@ function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: () => 
     try {
       // スナップショットツリーがまだ出ていなくても（Logiforge-Pending-Commit）、用意は済んでいる。ビュワーが「取り込み中」と示して読み直す
       await createRepository(name, statement.trim(), background.trim());
-      onDone();
+      onDone(false);
     } catch (err) {
       setBusy(false);
       if (err instanceof Problem && err.status === 401) return;
+      // 取り込み待ちで prepared が false に見えていた repository は、用意が済んでいる（design/webui/screens-setup.md）
+      if (err instanceof Problem && err.code === 'repository_exists') { onDone(true); return; }
       setError(err instanceof Problem ? CREATE_ERRORS[err.code] ?? (err.detail || err.code) : String(err));
     }
   };
