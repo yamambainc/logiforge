@@ -186,6 +186,20 @@ try {
   await page.goto(BASE + `/r/${REPO}/tree?node=h-0000000000`, { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForFunction(() => document.querySelector('.notice')?.textContent.includes('このノードはありません'), { timeout: 20000 });
+
+  step('詳細のパネルの「審査中」と「依頼」のリンクを押すと、apply request と履歴、人への依頼の画面で、それが開く');
+  const openLink = async (id, screen) => {
+    await page.goto(BASE + `/r/${REPO}/tree?node=${NODE_B}`, { waitUntil: 'networkidle0' });
+    await signedIn(page);
+    const sel = `.detail a.d-link[href$="id=${id}"]`;
+    await page.waitForSelector(sel, { timeout: 20000 });
+    await page.click(sel);
+    await page.waitForFunction((s, i) => location.pathname.endsWith('/' + s) && new URLSearchParams(location.search).get('id') === i, { timeout: 10000 }, screen, id);
+  };
+  await openLink(AR_MAIN, 'apply-requests');
+  await page.waitForFunction(() => document.querySelector('ul.ops')?.textContent.includes('検証結果を出す（偽）'), { timeout: 20000 });
+  await openLink(HR, 'human-requests');
+  await page.waitForFunction(() => document.querySelector('.item-pane div.md h3')?.textContent === '手順', { timeout: 20000 });
   await page.goto(BASE + `/r/${REPO}/tree?node=${NODE_A}`, { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('.row.sel', { timeout: 20000 });

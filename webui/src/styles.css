@@ -168,6 +168,7 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
 .kind { font-size: 12px; font-weight: 600; color: var(--sub); }
 .d-title { font-size: 18px; line-height: 1.5; margin: 6px 0 8px; font-weight: 700; letter-spacing: .1px; }
 .d-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.d-link { font-size: 12px; line-height: 18px; }
 .d-sec { border-top: 1px solid var(--line-2); padding: 14px 0 4px; margin-top: 12px; }
 .d-sec h3 { font-size: 12px; color: var(--dim); font-weight: 600; margin: 0 0 8px; display: flex; letter-spacing: .3px; }
 .sec-aside { margin-left: auto; font-weight: 400; }
