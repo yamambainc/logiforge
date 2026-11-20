@@ -98,12 +98,11 @@ journalctl -u logiforge-worker -u logiforge-serve
 
 ## 更新
 
-```sh
-sudo install -m 0755 logiforge /usr/local/bin/logiforge
-sudo systemctl restart logiforge-worker logiforge-serve
-```
+- Releases のバイナリに入れ替えるか、手元でビルドして [scripts/deploy-linux.sh](../../../scripts/deploy-linux.sh) で入れ替える。手順は [更新](update.md) に書く。
 
-- `restart` は、古いプロセスを止めてから、新しいプロセスを起こす。そのため、worker が 2 つ同時に動くことはない。
+```sh
+scripts/deploy-linux.sh admin@logiforge-host
+```
 
 ## バックアップ
 
