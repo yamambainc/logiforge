@@ -23,8 +23,8 @@ export function useLocation(): URL {
 /** repository の中の画面（design/webui/screens.md の「URL」） */
 export type RepoScreen = 'dashboard' | 'tree' | 'human-requests' | 'apply-requests';
 /** 設定の画面のタブ（docs/webui/settings.md の「タブ」） */
-export type SettingsTab = 'repository' | 'gitforge' | 'record-keys';
-export const SETTINGS_TABS: SettingsTab[] = ['repository', 'gitforge', 'record-keys'];
+export type SettingsTab = 'repository' | 'gitforge';
+export const SETTINGS_TABS: SettingsTab[] = ['repository', 'gitforge'];
 /**
  * 設定の repository のタブで、足す流れを開くか（docs/webui/settings.md の「repository を足す」）。
  * new：1 段目（repository）から。first：最初の問いがまだの repository があれば 2 段目から、なければ 1 段目から（セットアップのあと）。
