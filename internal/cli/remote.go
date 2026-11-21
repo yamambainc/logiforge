@@ -548,10 +548,29 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 		if ar, ok := v["apply_request"].(map[string]any); ok {
 			a.printAR(ar)
 		}
-		if mf, ok := v["merge_failure"].(map[string]any); ok {
-			fmt.Fprintf(a.Stdout, "反映できなかった：コミット %s：%s %s\n", str(mf, "commit"), str(mf, "reason"), str(mf, "detail"))
-		}
 	})
+}
+
+// arMerge は、approve された apply request を、自分のトークンで squash merge する。直前に、バックエンドが反映の条件を確かめ直す。
+func (a *App) arMerge(ctx context.Context, args []string) error {
+	f := newFlags("ar merge")
+	repo := repoFlag(f)
+	if err := f.parse(args); err != nil {
+		return err
+	}
+	if err := f.need(1, "<apply request>"); err != nil {
+		return err
+	}
+	name, err := a.repo(*repo)
+	if err != nil {
+		return err
+	}
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]) + "/merge",
+		body: map[string]string{}})
+	if err != nil {
+		return err
+	}
+	return a.show(res, a.printAR)
 }
 
 func (a *App) arClose(ctx context.Context, args []string) error {
