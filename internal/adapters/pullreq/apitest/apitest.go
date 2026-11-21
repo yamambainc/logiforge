@@ -61,7 +61,13 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			ps, err := api.ListPulls(ctx, ref, "open")
 			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number }), "ListPulls に、作った pull request がない")
 		}},
-		{"EditPullBody", func() error { return api.EditPullBody(ctx, ref, p.Number, "新しい本文") }},
+		{"EditPullBody", func() error {
+			if err := api.EditPullBody(ctx, ref, p.Number, "新しい本文"); err != nil {
+				return err
+			}
+			got, err := api.GetPull(ctx, ref, p.Number)
+			return want(err, got.Body == "新しい本文", "EditPullBody のあと、本文が変わっていない")
+		}},
 		{"CreateReview", func() error {
 			_, err := api.CreateReview(ctx, ref, p.Number, ports.ReviewComment, "コメント", p.HeadSHA)
 			return err
@@ -70,8 +76,21 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			rs, err := api.ListReviews(ctx, ref, p.Number)
 			return want(err, len(rs) == 1, "ListReviews が、出した review を返さない")
 		}},
-		{"AddLabel", func() error { return api.AddLabel(ctx, ref, p.Number, label) }},
-		{"RemoveLabel", func() error { return api.RemoveLabel(ctx, ref, p.Number, label) }},
+		{"AddLabel", func() error {
+			if err := api.AddLabel(ctx, ref, p.Number, label); err != nil {
+				return err
+			}
+			got, err := api.GetPull(ctx, ref, p.Number)
+			return want(err, slices.Contains(got.Labels, label), "AddLabel のあと、ラベルが付いていない")
+		}},
+		// RemoveLabel は、付いていないラベルの 404 を誤りにしないので、外れたことを読んで確かめる。
+		{"RemoveLabel", func() error {
+			if err := api.RemoveLabel(ctx, ref, p.Number, label); err != nil {
+				return err
+			}
+			got, err := api.GetPull(ctx, ref, p.Number)
+			return want(err, !slices.Contains(got.Labels, label), "RemoveLabel のあと、ラベルが付いたまま")
+		}},
 		{"ListEvents", func() error {
 			evs, err := api.ListEvents(ctx, ref, p.Number)
 			return want(err, slices.ContainsFunc(evs, func(x pullreq.Event) bool { return x.Kind == "labeled" && x.Label == label }), "ListEvents に、ラベルを付けたことがない")

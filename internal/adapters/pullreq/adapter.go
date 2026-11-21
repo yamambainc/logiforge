@@ -409,7 +409,9 @@ func (a *Adapter) MergedApplyRequest(ctx context.Context, repo, sha string, comm
 	for page := 1; ; page++ {
 		pulls, more, err := a.API.ClosedPullsPage(ctx, repo, page)
 		if err != nil {
-			return ports.ApplyRequest{}, err
+			// ErrNotFound は「一覧を読めたが、なかった」ことだけに使う。worker は、それを反映の apply request のないコミットとして置き、やり直さない。
+			// 一覧そのものが 404（App の installation から外れた、名前が変わった、など）でも、やり直すよう、ポートの誤りに包まない（%v）。
+			return ports.ApplyRequest{}, fmt.Errorf("反映した pull request の一覧を読めない: %v", err)
 		}
 		done := false
 		for _, p := range pulls {
