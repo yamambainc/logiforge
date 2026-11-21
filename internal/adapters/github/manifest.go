@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/yamambainc/logiforge/internal/ports"
 )
 
 // ManifestInput は、GitHub App の manifest を作るための入力である（design/settings/setup.md の「GitHub を使う構成」）。
@@ -126,8 +124,11 @@ func (a *App) CanReadRepository(ctx context.Context, gitForgeRef string) error {
 	if err != nil {
 		return err
 	}
-	rp, _ := ports.SplitRef(gitForgeRef)
-	return a.c.do(ctx, tok, http.MethodGet, "/repos/"+rp, nil, nil)
+	rp, err := repoPath(gitForgeRef)
+	if err != nil {
+		return err
+	}
+	return a.c.do(ctx, tok, http.MethodGet, rp, nil, nil)
 }
 
 // CheckPrivateKey は、App の秘密鍵が、読める PEM の RSA の鍵かを確かめる。

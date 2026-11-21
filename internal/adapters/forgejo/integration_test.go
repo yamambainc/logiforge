@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq/apitest"
 	"github.com/yamambainc/logiforge/internal/forgejotest"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/store"
@@ -483,4 +484,18 @@ func mustGet(ctx context.Context, t *testing.T, gf ports.GitForge, ref, id strin
 		t.Fatal(err)
 	}
 	return ar
+}
+
+// REST の呼び方（pullreq.API）のすべてのメソッドを、ディレクトリの repository の参照（owner/name:パス）で呼ぶ。
+// :パス を外し忘れたメソッドは、ない repository を指すので、404 で落ちる。
+func TestForgejoAPIDirectoryRef(t *testing.T) {
+	e := setup(t)
+	name := "dirs"
+	e.call(e.admin, "POST", "/orgs/"+e.org+"/repos", map[string]any{"name": name, "auto_init": true, "default_branch": "main", "private": true}, nil, 201)
+	ref := e.org + "/" + name
+	dir := e.clone("agent", ref)
+	e.commitPush(dir, "m", "paper/tree/a.md", "a\n")
+	e.commitPush(dir, "c", "paper/tree/b.md", "b\n")
+	gf, _ := New(Config{URL: e.url, Org: e.org, MergeWait: 5 * time.Second})
+	apitest.Run(t, gf.API, apitest.Env{Ref: ref + ":paper", Merge: "m", Close: "c", Ctx: ports.WithToken(context.Background(), e.tokens["agent"])})
 }

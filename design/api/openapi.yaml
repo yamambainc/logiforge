@@ -1370,7 +1370,7 @@ components:
             |---|---|---|
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
             | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない |
-            | forbidden | 403 | 主体の種類が、その操作を使えない。または、user でない主体が設定の API を使おうとした |
+            | forbidden | 403 | 主体の種類が、その操作を使えない。または、user でない主体が設定の API を使おうとした。または、GitForge が、この主体の操作を断った（権限が足りない） |
             | not_found | 404 | 対象がない |
             | not_open | 409 | open でない apply request を変えようとした。回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
             | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料を返せない |
@@ -1378,7 +1378,7 @@ components:
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
-            | unavailable | 503 | GitForge の git を読めない。少し待って送り直す |
+            | unavailable | 503 | GitForge か、その git を読めない（止まっている、応答がない、制限に当たった）。少し待って送り直す |
             | snapshot_pending | 503 | 指定したコミットのスナップショットが、まだない（worker が取り込んでいない）。少し待って読み直す |
             | repository_not_registered | 422 | その名前の repository が、設定の DB に登録されていない。利用者が設定の画面で登録する repository（GitHub リポジトリとディレクトリ）だけで起きる |
             | setup_required | 503 | セットアップが終わっていない。セットアップの API と /healthz と、構成と client_id を置いたあとのサインインの中継のほかは、これを返す |

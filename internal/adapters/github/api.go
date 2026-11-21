@@ -320,9 +320,28 @@ type reviewsResult struct {
 			} `json:"pullRequest"`
 		} `json:"repository"`
 	} `json:"data"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
+	Errors []graphQLError `json:"errors"`
+}
+
+// graphQLError は、GraphQL の応答の errors の 1 つである。GraphQL は、誤りでも 200 で返し、種類を type に書く。
+type graphQLError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+func (e *graphQLError) Error() string { return "github: GraphQL: " + e.Message }
+
+// Unwrap は、REST の誤りの応答（apiError）と同じく、種類をポートの誤りにする（design/adapters/github.md の「GitHub の誤りの応答」）。
+func (e *graphQLError) Unwrap() error {
+	switch e.Type {
+	case "NOT_FOUND":
+		return ports.ErrNotFound
+	case "FORBIDDEN", "INSUFFICIENT_SCOPES":
+		return ports.ErrForbidden
+	case "RATE_LIMITED":
+		return ports.ErrUnavailable
+	}
+	return nil
 }
 
 // ListReviews は、1 件の pull request の review を、GraphQL で読む。pending は除き、dismiss されたものは Dismissed にする。
@@ -341,7 +360,7 @@ func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullre
 			return nil, err
 		}
 		if len(res.Errors) > 0 {
-			return nil, fmt.Errorf("github: review を読めない: %s", res.Errors[0].Message)
+			return nil, fmt.Errorf("github: review を読めない: %w", &res.Errors[0])
 		}
 		if res.Data.Repository == nil || res.Data.Repository.PullRequest == nil {
 			return nil, ports.ErrNotFound

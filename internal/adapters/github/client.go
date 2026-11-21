@@ -35,6 +35,20 @@ type apiError struct {
 
 func (e *apiError) Error() string { return fmt.Sprintf("github: %d %s", e.Status, e.Message) }
 
+// Unwrap は、誤りの応答を、ポートの誤りにする（design/adapters/github.md の「GitHub の誤りの応答」）。
+// バックエンドが、内部の誤り（500）でなく、意味のある誤りで返せるようにするためである。どれにも当たらなければ nil。
+func (e *apiError) Unwrap() error {
+	switch {
+	case e.Limited || e.Status == http.StatusTooManyRequests || e.Status >= 500:
+		return ports.ErrUnavailable
+	case e.Status == http.StatusForbidden:
+		return ports.ErrForbidden
+	case e.Status == http.StatusNotFound:
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
 // errMessage は、GitHub の誤りの応答の message を返す。
 func errMessage(err error) string {
 	var e *apiError

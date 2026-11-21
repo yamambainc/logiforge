@@ -8,7 +8,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/store"
 )
 
-// ErrUnavailable は、GitForge の git を読めないこと（止まっている、応答がない）を表す。
+// ErrUnavailable は、GitForge か、その git を読めないこと（止まっている、応答がない、制限に当たった）を表す。
 var ErrUnavailable = errors.New("GitForge の git を読めない")
 
 // SnapshotStore は、スナップショットの置き場のポートである（design/backend/ports/snapshot-store.md）。

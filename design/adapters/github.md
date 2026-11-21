@@ -48,6 +48,21 @@ merge の要求に GitHub が次のものを返したら、アダプタは反映
   - なぜ待たないか：待っても、断られることは変わらないから。
 - ほかの 405 は、`merge_forbidden` にしない。pull request を読み直し、衝突や先頭のコミットの変化として扱う。
 
+### GitHub の誤りの応答
+
+GitHub が誤りを返したら、アダプタは、次のポートの誤りにする。バックエンドは、それを API の誤りで返す（[API](../api/README.md)）。
+
+| GitHub の応答 | ポートの誤り | API の `code` |
+|---|---|---|
+| 404。GraphQL の `errors` の `type` が `NOT_FOUND` | ない | `not_found` |
+| 403（レート制限でないもの）。GraphQL の `FORBIDDEN`、`INSUFFICIENT_SCOPES` | GitHub が、この主体の操作を断った | `forbidden` |
+| レート制限（待つ上限を超えたもの）、429、5xx。GraphQL の `RATE_LIMITED` | GitForge を読めない | `unavailable` |
+
+- GraphQL は、誤りでも 200 で返し、`errors` に書く。REST の応答と同じに扱う。
+- 上の表にない応答（422 など）は、それぞれの操作で扱う。扱わないものは、内部の誤り（`internal`）になり、バックエンドのログに GitHub の応答を書く。
+  - なぜ：上の表のものは、主体の権限か、GitHub の状態によるもので、利用者が見て直せるか、待てば直る。ほかは、Logiforge の誤りかもしれないので、ログで調べる。
+- それぞれの操作が先に扱うもの（merge の 403 は `merge_forbidden`、[merge を断られたとき](#merge-を断られたとき)）は、そちらが優先する。
+
 ## repository を用意する
 
 1. GitHub でリポジトリを作る人（owner の admin か、リポジトリを作れる人）が、空の GitHub リポジトリを作る。

@@ -3,6 +3,7 @@ package pullreq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,8 @@ type fake struct {
 	calls    map[string]int
 	// noAttachments は、添付を持てない GitForge にする。
 	noAttachments bool
+	// closedErr は、ClosedPullsPage が返す誤りである。
+	closedErr error
 }
 
 func newFake() *fake {
@@ -78,6 +81,9 @@ func (f *fake) ListPulls(_ context.Context, _, state string) ([]Pull, error) {
 }
 func (f *fake) ClosedPullsPage(_ context.Context, _ string, page int) ([]Pull, bool, error) {
 	f.call("ClosedPullsPage")
+	if f.closedErr != nil {
+		return nil, false, f.closedErr
+	}
 	var all []Pull
 	for i := f.next - 1; i >= 1; i-- {
 		if p, ok := f.pulls[i]; ok && p.State == "closed" {
@@ -485,5 +491,18 @@ func TestNodeTitle(t *testing.T) {
 	}
 	if got := nodeOfTitle("ただのタイトル"); got != "" {
 		t.Fatalf("対象ノードのないタイトル：%q", got)
+	}
+}
+
+// 反映した pull request の一覧そのものを読めない（404 を含む）ときは、ErrNotFound（一覧になかった）にしない。
+// worker が、反映の apply request のないコミットとして置かず、次の見回りでやり直すためである。
+func TestMergedApplyRequestListError(t *testing.T) {
+	f := newFake()
+	a := adapter(f)
+	for _, e := range []error{fmt.Errorf("github: 404 Not Found: %w", ports.ErrNotFound), fmt.Errorf("github: 502: %w", ports.ErrUnavailable)} {
+		f.closedErr = e
+		if _, err := a.MergedApplyRequest(context.Background(), "o/r", "m1", f.now); err == nil || errors.Is(err, ports.ErrNotFound) {
+			t.Fatalf("%v：%v", e, err)
+		}
 	}
 }
