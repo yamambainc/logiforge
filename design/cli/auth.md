@@ -24,7 +24,7 @@ CLI の全体は、[CLI](README.md) に書く。
 - 人もエージェント（機械用アカウント）も、`gh auth login`（OAuth）で得たトークンを使う（`gh auth token`）。
   - personal access token は使わない。
 - スコープは `repo` が要る。
-  - なぜ：バックエンドが、主体のトークンで、pull request、review、コメント、ラベル、commit status を書き、reviewer のトークンで merge するから（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
+  - なぜ：バックエンドが、主体のトークンで、pull request、review、コメント、ラベルを書き、reviewer のトークンで merge するから（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
   - git の push も、同じトークンで行う。
 - `repo` は、そのアカウントが書けるすべてのリポジトリに及ぶ。
   - 範囲を絞りたいエージェントは、Logiforge のためだけの機械用アカウントにする（[GitHub App とトークン](../adapters/github-app.md#アカウントとトークン)）。

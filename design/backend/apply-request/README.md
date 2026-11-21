@@ -20,7 +20,7 @@
 | 先頭のコミット | pull request の head のコミット |
 | 新しい先頭のコミット | 利用者が、同じブランチに push する |
 | レビュー | pull request の review（[数える review](../../adapters/pull-requests.md#数える-review)） |
-| 反映の失敗 | head のコミットへの `logiforge/merge` の commit status と、pull request のコメント |
+| 反映の失敗 | 理由を書いた pull request のふつうのコメントと、レビュー待ちか修正待ちかのラベル |
 | 反映 | pull request の squash merge（head の SHA を指定する） |
 | close | pull request の close |
 

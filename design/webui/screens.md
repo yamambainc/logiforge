@@ -51,11 +51,12 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 ### [apply request と履歴](../../docs/webui/history.md)
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
-- 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
+- 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews`、pull request のコメントは `comments` で示す。
+  - コメントは、書いた人と時刻を添えて、本文をそのまま Markdown として示す。反映の失敗と close の理由も、ここに入る。
 - レビューの材料：`getReviewMaterial`。レビューの欄に示す。説明欄は示さない。
 - 自分が作ったか：`getApplyRequest` の `opened_by_caller`。`true` なら、approve の前に示す。
 - レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
-  - 応答の `apply_request` で、反映したか、反映の失敗の理由を示す。
+  - 応答の `apply_request` で反映したかを、`merge_failure` で反映できなかった理由を示す。
   - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、`created_at` の順に示し、書いた人（`reviewer`）と時刻を添える。
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。

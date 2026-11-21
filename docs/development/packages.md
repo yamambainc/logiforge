@@ -20,7 +20,7 @@
 | [internal/cli](../../internal/cli/) | opener と reviewer の CLI（認証、clone、ひな形、check、commit、apply request、作業、木、人への依頼。`--json` と終了コード） |
 | [internal/ports](../../internal/ports/) | バックエンドのポート（GitForge、認証）のインターフェース |
 | [internal/adapters/snapstore](../../internal/adapters/snapstore/) | スナップショットの置き場のポートのアダプタ（置き場を読む） |
-| [internal/adapters/pullreq](../../internal/adapters/pullreq/) | GitForge のポートを、pull request、review、issue、ラベル、commit status で実装する。GitHub と Forgejo に共通 |
+| [internal/adapters/pullreq](../../internal/adapters/pullreq/) | GitForge のポートを、pull request、review、issue、ラベル、コメントで実装する。GitHub と Forgejo に共通 |
 | [internal/adapters/forgejo](../../internal/adapters/forgejo/) | Forgejo アダプタ（REST の呼び方、repository の用意、認証） |
 | [internal/adapters/github](../../internal/adapters/github/) | GitHub アダプタ（REST の呼び方、repository の用意、認証、読むだけの GitHub App のトークン） |
 | [internal/e2e](../../internal/e2e/) | Forgejo と logiforge（serve、worker、CLI）をつないだ E2E |

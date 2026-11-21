@@ -25,7 +25,7 @@ GitHub に固有のところだけを書く。
 | repository を用意する | 空のリポジトリに、作る利用者のトークンで、contents API（`PUT /repos/{owner}/{repo}/contents/{path}`）で最初のコミットを作る |
 | 反映する | reviewer のトークンで、`PUT /repos/{owner}/{repo}/pulls/{number}/merge` を、`sha`（先頭のコミット）、`merge_method: squash`、メッセージを付けて呼ぶ |
 | レビュー | reviewer のトークンで、`POST /repos/{owner}/{repo}/pulls/{number}/reviews`（`event` は `APPROVE`、`REQUEST_CHANGES`、`COMMENT`。本文は [review の本文](texts.md#review-の本文)） |
-| 反映の失敗 | reviewer のトークンで、`POST /repos/{owner}/{repo}/statuses/{sha}`（context は `logiforge/merge`）と、pull request のコメント |
+| 反映の失敗 | reviewer のトークンで、`POST /repos/{owner}/{repo}/issues/{number}/comments`（理由を書いたふつうのコメント）と、ラベルの付け替え |
 | apply request の一覧 | `GET /repos/{owner}/{repo}/pulls`。レビュー待ちか修正待ちかはラベル（[一覧の読み](../backend/list-reads.md#どの一覧の-api-で読むか)） |
 | ラベルの付け外し | `POST /repos/{owner}/{repo}/issues/{number}/labels`、`DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}`。ない名前を付けると既定の色で作られるので、先に `POST /repos/{owner}/{repo}/labels` で作る |
 | 回答の添付 | リンクだけ。ファイルは受け付けない（[人への依頼の回答](../files/artifacts.md)） |

@@ -103,10 +103,10 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 
 ## 付けたあと
 
-`ar review` の応答の `apply_request` で、結果を確かめる。
+`ar review` の応答で、結果を確かめる。
 
-- `state` が `merged`：反映された。
-- `merge_failures` がある：反映できなかった。apply request は open のまま残る。
+- `apply_request.state` が `merged`：反映された。
+- `merge_failure` がある：反映できなかった。`reason` が理由である。apply request は open のまま残る。
   - `snapshot_pending`：少し待って、材料を読み直し、`approve` し直す。
   - `merge_forbidden`：この reviewer の主体に merge の権限が無い。権限のある reviewer に任せる。
   - `repository_broken`：repository が壊れていて、直すための apply request でないので反映されない。直すのは別の作業なので、reviewer がすることは無い。
@@ -126,4 +126,4 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 - apply request の識別子
 - 付けた種類と、レビューした `commit`
 - 判断の理由（`--body` の要約）
-- 付けたあとの `state` と、`merge_failures` があればその理由
+- 付けたあとの `state` と、`merge_failure` があればその理由

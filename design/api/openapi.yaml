@@ -766,7 +766,7 @@ paths:
       description: |
         user（WebUI）は、WebUI のサインインで得たトークンで呼ぶ。その repository に Write がなければ forbidden（../../design/settings/users.md の「WebUI からのレビュー」）。
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
-        反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
+        反映に失敗しても、エラーにはしない。応答の `merge_failure` に理由が入る。理由は、pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
         先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
         呼んだ主体が pull request の作者なら、GitForge が approve を拒む（../../design/adapters/pull-requests.md の「数える review」）。
       parameters:
@@ -802,6 +802,9 @@ paths:
                 properties:
                   review: { $ref: '#/components/schemas/Review' }
                   apply_request: { $ref: '#/components/schemas/ApplyRequest' }
+                  merge_failure:
+                    $ref: '#/components/schemas/MergeFailure'
+                    description: この要求の中で反映しようとして、できなかったときだけ入る
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/apply-requests/{applyRequestId}/close:
@@ -1657,7 +1660,7 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^[1-9][0-9]*$' }
         kind:
@@ -1702,9 +1705,18 @@ components:
         reviews:
           type: array
           items: { $ref: '#/components/schemas/Review' }
-        merge_failures:
+        comments:
           type: array
-          items: { $ref: '#/components/schemas/MergeFailure' }
+          description: >-
+            pull request のコメント（古い順）。1 件を読むときだけ入り、一覧では空である。
+            反映の失敗と close の理由も、人が読む文で、ここに入る。Logiforge は、コメントの本文を読まない（../../design/adapters/texts.md）
+          items:
+            type: object
+            required: [author, body, created_at]
+            properties:
+              author: { type: string, description: コメントを書いた GitForge のアカウント }
+              body: { type: string }
+              created_at: { type: [string, 'null'], format: date-time }
         awaiting:
           type: [string, 'null']
           enum: [review, fix, null]
@@ -1741,6 +1753,7 @@ components:
           description: レビューを書いた時刻（GitForge のコメントの時刻）。読めなければ null。reviews は、この順に並ぶ
     MergeFailure:
       type: object
+      description: レビューの応答で返す、その要求の中での反映の失敗
       required: [commit, reason, detail]
       properties:
         commit:

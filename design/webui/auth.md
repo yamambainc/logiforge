@@ -57,7 +57,7 @@ authorize から戻るまでの流れは、[サインインの流れ](signin-flo
 - スコープは、`read:user`、`read:organization`、`write:organization`、`write:repository`、`write:issue` にする。
   - `read:user` と `read:organization`：BE が、主体を確かめるため（`GET /user`、`GET /user/teams`。[Forgejo アダプタの認証](../adapters/forgejo.md#認証)）。
   - `write:organization` と `write:repository`：BE が、利用者のトークンで、organization に repository を作り、最初のコミットを置くため（[Forgejo アダプタ](../adapters/forgejo.md) の「repository の用意」）。
-    - `write:repository` は、WebUI のレビューで、pull request に review を出し、merge し、commit status を立てるのにも使う（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
+    - `write:repository` は、WebUI のレビューで、pull request に review を出し、merge し、コメントとラベルを書くのにも使う（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
   - `write:issue`：BE が、利用者のトークンで、回答のコメントを書き、issue を閉じるため。pull request のラベルを付け替え、コメントを書くのにも使う。
 - 盗まれたときに書ける範囲は、利用者が Forgejo で書けるすべての repository に広がる。
 

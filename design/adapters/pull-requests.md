@@ -15,7 +15,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
 | 先頭のコミット | pull request の head のコミット（[先頭のコミット](../backend/apply-request/README.md#先頭のコミット)） |
 | レビュー | pull request の review（approve、request changes、comment）。reviewer のトークンで出す |
 | 反映する | pull request の merge。`approve` をした reviewer のトークンで、squash を選び、head の SHA とメッセージを渡す |
-| 反映の失敗 | head のコミットへの commit status（context は `logiforge/merge`、state は `failure`、description は失敗の理由）と、理由を書いた pull request のコメント |
+| 反映の失敗 | 理由を人が読む文で書いた、pull request のふつうのコメントと、ラベルの付け替え（[レビュー待ちと修正待ちのラベル](#レビュー待ちと修正待ちのラベル)）。reviewer のトークンで書く |
 | close | pull request の close。理由は、close した主体のトークンで書く pull request のコメント（人が読む文） |
 | 人への依頼 | issue。起票した主体のトークンで作る。識別子は issue の番号。タイトルは対象ノードの識別子で始める |
 | 回答 | 回答した利用者のトークンで書く issue のコメントと、その issue の close |
@@ -27,7 +27,8 @@ review と issue の本文に書くことは、[review と issue の本文](text
 - 1 つのブランチに、open の pull request は 1 つまでである。
 - 人への依頼の種類は、issue のラベル（`logiforge/pvr`、`logiforge/decision`）で決める。直すための apply request の種類は、pull request のラベル（`logiforge/repair.revert`、`logiforge/repair.accept`）で決める。
   - ラベルがなければ、付けるときに作る。
-- GitHub の check run は使わない。なぜ：Forgejo に、check run の API がないから。commit status は、両方にある。
+- check run と commit status は使わない。
+  - なぜ：反映の失敗で要るのは、opener が直すのを待つかどうかと、人が読む理由だけで、それはラベルとコメントで表せるから。check run は Forgejo に API がなく、commit status を書くには GitHub App の権限を増やすことになる。
 
 ## apply request の状態
 
@@ -96,11 +97,11 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - 一覧を読むときは、review を読まないので、分からない。worker も、ずれを直さない（worker のトークンは読むだけである）。
 - 正しいラベルは、その pull request の次の出来事のうち、いちばん新しいもので決める。
   - 数える `request changes` の review（GitForge の画面から直接出したものも含む）：修正待ち
-  - opener が直すべき理由の `logiforge/merge` の commit status：修正待ち
-  - バックエンドがレビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）：レビュー待ち
+  - 修正待ちのラベルを付けたこと（`request changes` と、opener が直すべき理由の反映の失敗）：修正待ち
+  - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告、opener が直すべき理由でない反映の失敗）：レビュー待ち
   - 数える `approve` の review：レビュー待ち。なぜ：`approve` のあとに open のまま残るのは、`approve` し直しを待つものだから
-  - opener が直すべき理由でない `logiforge/merge` の commit status：レビュー待ち
   - どれもなければ、レビュー待ち
+  - 反映の失敗のコメントは、読まない。なぜ：人が読む文で、だれでも書けるから。失敗の出来事は、そのときに付け替えたラベルの出来事で読む。
   - ラベルを付けた時刻は、pull request の出来事の一覧（GitHub は issue の events、Forgejo は issue の timeline）で読む。
   - GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
 - 直すときは、その要求を送った主体のトークンで書く。その主体に書く権限がなければ、直さずに、応答に警告を付ける。警告には、書く権限のある人が読めば直ることを書く。
@@ -128,7 +129,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - pull request と issue を、GitForge の画面から close し、reopen する。GitForge の状態に従う。
   - 本文、タイトル、ラベル、他人のコメントを書き換え、消す。そのため、人への依頼の対象ノード（issue のタイトルの頭）は、偽れる。プロンプトの版と close の理由（人が読む文）も書き換えられる。
   - GitForge の画面や API から、直接 review を出す。バックエンドを通した review と同じに数える。
-  - commit status を立てる。`logiforge/merge` の status を偽っても、変わるのはレビュー待ちか修正待ちかの表示だけである。
+  - ラベルを付け外す。変わるのは、レビュー待ちか修正待ちかの表示だけである。反映できるかは、review で決まる。
 - Write を持つ主体でも、次のものは書き換えられない。バックエンドと worker が信じるのは、これらである。
   - pull request、issue、review、コメントの作者
   - pull request と issue の状態（open、merged、closed）、merge のコミット

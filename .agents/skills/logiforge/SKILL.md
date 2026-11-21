@@ -147,7 +147,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 
 ## apply request を直す
 
-`logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、反映の失敗（`merge_failures`）を読む。
+`logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、コメント（`comments`。反映の失敗の理由も、ここに人が読む文で入る）を読む。
 直したら、同じブランチに push する。push すると新しい先頭のコミットになり、どの理由で直した場合も、レビューからやり直しになる。
 修正待ち（`fix_waiting`）の apply request は、push しただけではレビュー待ちに戻らない。直し終えたら、`logiforge ar fixed <apply request>` で申告する。
 

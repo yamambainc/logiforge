@@ -35,7 +35,8 @@ apply request を `main` に反映するとき、バックエンドが何を確�
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。
    - このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request/target.md#向き先)）。
-6. 手順 1〜4 で反映できなければ、head のコミットに失敗の理由の commit status を立て、理由を pull request のコメントに書く（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。apply request は open のまま残る。
+6. 手順 1〜4 で反映できなければ、理由を、pull request のふつうのコメントに、人が読む文で書く。opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）なら修正待ちの、ほかの理由ならレビュー待ちの、ラベルに付け替える（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。apply request は open のまま残る。
+   - 理由は、その review の応答の `merge_failure` で返す。あとから読むときは、apply request の詳細の `comments` で、コメントをそのまま読む。バックエンドは、このコメントを読まない。
 
 - reviewer は、pull request を作った主体と別の GitForge のアカウントである。GitForge が、作者自身の `approve` を拒むから（[数える review](../adapters/pull-requests.md#数える-review)）。
 

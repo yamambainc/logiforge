@@ -63,12 +63,12 @@ GitHub の上限は、使うトークンで 2 つに分かれる（[GitHub App �
 | どの要求も（認証） | REST 2 回（主体、Logiforge の App のトークンかの確かめ）＋ 60 秒に 1 回、installation の数 + 1 回（リポジトリの権限。[権限のキャッシュ](../settings/users.md#権限のキャッシュ)） | 主体ごと（App のトークンかの確かめは App） |
 | open の apply request の一覧 | REST ⌈O/100⌉ 回（PR の一覧。レビュー待ちか修正待ちかはラベル） | 主体ごと |
 | merged、closed の apply request の一覧 | REST ⌈P/100⌉ 回 | 主体ごと |
-| apply request を読む | REST 4 回（PR、review の一覧、head の commit status、PR の出来事の一覧）。ラベルがずれていれば、直すのに 1〜2 回 | 主体ごと |
+| apply request を読む | 4 回（PR、review の一覧、PR の出来事の一覧、PR のコメントの一覧）。ラベルがずれていれば、直すのに 1〜2 回 | 主体ごと |
 | 作業の一覧、木のノードを読む | REST ⌈O/100⌉ ＋ ⌈(P+I)/100⌉ 回（open の PR の一覧と、issue の一覧。GitHub の issue の一覧は PR も返す） | 主体ごと |
 | 人への依頼の一覧 | REST ⌈(P+I)/100⌉ 回 | 主体ごと |
 | repository の一覧 | 60 秒に 1 回、主体の読めるリポジトリの一覧のページ数（`/user/repos`）＋ 一覧にない public のリポジトリの数（それぞれ 60 秒に 1 回） | 主体ごと |
 | 設定の repository の一覧 | 0 回（用意が済んだかは `latest` で決める） | 主体ごと |
-| 書き込み | REST 1〜3 回（PR の作成・merge・close、review、commit status、コメント、ラベル） | 主体ごと |
+| 書き込み | REST 1〜3 回（PR の作成・merge・close、review、コメント、ラベル） | 主体ごと |
 | worker の反映かの判定 | 新しい `main` のコミットがある見回りごとに REST 1 回（反映した PR の一覧）＋ merge した PR ごとに 1 回（その PR の review。[重さ](../backend/verify/README.md#重さ)） | installation |
 | worker の installation token | owner ごとに、バックエンドが作り直すたびに 2 回（20 分ごと） | App の JWT。installation の上限には数えない |
 
