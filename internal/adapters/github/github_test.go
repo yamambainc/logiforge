@@ -125,10 +125,18 @@ func TestRegistration(t *testing.T) {
 }
 
 // apply request の作成、レビュー、反映、close、人への依頼を、共通の部分（pullreq）を通して確かめる。
+// ディレクトリの repository（owner/name:パス）でも、同じに作り、review を読み書きし、反映し、閉じられる。
+// GraphQL にも、REST と同じく :パス を外した owner と name を渡す。
 func TestApplyRequestFlow(t *testing.T) {
+	for _, repo := range []string{fakeRepo, fakeRepo + ":paper"} {
+		t.Run(repo, func(t *testing.T) { testApplyRequestFlow(t, repo) })
+	}
+}
+
+func testApplyRequestFlow(t *testing.T, repo string) {
 	ctx := agentCtx()
 	f, a, _ := newTestAdapter(t)
-	ar, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin})
+	ar, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,103 +147,122 @@ func TestApplyRequestFlow(t *testing.T) {
 		t.Fatal("レビュー待ちのラベルを作っていない")
 	}
 	// 同じブランチに、ほかの主体はもう 1 つ作れない。同じ主体なら、送り直しとして同じものを返す。
-	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: "alice"}); !errors.Is(err, ports.ErrBranchHasOpen) {
+	if _, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{Branch: "b1", Opener: "alice"}); !errors.Is(err, ports.ErrBranchHasOpen) {
 		t.Fatalf("同じブランチ：%v", err)
 	}
-	if again, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil || again.ID != "1" {
+	if again, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil || again.ID != "1" {
 		t.Fatalf("送り直し：%+v %v", again, err)
 	}
 	// 作者自身の approve は、GitHub が拒む。
-	if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewApprove, Revision: "h1", PromptRevision: "p"}); err == nil {
+	if _, err := a.AddReview(ctx, repo, "1", ports.Review{Kind: ports.ReviewApprove, Revision: "h1", PromptRevision: "p"}); err == nil {
 		t.Fatal("作者自身の approve が通った")
 	}
 	for i := range 3 {
-		if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewComment, Body: "c" + strconv.Itoa(i), Revision: "h1", PromptRevision: "p"}); err != nil {
+		if _, err := a.AddReview(ctx, repo, "1", ports.Review{Kind: ports.ReviewComment, Body: "c" + strconv.Itoa(i), Revision: "h1", PromptRevision: "p"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	rvs, err := a.ListReviews(ctx, fakeRepo, "1")
+	rvs, err := a.ListReviews(ctx, repo, "1")
 	if err != nil || len(rvs.Items) != 3 || rvs.Items[0].Body != "c0\n\nプロンプトの版：p" || rvs.Items[0].Reviewer != fakeAgentLogin {
 		t.Fatalf("reviews：%+v %v", rvs, err)
 	}
-	if err := a.SetWaiting(ctx, fakeRepo, "1", ports.WaitingFix); err != nil || !slices.Equal(f.pulls[1].labels, []string{"logiforge/fix-waiting"}) {
+	if err := a.SetWaiting(ctx, repo, "1", ports.WaitingFix); err != nil || !slices.Equal(f.pulls[1].labels, []string{"logiforge/fix-waiting"}) {
 		t.Fatalf("修正待ち：%v %v", f.pulls[1].labels, err)
 	}
-	if _, err := a.Merge(ctx, fakeRepo, "1", "other", "t", "m"); !errors.Is(err, ports.ErrHeadMoved) {
+	// 直し終えたという申告（fixed）は、レビュー待ちのラベルに戻す。
+	if err := a.SetWaiting(ctx, repo, "1", ports.WaitingReview); err != nil || !slices.Equal(f.pulls[1].labels, []string{"logiforge/review-waiting"}) {
+		t.Fatalf("レビュー待ち：%v %v", f.pulls[1].labels, err)
+	}
+	if err := a.SetWaiting(ctx, repo, "1", ports.WaitingFix); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.UpdateDescription(ctx, repo, "1", "新しい説明"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := a.GetApplyRequest(ctx, repo, "1"); err != nil || got.State != ports.StateOpen || got.Description != "新しい説明" || got.Waiting != ports.WaitingFix {
+		t.Fatalf("open の 1 件：%+v %v", got, err)
+	}
+	if _, err := a.Merge(ctx, repo, "1", "other", "t", "m"); !errors.Is(err, ports.ErrHeadMoved) {
 		t.Fatalf("違う head：%v", err)
 	}
 	// 最初の 1 回は、mergeable が null（確かめている）。待って呼び直す。
 	f.pulls[1].pending = 2
-	sha, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m")
+	sha, err := a.Merge(ctx, repo, "1", "h1", "t", "m")
 	if err != nil || sha != "mh1" || len(f.pulls[1].labels) != 0 {
 		t.Fatalf("merge：%q %v %v", sha, err, f.pulls[1].labels)
 	}
 	// 送り直しは、同じ反映のコミットを返す。
-	if sha, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); err != nil || sha != "mh1" {
+	if sha, err := a.Merge(ctx, repo, "1", "h1", "t", "m"); err != nil || sha != "mh1" {
 		t.Fatalf("送り直し：%q %v", sha, err)
 	}
-	got, err := a.GetApplyRequest(ctx, fakeRepo, "1")
+	got, err := a.GetApplyRequest(ctx, repo, "1")
 	if err != nil || got.State != ports.StateMerged || got.MergedRevision != "mh1" {
 		t.Fatalf("%+v %v", got, err)
 	}
 
 	// 衝突と、反映の失敗と、close
-	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b3", Opener: fakeAgentLogin}); err != nil {
+	if _, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{Branch: "b3", Opener: fakeAgentLogin}); err != nil {
 		t.Fatal(err)
 	}
 	n := len(f.pulls)
 	f.pulls[n].conflict, f.pulls[n].pending = true, 0
 	id := strconv.Itoa(n)
-	if _, err := a.Merge(ctx, fakeRepo, id, "h1", "t", "m"); !errors.Is(err, ports.ErrConflict) {
+	if _, err := a.Merge(ctx, repo, id, "h1", "t", "m"); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("衝突：%v", err)
 	}
-	if err := a.RecordMergeFailure(ctx, fakeRepo, id, ports.MergeFailure{Revision: "h1", Reason: "conflict", Detail: "衝突した"}, ports.WaitingFix); err != nil {
+	if err := a.RecordMergeFailure(ctx, repo, id, ports.MergeFailure{Revision: "h1", Reason: "conflict", Detail: "衝突した"}, ports.WaitingFix); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); len(got.Comments) == 0 || !strings.Contains(got.Comments[len(got.Comments)-1].Body, "衝突した") {
+	if got, _ := a.GetApplyRequest(ctx, repo, id); len(got.Comments) == 0 || !strings.Contains(got.Comments[len(got.Comments)-1].Body, "衝突した") {
 		t.Fatalf("反映の失敗のコメント：%+v", got.Comments)
 	}
-	if err := a.Close(ctx, fakeRepo, id, "やめる"); err != nil {
+	if err := a.Close(ctx, repo, id, "やめる"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); got.State != ports.StateClosed {
+	if got, _ := a.GetApplyRequest(ctx, repo, id); got.State != ports.StateClosed {
 		t.Fatalf("%+v", got)
 	}
-	all, err := a.ListApplyRequests(ctx, fakeRepo, "all")
+	all, err := a.ListApplyRequests(ctx, repo, "all")
 	if err != nil || len(all) != 2 {
 		t.Fatalf("一覧：%d %v", len(all), err)
 	}
-	if open, _ := a.ListApplyRequests(ctx, fakeRepo, "open"); len(open) != 0 {
+	if open, _ := a.ListApplyRequests(ctx, repo, "open"); len(open) != 0 {
 		t.Fatalf("open の一覧：%+v", open)
 	}
 }
 
 func TestHumanRequest(t *testing.T) {
+	for _, repo := range []string{fakeRepo, fakeRepo + ":paper"} {
+		t.Run(repo, func(t *testing.T) { testHumanRequest(t, repo) })
+	}
+}
+
+func testHumanRequest(t *testing.T, repo string) {
 	ctx := agentCtx()
 	f, a, _ := newTestAdapter(t)
 	// pull request と番号が並ぶ。issue の一覧から pull request を除く。
-	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil {
+	if _, err := a.CreateApplyRequest(ctx, repo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil {
 		t.Fatal(err)
 	}
-	hr, err := a.CreateHumanRequest(ctx, fakeRepo, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-aaaaaaaaaa", Body: "見て", Requester: "agent"})
+	hr, err := a.CreateHumanRequest(ctx, repo, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-aaaaaaaaaa", Body: "見て", Requester: "agent"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if hr.ID != "2" || hr.TargetNode != "h-aaaaaaaaaa" || f.issues[hr.Number] == nil || !strings.Contains(strings.Join(f.issues[hr.Number].Labels, ","), "logiforge/pvr") {
 		t.Fatalf("issue：%+v %+v", hr, f.issues)
 	}
-	err = a.Answer(ctx, fakeRepo, hr.ID, "答え", "agent", []ports.NewAttachment{{Name: "a.jpg", Content: []byte("A")}})
+	err = a.Answer(ctx, repo, hr.ID, "答え", "agent", []ports.NewAttachment{{Name: "a.jpg", Content: []byte("A")}})
 	if !errors.Is(err, ports.ErrAttachmentsUnsupported) {
 		t.Fatalf("ファイルの添付：%v", err)
 	}
-	if err := a.Answer(ctx, fakeRepo, hr.ID, "答え", "agent", nil); err != nil {
+	if err := a.Answer(ctx, repo, hr.ID, "答え", "agent", nil); err != nil {
 		t.Fatal(err)
 	}
-	got, err := a.GetHumanRequest(ctx, fakeRepo, hr.ID)
+	got, err := a.GetHumanRequest(ctx, repo, hr.ID)
 	if err != nil || got.Answer == nil || got.Answer.Body != "答え" || got.Answer.AnsweredBy != "agent" || f.issues[hr.Number].State != "closed" {
 		t.Fatalf("%+v %v", got, err)
 	}
-	list, err := a.ListHumanRequests(ctx, fakeRepo)
+	list, err := a.ListHumanRequests(ctx, repo)
 	if err != nil || len(list) != 1 || list[0].Answer == nil {
 		t.Fatalf("%+v %v", list, err)
 	}
