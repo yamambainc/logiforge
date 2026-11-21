@@ -13,6 +13,9 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
+// ErrReviewUnverified は、決める review に、書く権限を持つかを読めないものがあり、反映かを決められないことを表す。worker は、次の見回りでやり直す。
+var ErrReviewUnverified = errors.New("書く権限を持つかを確かめられない review がある")
+
 // VerifyMerge は、main のコミット sha（親は parents、最初の親が 1 つ前の main のコミット）が、
 // apply request の反映によるものかを、中身だけで決める（design/backend/verify/README.md の「apply request の反映のコミット」）。
 // files は sha の木、broken は 1 つ前の main までの壊れていることの記録である。worker が呼ぶ。
@@ -56,7 +59,12 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 	if d.current.Commit != h {
 		return no("pull request の先頭のコミット %s が、apply request %s の先頭のコミットの一覧の最後 %s でない", h, ar.ID, d.current.Commit)
 	}
-	// 4. レビューとセッション。
+	// 4. レビュー。決める review に、書く権限を持つかを読めないものがあれば、API が答えないときと同じに、決めずに次の見回りでやり直す。
+	// なぜ：読めないものを数えないまま「反映によるものでない」とすると、読めなかっただけで repository を壊れた状態にしてしまうから。
+	// Pending にしないのは、Pending は、pull request が見つからないときの待ち時間を過ぎると、反映によらないと決めるからである。
+	if d.reviews.Unverified > 0 {
+		return ports.MergeVerdict{}, fmt.Errorf("%w：apply request %s に、書く権限を持つかを確かめられない review が %d 個ある", ErrReviewUnverified, ar.ID, d.reviews.Unverified)
+	}
 	if p := approvalProblem(d); p != "" {
 		return no("apply request %s：%s", ar.ID, p)
 	}

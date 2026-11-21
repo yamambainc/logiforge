@@ -160,6 +160,9 @@ type Reviews struct {
 	// Items は、数えたレビュー（design/adapters/pull-requests.md の「数える review」）を、出した順に並べたもの。
 	Items    []Review
 	Warnings []string
+	// Unverified は、書く権限を持つかを読めなかったので数えなかった、approve と request changes の数である。
+	// worker の反映かの判定は、これが 1 つでもあれば、決めずに次の見回りでやり直す（design/backend/verify/README.md）。
+	Unverified int
 }
 
 // HumanRequestKind は、人への依頼の種類である。

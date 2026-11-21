@@ -54,6 +54,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
     - Forgejo は、review の `official` で見る。review を出した時点で決まる。approve できる人の一覧（approvals whitelist）があれば、それで決まる。
       - なぜ `official` か：ほかの人の権限を読む API は、repository の admin しか使えないから。Forgejo は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` を `official` にする。
     - 書く権限を持つかを読めない review（値がない、読み失敗）は、数えずに、警告する。詳細では「確かめられない」と示す。なぜ：読めないものを書く権限ありとすると、書く権限のない人の review で反映できてしまうから。
+      - worker の反映かの判定だけは、読めない決める review が 1 つでもあれば、決めずに次の見回りでやり直す（[反映かの判定](../backend/verify/README.md#gitforge-の-api)）。なぜ：読めなかっただけで、repository を壊れた状態にしないため。
     - `comment` は、反映の条件に効かないので、権限を見ない。
 - review は、それを出した head のコミット（review の `commit_id`）への review である。
 - GitForge は、pull request の作者が自分の pull request を `approve` することを拒む（GitHub と Forgejo）。そのため、opener と reviewer は、別の GitForge のアカウントにする。

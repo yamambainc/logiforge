@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,20 @@ func TestVerifyMerge(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
 	st := f.b.Snap.(*snapstore.Adapter).Store
+	// verifyErr は、worker が sha を取り込んだあとに、同じ入力で判定し直す。
+	verifyErr := func(sha string) (ports.MergeVerdict, error) {
+		t.Helper()
+		m, err := store.GetMain(ctx, st, "q", sha)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, err := m.SnapshotTree.Files()
+		if err != nil {
+			t.Fatal(err)
+		}
+		parents := strings.Fields(f.r.git("rev-list", "--parents", "-n", "1", sha))[1:]
+		return f.b.VerifyMerge(ctx, "q", "o/q", sha, parents, parents[0], time.Now(), files, nil)
+	}
 	verify := func(sha string) ports.MergeVerdict {
 		t.Helper()
 		deadline := time.Now().Add(20 * time.Second)
@@ -82,6 +97,23 @@ func TestVerifyMerge(t *testing.T) {
 	}
 	if v := verify(sha); v.Authorized || !strings.Contains(v.Detail, "approve でない") {
 		t.Fatalf("request_changes のあとの merge：%+v", v)
+	}
+
+	// 決める review に、書く権限を持つかを読めないものがある apply request を、人が merge したもの。決めずに（誤りを返し）、次の見回りでやり直す。
+	g := create(t, f, "vg", "s6", bg("6"))
+	review(g, "s9", ports.ReviewApprove)
+	sha, err = f.forge.Merge(ctx, "o/q", g, f.forge.ar(g).HeadRevision, "画面から", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := verify(sha); !v.Authorized || v.ApplyRequest != g {
+		t.Fatalf("読める review：%+v", v)
+	}
+	rs := f.forge.reviews[g]
+	rs.Unverified = 1
+	f.forge.reviews[g] = rs
+	if v, err := verifyErr(sha); !errors.Is(err, ErrReviewUnverified) {
+		t.Fatalf("書く権限を読めない review：%+v %v", v, err)
 	}
 
 	// merge のコミットに、apply request の差分のほかの変更を足したもの。

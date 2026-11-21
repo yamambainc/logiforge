@@ -51,10 +51,14 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 - worker は、見回りで新しい `main` のコミットがあるとき、反映した pull request の一覧を 1 回読み、`merge_commit_sha` で新しいコミットごとの pull request を引く（[一覧の読み](../list-reads.md#どの一覧の-api-で読むか)）。
   - 引くのは、merge されていて、`merge_commit_sha` が C で、向き先が `main` のものである。
   - なぜ：コミットごとに pull request を問い合わせると、取り込みが遅れて追いつくとき、REST の回数がコミットの数に比例するから。
-- review は、見つけた pull request ごとに、その pull request の review の一覧（`GET /repos/{owner}/{repo}/pulls/{number}/reviews`）を、その場で読む。GitHub と Forgejo の両方にある。
+- review は、見つけた pull request ごとに、その pull request の review の一覧を、その場で読む（GitHub は GraphQL の 1 回、Forgejo は `GET /repos/{owner}/{repo}/pulls/{number}/reviews`。[数える review](../../adapters/pull-requests.md#数える-review)）。
   - 読むのは、新しい `main` のコミットを merge した pull request の分だけである。数は、反映の数と同じである。
 - API が答えないときは、C を取り込まずに、次の見回りでやり直す。`latest` は進めない。
   - なぜ：判定できないコミットを、正しいとも壊れているとも記録しないため。
+- その pull request の決める review（`approve` か `request_changes`）に、書いた人が書く権限を持つかを読めないものが 1 つでもあれば、API が答えないときと同じに、C を取り込まずに、次の見回りでやり直す。
+  - なぜ：読めない review を数えないまま判定すると、読めなかっただけで、反映によらないコミットとして repository を壊れた状態にしてしまうから。
+  - 下の 60 秒の待ちは使わない。読めるようになるまでやり直す。読めないあいだは `latest` が進まず、worker はログに理由を出す。
+  - 詳細の読みと反映の手順では、読めない review は、数えずに警告するだけである（[数える review](../../adapters/pull-requests.md#数える-review)）。
 - 反映した pull request の一覧の読み方（どこで読むのをやめるか）は、[一覧の読み](../list-reads.md#反映した-pull-request-の一覧worker) に書く。
 - C を merge した pull request が見つからないときは、worker が C を初めて見てから 60 秒までは、決めずにやり直す。
   - なぜ：GitForge（Forgejo など）は、merge のすぐあと、merge のコミットから pull request を引けないことがあるから。

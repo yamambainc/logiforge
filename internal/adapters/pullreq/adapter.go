@@ -376,11 +376,12 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 		r := toReview(pr)
 		// approve と request changes は、書く権限を持つ人のものだけを数える。
 		// なぜ request changes も：public の repository では、書く権限のない人も review を出せ、反映を止められてしまうから。
-		// approve は、本文にセッションの行があるものだけを数える。comment は、反映の条件に効かないので、だれのものでも数える。
+		// comment は、反映の条件に効かないので、だれのものでも数える。
 		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
 			// 書く権限を持つかを読めなければ、数えない（閉じる側に倒す）。
 			if pr.CanPush == nil {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s に書く権限があるかを確かめられないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
+				out.Unverified++
 				continue
 			}
 			if !*pr.CanPush {

@@ -318,10 +318,10 @@ func TestReviewsCounted(t *testing.T) {
 		PullReview{ID: 15, Kind: ports.ReviewApprove, Body: "v", Author: "unknown", CommitID: "h-b"},
 	)
 	// 数える：bob の approve 2 つ。
-	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の request changes と approve
+	// 数えない：dismiss された review、書く権限のない mallory の request changes と approve
 	// （public の repository で、書く権限のない人が反映を止めたり、させたりできないように）、書く権限を確かめられない人の approve。
 	rs, err := a.ListReviews(ctx, "o/r", "1")
-	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 3 {
+	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 3 || rs.Unverified != 1 {
 		t.Fatalf("数える review：%+v %v", rs, err)
 	}
 	if !strings.Contains(strings.Join(rs.Warnings, "\n"), "確かめられない") {
