@@ -9,7 +9,7 @@ import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
 import { textOf, type Node } from '../model';
-import { approveSummary, canSendApprove, ownNotice, submitReview } from '../review';
+import { approveSummary, canMerge, canSendApprove, ownNotice, submitMerge, submitReview } from '../review';
 import { navigate, useLocation } from '../router';
 import { Markdown } from '../MarkdownLazy';
 
@@ -192,6 +192,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
       )}
 
       {notice && <p className="note" role="status">{notice}</p>}
+      {canMerge(a) && <MergePane repo={repo} a={a} onChanged={(r, m) => { if (r) setA(r); setNotice(m); }} />}
       {a.state === 'open' && <ReviewPane repo={repo} a={a} onChanged={(r, m) => { if (r) setA(r); setNotice(m); }} />}
     </section>
   );
@@ -249,6 +250,8 @@ function ReviewPane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onC
       // 新しい先頭のコミットを読み直して示し、もう一度確かめさせる。書きかけは残す
       case 'conflict': setConfirmFor(null); setConflict(r.message); if (r.ar) onChanged(r.ar, null); break;
       case 'not_open': clearDraft(repo, a.id); setConfirmFor(null); onChanged(r.ar, r.message); break;
+      // 検査に通らず、approve を出さなかった。書きかけは残す
+      case 'refused': setConfirmFor(null); setError(r.message); if (r.ar) onChanged(r.ar, null); break;
       case 'error': setError(r.message); break;
       case 'unauthenticated': break;
     }
@@ -297,6 +300,44 @@ function ReviewPane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onC
           <div className="form-actions"><button className="btn primary" type="submit" disabled={busy}>{busy ? '送っています…' : kind === 'approve' ? 'approve する' : kind === 'comment' ? 'コメントを送る' : 'request_changes を送る'}</button></div>
         )}
       </form>
+    </div>
+  );
+}
+
+// merge の欄（docs/apply-request/review.md の「merge」）。approve された apply request を、サインインした人のトークンで merge する。
+// 押したら確かめてから送る。バックエンドが、直前に今の main で反映の条件を確かめ直す。
+function MergePane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onChanged: (a: ApplyRequest | null, notice: string | null) => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const send = async () => {
+    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
+    setBusy(true); setError(null);
+    const r = await submitMerge(repo, a.id);
+    setBusy(false); setConfirm(false);
+    switch (r.kind) {
+      case 'sent': onChanged(r.ar, r.message); break;
+      case 'refused': setError(r.message); if (r.ar) onChanged(r.ar, null); break;
+      case 'conflict': case 'not_open': case 'error': setError(r.message); break;
+      case 'unauthenticated': break;
+    }
+  };
+  return (
+    <div className="review-pane">
+      <h3 className="sec">merge する</h3>
+      <p className="dim small">先頭のコミット <span className="mono">{a.head_commit.slice(0, 7)}</span> は approve されています。merge できるのは、この repository に Write がある人だけです。GitForge の画面から merge してもかまいません。</p>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {confirm ? (
+        <div className="confirm" role="dialog" aria-label="merge の確かめ">
+          <p><b>この先頭のコミットを、main に squash merge します。</b>直前に、今の main で検査し直します。</p>
+          <div className="form-actions">
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void send()}>{busy ? '送っています…' : 'merge を送る'}</button>
+            <button type="button" className="btn" disabled={busy} onClick={() => setConfirm(false)}>やめる</button>
+          </div>
+        </div>
+      ) : (
+        <div className="form-actions"><button type="button" className="btn primary" onClick={() => setConfirm(true)}>merge する</button></div>
+      )}
     </div>
   );
 }
