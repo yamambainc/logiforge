@@ -94,7 +94,7 @@ func TestWebUISignIn(t *testing.T) {
 		"--hypothesis", "広告から来た人も、成果物までの時間が短い")
 	inactiveStory := sc2.IDs["story_id"].(string)
 	agent.commitPush("b1", "分解")
-	if got, code, out := reviewer.review(agent.create("b1").ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(agent.create("b1").ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("分解の approve：%d %s", code, out)
 	}
 	agent.branch("b2")
@@ -102,7 +102,7 @@ func TestWebUISignIn(t *testing.T) {
 	agent.must(nil, "verdict", "new", "--hypothesis", hA, "--value", "true", "--report", agent.file("r1.md", reportMD), "--artifact", agent.file("data.csv", "x,y\n1,2\n"))
 	agent.must(nil, "story", "inactivate", inactiveStory, "--reason", "広告は出さない")
 	agent.commitPush("b2", "検証")
-	if got, code, out := reviewer.review(agent.create("b2").ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(agent.create("b2").ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("検証の approve：%d %s", code, out)
 	}
 	w.eventually("検証結果が読む側に出る", 60*time.Second, func() bool {

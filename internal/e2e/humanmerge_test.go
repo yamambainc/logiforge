@@ -14,8 +14,8 @@ import (
 //   - approve のあとに request_changes が付いた apply request を、人が merge しても、受け入れる。review は見ない。
 //   - コードを書く権限のない reviewer の approve は数えず、権限のある reviewer の approve し直しで反映される。
 //
-// approve したときに Logiforge が反映しないよう、向き先を main でないブランチにしてからレビューし、
-// あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。
+// approve のときに Logiforge が今の main で検査しないよう、向き先を main でないブランチにしてからレビューし、
+// あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。人の merge は、Logiforge を通さない。
 func TestE2EHumanMerge(t *testing.T) {
 	w := setup(t)
 	if st, b := w.call("alice", "POST", "/repositories", map[string]any{"name": "q", "statement": "だれが merge しても中身で決める"}); st != 201 {
@@ -151,23 +151,23 @@ func TestE2EHumanMerge(t *testing.T) {
 			Awaiting *string  `json:"awaiting"`
 			Warnings []string `json:"warnings"`
 		} `json:"apply_request"`
-		MergeFailure *struct {
-			Reason string `json:"reason"`
-		} `json:"merge_failure"`
 	}
 	// 書く権限（コード）のない人の approve は、数える review にならない（design/adapters/pull-requests.md の「数える review」）。
-	// そのため、反映を試さず、レビュー待ちのままで、警告を返す。
+	// そのため、レビュー待ちのままで、警告を返す。merge しようとしても、数える approve がないので断る。
 	_, code, out = weak.review(fb.ID, "approve", 1)
 	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
 		t.Fatalf("書く権限のない reviewer の approve：%d %s", code, out)
 	}
-	if forbidden.ApplyRequest.State != "open" || forbidden.MergeFailure != nil ||
+	if code, out := weak.cli("", "ar", "merge", fb.ID, "--repo", "q", "--json"); code != 1 || !strings.Contains(out, "not_approved") {
+		t.Fatalf("書く権限のない reviewer の merge：%d %s", code, out)
+	}
+	if forbidden.ApplyRequest.State != "open" ||
 		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" || !strings.Contains(strings.Join(forbidden.ApplyRequest.Warnings, " "), "数えない") {
 		t.Fatalf("書く権限のない reviewer の approve を数えている：%s", out)
 	}
 	// merge の権限のある reviewer が approve し直せば、反映される。
 	reviewer.session = "s-rev-hm-3"
-	if got, code, out := reviewer.review(fb.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(fb.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("権限のある reviewer の approve：%d %s", code, out)
 	}
 	reviewer.session = "s-rev-hm"

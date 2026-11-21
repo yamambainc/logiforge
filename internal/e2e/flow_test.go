@@ -133,6 +133,19 @@ func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 	return res.ApplyRequest, code, out
 }
 
+// approveMerge は、n 番目の先頭のコミットを approve し、通ったら同じ主体で merge する（ar merge）。
+// approve か merge が断られたら、その終了コードと出力を返す。
+func (u *user) approveMerge(id string, n int) (applyRequest, int, string) {
+	u.w.t.Helper()
+	if got, code, out := u.review(id, "approve", n); code != 0 {
+		return got, code, out
+	}
+	code, out := u.cli("", "ar", "merge", id, "--repo", u.repoName(), "--json")
+	var ar applyRequest
+	_ = json.Unmarshal([]byte(out), &ar)
+	return ar, code, out
+}
+
 func TestE2E(t *testing.T) {
 	w := setup(t)
 
@@ -185,7 +198,7 @@ func TestE2E(t *testing.T) {
 		!strings.Contains(string(body), hA) || !strings.Contains(string(body), hB) {
 		t.Fatalf("反映したあとのスナップショットツリー：%d %s", code, body)
 	}
-	if got, code, out := reviewer.review(ar1.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar1.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("approve：%d %s", code, out)
 	}
 
@@ -216,7 +229,7 @@ func TestE2E(t *testing.T) {
 	if viewed.Awaiting != "review" || !w.hasLabel("q", ar2.ID, "logiforge/review-waiting") || w.hasLabel("q", ar2.ID, "logiforge/fix-waiting") {
 		t.Fatalf("直し終えたという申告のあと：%+v", viewed)
 	}
-	if got, code, out := reviewer.review(ar2.ID, "approve", 2); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar2.ID, 2); code != 0 || got.State != "merged" {
 		t.Fatalf("版 2 の approve：%d %s", code, out)
 	}
 	var node struct {
@@ -261,7 +274,7 @@ func TestE2E(t *testing.T) {
 	if hasWork("human_request_answered", hr.ID) {
 		t.Fatal("回答を引用した apply request があるのに、作業から外れない")
 	}
-	if got, code, out := reviewer.review(ar3.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar3.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("B の approve：%d %s", code, out)
 	}
 	var comp struct {
@@ -294,7 +307,7 @@ func TestE2E(t *testing.T) {
 	if viewed.Awaiting != "review" || !w.hasLabel("q", ar4.ID, "logiforge/review-waiting") || w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {
 		t.Fatalf("1 件読んだときに、ずれたラベルが直らない：%+v", viewed)
 	}
-	if got, code, out := reviewer.review(ar4.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar4.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("b4 の approve：%d %s", code, out)
 	}
 

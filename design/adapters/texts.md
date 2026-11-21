@@ -13,9 +13,9 @@ GitHub アダプタと Forgejo アダプタが、review、pull request のコメ
 - client の review では、本文の最後に、使ったプロンプトの版を、人が読む文で書く（例：「プロンプトの版：abc1234」）。WebUI の review には書かない。
   - バックエンドは、この文を読まない。API でも、値としては返さない。
 
-## 反映の失敗のコメント
+## 反映できない理由のコメント
 
-- 反映に失敗したら、reviewer のトークンで、pull request にふつうのコメントを書く。失敗の理由と、反映しようとした先頭のコミットと、詳しい説明を、人が読む文で書く（例：「Logiforge：先頭のコミット abc1234 を反映できなかった（stale_target）。」）。
+- `approve` か merge が、opener が直すべき理由で今の `main` での検査に通らなかったら、要求を送った主体のトークンで、pull request にふつうのコメントを書く（[今の main での検査](../backend/merge.md#今の-main-での検査)）。理由と、先頭のコミットと、詳しい説明を、人が読む文で書く（例：「Logiforge：先頭のコミット abc1234 は、今の main に反映できない（stale_target）。」）。
   - バックエンドは、このコメントを読まない。レビュー待ちか修正待ちかは、ラベルで表す。API は、apply request の詳細の `comments` で、ほかのコメントと同じに、そのまま返す。
 
 ## close のコメント
