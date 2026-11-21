@@ -30,6 +30,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - スナップショットツリー：`getTree` と `listNodes`（`root` と `depth` は指定しない）。
 - 詳細のパネル：`getNode`。検証結果のレポートは `getVerdict`、ファイルは `getArtifact`、履歴は `getNodeHistory`。
 - 読み方と表示の決まりは、[スナップショットツリーのビュワー](snapshot-tree-viewer.md) に書く。
+- 木の応答の `invalid_since` が null でなければ、画面の上に「最新のコミットは valid でない。コミット X の木を示している」と示す。X は応答の `valid_commit` である（[WebUI](../backend/invalid-main.md#webui)）。
 
 ### [人への依頼](../../docs/webui/human-requests.md)
 
@@ -87,9 +88,9 @@ API は、WebUI のために次の 2 つを持つ。どれも、BE が持つも�
 
 | もの | 返すもの | 使う画面 | 元 |
 |---|---|---|---|
-| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの記録（[スナップショット](../backend/snapshot/README.md)） |
+| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの情報（[スナップショット](../backend/snapshot/README.md)） |
 | `Repository` の `root_statement` | 根の仮説の主文 | repository の一覧 | 今の `main` のスナップショットツリー |
 
-- `listCommits` の `apply_request_id` は、worker の反映かの判定の結果である（[main のコミットと記録](../files/revisions.md)）。ない（反映によらないコミット）なら null である。
+- `listCommits` の `apply_request_id` は、worker が反映した pull request の一覧で見つけた apply request である（[反映のコミット](../files/revisions.md#反映のコミット)）。見つからなかったコミット（`main` への直接の push など）なら null である。
 - `listCommits` のページングは、ほかの一覧と同じくカーソルで分ける。カーソルは、次に読むコミットの `number` である（[ページング](../api/paging.md)）。
 - なぜ `root_statement` を持つか：持たないと、一覧の行ごとに `getNode` を呼ぶことになるから。

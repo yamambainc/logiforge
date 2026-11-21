@@ -452,40 +452,13 @@ paths:
       responses:
         '200':
           description: repository
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Repository' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/repair-files:
-    get:
-      tags: [repository]
-      operationId: getRepairFiles
-      summary: 壊れた repository の、最後に正しかった時点のファイル（CLI の repair revert が使う）
-      description: |
-        最後に正しかった時点のコミットの tree/ と artifacts/ のファイルを、スナップショットツリーと artifact の置き場から返す。
-        壊れていなければ not_found。設計は ../../design/backend/broken.md に従う
-      parameters:
-        - $ref: '#/components/parameters/RepositoryName'
-      responses:
-        '200':
-          description: ファイルの一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [commit, files]
-                properties:
-                  commit: { type: string, description: 最後に正しかった時点のコミット }
-                  files:
-                    type: array
-                    items:
-                      type: object
-                      required: [path, content_base64]
-                      properties:
-                        path: { type: string }
-                        content_base64: { type: string }
-        '4XX': { $ref: '#/components/responses/Problem' }
   /repositories/{repository}/tree:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
@@ -499,6 +472,8 @@ paths:
       responses:
         '200':
           description: 木の概要。根がまだなければ 404
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Tree' }
@@ -528,6 +503,8 @@ paths:
       responses:
         '200':
           description: ノードの一覧
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema:
@@ -535,6 +512,8 @@ paths:
                 required: [commit, nodes]
                 properties:
                   commit: { $ref: '#/components/schemas/Commit' }
+                  valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+                  invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
                   nodes:
                     type: array
                     items: { $ref: '#/components/schemas/Node' }
@@ -550,6 +529,8 @@ paths:
       responses:
         '200':
           description: 判定の結果
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Completion' }
@@ -587,7 +568,7 @@ paths:
       operationId: listCommits
       summary: main のコミットの一覧（新しい順）
       description: |
-        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot/main.md）。
         カーソルは、次に読むコミットの number である。
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -622,6 +603,8 @@ paths:
       responses:
         '200':
           description: ノードの詳細
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/NodeDetail' }
@@ -693,11 +676,6 @@ paths:
               required: [branch]
               properties:
                 branch: { $ref: '#/components/schemas/BranchName' }
-                kind:
-                  type: string
-                  enum: [change, repair.revert, repair.accept]
-                  default: change
-                  description: 直すための apply request の種類（../../design/backend/broken.md）。指定しなければ、ふつうの apply request
                 commit:
                   $ref: '#/components/schemas/Commit'
                   description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない。指定しなければ、ブランチの今の先頭
@@ -902,6 +880,8 @@ paths:
       responses:
         '200':
           description: 着手できる作業
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema:
@@ -909,6 +889,8 @@ paths:
                 required: [commit, counts, items, next_cursor]
                 properties:
                   commit: { $ref: '#/components/schemas/Commit' }
+                  valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+                  invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
                   counts:
                     type: object
                     description: 種類ごとの件数（ページに関わらず全体）
@@ -957,6 +939,8 @@ paths:
       responses:
         '200':
           description: 検証結果
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Verdict' }
@@ -1157,11 +1141,11 @@ components:
       schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
 
   headers:
-    RepositoryBroken:
+    LatestInvalid:
       description: |
-        repository が壊れているときに、repository と木を読む応答（getRepository、木、ノード、検証結果）に付ける。値は、最後に正しかった時点のコミット。
-        apply request と人への依頼を読む応答には付けない。
-        応答の木は、そのコミットのものである（../../design/backend/broken.md）
+        最新の main のコミットが valid でないときに、木を読む応答（getRepository、木、ノード、検証結果、作業、作業の終わり）に付ける。
+        値は、応答の木のコミット（valid_commit。なければ最新のコミット）である。
+        apply request と人への依頼を読む応答には付けない（../../design/backend/invalid-main.md の「木を読む API」）
       schema: { type: string }
     PendingCommit:
       description: |
@@ -1294,7 +1278,7 @@ components:
         prepared:
           type: boolean
           description: |
-            用意のコミットがもうあるか（スナップショットツリーがもうあるか）。listRegisteredRepositories と registerRepository の応答にだけ入る。
+            GitForge の git リポジトリに、木の最初のコミットがもうあるか。listRegisteredRepositories と registerRepository の応答にだけ入る。
             GitForge に聞けなかったときは入らない（../../design/api/endpoints/settings.md の「prepared」）。
     RepositoryNameValue:
       type: string
@@ -1325,16 +1309,14 @@ components:
         migrated_to:
           type: [string, 'null']
           description: ほかの repository に移した、元の repository のとき、移した先の名前
-        broken:
-          type: [object, 'null']
+        valid_commit:
+          type: [string, 'null']
           description: |
-            壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット。壊れていなければ null。
-            壊れているあいだ、木を読む API は、最後に正しかった時点の木を返す（../../design/backend/broken.md）
-          required: [first_commit, last_good_commit, reason]
-          properties:
-            first_commit: { type: string }
-            last_good_commit: { type: string }
-            reason: { type: string, enum: [no_apply_request, main_rewritten] }
+            木を読む API が返す木のコミット。最新のコミットか、それより前の、いちばん新しい valid なコミットである。
+            どれも valid でなければ null（../../design/backend/invalid-main.md）
+        invalid_since:
+          type: [string, 'null']
+          description: valid_commit のあとの、最初の valid でないコミット。valid_commit がなければ最初のコミット。最新のコミットが valid なら null
     MainCommit:
       type: object
       required: [number, commit, committed_at, apply_request_id]
@@ -1346,7 +1328,7 @@ components:
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。worker の反映かの判定の結果。反映によらないコミットでは null
+          description: 反映した apply request。worker が取り込むときに、反映した pull request の一覧から引く。見つからなければ null（../../design/backend/invalid-main.md の「どの apply request の反映か」）
     Commit:
       type: string
       minLength: 1
@@ -1412,9 +1394,15 @@ components:
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         commit: { $ref: '#/components/schemas/Commit' }
+        valid_commit:
+          type: [string, 'null']
+          description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md）
+        invalid_since:
+          type: [string, 'null']
+          description: Repository の invalid_since と同じ
         warnings:
           type: array
-          description: 反映の手順によらない変更が木にあるときの警告
+          description: このコミットの警告（../../design/backend/worker/patrol.md の「コミットの警告」）
           items: { type: string }
 
     Node:
@@ -1663,10 +1651,6 @@ components:
       required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings]
       properties:
         id: { type: string, pattern: '^[1-9][0-9]*$' }
-        kind:
-          type: string
-          enum: [change, repair.revert, repair.accept]
-          description: 直すための apply request の種類（../../design/backend/broken.md）。ふつうは change
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
@@ -1761,8 +1745,8 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending, repository_broken, merge_forbidden]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。repository_broken は、壊れた repository に、直すための apply request でないものを反映しようとしたこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending, merge_forbidden]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
         detail: { type: string }
     ReviewMaterial:
       type: object
@@ -1771,24 +1755,6 @@ components:
       properties:
         apply_request_id: { type: string, pattern: '^[1-9][0-9]*$' }
         commit: { $ref: '#/components/schemas/Commit' }
-        repair:
-          type: object
-          description: 直すための apply request のときだけ。最後に正しかった時点から今の main までの、ファイルの変化（../../design/backend/broken.md）
-          required: [kind, last_good_commit, main_commit, changes]
-          properties:
-            kind: { type: string, enum: [repair.revert, repair.accept] }
-            last_good_commit: { type: string }
-            main_commit: { type: string }
-            changes:
-              type: array
-              items:
-                type: object
-                required: [path, status]
-                properties:
-                  path: { type: string }
-                  status: { type: string, enum: [added, modified, deleted] }
-                  before: { type: string, description: 前の中身。artifact と、前になかったファイルでは、ない }
-                  after: { type: string, description: 今の中身。artifact と、消えたファイルでは、ない }
         operations:
           type: array
           description: 差分そのもの
@@ -1821,7 +1787,7 @@ components:
 
     WorkKind:
       type: string
-      enum: [repair_repository, undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
+      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
     WorkItem:
       type: object
       required: [kind, subject_id]
@@ -1839,12 +1805,14 @@ components:
             human_request_answered では人への依頼、citation_changed では引用している検証結果（v-…）の識別子である。
         node_id:
           $ref: '#/components/schemas/NodeId'
-          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である。repair_repository では、ない（subject_id は、壊れた最初のコミット）
+          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である
     Completion:
       type: object
       required: [commit, root_value, decided, remaining_work, done]
       properties:
         commit: { $ref: '#/components/schemas/Commit' }
+        valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+        invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         decided:
           type: boolean
@@ -1888,16 +1856,16 @@ components:
     NodeHistoryEntry:
       type: object
       required: [commit, committed_at, apply_request_id, reflected]
-      description: main のコミットの記録と、worker の反映かの判定の結果から作る（design/files/revisions.md）
+      description: main のコミットの情報から作る（design/files/revisions.md）
       properties:
         commit: { $ref: '#/components/schemas/Commit' }
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。最初のコミットと、反映によらないコミットでは null
+          description: 反映した apply request。見つからなかったコミットでは null（../../design/backend/invalid-main.md の「どの apply request の反映か」）
         reflected:
           type: boolean
-          description: worker の反映かの判定で、反映によるコミットと決まったか。false なら、反映の手順によらない変更である（最初のコミットを除く）
+          description: 反映した apply request が見つかったか。表示だけに使う
     NodeHistoryPage:
       type: object
       required: [items, next_cursor]

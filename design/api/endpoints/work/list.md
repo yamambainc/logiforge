@@ -13,6 +13,7 @@ opener や reviewer が、次にする作業を探すときに、CLI から呼�
 - 未決の葉、要再検討の仮説、レビュー待ちと修正待ちの apply request、回答済みの人への依頼、引用元が変化した検証結果を返す。
 - 種類ごとの件数を返す。
 - 部分木を指定して絞り込める。
+- 最新のコミットが valid でなければ、`valid_commit` の木を返す（[木を読む API](../../../backend/invalid-main.md#木を読む-api)）。
 - open の apply request や、open の人への依頼があるノードの作業は、既定では返さない。
 
 ## 関係する要件

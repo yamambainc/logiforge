@@ -76,9 +76,8 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
 - 操作ごとの観点は、[論理レビューの審査観点](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review-criteria.md) に従う。
   - 材料の `operations` の `kind` で、どの節を使うかを決める。
   - `story.inactivate` と false の `verdict.submit` が同じ仮説に並んでいれば、「偽と結論する」の観点も使う。
-- 直すための apply request（材料に `repair` がある）では、[直し方](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#直し方) に従う。
-  - `repair.revert`：`repair.changes` の変化をすべて取り消してよいかを見る。
-  - `repair.accept`：`repair.changes` の変化を、ふつうの apply request の差分と同じ観点で審査する。
+- `main` の不変条件の破れを直す apply request も、ふつうの apply request と同じ観点で審査する（[main への直接の変更](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#main-への直接の変更)）。
+- CLI が、最新のコミットは valid でないと標準エラーに警告しても、審査を続けてよい。
 - 形の検査（スナップショットツリーの形、4 種類の操作として読めるか）は、Logiforge が行う。reviewer は、論理を見る。
 
 ## 結果の付け方
@@ -109,7 +108,6 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 - `merge_failure` がある：反映できなかった。`reason` が理由である。apply request は open のまま残る。
   - `snapshot_pending`：少し待って、材料を読み直し、`approve` し直す。
   - `merge_forbidden`：この reviewer の主体に merge の権限が無い。権限のある reviewer に任せる。
-  - `repository_broken`：repository が壊れていて、直すための apply request でないので反映されない。直すのは別の作業なので、reviewer がすることは無い。
   - `stale_target`、`invariant_violation`、`conflict`：opener が直す。reviewer がすることは無い。
 
 `ar review` が誤りを返したとき：

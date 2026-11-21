@@ -63,10 +63,7 @@ sequenceDiagram
 - エラーのときは、終了コードを 0 以外にする。
   - `--json` では、API の `Problem` をそのまま書く。
   - CLI の中のエラー（git の失敗など）は、`code` が `cli_error` の `Problem` の形で書く。
-- repository が壊れているときは、木を読むコマンドは、次のようにする（[壊れた repository](../backend/broken.md)）。
-  - 最後に正しかった時点の木を、標準出力に書く。
-  - `code` が `repository_broken` の `Problem` を、標準エラーに書く。
-  - 終了コード 1 で終わる。
+- 最新のコミットが valid でないとき、git を読むコマンドと、API の木を読むコマンドは、標準エラーに警告を書き、止めずに続ける。終了コードは変えない（[CLI](../backend/invalid-main.md#cli)）。
 - 終了コードは、次のとおりである。
   - 0：成功
   - 1：エラー（API のエラー、`check` の誤り、git の失敗）

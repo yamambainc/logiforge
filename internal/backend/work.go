@@ -227,7 +227,7 @@ func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQue
 	if err != nil {
 		return WorkPage{}, err
 	}
-	out := WorkPage{Commit: v.revision(), Counts: map[string]int{}, Items: []WorkItem{}}
+	out := WorkPage{Commit: v.revision(), Validity: v.validity(), Counts: map[string]int{}, Items: []WorkItem{}}
 	var filtered []WorkItem
 	for _, it := range all {
 		if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, it.Kind) {
@@ -299,7 +299,7 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 		return Completion{}, err
 	}
 	evidence := func(id string) bool { n := v.main.SnapshotTree.Nodes[id]; return n != nil && n.Evidence }
-	out := Completion{Commit: v.revision(), RootValue: v.main.SnapshotTree.Nodes[root.ID].Value}
+	out := Completion{Commit: v.revision(), Validity: v.validity(), RootValue: v.main.SnapshotTree.Nodes[root.ID].Value}
 	out.Decided = out.RootValue != nil
 	for _, it := range all {
 		if ts, ok := arTargets[it.SubjectID]; ok {

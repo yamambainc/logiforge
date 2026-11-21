@@ -8,9 +8,9 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 - 利用者とエージェントは、GitHub リポジトリに、apply request のもとになるブランチを push する（[CLI](../cli/README.md)）。
 - `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、リポジトリの admin が用意する。
   - ルールセットで、`main` に「Require a pull request before merging」「Block force pushes」「Restrict deletions」を付ける。bypass には、だれも入れない。
-  - merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify/README.md)）。
+  - merge できる人は絞らない。reviewer が merge するからである。
 - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
-- 守る設定がないか外れて、反映によらない変更が `main` に入ったら、[worker](../backend/worker/README.md) が見つけ、repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
+- 守る設定がないか外れて、`main` に直接 push されても、Logiforge はそのコミットを受け入れる。木が不変条件を満たさなければ、そのコミットは valid でない（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
 - 信頼の境界は、[GitForge のポートを pull request と issue で実装する](pull-requests.md) に書く。
 - 他人のブランチの削除を防ぎたいときは、ブランチを守る設定で禁じる。
 
@@ -21,7 +21,7 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 | バックエンド（認証） | 要求ごとに、主体のトークンで、主体、team の所属、リポジトリの権限を確かめる | 主体ごとの上限 |
 | バックエンド（GitForge のポートの読み） | 要求ごとに、主体のトークンで、PR と issue の一覧と、1 件の PR、review、コメントを REST で読む | 主体ごとの上限 |
 | バックエンド（GitForge のポートの書き込み） | 主体のトークンで、REST で、repository の用意、PR の作成・merge・close、review、ラベル、issue、コメントを書く | 主体ごとの上限 |
-| worker | `git ls-remote` と `git fetch`。反映かの判定で、新しい `main` のコミットがある見回りに、REST で反映した PR の一覧と、merge した PR の review を読む | Logiforge の App の installation の上限 |
+| worker | `git ls-remote` と `git fetch`。新しい `main` のコミットがある見回りに、どの apply request の反映かを決めるのに、REST で反映した PR の一覧を読む | Logiforge の App の installation の上限 |
 
 - バックエンドは、読んだ結果を保持しない（[状態を持たない](../backend/README.md)）。
 - バックエンドは、GitHub の API のレート制限を避ける仕組み（キャッシュなど）を持たない。回数の見積もりは、[費用と規模の見積もり](../estimates/README.md#github-アダプタ) に書く。

@@ -69,12 +69,12 @@ GitHub の上限は、使うトークンで 2 つに分かれる（[GitHub App �
 | repository の一覧 | 60 秒に 1 回、主体の読めるリポジトリの一覧のページ数（`/user/repos`）＋ 一覧にない public のリポジトリの数（それぞれ 60 秒に 1 回） | 主体ごと |
 | 設定の repository の一覧 | 0 回（用意が済んだかは `latest` で決める） | 主体ごと |
 | 書き込み | REST 1〜3 回（PR の作成・merge・close、review、コメント、ラベル） | 主体ごと |
-| worker の反映かの判定 | 新しい `main` のコミットがある見回りごとに REST 1 回（反映した PR の一覧）＋ merge した PR ごとに 1 回（その PR の review。[重さ](../backend/verify/README.md#重さ)） | installation |
+| worker の、どの apply request の反映かの読み | 新しい `main` のコミットがある見回りごとに REST 1 回（反映した PR の一覧の 1 ページ。[どの apply request の反映か](../backend/worker/patrol.md#どの-apply-request-の反映か)） | installation |
 | worker の installation token | owner ごとに、バックエンドが作り直すたびに 2 回（20 分ごと） | App の JWT。installation の上限には数えない |
 
 - どの一覧も、項目の数に比例する呼び出しはない（[一覧の読み](../backend/list-reads.md)）。
 - worker の `ls-remote` と `fetch` は、REST の上限には数えない。git の操作の、乱用を防ぐ制限には数える（[worker](#worker)）。
-- worker の REST は、反映かの判定だけである。反映の数だけなので、1 日に数十回から 100 回ほどである。
+- worker の REST は、反映した PR の一覧だけである。`main` が進んだ見回りの数だけなので、1 日に数十回から 100 回ほどである。
 - pull request が 300 件の repository では、作業の一覧 1 回で、読む主体の REST を、認証の 2 回を合わせて 7 回ほど使う。
   - 外の仕組みが、1 つの主体で、作業の一覧を repository 10 個について 1 分ごとに読むと、REST が 1 時間 4,200 回ほどで、その主体の上限に近い。30 秒ごとなら 8,400 回ほどで、上限を超える。
   - そのため、外の仕組みは、1 つの主体で読むなら、1 分より長い間隔で読む。[想定する規模](#想定する規模) の 30 秒ごとの読みは、主体を分けて読む。

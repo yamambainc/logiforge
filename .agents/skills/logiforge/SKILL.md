@@ -1,6 +1,6 @@
 ---
 name: logiforge
-description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、request_changes や反映の失敗（conflict、stale_target など）のあとに直す、壊れた repository を直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
+description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、request_changes や反映の失敗（conflict、stale_target など）のあとに直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
 ---
 
 # Logiforge を使う
@@ -76,7 +76,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 - バックエンド（Logiforge のサーバ）は、git リポジトリを取り込んで検査し、値を計算して、API で返す。
   - `approve` されたら、バックエンドが pull request を merge する。
   - 値はファイルに保存されない。今の値は、clone ではなく CLI（API）で読む。
-- apply request を通さずに `main` を変えると、repository は「壊れた」状態になる。
+- 最新の `main` のコミットの木が不変条件を満たさないと、そのコミットは「valid でない」。そのあいだ、API は、いちばん新しい valid なコミットの木を返す（[main への直接の変更](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#main-への直接の変更)）。
 
 ## 準備
 
@@ -115,7 +115,6 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 - `human_request_answered`：回答を引用して `verdict.submit` を出す（下の「人への依頼」）。
 - `citation_changed`：引用元の変化を確かめ、要るなら検証結果を差し替える（[引用元の変化](https://github.com/yamambainc/logiforge/blob/main/docs/tree/verdict.md#引用元の変化)）。
   - 差し替えは、`logiforge verdict new ... --supersedes <検証結果>` で出す。`--supersedes` が無いと、検証結果が 2 つ並ぶ。
-- `repair_repository`：壊れた repository を直す（下の「壊れた repository を直す」）。
 - `review_waiting`：[logiforge-review](https://github.com/yamambainc/logiforge/blob/main/.agents/skills/logiforge-review/SKILL.md) を、別のセッションで使う。
 
 ## apply request を出す
@@ -159,18 +158,16 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   2. `logiforge check`
   3. `git push --force-with-lease`（rebase で履歴が変わるため）
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
-- `repository_broken`：repository が壊れているあいだは、直すための apply request しか反映されない。先に下の「壊れた repository を直す」で直し、そのあと reviewer の `approve` し直しを待つ。
 - 取り下げるとき：`logiforge ar close <apply request> --reason <理由>`
 - 反映か close のあと、手元のブランチは `logiforge ar cleanup` で消せる。
 
-## 壊れた repository を直す
+## 最新のコミットが valid でないとき
 
-壊れた repository では、スナップショットツリーを読むコマンドが、最後に正しかった時点のスナップショットツリーを出し、終了コード 1 で終わる（[壊れているあいだ](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#壊れているあいだ)）。
-戻すか認めるかは、[直し方](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#直し方) で決める。
+CLI が、標準エラーに「最新のコミット … は valid でない」と警告しても、作業を続けてよい。コマンドは止まらず、終了コードも変わらない（[main への直接の変更](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#main-への直接の変更)）。
 
-1. `logiforge repair revert` か `logiforge repair accept`。ブランチとコミットを作る。
-2. `git push -u origin <ブランチ>`
-3. `logiforge ar create --branch <ブランチ> --kind repair.revert|repair.accept`
+- API で読むスナップショットツリーは、警告にあるコミット（いちばん新しい valid なコミット）のものである。clone した `main` の木とは違うことがある。
+- 木を直すのも、ふつうの apply request である（上の「apply request を出す」）。直す手順は、ほかにない。
+  - `main` で前から破れている不変条件は、その apply request が新しく破ったものとされない。
 
 ## 人への依頼
 
@@ -184,6 +181,6 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 
 ## してはいけないこと
 
-- `main` に直接 push しない。反映によらない変更は、repository を壊し、直すまでほかの apply request が反映されなくなる（[壊れた repository](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#壊れた-repository)）。
+- `main` に直接 push しない。反映によらない変更は、論理レビューを通らない（[main への直接の変更](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#main-への直接の変更)）。
 - 自分の書いた apply request を、自分のアカウントでレビューしない。`approve` は GitForge が拒むうえ、別の文脈で論理を確かめる意味がなくなる。
 - `node.edit` で、主文、タイトル、概要を変えない。意味が変わると、それまでの審査と検証が成り立たなくなる。

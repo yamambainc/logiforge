@@ -56,7 +56,7 @@ curl -fsS -H "Authorization: token $FORGEJO_TOKEN" \
   https://forgejo.example.com/api/v1/repos/logiforge/myapp-cache-strategy/branch_protections
 ```
 
-- 設定が外れて、反映によらない変更が `main` に入ったら、worker が見つけ、repository を壊れた状態にする（[反映かの判定](../../design/backend/verify/README.md)）。
+- 設定が外れて、反映によらない変更が `main` に入っても、Logiforge は受け入れる（[main への直接の変更](../apply-request/README.md#main-への直接の変更)）。
 
 ## repository を作る
 

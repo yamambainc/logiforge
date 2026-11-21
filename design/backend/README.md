@@ -14,10 +14,9 @@
 7. [ポート](ports/README.md)
 8. [スナップショット](snapshot/README.md)
 9. [worker](worker/README.md)
-10. [反映かの判定](verify/README.md)
-11. [壊れた repository](broken.md)
-12. [一覧の読み](list-reads.md)
-13. [キャッシュ](caches.md)
+10. [最新のコミットが valid でないとき](invalid-main.md)
+11. [一覧の読み](list-reads.md)
+12. [キャッシュ](caches.md)
 
 ## 受け持つ要件
 
@@ -102,4 +101,4 @@
 - repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot/main.md#latest)）。
   - `latest` がある repository だけが入る。`latest` のないものは `not_found` に見える。
   - なぜ：用意が途中で止まった repository を、スナップショットツリーのない repository として見せないため。同じ名前で作り直せば、用意の続きから終わる。
-- 反映によらない変更と force push の警告は、worker が作るスナップショットから出す。定期的な突き合わせは、行わない。
+- `main` のコミットが valid か（[最新のコミットが valid でないとき](invalid-main.md)）は、worker が作るスナップショットから出す。定期的な突き合わせは、行わない。

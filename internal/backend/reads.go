@@ -184,7 +184,7 @@ func (b *Backend) ListNodes(ctx context.Context, c Caller, repo string, at At, r
 	if len(nodes) == 0 {
 		return NodeList{}, fail(CodeNotFound, "ノード %s がない", root)
 	}
-	return NodeList{Commit: v.revision(), Nodes: nodes}, nil
+	return NodeList{Commit: v.revision(), Validity: v.validity(), Nodes: nodes}, nil
 }
 
 // GetNode は、ノードの詳細を返す。

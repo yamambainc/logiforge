@@ -15,7 +15,7 @@
 - worker には、バックエンドの鍵を渡さない。
 - なぜ 2 つに分けるか：worker が、GitHub App の秘密鍵と client secret を読めないようにするため。
   - GitHub App の秘密鍵を読めると、worker を乗っ取った者が、書ける installation token を作り、GitHub に書けるから（下の「秘密ごとの鍵」）。
-  - worker は GitForge を読むだけなので、GitForge に書ける秘密は要らない（[反映かの判定](../backend/verify/README.md)）。
+  - worker は GitForge を読むだけなので、GitForge に書ける秘密は要らない（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)）。
 - 平文の設定（repository の一覧、URL）は、worker が設定の DB に書けないことで守る（[設定の DB](database.md#db-の種類)）。
 - なぜ DB の権限で分けないか：
   - SQLite には、表ごとの権限がないから（[設定の DB](database.md)）。

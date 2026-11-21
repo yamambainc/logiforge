@@ -34,7 +34,7 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 | レビュー | `POST /repos/{owner}/{repo}/pulls/{index}/reviews`（`event` は `APPROVED`、`REQUEST_CHANGES`、`COMMENT`。本文は [review の本文](texts.md#review-の本文)） |
 | 反映の失敗 | `POST /repos/{owner}/{repo}/issues/{index}/comments`（理由を書いたふつうのコメント）と、ラベルの付け替え |
 | ラベルの付け外し | `POST /repos/{owner}/{repo}/issues/{index}/labels`（名前で付けられる）、`DELETE /repos/{owner}/{repo}/issues/{index}/labels/{id}`。付ける前に、なければ `POST /repos/{owner}/{repo}/labels` で作る。書く権限で足りる |
-| 反映かの判定 | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate` と `GET /repos/{owner}/{repo}/pulls/{index}/reviews`（[反映かの判定](../backend/verify/README.md)） |
+| どの apply request の反映か | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate`（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)） |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |
 | 回答の添付 | コメントの添付（`POST /repos/{owner}/{repo}/issues/comments/{id}/assets`）。上限は、artifact と同じ 10 MiB |
@@ -46,7 +46,7 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の admin になる。
 
 1. `POST /orgs/{org}/repos` で、repository を作る。`auto_init` は付けない。
-2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。trailer `Logiforge-Init:` を付ける（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
+2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。
 3. `POST /repos/{owner}/{repo}/branch_protections` で、`main` を守る。
    - 最初のコミットのあとに作る。なぜ：`main` への push を禁じたあとでは、最初のコミットを置けないから。
 
@@ -57,7 +57,7 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 `main` を守る設定は、次のとおりである。
 
 - `enable_push: false`：だれも `main` に push できない。
-- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify/README.md)）。
+- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。
 - `block_on_outdated_branch: false`：`main` に追いついていることを merge の条件にしない。
 
 - pull request の最後の先頭のコミットは、`refs/pull/<index>/head` で取れる（[ブランチの履歴](../backend/snapshot/README.md)）。

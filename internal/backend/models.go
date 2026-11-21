@@ -89,7 +89,8 @@ type Node any
 // NodeList は、ノードの一覧である。
 type NodeList struct {
 	Commit string `json:"commit"`
-	Nodes  []Node `json:"nodes"`
+	Validity
+	Nodes []Node `json:"nodes"`
 }
 
 // NodeDetail は、ノードの詳細である。
@@ -270,7 +271,8 @@ type WorkItem struct {
 
 // WorkPage は、着手できる作業の一覧である。
 type WorkPage struct {
-	Commit     string         `json:"commit"`
+	Commit string `json:"commit"`
+	Validity
 	Counts     map[string]int `json:"counts"`
 	Items      []WorkItem     `json:"items"`
 	NextCursor *string        `json:"next_cursor"`
@@ -278,11 +280,13 @@ type WorkPage struct {
 
 // Completion は、作業の終わりの判定である。
 type Completion struct {
-	Commit        string `json:"commit"`
-	RootValue     *bool  `json:"root_value"`
-	Decided       bool   `json:"decided"`
-	RemainingWork int    `json:"remaining_work"`
-	Done          bool   `json:"done"`
+	Commit string `json:"commit"`
+	Validity
+
+	RootValue     *bool `json:"root_value"`
+	Decided       bool  `json:"decided"`
+	RemainingWork int   `json:"remaining_work"`
+	Done          bool  `json:"done"`
 }
 
 // HumanRequest は、人への依頼である。

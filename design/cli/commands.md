@@ -36,9 +36,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 
 | コマンド | API | git |
 |---|---|---|
-| `ar create --branch <ブランチ> [--kind change\|repair.revert\|repair.accept] [--description]` | `createApplyRequest` | なし（先に push しておく） |
-| `repair revert` | `getRepository`（`broken`）、`getRepairFiles` | `main` から分けたブランチに、木の全体を、`getRepairFiles` のファイルだけにしたコミットを作る（[壊れた repository](../backend/broken.md)） |
-| `repair accept` | `getRepository`（`broken`） | `main` から分けたブランチに、認めた記録の artifact を 1 つ加えるコミットを作る |
+| `ar create --branch <ブランチ> [--description]` | `createApplyRequest` | なし（先に push しておく） |
 | `ar edit <apply request> --description` | `updateApplyRequest` | なし |
 | `ar view <apply request>` | `getApplyRequest` | なし |
 | `ar list [--state]` | `listApplyRequests` | なし |

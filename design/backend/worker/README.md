@@ -35,7 +35,7 @@ git を読んで、スナップショットを作り続ける worker を、動�
 | ファイルの解析のコード | git のファイルからスナップショットを作る。CLI の `check` と同じコード |
 | 置き場への書き込み | 下に書くものを書く。バックエンドのポート（読むだけ）とは別のインターフェース |
 | リモートの git リポジトリ | GitForge。読むだけの資格情報を使う |
-| GitForge の読むだけの API | `main` のコミットが反映によるものかを確かめる（[反映かの判定](../verify/README.md)）。git と同じ資格情報を使う |
+| GitForge の読むだけの API | `main` のコミットを反映した apply request を探す（[どの apply request の反映か](patrol.md#どの-apply-request-の反映か)）。git と同じ資格情報を使う |
 
 - worker は、置き場のすべてのキーを書く。キーの一覧は、[スナップショットの置き場](../ports/snapshot-store.md#置いてあるもの) に書く。
 

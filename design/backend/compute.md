@@ -48,7 +48,7 @@
   - open の apply request（向き先が `main` でないものも含む）の先頭のコミットの差分の検証結果のファイル
     - 向き先が `main` でないものも含めるのは、積み上げた変更は、いずれ `main` 向きの apply request に含まれるからである。
 - 対象ノードを最後に変えた反映のコミットが、回答より後である。
-  - 反映のコミットは、対象ノードの `last_changed` から `previous` をたどり、worker の反映かの判定で反映によるものと決まった最初のコミットである（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
+  - 反映のコミットは、対象ノードの `last_changed` から `previous` をたどり、worker が反映した apply request を見つけた（コミットの情報に `apply_request` がある）最初のコミットである（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
 
 - 引用とは、検証結果の artifact が、次のどちらかの URL の `link` であることである（[人への依頼の回答](../files/artifacts.md)）。
   - 回答の添付を読む API の URL（`getAnswerAttachment`。人への依頼の識別子と sha256 を含む）

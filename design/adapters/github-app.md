@@ -31,10 +31,10 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 |---|---|---|
 | Repository の Contents | Read and write | 利用者が repository を用意する（contents API と Git Data API）。利用者が、WebUI のレビューの approve で、pull request を merge する（merge は Contents の write が要る）。worker が git を読む |
 | Repository の Issues | Read and write | 利用者が、人への依頼に回答し、issue を閉じる |
-| Repository の Pull requests | Read and write | 利用者が、WebUI のレビューで、pull request に review を出す（review は、Pull requests の write が要る）。WebUI で apply request を読む。worker が、反映かの判定で pull request と review を読む |
+| Repository の Pull requests | Read and write | 利用者が、WebUI のレビューで、pull request に review を出す（review は、Pull requests の write が要る）。WebUI で apply request を読む。worker が、どの apply request の反映かを決めるのに、反映した pull request の一覧を読む |
 | Repository の Metadata | Read | GitHub が必ず求める |
 
-- Webhook は使わない。反映かの判定は、中身だけで決める（[反映かの判定](../backend/verify/README.md)）。
+- Webhook は使わない。worker は、見回りで GitForge を読む（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)）。
 - 書く権限は、user access token のためだけにある。installation token には、Read だけを求める（下の「installation token」）。
 - App の秘密鍵を読むのは、バックエンドだけである。worker には渡さない（[秘密ごとの鍵](../settings/secrets.md#秘密ごとの鍵)）。
   - なぜ 1 つの App にまとめるか：作り、install し、秘密を守るものを、1 つにするため。

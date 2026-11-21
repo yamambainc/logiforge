@@ -25,9 +25,10 @@
 
 - open の apply request がない。
 - open の人への依頼がない。
-- 壊れていない（[壊れた repository](../backend/broken.md)）。
 - 移した先の名前で、ディレクトリが登録されていて、そのディレクトリがまだない（[ディレクトリ方式](README.md) の「登録」）。
+- 最新のコミットが valid である（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
 
+- なぜ valid でないものを断るか：移した先の最初の版が、valid でない木になるから。元を直してから移す。
 - なぜ open のものを断るか：open の apply request と人への依頼は、元の repository の pull request と issue で、移した先に持ち込めないから。片付けずに移すと、反映も回答もできないまま残る。
 
 ## 手順

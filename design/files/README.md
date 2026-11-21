@@ -18,5 +18,5 @@
 
 1. [ファイルの配置](layout.md)：ディレクトリ、ファイル名、識別子、ファイルの中身
 2. [親子関係の持ち方](parent-child.md)：パスで表す理由と、深さの上限
-3. [main のコミットと記録](revisions.md)
+3. [main のコミットとコミットの情報](revisions.md)
 4. [artifact の置き方](artifacts.md)

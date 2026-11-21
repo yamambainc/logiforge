@@ -21,7 +21,7 @@
 バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
 
 - pull request を、head の SHA を指定して squash merge できる。
-- merge したコミットから、その pull request を API で引ける（[反映かの判定](../backend/verify/README.md)）。
+- merge したコミットから、その pull request を API で引ける（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)）。
 - 主体のトークンで、pull request、レビュー、コメント、issue を書ける。
 - git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
 - pull request の最後の先頭のコミットを、ref に残す。

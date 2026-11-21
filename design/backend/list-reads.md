@@ -34,7 +34,10 @@
 
 ## 反映した pull request の一覧（worker）
 
-- worker は、見回りで新しい `main` のコミットがあるときだけ読む（[反映かの判定](verify/README.md#gitforge-の-api)）。
+- worker は、見回りで新しい `main` のコミットがあるときだけ、1 回読む（[どの apply request の反映か](worker/patrol.md#どの-apply-request-の反映か)）。
+  - なぜ：コミットごとに pull request を問い合わせると、取り込みが遅れて追いつくとき、REST の回数がコミットの数に比例するから。
+- 読むのは、merge された、向き先が `main` の pull request である。review は読まない。
+  - なぜ：見つけた結果は、表示と重なりの警告にだけ使い、反映の条件を確かめ直さないから（[どの apply request の反映か](invalid-main.md#どの-apply-request-の反映か)）。
 - `merge_commit_sha` が新しいコミットと同じものを探す。見つからないコミットが残るあいだだけ、次のページを読む。
 - pull request の `updated_at` が、探しているコミットの committer date より 5 分以上前になったら、そこで読むのをやめる。
   - なぜ：merge した時刻は `updated_at` より前にならないので、それより先のページに答えはないから。直接 push したコミットのために、closed の pull request を全部読まないため。

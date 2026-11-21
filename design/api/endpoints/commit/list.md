@@ -11,8 +11,8 @@
 
 - worker が取り込んだ `main` のコミットを、新しい順に返す。
 - 各コミットの番号、SHA、時刻、反映した apply request を返す。
-- 反映した apply request は、worker の反映かの判定の結果（コミットの記録の `apply_request`）から引く（[main のコミットと記録](../../../files/revisions.md)）。
-- `main` の並びの索引と、コミットの記録から引く。GitForge には問い合わせない（[コミットの記録から引くもの](../../../backend/snapshot/main.md#コミットの記録から引くもの)）。
+- 反映した apply request は、worker が取り込むときにコミットの情報に置いたものを返す（[どの apply request の反映か](../../../backend/invalid-main.md#どの-apply-request-の反映か)）。表示だけに使う。
+- `main` の並びの索引と、コミットの情報から引く。GitForge には問い合わせない（[main のコミット](../../../backend/snapshot/main.md)）。
 - 一覧はページに分けて返す。カーソルは、次に読むコミットの番号である。
 
 ## 関係する要件

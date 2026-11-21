@@ -15,7 +15,7 @@
 ## 登録
 
 - 利用者が、設定の画面で、repository の名前と「git リポジトリとディレクトリのパス」の組を、設定の DB に登録する（例：名前 `cache-strategy`、`acme/myapp:logiforge/cache-strategy`。[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)）。
-  - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのときは、worker が見つけて、壊れた状態にする。
+  - 守る設定を使うときは、repository の用意のあとに、そのディレクトリのパターン（例：`logiforge/cache-strategy/**`）を守る設定に足す（[main の守り](main.md)）。足すまでは、人の PR でディレクトリを変えられる。そのコミットも受け入れる（[main はいつも正しい](../backend/invalid-main.md#main-はいつも正しい)）。
     - なぜ用意のあとか：用意のコミットは、利用者のトークンで `main` に直接置くから（[履歴](history.md) の「用意のコミット」）。
   - gitforge_ref は、`owner/name:パス` である。GitForge の API と git には、`owner/name` の部分を使う。
   - Forgejo では、ディレクトリを置く git リポジトリ（プロジェクトのリポジトリ）を、git リポジトリ全体の repository としては数えない。
@@ -24,7 +24,6 @@
   - なぜ：1 つのファイルが、2 つの repository のものになるのを防ぐため。
 - GitHub と Forgejo のどちらの構成でも登録できる。git リポジトリ全体の repository と、同じサーバに並べられる。
 - 利用者が repository を作ると、バックエンドは、利用者のトークンで、根のファイルをディレクトリに置く用意のコミットを、`main` に置く（[履歴](history.md) の「用意のコミット」）。
-  - 用意のコミットには、trailer `Logiforge-Init:` を付ける。worker は、版の位置と trailer と中身で、用意のコミットと決める（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
 - API の `Repository` は、ディレクトリのパス（`directory`）を持つ。git リポジトリ全体の repository では空である。
   - CLI は、`check`、ひな形、`ar create` で、このパスを根として扱う（[CLI](../cli/README.md)）。
 
@@ -53,5 +52,5 @@
 ## 読む順
 
 1. [main の守り](main.md)：人がコードを merge するリポジトリで、ディレクトリを Logiforge の反映だけで変える仕組み
-2. [履歴](history.md)：スナップショットツリーの版の数え方、コミットの記録、worker
+2. [履歴](history.md)：スナップショットツリーの版の数え方、コミットの情報、worker
 3. [別リポジトリ方式から移す](migrate.md)：移すもの、条件、手順、元の repository、引用

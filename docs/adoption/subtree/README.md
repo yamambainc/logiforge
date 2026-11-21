@@ -33,7 +33,7 @@ git push -u origin logiforge-import
 - 取り込みと更新の PR は、merge のコミットで merge する。squash merge と rebase merge にしない。
   - なぜ：squash のコミット（下の 2 行の入ったもの）が、そのままプロジェクトの履歴に残るから。下の「更新する」の、取り込んでいる版を出すコマンドは、そのコミットを読む。
   - squash merge にすると、そのコミットはなくなり、PR の 1 つのコミットにまとめられる。GitHub の squash の本文を PR のタイトルだけにする設定では、2 行も消え、版を確かめられなくなる。
-  - rebase merge にすると、複製の中身だけを持つ squash のコミットが、`main` の上に並べ直され、プロジェクトの木が壊れる。
+  - rebase merge にすると、複製の中身だけを持つ squash のコミットが、`main` の上に並べ直され、プロジェクトの木の subtree の履歴が崩れる。
 - `--squash` を必ず付ける。
   - なぜ：Logiforge の `main` のコミットを、プロジェクトの履歴に 1 つずつ入れないため。
   - なぜ：取り込みのたびに、複製の中身と同じ tree の squash のコミットができ、CI がそれと照らせるから。
