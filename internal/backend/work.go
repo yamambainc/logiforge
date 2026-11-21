@@ -180,7 +180,7 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 // answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/compute.md）。
 //   - その回答を引用した検証結果が、反映されたか、open の apply request の差分にある。
 //   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
-//     反映の記録のある最初のコミットである。
+//     worker の反映かの判定で apply request の反映によるものとした、最初のコミットである。
 func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
 	if refs.cites(hr) {
 		return true, nil

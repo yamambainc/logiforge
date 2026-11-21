@@ -58,7 +58,7 @@ func IndexFromSnapshotTree(head Commit, t *SnapshotTree) *Index {
 func (x *Index) Head() Rev { return x.head }
 
 // Record は、main のコミットの記録を、親から変わったパス（git の diff-tree の結果）だけで作り、Index に足す。
-// 警告は、反映の記録がないことだけを付ける。新しく破れた不変条件と、worker の警告は、AddNewlyBroken と AddWorkerWarnings で足す。
+// 警告は、反映によらないことだけを付ける。新しく破れた不変条件と、worker の警告は、AddNewlyBroken と AddWorkerWarnings で足す。
 func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 	c := Commit{Revision: info.Revision, Number: x.head.Number + 1, Kind: KindMain, CommittedAt: info.CommittedAt.UTC(), Trailers: info.Trailers}
 	if x.head.Number > 0 {

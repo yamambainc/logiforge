@@ -32,7 +32,7 @@ type field struct {
 	get   func(c *Config) *string
 }
 
-// fields は、settings の表に置く設定の一覧である。repository の一覧と記録の鍵は、別の表に置く。
+// fields は、settings の表に置く設定の一覧である。repository の一覧は、別の表に置く。
 var fields = []field{
 	{"gitforge", plain, func(c *Config) *string { return &c.GitForge }},
 	{"webui_url", plain, func(c *Config) *string { return &c.WebUIURL }},

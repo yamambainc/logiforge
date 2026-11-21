@@ -58,7 +58,7 @@ type Commit struct {
 	// その先頭のコミットである（design/backend/verify/README.md）。どのコミットがどの apply request の反映かは、これが正本である。
 	ApplyRequest string `json:"apply_request,omitempty"`
 	MergedHead   string `json:"merged_head,omitempty"`
-	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
+	// Warnings は、main のコミットだけ。反映によらないことと、このコミットで新しく破れた不変条件。
 	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`
 	// Changes は、main のコミットだけ。このコミットで変わったノードごとの、変わったファイルと、そのノードを前に変えたコミット
@@ -205,7 +205,7 @@ type Rev struct {
 type WarnedEntry struct {
 	Number   int    `json:"number"`
 	Revision string `json:"revision"`
-	// NoApplyRequest は、反映の記録がない（反映によらない変更）ことである。
+	// NoApplyRequest は、worker の判定で、apply request の反映によらない変更とされたことである。
 	NoApplyRequest bool `json:"no_apply_request,omitempty"`
 	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
 	NewlyBroken bool `json:"newly_broken,omitempty"`

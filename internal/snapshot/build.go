@@ -28,7 +28,7 @@ const (
 )
 
 // MaxInitCommits は、用意のコミットの数の上限である（根の仮説と、背景情報）。根のコミットから続く、この数までのコミットだけを、
-// 用意のコミットとして扱う。それより後の Logiforge-Init: は、反映の記録のないコミットとして警告する。
+// 用意のコミットとして扱う。それより後の Logiforge-Init: は、用意のコミットとして扱わず、警告する。
 const MaxInitCommits = 2
 
 // BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。

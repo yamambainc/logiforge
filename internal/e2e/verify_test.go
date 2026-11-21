@@ -183,8 +183,6 @@ func TestE2EHumanMerge(t *testing.T) {
 	if _, code, out := reviewer.review(ng.ID, "request-changes", 1); code != 0 {
 		t.Fatalf("request_changes：%d %s", code, out)
 	}
-	// worker が記録を控えに足すのを待ってから、merge する（控えにない記録は、消されると判定に使えない）。
-	time.Sleep(3 * time.Second)
 	sha = humanMerge(ng, "squash")
 	w.eventually("request_changes のあとの人の merge で壊れる", 120*time.Second, func() bool {
 		code, out := agent.cli("", "repo", "view", "q", "--json")

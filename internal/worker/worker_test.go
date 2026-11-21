@@ -396,7 +396,7 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 	step(r.commit("反映\n\nTest-Apply-Request: apr_z"))
 	r.write(h2+"/s-5555555555/inactivated.md", []byte("理由\n"))
 	step(r.commit("反映\n\nTest-Apply-Request: apr_w"))
-	// 木の外のファイル（不変条件が破れる）と、反映の記録のないコミット。
+	// 木の外のファイル（不変条件が破れる）と、反映によらないコミット。
 	r.write("README.md", []byte("x"))
 	step(r.commit("手で直した"))
 
@@ -424,7 +424,7 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 		}
 	}
 	m, _ := store.GetMain(ctx, allSt, "q", latest)
-	// 3 は重なり、4 と 5 は反映した先頭のコミットがわからないので overlap_unchecked、6 は反映の記録がなく、新しく破った。
+	// 3 は重なり、4 と 5 は反映した先頭のコミットがわからないので overlap_unchecked、6 は反映によらず、新しく破った。
 	if w := m.SnapshotTree.Warned; len(w) != 4 || w[0].Number != 3 || !w[0].WorkerWarned || w[3].Number != 6 || !w[3].NewlyBroken || !w[3].NoApplyRequest {
 		t.Fatalf("warned: %+v", w)
 	}

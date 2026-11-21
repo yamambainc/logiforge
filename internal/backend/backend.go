@@ -250,7 +250,7 @@ func (v *view) warnings() []string {
 	out := []string{}
 	for _, h := range v.main.SnapshotTree.Warned {
 		if h.NoApplyRequest {
-			out = append(out, h.Revision+"：反映の記録がないコミット（反映の手順によらない変更）")
+			out = append(out, h.Revision+"：apply request の反映によらないコミット（反映の手順によらない変更）")
 		}
 		if h.NewlyBroken {
 			out = append(out, h.Revision+"：このコミットで、木の不変条件が破れた")

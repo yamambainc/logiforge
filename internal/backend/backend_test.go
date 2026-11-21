@@ -230,6 +230,7 @@ func (f *fakeForge) Close(_ context.Context, _, id, reason string) error {
 	ar.State = ports.StateClosed
 	return nil
 }
+
 // RecordMergeFailure は、コメントを足し、ラベルを付け直す（既に付いていても、付けた出来事を足す）。
 func (f *fakeForge) RecordMergeFailure(ctx context.Context, repo, id string, mf ports.MergeFailure, w ports.Waiting) error {
 	ar := f.ar(id)

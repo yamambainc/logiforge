@@ -131,7 +131,7 @@ func TestBuildMainChangesAndWarned(t *testing.T) {
 		t.Fatalf("S1: %+v", m3.SnapshotTree.Nodes[S1])
 	}
 
-	// 反映の記録のないコミットは警告にする。
+	// 反映によらないコミットは警告にする。
 	f4 := f3.clone()
 	f4.put("README.md", []byte("x"))
 	m4 := mustMain(t, f4, info(rev(4), ""), m3)
@@ -166,7 +166,7 @@ func TestInitTrailerIsNotWarned(t *testing.T) {
 	if len(m2.Commit.Warnings) != 0 {
 		t.Fatalf("warnings: %v", m2.Commit.Warnings)
 	}
-	// 用意の並びのあと（3 番目より後）の Logiforge-Init: は、反映の記録のないコミットとして警告する。
+	// 用意の並びのあと（3 番目より後）の Logiforge-Init: は、用意のコミットとして扱わず、警告する。
 	f3 := f2.clone()
 	f3.put(dH2+"/background.md", []byte("y\n"))
 	ci3 := info(rev(3), "")
