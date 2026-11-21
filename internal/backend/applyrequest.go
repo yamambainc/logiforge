@@ -200,20 +200,30 @@ func awaiting(w ports.Waiting) *string {
 // desiredWaiting は、その pull request の出来事のうち、いちばん新しいもので、正しいラベルを決める
 // （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
 //   - 数える request changes の review と、opener が直すべき理由の反映の失敗：修正待ち
-//   - レビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）：レビュー待ち
+//   - レビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）、数える approve の review、
+//     opener が直すべき理由でない反映の失敗：レビュー待ち
+//
+// reviews は、数える review だけである。
 func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
 	var fixAt time.Time
+	reviewAt := ar.ReviewWaitingAt
 	for _, r := range reviews {
-		if r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt) {
+		switch {
+		case r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt):
 			fixAt = r.CreatedAt
+		case r.Kind == ports.ReviewApprove && r.CreatedAt.After(reviewAt):
+			reviewAt = r.CreatedAt
 		}
 	}
 	for _, f := range ar.MergeFailures {
-		if openerFixes[f.Reason] && f.At.After(fixAt) {
+		switch {
+		case openerFixes[f.Reason] && f.At.After(fixAt):
 			fixAt = f.At
+		case !openerFixes[f.Reason] && f.At.After(reviewAt):
+			reviewAt = f.At
 		}
 	}
-	fixAt, reviewAt := fixAt.Truncate(time.Second), ar.ReviewWaitingAt.Truncate(time.Second)
+	fixAt, reviewAt = fixAt.Truncate(time.Second), reviewAt.Truncate(time.Second)
 	// GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
 	if !fixAt.IsZero() && fixAt.Equal(reviewAt) && (ar.Waiting == ports.WaitingFix || ar.Waiting == ports.WaitingReview) {
 		return ar.Waiting
@@ -236,7 +246,7 @@ func (b *Backend) repairWaiting(ctx context.Context, gfRef string, d *arDetail) 
 		return
 	}
 	if err := b.Forge.SetWaiting(ctx, gfRef, d.port.ID, want); err != nil {
-		d.model.Warnings = append(d.model.Warnings, "レビュー待ちか修正待ちかのラベルがずれているが、直せない："+err.Error())
+		d.model.Warnings = append(d.model.Warnings, "レビュー待ちか修正待ちかのラベルがずれているが、直せない（書く権限のある人が読めば直る）："+err.Error())
 		return
 	}
 	d.port.Waiting = want

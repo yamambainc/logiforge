@@ -290,8 +290,11 @@ func (r reviewJSON) review() (pullreq.PullReview, bool) {
 	if !ok || r.User == nil {
 		return pullreq.PullReview{}, false
 	}
+	// Forgejo は、書く権限を持つ人の、いちばん新しい approve と request changes を official にする（design/adapters/pull-requests.md の
+	// 「数える review」）。ほかの人の権限を読む API（collaborators/{user}/permission）は、repository の admin しか使えないので、使わない。
+	official := r.Official
 	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: r.Dismissed,
-		Official: r.Official, SubmittedAt: r.SubmittedAt}, true
+		CanPush: &official, SubmittedAt: r.SubmittedAt}, true
 }
 
 func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
@@ -325,12 +328,6 @@ func (a api) CreateReview(ctx context.Context, repo string, number int, event po
 	}
 	x, _ := r.review()
 	return x, nil
-}
-
-// ReviewerCanPush は、approve か request changes の review の official を返す。Forgejo は、書く権限を持つ人の、いちばん新しい approve と
-// request changes を official にする。ほかの人の権限を読む API（collaborators/{user}/permission）は、repository の admin しか使えないので、使わない。
-func (a api) ReviewerCanPush(_ context.Context, _ string, r pullreq.PullReview) (bool, error) {
-	return r.Official, nil
 }
 
 type statusJSON struct {

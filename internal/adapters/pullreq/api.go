@@ -24,11 +24,10 @@ type API interface {
 	MergePull(ctx context.Context, repo string, number int, headSHA, title, message string) (string, error)
 
 	// ListReviews は、pull request の、出された review を返す（pending は除く）。
+	// 各 review の CanPush に、書いた人が repository に書く権限を持つかを入れる（design/adapters/pull-requests.md の「数える review」）。
 	ListReviews(ctx context.Context, repo string, number int) ([]PullReview, error)
 	// CreateReview は、review を出す。event は approve、request_changes、comment のどれか（ports.ReviewKind）。
 	CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (PullReview, error)
-	// ReviewerCanPush は、review を書いた人が、repository に書く権限を持つかを返す（design/adapters/pull-requests.md の「数える review」）。
-	ReviewerCanPush(ctx context.Context, repo string, r PullReview) (bool, error)
 
 	// SetStatus は、コミットに commit status を立てる。ListStatuses は、そのコミットの commit status を、新しい順に返す。
 	SetStatus(ctx context.Context, repo, sha string, s Status) error
@@ -89,9 +88,8 @@ type PullReview struct {
 	CommitID string
 	// Dismissed は、dismiss されたか。
 	Dismissed bool
-	// Association は、GitHub の author_association。Official は、Forgejo の official（書く権限を持つ人の review か）。
-	Association string
-	Official    bool
+	// CanPush は、書いた人が repository に書く権限を持つか。読めなければ nil（GitHub は authorCanPushToRepository、Forgejo は official）。
+	CanPush *bool
 	SubmittedAt time.Time
 }
 

@@ -46,9 +46,13 @@ review と issue の本文に書くことは、[review と issue の本文](text
 - 数えるのは、次のすべてを満たす review である。
   - 出された review である（pending でない）。dismiss されていない。
   - `approve` と `request changes` は、書いた人が、repository に書く権限を持つ。`comment` は、だれのものでも数える。
-    - GitHub は、`GET /repos/{owner}/{repo}/collaborators/{user}/permission` で読み、読む主体のトークンで読めなければ、review の `author_association`（OWNER、MEMBER、COLLABORATOR）で決める。Forgejo は、review の `official` で見る。
     - なぜ：public の repository では、書く権限のない人も review を出せるから。数えると、書く権限のない人が、`approve` で反映させたり、`request changes` で反映を止めたりできてしまう。
-    - なぜ Forgejo は `official` か：ほかの人の権限を読む API は、repository の admin しか使えないから。Forgejo は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` を `official` にする。
+    - GitHub は、その pull request の review を、GraphQL の 1 回で読み、review の `authorCanPushToRepository` で見る。読んだ時点の権限で決まる。
+      - なぜ GraphQL か：REST の `GET /repos/{owner}/{repo}/collaborators/{user}/permission` は、呼ぶ主体に push の権限が要る（なければ 403「Must have push access to view collaborator permission.」）。そのため、読むだけの利用者と、worker の読むだけの installation token では読めない。`authorCanPushToRepository` は、読む権限だけで読める。
+      - 使うのは、1 件の pull request の review を読むとき（反映、worker の反映かの判定、詳細の読み、ラベルの直し）だけである。一覧では、GraphQL を使わない（[一覧の読み](../backend/list-reads.md)）。
+    - Forgejo は、review の `official` で見る。review を出した時点で決まる。approve できる人の一覧（approvals whitelist）があれば、それで決まる。
+      - なぜ `official` か：ほかの人の権限を読む API は、repository の admin しか使えないから。Forgejo は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` を `official` にする。
+    - 書く権限を持つかを読めない review（値がない、読み失敗）は、数えずに、警告する。詳細では「確かめられない」と示す。なぜ：読めないものを書く権限ありとすると、書く権限のない人の review で反映できてしまうから。
     - `comment` は、反映の条件に効かないので、権限を見ない。
   - `approve` は、本文に、書いたセッションの行がある（[review の本文](texts.md#review-の本文)）。行のない `approve` は数えず、警告する。
 - review は、それを出した head のコミット（review の `commit_id`）への review である。
@@ -73,7 +77,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
 | apply request を作ったとき | レビュー待ち | opener |
 | `request changes` の review を出したとき | 修正待ち | reviewer |
 | opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）で反映に失敗したとき | 修正待ち | reviewer |
-| ほかの理由で反映に失敗したとき | レビュー待ち（変えない） | reviewer |
+| ほかの理由で反映に失敗したとき | レビュー待ち | reviewer |
 | opener が直し終えたと申告したとき（[直し終えたと申告する](../api/endpoints/apply-request/fixed.md)） | レビュー待ち | opener |
 | 反映したとき、close したとき | 両方を外す | reviewer か、close した主体 |
 
@@ -95,10 +99,12 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - 数える `request changes` の review（GitForge の画面から直接出したものも含む）：修正待ち
   - opener が直すべき理由の `logiforge/merge` の commit status：修正待ち
   - バックエンドがレビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）：レビュー待ち
+  - 数える `approve` の review：レビュー待ち。なぜ：`approve` のあとに open のまま残るのは、`approve` し直しを待つものだから
+  - opener が直すべき理由でない `logiforge/merge` の commit status：レビュー待ち
   - どれもなければ、レビュー待ち
   - ラベルを付けた時刻は、pull request の出来事の一覧（GitHub は issue の events、Forgejo は issue の timeline）で読む。
   - GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
-- 直すときは、その要求を送った主体のトークンで書く。その主体に書く権限がなければ、直さずに、応答に警告を付ける。
+- 直すときは、その要求を送った主体のトークンで書く。その主体に書く権限がなければ、直さずに、応答に警告を付ける。警告には、書く権限のある人が読めば直ることを書く。
 - 一覧での扱いは、直るまで次のとおりである。
   - どちらのラベルもない：レビュー待ちとみなす。ラベルを付ける前に止まった apply request も、レビュー待ちに見えるようにするため。
   - 2 つとも付いている：修正待ちとみなし、警告する。修正を求められたのに、レビュー待ちに見えて reviewer の手間になることを避けるため。

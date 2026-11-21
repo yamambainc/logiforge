@@ -116,7 +116,15 @@ func (f *fake) MergePull(_ context.Context, _ string, n int, head, _, _ string) 
 }
 func (f *fake) ListReviews(_ context.Context, _ string, n int) ([]PullReview, error) {
 	f.call("ListReviews")
-	return slices.Clone(f.reviews[n]), nil
+	out := slices.Clone(f.reviews[n])
+	for i := range out {
+		if out[i].Author == "unknown" {
+			continue // 書く権限を読めない人
+		}
+		ok := f.canPush[out[i].Author]
+		out[i].CanPush = &ok
+	}
+	return out, nil
 }
 func (f *fake) CreateReview(_ context.Context, _ string, n int, kind ports.ReviewKind, body, commit string) (PullReview, error) {
 	f.call("CreateReview")
@@ -126,10 +134,6 @@ func (f *fake) CreateReview(_ context.Context, _ string, n int, kind ports.Revie
 	r := PullReview{ID: int64(len(f.reviews[n]) + 1), Kind: kind, Body: body, Author: f.actor, CommitID: commit, SubmittedAt: f.tick()}
 	f.reviews[n] = append(f.reviews[n], r)
 	return r, nil
-}
-func (f *fake) ReviewerCanPush(_ context.Context, _ string, r PullReview) (bool, error) {
-	f.call("ReviewerCanPush")
-	return f.canPush[r.Author], nil
 }
 func (f *fake) SetStatus(_ context.Context, _, sha string, s Status) error {
 	f.call("SetStatus")
@@ -323,16 +327,20 @@ func TestReviewsCounted(t *testing.T) {
 		PullReview{ID: 12, Kind: ports.ReviewRequestChanges, Body: "y\n\nSession-Id: s8", Author: "bob", CommitID: "h-b", Dismissed: true},
 		PullReview{ID: 13, Kind: ports.ReviewApprove, Body: "z\n\nSession-Id: s7", Author: "mallory", CommitID: "h-b"},
 		PullReview{ID: 14, Kind: ports.ReviewApprove, Body: "w\n\nSession-Id: s9", Author: "bob", CommitID: "h-b"},
+		PullReview{ID: 15, Kind: ports.ReviewApprove, Body: "v\n\nSession-Id: s6", Author: "unknown", CommitID: "h-b"},
 	)
 	// 数える：bob の approve 2 つ。
 	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の request changes と approve
-	// （public の repository で、書く権限のない人が反映を止めたり、させたりできないように）。
+	// （public の repository で、書く権限のない人が反映を止めたり、させたりできないように）、書く権限を確かめられない人の approve。
 	rs, err := a.ListReviews(ctx, "o/r", "1")
-	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 3 {
+	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 4 {
 		t.Fatalf("数える review：%+v %v", rs, err)
 	}
-	if f.calls["ReviewerCanPush"] != 2 {
-		t.Fatalf("書く権限は、approve か request changes を書いた人ごとに 1 回だけ読む：%d", f.calls["ReviewerCanPush"])
+	if !strings.Contains(strings.Join(rs.Warnings, "\n"), "確かめられない") {
+		t.Fatalf("確かめられない review の警告：%v", rs.Warnings)
+	}
+	if f.calls["ListReviews"] != 1 {
+		t.Fatalf("review は、pull request ごとに 1 回だけ読む：%d", f.calls["ListReviews"])
 	}
 }
 

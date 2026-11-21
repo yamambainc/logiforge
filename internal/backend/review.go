@@ -106,7 +106,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	// request changes を出したら、修正待ちのラベルに付け替える（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
 	if kind == ports.ReviewRequestChanges && targetsMain(d.port) {
 		if err := b.Forge.SetWaiting(ctx, ref, id, ports.WaitingFix); err != nil {
-			warnings = append(warnings, "修正待ちのラベルを付けられない："+err.Error())
+			warnings = append(warnings, "修正待ちのラベルを付けられない（書く権限のある人が読めば直る）："+err.Error())
 		}
 	}
 	// 向き先が main でない apply request は、Logiforge の反映の対象でない。approve は記録するだけで、反映の手順に進まない
@@ -224,7 +224,8 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 }
 
 // recordFailure は、反映の失敗を GitForge に残す（head の commit status と、pull request のコメント）。
-// opener が直すべき理由なら、修正待ちのラベルに付け替える（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+// opener が直すべき理由なら修正待ちに、ほかの理由ならレビュー待ちに、ラベルを付け替える
+// （design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
 func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.MergeFailure) error {
 	if err := b.Forge.RecordMergeFailure(ctx, ref, id, f); err != nil {
 		return err
@@ -232,7 +233,7 @@ func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.Mer
 	if openerFixes[f.Reason] {
 		return b.Forge.SetWaiting(ctx, ref, id, ports.WaitingFix)
 	}
-	return nil
+	return b.Forge.SetWaiting(ctx, ref, id, ports.WaitingReview)
 }
 
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。

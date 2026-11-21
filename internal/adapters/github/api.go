@@ -271,37 +271,109 @@ type reviewJSON struct {
 	Body        string    `json:"body"`
 	State       string    `json:"state"`
 	CommitID    string    `json:"commit_id"`
-	Association string    `json:"author_association"`
 	SubmittedAt time.Time `json:"submitted_at"`
 }
 
 func (r reviewJSON) review() (pullreq.PullReview, bool) {
-	if r.State == "DISMISSED" {
-		return pullreq.PullReview{ID: r.ID, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: true, Association: r.Association, SubmittedAt: r.SubmittedAt}, true
-	}
 	k, ok := reviewState[r.State]
 	if !ok {
 		return pullreq.PullReview{}, false
 	}
-	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Association: r.Association, SubmittedAt: r.SubmittedAt}, true
+	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt}, true
 }
 
+// reviewsQuery は、1 件の pull request の review を、書いた人が push できるか（authorCanPushToRepository）と一緒に読む GraphQL である。
+// なぜ GraphQL か：REST の collaborators/{user}/permission は、呼ぶ主体に push の権限が要り、読むだけの利用者と worker では読めないから
+// （design/adapters/pull-requests.md の「数える review」）。一覧では使わない。
+const reviewsQuery = `query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviews(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { databaseId state body submittedAt authorCanPushToRepository author { login } commit { oid } }
+      }
+    }
+  }
+}`
+
+type reviewsResult struct {
+	Data struct {
+		Repository *struct {
+			PullRequest *struct {
+				Reviews struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						DatabaseID int64     `json:"databaseId"`
+						State      string    `json:"state"`
+						Body       string    `json:"body"`
+						Submitted  time.Time `json:"submittedAt"`
+						CanPush    *bool     `json:"authorCanPushToRepository"`
+						Author     *user     `json:"author"`
+						Commit     *struct {
+							OID string `json:"oid"`
+						} `json:"commit"`
+					} `json:"nodes"`
+				} `json:"reviews"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// ListReviews は、1 件の pull request の review を、GraphQL で読む。pending は除き、dismiss されたものは Dismissed にする。
 func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return nil, err
-	}
-	rs, err := list[reviewJSON](ctx, a.c, ports.TokenFrom(ctx), fmt.Sprintf("%s/pulls/%d/reviews", rp, number))
-	if err != nil {
-		return nil, err
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok {
+		return nil, fmt.Errorf("github: gitforge_ref の形が正しくない: %q", repo)
 	}
 	var out []pullreq.PullReview
-	for _, r := range rs {
-		if x, ok := r.review(); ok {
-			out = append(out, x)
+	var after *string
+	for {
+		var res reviewsResult
+		vars := map[string]any{"owner": owner, "name": name, "number": number, "after": after}
+		if err := a.c.graphQL(ctx, ports.TokenFrom(ctx), reviewsQuery, vars, &res); err != nil {
+			return nil, err
 		}
+		if len(res.Errors) > 0 {
+			return nil, fmt.Errorf("github: review を読めない: %s", res.Errors[0].Message)
+		}
+		if res.Data.Repository == nil || res.Data.Repository.PullRequest == nil {
+			return nil, ports.ErrNotFound
+		}
+		rs := res.Data.Repository.PullRequest.Reviews
+		for _, n := range rs.Nodes {
+			r := pullreq.PullReview{ID: n.DatabaseID, Body: n.Body, SubmittedAt: n.Submitted, CanPush: n.CanPush}
+			if n.Author != nil {
+				r.Author = n.Author.Login
+			}
+			if n.Commit != nil {
+				r.CommitID = n.Commit.OID
+			}
+			switch n.State {
+			case "DISMISSED":
+				r.Dismissed = true
+			case "PENDING":
+				continue
+			default:
+				k, ok := reviewState[n.State]
+				if !ok {
+					continue
+				}
+				r.Kind = k
+			}
+			out = append(out, r)
+		}
+		if !rs.PageInfo.HasNextPage {
+			return out, nil
+		}
+		c := rs.PageInfo.EndCursor
+		after = &c
 	}
-	return out, nil
 }
 
 func (a api) CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (pullreq.PullReview, error) {
@@ -317,27 +389,6 @@ func (a api) CreateReview(ctx context.Context, repo string, number int, event po
 	}
 	x, _ := r.review()
 	return x, nil
-}
-
-// ReviewerCanPush は、approve か request changes を書いた人の、repository の権限を読む（GET /collaborators/{user}/permission）。
-// 1 件の apply request を読むときに、書いた人ごとに 1 回だけ呼ぶ。
-func (a api) ReviewerCanPush(ctx context.Context, repo string, r pullreq.PullReview) (bool, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return false, err
-	}
-	var res struct {
-		Permission string `json:"permission"`
-	}
-	err = a.w(ctx, repo, http.MethodGet, rp+"/collaborators/"+url.PathEscape(r.Author)+"/permission", nil, &res)
-	// 読む主体のトークンで権限を読めなければ、review の author_association で決める。
-	if s := statusOf(err); s == http.StatusNotFound || s == http.StatusForbidden {
-		return r.Association == "OWNER" || r.Association == "MEMBER" || r.Association == "COLLABORATOR", nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return res.Permission == "admin" || res.Permission == "write" || res.Permission == "maintain", nil
 }
 
 type statusJSON struct {

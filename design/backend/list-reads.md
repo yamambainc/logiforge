@@ -29,6 +29,7 @@
 
 - apply request を 1 件読むときと、`approve` で反映するときは、その pull request と、その review の一覧と、head の commit status を、その場で読む。
   - なぜ：反映の条件は、今の GitForge の review で決めるから（[反映の手順](merge.md)）。
+  - GitHub では、その pull request の review を、GraphQL の 1 回で読む。書いた人が push できるか（`authorCanPushToRepository`）を、読む権限だけで読めるからである（[数える review](../adapters/pull-requests.md#数える-review)）。GraphQL を使うのは、ここだけである。
 - 人への依頼を 1 件読むときは、その issue のコメントから回答を読む（[回答](../adapters/texts.md#回答)）。
 
 ## 反映した pull request の一覧（worker）

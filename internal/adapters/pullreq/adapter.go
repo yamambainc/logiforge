@@ -416,7 +416,6 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 		return ports.Reviews{}, err
 	}
 	var out ports.Reviews
-	canPush := map[string]bool{}
 	for _, pr := range rs {
 		if pr.Dismissed {
 			continue
@@ -430,15 +429,12 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：本文に %s: の行のない approve は、数えない", pr.ID, lineSession))
 				continue
 			}
-			key := fmt.Sprintf("%s\x00%t", pr.Author, pr.Official)
-			ok, seen := canPush[key]
-			if !seen {
-				if ok, err = a.API.ReviewerCanPush(ctx, repo, pr); err != nil {
-					return ports.Reviews{}, err
-				}
-				canPush[key] = ok
+			// 書く権限を持つかを読めなければ、数えない（閉じる側に倒す）。
+			if pr.CanPush == nil {
+				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s に書く権限があるかを確かめられないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
+				continue
 			}
-			if !ok {
+			if !*pr.CanPush {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s は書く権限がないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
 				continue
 			}

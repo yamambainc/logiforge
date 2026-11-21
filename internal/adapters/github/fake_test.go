@@ -277,7 +277,6 @@ var (
 	reIssLabels = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/labels$`)
 	reIssLabel  = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/labels/(.+)$`)
 	reEvents    = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/events$`)
-	rePerm      = regexp.MustCompile(`^/repos/acme/study/collaborators/([^/]+)/permission$`)
 	reLabel     = regexp.MustCompile(`^/repos/acme/study/labels/(.+)$`)
 	reStatuses  = regexp.MustCompile(`^/repos/acme/study/statuses/(.+)$`)
 	reCStatuses = regexp.MustCompile(`^/repos/acme/study/commits/([^/]+)/statuses$`)
@@ -547,6 +546,17 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.messages = append(f.messages, str("message"))
 		f.commits++
 		write(w, http.StatusCreated, map[string]any{"commit": map[string]string{"sha": mainSHA(f.commits)}})
+	case p == "/graphql" && r.Method == http.MethodPost:
+		// 1 件の pull request の review を、書いた人が push できるかと一緒に返す（api.go の reviewsQuery）。
+		vars, _ := in["variables"].(map[string]any)
+		n := int(vars["number"].(float64))
+		var nodes []map[string]any
+		for _, rv := range f.reviews[n] {
+			nodes = append(nodes, map[string]any{"databaseId": rv.ID, "state": rv.State, "body": rv.Body, "submittedAt": rv.At,
+				"authorCanPushToRepository": f.writers[rv.Author], "author": map[string]string{"login": rv.Author}, "commit": map[string]string{"oid": rv.CommitID}})
+		}
+		write(w, http.StatusOK, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+			"reviews": map[string]any{"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""}, "nodes": nodes}}}}})
 	case reReviews.MatchString(p) && r.Method == http.MethodGet:
 		var out []map[string]any
 		for _, rv := range f.reviews[num(reReviews, p)] {
@@ -564,12 +574,6 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.reviews[n] = append(f.reviews[n], rv)
 		f.pulls[n].updatedAt = time.Now()
 		write(w, http.StatusOK, map[string]any{"id": rv.ID, "state": rv.State, "body": rv.Body, "user": map[string]string{"login": login}, "commit_id": rv.CommitID, "submitted_at": rv.At})
-	case rePerm.MatchString(p) && r.Method == http.MethodGet:
-		perm := "read"
-		if f.writers[rePerm.FindStringSubmatch(p)[1]] {
-			perm = "write"
-		}
-		write(w, http.StatusOK, map[string]string{"permission": perm})
 	case reStatuses.MatchString(p) && r.Method == http.MethodPost:
 		sha := reStatuses.FindStringSubmatch(p)[1]
 		f.statuses[sha] = append([]fakeStatus{{Context: str("context"), State: str("state"), Description: str("description"), Creator: login, At: time.Now()}}, f.statuses[sha]...)
