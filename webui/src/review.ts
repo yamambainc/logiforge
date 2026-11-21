@@ -40,7 +40,7 @@ export type SendResult =
   | { kind: 'conflict'; ar: ApplyRequest | null; message: string }
   // open でなくなった（ほかの人が先に反映した、閉じた、鎖が切れた）。読み直した apply request を示す
   | { kind: 'not_open'; ar: ApplyRequest | null; message: string }
-  // 今の main での検査に通らなかった（approve を出さなかった、merge しなかった）。読み直した apply request を示す
+  // 今の main での確かめに通らなかった（approve を出さなかった、merge しなかった）。読み直した apply request を示す
   | { kind: 'refused'; ar: ApplyRequest | null; message: string }
   | { kind: 'error'; message: string }
   | { kind: 'unauthenticated' };
@@ -54,7 +54,7 @@ export async function submitReview(repo: string, id: string, kind: ReviewKind, c
     return { kind: 'sent', ar: r.apply_request, message: outcome(kind, r.apply_request) };
   } catch (e) {
     if (e instanceof Problem && e.status === 401) return { kind: 'unauthenticated' };
-    // 検査に通らなければ、修正待ちになっていることがあるので、読み直す
+    // 確かめに通らなければ、修正待ちになっていることがあるので、読み直す
     if (e instanceof Problem && REFUSALS.includes(e.code)) {
       const ar = await getApplyRequest(repo, id).catch(() => null);
       return { kind: 'refused', ar, message: reviewErrorMessage(e)! };
@@ -69,13 +69,13 @@ export async function submitReview(repo: string, id: string, kind: ReviewKind, c
   }
 }
 
-/** 今の main での検査に通らなかったときの code（design/backend/merge.md）。snapshot_pending は、送り直せばよいので含めない */
+/** 今の main での確かめに通らなかったときの code（design/backend/merge.md）。snapshot_pending は、送り直せばよいので含めない */
 const REFUSALS = ['stale_target', 'conflict', 'invariant_violation'];
 
 /** 送ったあとに示す言葉 */
 export function outcome(kind: ReviewKind, ar: ApplyRequest): string {
   if (kind !== 'approve') return kind === 'comment' ? 'コメントを付けました。' : 'request_changes を付けました。';
-  if (ar.target !== 'main') return 'approve を付けました。main 向きではないので、Logiforge は検査していません。merge は GitForge で行ってください。';
+  if (ar.target !== 'main') return 'approve を付けました。main 向きではないので、Logiforge は確かめていません。merge は GitForge で行ってください。';
   return 'approve を付けました。merge は、別に行います。';
 }
 
@@ -119,7 +119,7 @@ export const ownNotice = (a: ApplyRequest): string | null => (a.opened_by_caller
 export function approveSummary(a: ApplyRequest, commit: string, operations: number): { commit: string; lines: string[]; own: string | null } {
   return {
     commit,
-    lines: [`差分の操作 ${operations} 個。`, a.target === 'main' ? '今の main で検査し、通ったときだけ approve を出します。merge は、別に行います。' : 'main 向きではないので、Logiforge は検査しません。'],
+    lines: [`差分の操作 ${operations} 個。`, a.target === 'main' ? '今の main で確かめ、通ったときだけ approve を出します。merge は、別に行います。' : 'main 向きではないので、Logiforge は確かめません。'],
     own: ownNotice(a),
   };
 }

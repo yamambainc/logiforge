@@ -29,7 +29,7 @@ apply request は、GitForge の pull request である（[apply request と pul
   - head が指定した SHA でなければ、そのことがわかる形で失敗する。
   - git の衝突で merge できなければ、そのことがわかる形で失敗する。
 - close する。理由を、人が読む文で、close する主体の名で残す。
-- `approve` か merge が今の `main` での検査に通らなかった理由を、pull request のふつうのコメントに残す。
+- `approve` か merge が今の `main` での確かめに通らなかった理由を、pull request のふつうのコメントに残す。
 
 ## レビュー
 

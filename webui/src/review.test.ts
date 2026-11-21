@@ -50,7 +50,7 @@ describe('レビューを送る', () => {
     expect(callOf().body).toEqual({ kind: 'approve', commit: 'c1' });
     expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けました。merge は、別に行います。' });
   });
-  it('今の main での検査に通らなければ、approve を出さなかった理由を示し、apply request を読み直す', async () => {
+  it('今の main での確かめに通らなければ、approve を出さなかった理由を示し、apply request を読み直す', async () => {
     stubFetch((url, init) => (init?.method === 'POST' ? problem(409, 'stale_target', 'd') : ok(ar())));
     const { submitReview } = await load();
     const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
@@ -120,8 +120,8 @@ describe('approve の前に示すこと', () => {
     expect(ownNotice(ar({ opened_by_caller: true }))).toBe(OWN_AR);
     expect(ownNotice(ar({ opened_by_caller: false }))).toBeNull();
     expect(ownNotice(ar())).toBeNull();
-    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。', '今の main で検査し、通ったときだけ approve を出します。merge は、別に行います。'], own: OWN_AR });
-    expect(approveSummary(ar({ target: 'feature' }), 'c1', 0).lines[1]).toBe('main 向きではないので、Logiforge は検査しません。');
+    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。', '今の main で確かめ、通ったときだけ approve を出します。merge は、別に行います。'], own: OWN_AR });
+    expect(approveSummary(ar({ target: 'feature' }), 'c1', 0).lines[1]).toBe('main 向きではないので、Logiforge は確かめません。');
   });
 });
 

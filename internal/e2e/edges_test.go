@@ -58,7 +58,7 @@ func TestE2EEdges(t *testing.T) {
 		if got, code, _ := reviewer.approveMerge(x.ID, 1); code != 0 || got.State != "merged" {
 			t.Fatalf("x：%+v", got)
 		}
-		// y の approve は、今の main での検査に通らないので、出さない。修正待ちになる。
+		// y の approve は、今の main での確かめに通らないので、出さない。修正待ちになる。
 		_, code, out := reviewer.review(y.ID, "approve", 1)
 		if code != 1 || !strings.Contains(out, "stale_target") {
 			t.Fatalf("y：%d %s", code, out)
