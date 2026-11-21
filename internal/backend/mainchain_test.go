@@ -14,7 +14,7 @@ import (
 )
 
 // main が短く書き換えられたあと、main の並びの索引に古い SHA が残っていても、並びにあると判定しない
-// （design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+// （design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
 func TestMainNumberAfterShortRewrite(t *testing.T) {
 	ctx := context.Background()
 	r := &remote{t: t, dir: t.TempDir()}
@@ -68,7 +68,7 @@ func syncFixture(t *testing.T, f *fixture) {
 	w.SyncAll(context.Background())
 }
 
-// ノードの履歴は、ページに分けて、コミットの記録の previous をたどって読む。最後のページで終わる。
+// ノードの履歴は、ページに分けて、コミットの情報の previous をたどって読む。最後のページで終わる。
 // カーソルが、そのノードを変えたコミットでなければ、validation_failed にする。
 func TestNodeHistoryPaging(t *testing.T) {
 	ctx := context.Background()

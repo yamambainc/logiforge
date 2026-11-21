@@ -44,9 +44,12 @@ type App struct {
 	PendingWait time.Duration
 
 	json bool
-	// invalid は、最新のコミットが valid でないとき、API が示している木のコミット（ヘッダー Logiforge-Latest-Invalid の値）。
-	// 空でなければ、コマンドは結果を書いたうえで、標準エラーに警告を書く。終了コードは変えない（design/backend/invalid-main.md の「CLI」）。
-	invalid string
+	// invalid は、最新のコミットが valid でないことを知ったかである。知ったら、コマンドは結果を書いたうえで、標準エラーに警告を書く。
+	// 終了コードは変えない（design/backend/invalid-main.md の「CLI」）。
+	// shown は、API が示している木のコミット（ヘッダー Logiforge-Latest-Invalid の値か、Repository の valid_commit）。
+	// valid なコミットがないと Repository で知ったときは空。since は、Repository の invalid_since（ヘッダーだけなら空）。
+	invalid      bool
+	shown, since string
 	// errorExtra は、エラーの --json の出力（Problem）に足す項目である（例：ar create の idempotency_key）。
 	errorExtra map[string]any
 }
@@ -92,7 +95,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		rest = append(rest, arg)
 	}
 	err := a.dispatch(ctx, rest)
-	if a.invalid != "" {
+	if a.invalid {
 		a.writeInvalid()
 	}
 	if err == nil {
@@ -416,7 +419,10 @@ func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 		return response{}, p
 	}
 	if v := res.Header.Get("Logiforge-Latest-Invalid"); v != "" {
-		a.invalid = v
+		a.invalid = true
+		if a.shown == "" && a.since == "" {
+			a.shown = v
+		}
 	}
 	return response{body: data, pending: res.Header.Get("Logiforge-Pending-Commit"), status: res.StatusCode}, nil
 }
@@ -595,14 +601,24 @@ func (a *App) checkInvalidOf(ctx context.Context, name string) {
 		InvalidSince *string `json:"invalid_since"`
 	}
 	if err := a.getJSON(ctx, repoPath(name), nil, &r); err == nil && r.InvalidSince != nil {
-		a.invalid = *r.InvalidSince
+		a.invalid, a.since, a.shown = true, *r.InvalidSince, ""
 		if r.ValidCommit != nil {
-			a.invalid = *r.ValidCommit
+			a.shown = *r.ValidCommit
 		}
 	}
 }
 
 // writeInvalid は、最新のコミットが valid でないことの警告を、標準エラーに書く。結果は標準出力に書いてあるので、混ぜない。
+// 文は、design/backend/invalid-main.md の「CLI」に合わせる。
 func (a *App) writeInvalid() {
-	fmt.Fprintf(a.Stderr, "logiforge: 警告：最新のコミットは valid でない。API は、コミット %s の木を示している（直すまで、木を読むコマンドはこの木を返す）\n", a.invalid)
+	msg := "logiforge: 警告：最新のコミットは valid でない"
+	if a.since != "" {
+		msg += "（コミット " + a.since + " から）"
+	}
+	if a.shown != "" {
+		msg += "。API は、コミット " + a.shown + " の木を示している"
+	} else {
+		msg += "。valid なコミットがないので、API は最新のコミットの木を示している"
+	}
+	fmt.Fprintln(a.Stderr, msg)
 }

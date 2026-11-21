@@ -10,7 +10,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
-// GetCommit は、コミットの記録を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
+// GetCommit は、コミットの情報を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
 // なければ ErrNotFound。
 func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit, error) {
 	b, err := r.Get(ctx, CommitKey(repo, sha))
@@ -31,7 +31,7 @@ func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit
 	return d.Commit, nil
 }
 
-// GetMain は、main のコミットの記録とスナップショットツリーを読む。どちらかがなければ ErrNotFound。
+// GetMain は、main のコミットの情報とスナップショットツリーを読む。どちらかがなければ ErrNotFound。
 func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, error) {
 	c, err := GetCommit(ctx, r, repo, sha)
 	if err != nil {
@@ -67,7 +67,7 @@ func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branc
 	return &br, nil
 }
 
-// PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot/README.md）。
+// PutCommit は、main のコミットの情報だけを置く。main のすべてのコミットに置く（design/backend/snapshot/README.md）。
 func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) error {
 	b, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: c})
 	if err != nil {
@@ -108,7 +108,7 @@ func HasSnapshotTree(ctx context.Context, r Reader, repo, sha string) (bool, err
 	return err == nil, err
 }
 
-// PutBranch は、ブランチの先頭のスナップショット（コミットの記録と差分）を、フォーマットバージョンの接頭辞の外に 1 つにまとめて置く。
+// PutBranch は、ブランチの先頭のスナップショット（コミットの情報と差分）を、フォーマットバージョンの接頭辞の外に 1 つにまとめて置く。
 func PutBranch(ctx context.Context, w Writer, repo string, b *snapshot.Branch) error {
 	b.FormatVersion = snapshot.FormatVersion
 	data, err := snapshot.Encode(b)
@@ -163,7 +163,7 @@ func MoveLegacyBranchSnapshots(ctx context.Context, w Writer, repo string) (int,
 	return moved, nil
 }
 
-// readLegacyBranch は、古いフォーマットバージョンの下の、コミットの記録と差分を読み、1 つのブランチのスナップショットにする。
+// readLegacyBranch は、古いフォーマットバージョンの下の、コミットの情報と差分を読み、1 つのブランチのスナップショットにする。
 func readLegacyBranch(ctx context.Context, r Reader, prefix, repo, sha string) (*snapshot.Branch, error) {
 	cb, err := r.Get(ctx, prefix+repo+"/commits/"+sha)
 	if err != nil {

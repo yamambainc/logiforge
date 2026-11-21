@@ -564,7 +564,7 @@ func (b *Backend) GetAnswerAttachment(ctx context.Context, c Caller, repo, id, s
 }
 
 // ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「WebUI のための API」）。
-// カーソルは、次に読むコミットの number である。main の並びの索引とコミットの記録から引く。
+// カーソルは、次に読むコミットの number である。main の並びの索引とコミットの情報から引く。
 func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string, limit int) (Page[MainCommit], error) {
 	limit, err := CheckLimit(limit)
 	if err != nil {
@@ -618,7 +618,7 @@ func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string
 // listCommitsParallel は、listCommits で並べて読む数である。
 const listCommitsParallel = 12
 
-// mainCommit は、番号の main のコミットを、main の並びの索引とコミットの記録から引く。どちらかがなければ、worker が書いている途中なので snapshot_pending。
+// mainCommit は、番号の main のコミットを、main の並びの索引とコミットの情報から引く。どちらかがなければ、worker が書いている途中なので snapshot_pending。
 func (b *Backend) mainCommit(ctx context.Context, repo string, num int) (MainCommit, error) {
 	sha, err := b.Snap.MainAt(ctx, repo, num)
 	if err == nil {

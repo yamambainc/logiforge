@@ -279,7 +279,7 @@ func (v *view) warnings() []string {
 			out = append(out, h.Revision+"：このコミットで、木の不変条件が破れた")
 		}
 		if h.WorkerWarned {
-			out = append(out, h.Revision+"：反映の対象ノードの重なり、または読めないファイルの警告がある")
+			out = append(out, h.Revision+"：反映の対象ノードの重なりの警告がある")
 		}
 	}
 	return out

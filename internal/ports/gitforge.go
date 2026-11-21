@@ -347,7 +347,7 @@ func CheckDirectories(rs []Repository) error {
 		byGit[key] = append(byGit[key], dir)
 	}
 	// 同じ git リポジトリを、全体の repository とディレクトリの repository の両方には登録しない。
-	// なぜ：全体の repository は、ディレクトリの repository の反映を、反映によらないものとして壊れた状態になるから。
+	// なぜ：全体の repository の木に、ディレクトリの repository のファイルが木の外のファイルとして入り、valid でなくなるから。
 	for key := range byGit {
 		if whole[key] {
 			return fmt.Errorf("git リポジトリ %s が、全体の repository とディレクトリの repository の両方に登録されている", key)

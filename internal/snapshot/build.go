@@ -9,10 +9,6 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// RuleUnreadable は、main のコミットの木のファイルを、worker が読めなかったことである。そのコミットは valid でない
-// （design/backend/invalid-main.md の「valid」）。
-const RuleUnreadable tree.Rule = "unreadable"
-
 // TrailerInit は、repository の用意で置いたコミットの trailer である（design/adapters/github.md）。
 // repository の用意の送り直しを見分けるのに使う。そのコミットが valid かには使わない。
 const TrailerInit = "Logiforge-Init"
@@ -23,7 +19,7 @@ const MaxInitCommits = 2
 // TrailerMigratedFrom は、別リポジトリ方式から移したときの、用意のコミットの trailer である（design/directory/migrate.md）。
 const TrailerMigratedFrom = "Logiforge-Migrated-From"
 
-// BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
+// BuildMain は、main のコミットの情報とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。
 // 親から変わったパスは、親のスナップショットツリーのファイルと比べて求める。新しく破れた不変条件も、親と比べて警告にする。
 // worker は、Index と BuildSnapshotTree で、コミットを 1 つずつ取り込む（design/backend/worker/README.md）。これは、その 1 コミット分をまとめたものである。

@@ -89,6 +89,8 @@ type Worker struct {
 	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
 	repos []ports.Repository
+	// testApplyChanges は、テストが、git からファイルを読むところを差し替える（読めないときの振る舞いを確かめるため）。
+	testApplyChanges func(ctx context.Context, g *gitx.Repo, files tree.Files, changes []gitx.Change) (tree.Files, error)
 }
 
 // New は、worker を作る。
@@ -400,7 +402,7 @@ func (w *Worker) moveLegacy(ctx context.Context, repo string) error {
 }
 
 // syncMain は、main の、latest より新しいコミットを、古い順に 1 つずつ取り込む（design/backend/worker/patrol.md の「すること」）。
-// 1 つのコミットごとに、コミットの記録、main の並びの索引、スナップショットツリーを置き、latest をそのコミットに進める。
+// 1 つのコミットごとに、コミットの情報、main の並びの索引、スナップショットツリーを置き、latest をそのコミットに進める。
 // スナップショットツリーは、1 つ前のコミットのスナップショットツリーのファイルに、そのコミットの差分を重ねて作る。
 func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository, mainSHA string) error {
 	repo := r.Name
@@ -492,16 +494,11 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			paths[j] = ch.Path
 		}
 		info := workcopy.CommitInfo(c)
-		// 木のファイルを読めなくても、取り込みを止めない。そのコミットを valid でないスナップショットにする（design/backend/invalid-main.md の「valid」）。
-		var unreadable error
-		next, err := g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			unreadable, next = err, withoutContent(files, changes)
+		// 大きさの上限を超えるファイルは、中身を読まない。木の検査が too_large にするので、そのコミットは valid でない
+		// （design/backend/invalid-main.md の「valid」）。git が読めないときは、取り込まずに、次の見回りでやり直す。
+		if files, err = w.applyChanges(ctx, g, files, changes); err != nil {
+			return fmt.Errorf("%s: %w", sha, err)
 		}
-		files = next
 		if version > 0 {
 			if info.ApplyRequest, info.MergedHead, err = w.mergedApplyRequest(ctx, r, sha, info.CommittedAt); err != nil {
 				return fmt.Errorf("%s を merge した pull request を探せない: %w", sha, err)
@@ -510,7 +507,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
 		// trailer は、用意のコミットを置ける人ならだれでも書けるので、確かめてから書く：移したコミットが元の latest で、
 		// 用意のコミットの tree/ と artifacts/ が、元のそのスナップショットと同じで、元の git リポジトリが archive されていること。
-		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && from != "" && unreadable == nil {
+		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && from != "" {
 			if src, commit, _ := strings.Cut(from, " "); src != "" && src != repo && w.migratedFromMatches(ctx, src, commit, files) {
 				// 1 つの元は、1 つの先にだけ移す。すでにほかの先があれば、上書きせずに警告する。
 				switch prev, err := store.GetMigratedTo(ctx, w.store, src); {
@@ -526,10 +523,6 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			}
 		}
 		rec := x.Record(info, paths)
-		if unreadable != nil {
-			w.cfg.Log.Warn("main のコミットのファイルを読めない。valid でないスナップショットにする", "repository", repo, "commit", sha, "err", unreadable)
-			x.MarkUnreadable(&rec, tree.Violation{Rule: snapshot.RuleUnreadable, Node: sha, Detail: "ファイルを読めない：" + unreadable.Error()})
-		}
 		if err := w.putArtifacts(ctx, repo, files, paths); err != nil {
 			return err
 		}
@@ -546,7 +539,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		}
 		t.Warned = x.Warned()
 		prevTree = t
-		// コミットの記録、main の並びの索引、スナップショットツリーの順に置き、最後に latest を進める。
+		// コミットの情報、main の並びの索引、スナップショットツリーの順に置き、最後に latest を進める。
 		if err := store.PutCommit(ctx, w.store, repo, rec); err != nil {
 			return err
 		}
@@ -624,19 +617,12 @@ func (w *Worker) mergedApplyRequest(ctx context.Context, r ports.Repository, sha
 	return "", "", nil
 }
 
-// withoutContent は、parent に changes を、中身を読まずに重ねる。読めないファイルは、中身のないファイルになる。
-func withoutContent(parent tree.Files, changes []gitx.Change) tree.Files {
-	next := tree.Files{}
-	for p, f := range parent {
-		next[p] = f
+// applyChanges は、files に changes を重ね、変わったファイルの中身を git から読む。テストは、testApplyChanges で差し替える。
+func (w *Worker) applyChanges(ctx context.Context, g *gitx.Repo, files tree.Files, changes []gitx.Change) (tree.Files, error) {
+	if w.testApplyChanges != nil {
+		return w.testApplyChanges(ctx, g, files, changes)
 	}
-	for _, c := range changes {
-		delete(next, c.Path)
-		if c.Status != "D" {
-			next[c.Path] = tree.File{Path: c.Path, Mode: c.NewMode, SHA: c.NewSHA}
-		}
-	}
-	return next
+	return g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize)
 }
 
 func trailerOf(info snapshot.CommitInfo, key string) string {
@@ -654,7 +640,7 @@ const mergeLookupGrace = 60 * time.Second
 
 // overlap は、反映のコミットについて、対象ノードと、加わった検証結果が引用した部分木が、その base のあとに別の反映で変わっていないかを確かめる。
 // base は、反映した先頭のコミット（merge の pull request の先頭のコミット）と、反映の直前の main の分かれた点である。
-// c は、記録を作ったばかりの反映のコミットで、その親までは、コミットの記録と main の並びの索引が置いてある。
+// c は、記録を作ったばかりの反映のコミットで、その親までは、コミットの情報と main の並びの索引が置いてある。
 // files は c の木、prev は 1 つ前のコミットのスナップショットツリーである。
 func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snapshot.Commit, files tree.Files, prev *snapshot.SnapshotTree) []tree.Violation {
 	if snapshot.ApplyRequestOf(c) == "" {

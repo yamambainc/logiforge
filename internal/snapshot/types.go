@@ -40,7 +40,7 @@ type CommitInfo struct {
 	MergedHead   string
 }
 
-// Commit は、コミットの記録である（数 KB）。
+// Commit は、コミットの情報である（数 KB）。
 type Commit struct {
 	Revision string `json:"revision"`
 	// Parent は、main では first-parent のコミット（最初のコミットでは nil）、branch では base。
@@ -158,7 +158,7 @@ type SnapshotTree struct {
 	// Warned は、最初のコミットからこのコミットまでのうち、警告のある main のコミットである（番号の順）。
 	// history は持たない。コミットの数とともに伸びるからである（design/backend/snapshot/README.md の「中身」）。
 	Warned []WarnedEntry `json:"warned,omitempty"`
-	// Violations は、このスナップショットツリーで破れている不変条件と、読めないファイルのすべてである（前のコミットから破れているものを含む）。
+	// Violations は、このスナップショットツリーで破れている不変条件のすべてである（前のコミットから破れているものを含む）。大きすぎて中身を読まないファイルは too_large である。
 	Violations []tree.Violation `json:"violations,omitempty"`
 	// Valid は、Violations がないことである（design/backend/invalid-main.md の「valid」）。
 	Valid bool `json:"valid"`
@@ -209,7 +209,7 @@ type WarnedEntry struct {
 	Revision string `json:"revision"`
 	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
 	NewlyBroken bool `json:"newly_broken,omitempty"`
-	// WorkerWarned は、対象ノードの重なりや読めないファイルなど、コミットを読んだ worker が見つけた警告があることである。
+	// WorkerWarned は、対象ノードの重なりなど、コミットを読んだ worker が見つけた警告があることである。
 	WorkerWarned bool `json:"worker_warned,omitempty"`
 }
 

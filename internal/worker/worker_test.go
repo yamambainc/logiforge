@@ -365,7 +365,7 @@ func TestSecondWorkerDoesNotStart(t *testing.T) {
 	again()
 }
 
-// 溜まったコミットをまとめて取り込んでも、1 つずつ取り込んでも、コミットの記録とスナップショットツリーは同じになる。
+// 溜まったコミットをまとめて取り込んでも、1 つずつ取り込んでも、コミットの情報とスナップショットツリーは同じになる。
 // どちらも、古い順に 1 つずつ、すべてのコミットにスナップショットツリーを作るからである。
 func TestInitialImportMatchesIncremental(t *testing.T) {
 	ctx := context.Background()
@@ -453,7 +453,7 @@ func TestResumeFromLatest(t *testing.T) {
 	r.write("NOTES.md", []byte("新しく破れた"))
 	last := r.commit("反映\n\nTest-Apply-Request: apr_last")
 	syncRepo(t, w)
-	// 3 番目のコミットの記録と索引を置き、スナップショットツリーを置く前に止まった状態にする：
+	// 3 番目のコミットの情報と索引を置き、スナップショットツリーを置く前に止まった状態にする：
 	// 3 番目より先は記録も消し、3 番目はスナップショットツリーだけを消し、latest を 2 番目に戻す。
 	for i, sha := range append(shas[2:], last) {
 		keys := []string{store.SnapshotKey("q", sha)}

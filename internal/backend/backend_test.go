@@ -665,7 +665,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	}
 }
 
-// GetCommitForTest は、コミットの記録の trailer を読む。
+// GetCommitForTest は、コミットの情報の trailer を読む。
 func (b *Backend) GetCommitForTest(ctx context.Context, repo, sha string) ([]snapshotTrailer, error) {
 	c, err := b.Snap.Commit(ctx, repo, sha)
 	return c.Trailers, err

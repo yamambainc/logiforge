@@ -3,9 +3,11 @@ package worker
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/yamambainc/logiforge/internal/gitx"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/store"
 	"github.com/yamambainc/logiforge/internal/tree"
@@ -143,4 +145,74 @@ func TestRootIsJustValidOrNot(t *testing.T) {
 			t.Errorf("valid でない根：%q %q", m.SnapshotTree.ValidCommit, m.SnapshotTree.InvalidSince)
 		}
 	}
+}
+
+// git がファイルを読めないとき（一時的な誤りなど）は、取り込まずに、次の見回りでやり直す。latest を進めない。
+func TestReadFailureRetries(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	st := &store.Dir{Root: t.TempDir()}
+	w := New(Config{Dir: t.TempDir()}, source{r.dir}, st)
+	sync := func() error { return w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}) }
+	if err := sync(); err != nil {
+		t.Fatal(err)
+	}
+	root, _ := store.GetLatest(ctx, st, "q")
+	r.write(h1+"/background.md", []byte("背景\n"))
+	c := r.commit("背景")
+	w.testApplyChanges = func(context.Context, *gitx.Repo, tree.Files, []gitx.Change) (tree.Files, error) {
+		return nil, errors.New("git cat-file が止まった")
+	}
+	if err := sync(); err == nil {
+		t.Fatal("読めないのに取り込んだ")
+	}
+	if l, _ := store.GetLatest(ctx, st, "q"); l != root {
+		t.Fatalf("latest が進んだ：%s", l)
+	}
+	w.testApplyChanges = nil
+	if err := sync(); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := store.GetMain(ctx, st, "q", c); err != nil || !m.SnapshotTree.Valid {
+		t.Fatalf("やり直したあと：%+v %v", m, err)
+	}
+}
+
+// 大きさの上限を超えるファイルは、中身を読まない。そのコミットは too_large で valid でなく、
+// そのファイルを変えないあとのコミットも、too_large のまま valid でない（形の誤りにも、valid にもならない）。
+func TestTooLargeStaysInvalid(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	st := &store.Dir{Root: t.TempDir()}
+	w := New(Config{Dir: t.TempDir(), MaxFileSize: 64}, source{r.dir}, st)
+	sync := func() {
+		t.Helper()
+		if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sync()
+	r.write(h1+"/background.md", []byte(strings.Repeat("長い背景\n", 20)))
+	big := r.commit("大きい背景")
+	r.write(h2+"/background.md", []byte("小さい\n"))
+	after := r.commit("ほかのファイル")
+	sync()
+	for _, sha := range []string{big, after} {
+		m, err := store.GetMain(ctx, st, "q", sha)
+		if err != nil || m.SnapshotTree.Valid || !hasViolation(m.SnapshotTree.Violations, tree.RuleTooLarge) || hasViolation(m.SnapshotTree.Violations, tree.RuleParse) {
+			t.Fatalf("%s：%+v %v", sha, m.SnapshotTree.Violations, err)
+		}
+		if m.SnapshotTree.InvalidSince != big {
+			t.Fatalf("%s の invalid_since：%s", sha, m.SnapshotTree.InvalidSince)
+		}
+	}
+}
+
+func hasViolation(vs []tree.Violation, rule tree.Rule) bool {
+	for _, v := range vs {
+		if v.Rule == rule {
+			return true
+		}
+	}
+	return false
 }

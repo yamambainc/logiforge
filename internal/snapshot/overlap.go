@@ -16,5 +16,5 @@ const (
 // worker が、取り込むときに、反映した pull request の一覧で探したものである（design/backend/invalid-main.md の「どの apply request の反映か」）。
 func ApplyRequestOf(c Commit) string { return c.ApplyRequest }
 
-// VersionCommit は、反映のコミットの記録から、反映した先頭のコミットの SHA を返す。なければ空。
+// VersionCommit は、反映のコミットの情報から、反映した先頭のコミットの SHA を返す。なければ空。
 func VersionCommit(c Commit) string { return c.MergedHead }

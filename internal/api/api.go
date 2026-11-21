@@ -481,7 +481,7 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// readsTree は、route が repository の木を読むものか（壊れていれば、最後に正しかった時点の木を返すもの）を返す。
+// readsTree は、route が repository の木を読むものか（最新のコミットが valid でなければ、valid_commit の木を返すもの）を返す。
 // apply request と人への依頼を読むものは、含めない。
 func readsTree(pattern string) bool {
 	return strings.HasSuffix(pattern, "/{repository}") || strings.Contains(pattern, "/tree") ||

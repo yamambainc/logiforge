@@ -148,7 +148,7 @@ type phases struct {
 	write    time.Duration // 置き場に書く
 	treeSize int           // 圧縮後のスナップショットツリーの大きさ
 	rawSize  int           // 圧縮前の JSON の大きさ
-	commit   int           // 圧縮後のコミットの記録の大きさ
+	commit   int           // 圧縮後のコミットの情報の大きさ
 }
 
 func (p phases) withoutPut() time.Duration { return p.apply + p.build }
@@ -362,7 +362,7 @@ func TestSnapshotTree(t *testing.T) {
 	}
 	t.Logf("go %s, GOMAXPROCS %d, main のコミット %d", runtime.Version(), runtime.GOMAXPROCS(0), commits)
 	var out strings.Builder
-	out.WriteString("\n| ノード | git 読み | ApplyChanges | BuildSnapshotTree | PutSnapshotTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildSnapshotTree | 全体 PutSnapshotTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの記録 | 全コミット取り込み | 置き場の合計 |\n")
+	out.WriteString("\n| ノード | git 読み | ApplyChanges | BuildSnapshotTree | PutSnapshotTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildSnapshotTree | 全体 PutSnapshotTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの情報 | 全コミット取り込み | 置き場の合計 |\n")
 	out.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	sizes := []int{100, 1000, 4000}
 	if v := os.Getenv("BENCH_NODES"); v != "" { // 例：BENCH_NODES=1000,4000

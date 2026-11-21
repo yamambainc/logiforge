@@ -20,7 +20,7 @@ type SnapshotStore interface {
 	Latest(ctx context.Context, repo string) (string, error)
 	Commit(ctx context.Context, repo, sha string) (snapshot.Commit, error)
 	Main(ctx context.Context, repo, sha string) (*snapshot.Main, error)
-	// MainAt は、main の並びの索引から、番号 number の main のコミットの SHA を返す（design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+	// MainAt は、main の並びの索引から、番号 number の main のコミットの SHA を返す（design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
 	MainAt(ctx context.Context, repo string, number int) (string, error)
 	Branch(ctx context.Context, repo, sha string) (*snapshot.Branch, error)
 	BranchHistory(ctx context.Context, repo, branch string) (store.BranchHistory, error)

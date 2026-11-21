@@ -12,7 +12,7 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// UserPromptRevision は、user（WebUI）のレビューの記録に書く、プロンプトのリビジョンである（design/api/endpoints/apply-request/review.md）。
+// UserPromptRevision は、user（WebUI）のレビューの、プロンプトのリビジョンである（design/api/endpoints/apply-request/review.md）。
 const UserPromptRevision = "-"
 
 // NewReview は、レビューの要求である。

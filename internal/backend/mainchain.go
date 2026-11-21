@@ -9,8 +9,8 @@ import (
 )
 
 // mainNumber は、sha が、latest（v）までの main の並びにあれば、その番号を返す。なければ 0
-// （design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
-// コミットの記録の番号が latest の番号以下で、かつ main の並びの索引のその番号が sha であるときだけ、並びにあるとする。
+// （design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
+// コミットの情報の番号が latest の番号以下で、かつ main の並びの索引のその番号が sha であるときだけ、並びにあるとする。
 func (b *Backend) mainNumber(ctx context.Context, v *view, sha string) (int, error) {
 	if sha == v.revision() {
 		return v.main.Commit.Number, nil
@@ -38,7 +38,7 @@ func (b *Backend) mainNumber(ctx context.Context, v *view, sha string) (int, err
 	return c.Number, nil
 }
 
-// walkNodeChanges は、ノード id を変えた main のコミットを、from から新しい順に、コミットの記録の previous をたどって fn に渡す
+// walkNodeChanges は、ノード id を変えた main のコミットを、from から新しい順に、コミットの情報の previous をたどって fn に渡す
 // （design/backend/snapshot/main.md の「ノードを変えたコミット」）。fn が false を返すか、最初のコミットに着いたら終わる。
 func (b *Backend) walkNodeChanges(ctx context.Context, repo, id string, from snapshot.Rev, fn func(r snapshot.Rev, c snapshot.Commit, ch snapshot.NodeChange) bool) error {
 	for r := from; r.Number > 0; {
