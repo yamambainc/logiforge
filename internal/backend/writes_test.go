@@ -177,7 +177,9 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 }
 
 // mentionsBase は、利用者が読む文に、内部の語の「base」があるかを返す。git の操作の名前の rebase は除く。
-func mentionsBase(s string) bool { return strings.Contains(strings.ReplaceAll(s, "rebase", ""), "base") }
+func mentionsBase(s string) bool {
+	return strings.Contains(strings.ReplaceAll(s, "rebase", ""), "base")
+}
 
 // 同じ apply request で作る仮説を対象にする操作は、stale_target にしない。その仮説は今の main にないので、base のあとに変わりようがない
 // （design/backend/merge.md の「対象ノードの変化」）。本番の apply request #16（論理木の初版）の形である。
