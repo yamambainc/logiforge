@@ -210,6 +210,28 @@ func TestMergeTargetAddedInSameApplyRequest(t *testing.T) {
 	}
 }
 
+// main が書き換えられて対象ノードが消えたら、今の main にないノードとして飛ばしても、反映しない。
+// 止めるのは、今の main に差分を重ねた木の検査である（design/backend/checks.md の「head の木で確かめること」）。
+func TestMergeTargetRemovedFromMain(t *testing.T) {
+	cases := map[string]map[string][]byte{
+		"背景情報の追加": {dH2 + "/background.md": []byte("一\n")},
+		"検証結果を出す": verdictFile(dH2, "v-9999999999", true),
+	}
+	for name, files := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := live(t)
+			id := create(t, f, "x", "s3", files)
+			// main の先頭のコミットを、H2 を消したものに書き換える（force push に当たる）。
+			f.r.git("rm", "-r", "--quiet", dH2)
+			f.r.git("commit", "--quiet", "--amend", "-m", "H2 を消して書き換えた")
+			res, err := approve(t, f, id)
+			if r := lastFailure(t, res, err); r != "conflict" && r != "invariant_violation" {
+				t.Fatalf("got %s", r)
+			}
+		})
+	}
+}
+
 // ブランチが main から分かれたコミットが、今の main の履歴になければ（main が書き換えられた）、確かめられないので stale_target にする。
 // 説明は、変わったとは書かず、分かれたコミットが今の main の履歴にないと書く。
 func TestMergeFailureBaseNotInMain(t *testing.T) {
