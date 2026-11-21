@@ -741,10 +741,15 @@ func (f *fakeGitHub) mainContent(w http.ResponseWriter, path string) {
 	var entries []map[string]string
 	for k := range f.files {
 		if rest, ok := strings.CutPrefix(k, path+"/"); ok {
-			name, _, _ := strings.Cut(rest, "/")
+			name, _, nested := strings.Cut(rest, "/")
 			if !seen[name] {
 				seen[name] = true
-				entries = append(entries, map[string]string{"name": name, "type": "dir"})
+				// 本物と同じく、ファイルは file、その下にまだあるものは dir。
+				typ := "file"
+				if nested {
+					typ = "dir"
+				}
+				entries = append(entries, map[string]string{"name": name, "type": typ})
 			}
 		}
 	}
