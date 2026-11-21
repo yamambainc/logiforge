@@ -7,7 +7,7 @@
 
 | ポート | 扱うもの | ページ |
 |---|---|---|
-| GitForge | repository の用意、提案（pull request）の作成・反映・close、レビュー、人への依頼 | [GitForge](gitforge.md) |
+| GitForge | repository の用意、apply request（pull request）の作成・反映・close、レビュー、人への依頼 | [GitForge](gitforge.md) |
 | スナップショットの置き場 | スナップショットとブランチの履歴を読む（書くのは worker） | [スナップショットの置き場](snapshot-store.md) |
 | 認証 | API の要求を送った主体 | [認証](authentication.md) |
 | 設定の DB | 設定を読み書きする（worker は読むだけ） | [設定](../../settings/README.md) |

@@ -13,6 +13,7 @@
   - CLI は、ファイルのひな形を作り、手元で検査し、push したブランチから [apply request](../apply-request/README.md) を作るか、既存の apply request を更新する。
   - なぜ：正式なデータを変えられるのは、承認された apply request の反映だけだから（[変更の経路](../tree/README.md)）。
   - なぜ git とセットか：コミットや push は git に任せ、エージェントが使い慣れた手順のままにするため。
+- 木を読むコマンドは、最新のコミットが valid でなければ、標準エラーに警告を書く。止めずに続け、終了コードは変えない（[main への直接の変更](../apply-request/README.md#main-への直接の変更)）。
 - CLI から、[着手できる作業](../work/README.md) を問い合わせられる。
 
 ## 使う主体

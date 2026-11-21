@@ -44,7 +44,7 @@ flowchart TB
   - なぜ：同じことを 2 か所に記録すると、食い違ったときにどちらが正しいか決まらないから。
 - 履歴は append-only にする。
   - 書き換えも削除もしない。
-- 反映によらない変更が `main` に入ったら、Logiforge が見つけて、その repository を壊れた状態にする（[壊れた repository を直す](../apply-request/repair.md)）。
+- 反映によらない変更が `main` に入っても、Logiforge は受け入れ、履歴に残す（[main への直接の変更](../apply-request/README.md#main-への直接の変更)）。
 - ノードごとの履歴を表示できる。
 - 任意の時点の木を表示できる。
 

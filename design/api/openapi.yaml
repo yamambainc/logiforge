@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Logiforge のバックエンドの API。
-    全体に共通する決まり（主体と認証、セッション ID、コミット、エラー）は design/api/README.md に、ページングは design/api/paging.md に書く。
+    全体に共通する決まり（主体と認証、コミット、エラー）は design/api/README.md に、ページングは design/api/paging.md に書く。
     要件は docs/ が正本である。
     主文・タイトル・概要の文字数の上限と数え方は、../../docs/tree/README.md に従う。
   license:
@@ -279,7 +279,6 @@ paths:
       description: |
         WebUI のサインインで得たトークンを求める。
         トークンが、Logiforge の GitHub App か Forgejo の OAuth2 のアプリケーションのものでなければ unauthenticated。
-        記録の署名の鍵がなければ、1 つ作る（../../design/settings/setup.md の「流れ」）。
       security:
         - bearerAuth: []
           setupToken: []
@@ -386,35 +385,6 @@ paths:
         '204':
           description: 外した
         '4XX': { $ref: '#/components/responses/Problem' }
-  /settings/record-keys:
-    get:
-      tags: [settings]
-      operationId: listRecordKeys
-      summary: 記録の署名の鍵の一覧（user だけ。秘密鍵は返さない）
-      responses:
-        '200':
-          description: 鍵の一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/RecordKey' }
-        '4XX': { $ref: '#/components/responses/Problem' }
-    post:
-      tags: [settings]
-      operationId: createRecordKey
-      summary: 新しい記録の署名の鍵を作り、書くときの鍵にする（user だけ）。古い鍵の公開鍵は残す
-      responses:
-        '201':
-          description: 作った鍵
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/RecordKey' }
-        '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories:
     get:
@@ -445,7 +415,7 @@ paths:
       description: |
         repository の用意の手順は ../../design/backend/README.md に従う。
         GitForge 側の参照は、GitForge アダプタから求める（../../design/adapters/README.md）。
-        送り直しは、repository の用意の判定で見分ける。Idempotency-Key は使わない。
+        送り直しは、repository の用意の判定で見分ける。
       requestBody:
         required: true
         content:
@@ -482,40 +452,13 @@ paths:
       responses:
         '200':
           description: repository
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Repository' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
-  /repositories/{repository}/repair-files:
-    get:
-      tags: [repository]
-      operationId: getRepairFiles
-      summary: 壊れた repository の、最後に正しかった時点のファイル（CLI の repair revert が使う）
-      description: |
-        最後に正しかった時点のコミットの tree/ と artifacts/ のファイルを、スナップショットツリーと artifact の置き場から返す。
-        壊れていなければ not_found。設計は ../../design/backend/broken.md に従う
-      parameters:
-        - $ref: '#/components/parameters/RepositoryName'
-      responses:
-        '200':
-          description: ファイルの一覧
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [commit, files]
-                properties:
-                  commit: { type: string, description: 最後に正しかった時点のコミット }
-                  files:
-                    type: array
-                    items:
-                      type: object
-                      required: [path, content_base64]
-                      properties:
-                        path: { type: string }
-                        content_base64: { type: string }
-        '4XX': { $ref: '#/components/responses/Problem' }
   /repositories/{repository}/tree:
     parameters:
       - $ref: '#/components/parameters/RepositoryName'
@@ -529,6 +472,8 @@ paths:
       responses:
         '200':
           description: 木の概要。根がまだなければ 404
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Tree' }
@@ -558,6 +503,8 @@ paths:
       responses:
         '200':
           description: ノードの一覧
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema:
@@ -565,6 +512,8 @@ paths:
                 required: [commit, nodes]
                 properties:
                   commit: { $ref: '#/components/schemas/Commit' }
+                  valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+                  invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
                   nodes:
                     type: array
                     items: { $ref: '#/components/schemas/Node' }
@@ -580,6 +529,8 @@ paths:
       responses:
         '200':
           description: 判定の結果
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Completion' }
@@ -617,7 +568,7 @@ paths:
       operationId: listCommits
       summary: main のコミットの一覧（新しい順）
       description: |
-        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+        worker が取り込んだ main のコミットを、新しい順に返す（../../design/backend/snapshot/main.md）。
         カーソルは、次に読むコミットの number である。
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -652,6 +603,8 @@ paths:
       responses:
         '200':
           description: ノードの詳細
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/NodeDetail' }
@@ -714,8 +667,6 @@ paths:
         バックエンドが、作業用の git の複製からブランチを読んで検査する。worker を待たない（../../design/backend/apply-request/create.md の「作成」）。
         先頭のコミットのスナップショットは、worker がブランチを取り込んでから読む側に出る。それまで、そのコミットへのレビューは snapshot_pending になる。
       parameters:
-        - $ref: '#/components/parameters/SessionId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -725,11 +676,6 @@ paths:
               required: [branch]
               properties:
                 branch: { $ref: '#/components/schemas/BranchName' }
-                kind:
-                  type: string
-                  enum: [change, repair.revert, repair.accept]
-                  default: change
-                  description: 直すための apply request の種類（../../design/backend/broken.md）。指定しなければ、ふつうの apply request
                 commit:
                   $ref: '#/components/schemas/Commit'
                   description: 取り込むコミット。ブランチの今の先頭と違えば、validation_failed で受け付けない。指定しなければ、ブランチの今の先頭
@@ -765,13 +711,12 @@ paths:
     patch:
       tags: [apply-request]
       operationId: updateApplyRequest
-      summary: apply request の説明欄を書き換える（client なら、どのセッションからでもよい）
+      summary: apply request の説明欄を書き換える（client だけ）
       description: |
         新しいコミットは、利用者がブランチに push するだけで、この API は使わない（../../design/backend/apply-request/README.md）。
         この API は、説明欄だけを書き換える。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
-        - $ref: '#/components/parameters/SessionId'
       requestBody:
         required: true
         content:
@@ -795,18 +740,15 @@ paths:
     post:
       tags: [apply-request]
       operationId: reviewApplyRequest
-      summary: レビューを付ける（client と、その repository に Write がある user。差分を書いたどのセッションとも別のセッション）
+      summary: レビューを付ける（client と、その repository に Write がある user。pull request の作者とは別のアカウント）
       description: |
         user（WebUI）は、WebUI のサインインで得たトークンで呼ぶ。その repository に Write がなければ forbidden（../../design/settings/users.md の「WebUI からのレビュー」）。
         `approve` で反映の条件を満たしたら、この要求の中で反映する。
-        反映に失敗しても、エラーにはしない。応答の `apply_request.merge_failures` に理由が入る。
-        先頭のコミットに Logiforge-Session-Id: がなければ、approve は validation_failed で受け付けない（../../design/files/revisions.md の「セッション」）。
+        反映に失敗しても、エラーにはしない。応答の `merge_failure` に理由が入る。理由は、pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
         先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
-        レビューの鎖が切れていれば、not_open で受け付けない。opener は、close して、同じブランチから作り直す（../../design/backend/merge.md の「レビューの鎖が切れたとき」）。
-        reviewer の主体が、apply request を作った主体と同じなら、応答の apply_request.warnings に警告を入れる。
+        呼んだ主体が pull request の作者なら、GitForge が approve を拒む（../../design/adapters/pull-requests.md の「数える review」）。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
-        - $ref: '#/components/parameters/SessionId'
       requestBody:
         required: true
         content:
@@ -819,10 +761,12 @@ paths:
                 commit:
                   $ref: '#/components/schemas/Commit'
                   description: レビューした先頭のコミットの SHA（../../design/backend/apply-request/README.md）。ブランチの今の先頭のコミットと違えば commit_conflict で受け付けない
-                body: { type: string }
+                body:
+                  type: string
+                  description: review の本文。comment と request_changes では必須（GitForge が本文のない review を拒む）。空なら validation_failed で受け付けない。approve ではなくてよい
                 prompt_revision:
                   type: string
-                  description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない（記録には - を書く）
+                  description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない。review の本文の最後に、人が読む文で書く。読むときは返さない
       responses:
         '201':
           description: 付けたレビューと、その後の apply request
@@ -836,6 +780,9 @@ paths:
                 properties:
                   review: { $ref: '#/components/schemas/Review' }
                   apply_request: { $ref: '#/components/schemas/ApplyRequest' }
+                  merge_failure:
+                    $ref: '#/components/schemas/MergeFailure'
+                    description: この要求の中で反映しようとして、できなかったときだけ入る
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/apply-requests/{applyRequestId}/close:
@@ -846,11 +793,9 @@ paths:
       operationId: closeApplyRequest
       summary: apply request を close する（却下または取り下げ）
       description: |
-        差分を書いたいずれかのセッションからなら、取り下げとして扱う。
-        それ以外のセッションからなら、却下として扱う。
+        理由は、pull request のコメントに、人が読む文で書く（../../design/adapters/texts.md の「close のコメント」）。
       parameters:
         - $ref: '#/components/parameters/ApplyRequestId'
-        - $ref: '#/components/parameters/SessionId'
       requestBody:
         required: true
         content:
@@ -863,6 +808,27 @@ paths:
       responses:
         '200':
           description: close した apply request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/fixed:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    post:
+      tags: [apply-request]
+      operationId: markApplyRequestFixed
+      summary: 修正待ちの apply request を、直し終えたと申告する（opener だけ）
+      description: |
+        pull request のラベルを、修正待ちからレビュー待ちに付け替える。push はしない。
+        呼べるのは pull request の作者だけで、違えば forbidden。open でなければ not_open。
+        すでにレビュー待ちなら、何もせずに成功とする。
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+      responses:
+        '200':
+          description: 付け替えたあとの apply request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ApplyRequest' }
@@ -914,6 +880,8 @@ paths:
       responses:
         '200':
           description: 着手できる作業
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema:
@@ -921,6 +889,8 @@ paths:
                 required: [commit, counts, items, next_cursor]
                 properties:
                   commit: { $ref: '#/components/schemas/Commit' }
+                  valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+                  invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
                   counts:
                     type: object
                     description: 種類ごとの件数（ページに関わらず全体）
@@ -969,6 +939,8 @@ paths:
       responses:
         '200':
           description: 検証結果
+          headers:
+            Logiforge-Latest-Invalid: { $ref: '#/components/headers/LatestInvalid' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Verdict' }
@@ -1012,8 +984,6 @@ paths:
       operationId: createHumanRequest
       summary: 人への依頼を起票する（client だけ）
       parameters:
-        - $ref: '#/components/parameters/SessionId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -1082,7 +1052,7 @@ paths:
       operationId: answerHumanRequest
       summary: 人への依頼に回答する（user だけ。1 回だけ）
       description: |
-        送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする。Idempotency-Key は使わない。
+        送り直しは、回答がすでにあり、本文と回答した利用者が同じなら、成功とする。
         回答と添付は、git ではなく、GitForge の側に置く（../../design/files/artifacts.md）。
         GitForge がコメントにファイルを添付できない構成では、添付は link だけで、file は validation_failed で受け付けない。
       parameters:
@@ -1134,12 +1104,12 @@ components:
       name: applyRequestId
       in: path
       required: true
-      schema: { type: string, pattern: '^apr_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     HumanRequestId:
       name: humanRequestId
       in: path
       required: true
-      schema: { type: string, pattern: '^hrq_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     Commit:
       name: commit
       in: query
@@ -1160,7 +1130,7 @@ components:
         向き先のブランチが消えていれば、not_found を返す。
         その識別子の apply request がこの repository になければ（ほかの repository のものを含む）、not_found を返す。
         getNode の nodeId と listNodes の root に、その apply request を反映すると消えるノードを指定したときも、not_found を返す。反映したあとのスナップショットツリーに、そのノードがないからである。
-      schema: { type: string, pattern: '^apr_' }
+      schema: { type: string, pattern: '^[1-9][0-9]*$' }
     Cursor:
       name: cursor
       in: query
@@ -1169,27 +1139,13 @@ components:
       name: limit
       in: query
       schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
-    SessionId:
-      name: Logiforge-Session-Id
-      in: header
-      required: true
-      description: client のセッション ID
-      schema: { type: string, minLength: 1, maxLength: 128 }
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      description: |
-        送り直しを見分けるキー。repository の名前・主体・キーから、作るものの識別子を決定的に作る。
-        同じ識別子のものがすでにあれば、新しく作らずに、それを返す。要求の中身は比べない。
-        決まりは ../../design/api/writes.md の「同じ要求の繰り返し」に従う。
-      schema: { type: string, minLength: 1, maxLength: 128 }
 
   headers:
-    RepositoryBroken:
+    LatestInvalid:
       description: |
-        repository が壊れているときに、repository と木を読む応答（getRepository、木、ノード、検証結果）に付ける。値は、最後に正しかった時点のコミット。
-        apply request と人への依頼を読む応答には付けない。
-        応答の木は、そのコミットのものである（../../design/backend/broken.md）
+        最新の main のコミットが valid でないときに、木を読む応答（getRepository、木、ノード、検証結果、作業、作業の終わり）に付ける。
+        値は、応答の木のコミット（valid_commit。なければ最新のコミット）である。
+        apply request と人への依頼を読む応答には付けない（../../design/backend/invalid-main.md の「木を読む API」）
       schema: { type: string }
     PendingCommit:
       description: |
@@ -1267,11 +1223,10 @@ components:
         worker_token: { type: string, writeOnly: true, description: 'read:repository、read:organization、read:issue' }
     IntervalSettings:
       type: object
-      description: 見回りの間隔、一覧を読み直す間隔、記録を読む間隔、git の操作の時間の上限は ../../design/backend/worker/patrol.md に従い、worker が次に一覧を読み直したときから効く
+      description: 見回りの間隔、一覧を読み直す間隔、git の操作の時間の上限は ../../design/backend/worker/patrol.md に従い、worker が次に一覧を読み直したときから効く
       properties:
         patrol_seconds: { type: number, exclusiveMinimum: 0, description: 見回りの間隔 }
         list_seconds: { type: number, exclusiveMinimum: 0, description: repository の一覧を読み直す間隔 }
-        records_seconds: { type: number, exclusiveMinimum: 0, description: 記録を読む間隔 }
         git_timeout_seconds: { type: number, exclusiveMinimum: 0, description: git の操作の時間の上限 }
         write_wait_seconds: { type: number, exclusiveMinimum: 0, description: 書いたものが読む側に出るまで待つ上限。バックエンドが、次の要求から使う（../../design/api/writes.md） }
     Settings:
@@ -1323,16 +1278,8 @@ components:
         prepared:
           type: boolean
           description: |
-            用意のコミットがもうあるか（スナップショットツリーがもうあるか）。listRegisteredRepositories と registerRepository の応答にだけ入る。
+            GitForge の git リポジトリに、木の最初のコミットがもうあるか。listRegisteredRepositories と registerRepository の応答にだけ入る。
             GitForge に聞けなかったときは入らない（../../design/api/endpoints/settings.md の「prepared」）。
-    RecordKey:
-      type: object
-      required: [key_id, public_key, created_at, primary]
-      properties:
-        key_id: { type: string }
-        public_key: { type: string }
-        created_at: { type: string, format: date-time }
-        primary: { type: boolean, description: 書くときの鍵か }
     RepositoryNameValue:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
@@ -1362,16 +1309,14 @@ components:
         migrated_to:
           type: [string, 'null']
           description: ほかの repository に移した、元の repository のとき、移した先の名前
-        broken:
-          type: [object, 'null']
+        valid_commit:
+          type: [string, 'null']
           description: |
-            壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット。壊れていなければ null。
-            壊れているあいだ、木を読む API は、最後に正しかった時点の木を返す（../../design/backend/broken.md）
-          required: [first_commit, last_good_commit, reason]
-          properties:
-            first_commit: { type: string }
-            last_good_commit: { type: string }
-            reason: { type: string, enum: [no_apply_request, main_rewritten] }
+            木を読む API が返す木のコミット。最新のコミットか、それより前の、いちばん新しい valid なコミットである。
+            どれも valid でなければ null（../../design/backend/invalid-main.md）
+        invalid_since:
+          type: [string, 'null']
+          description: valid_commit のあとの、最初の valid でないコミット。valid_commit がなければ最初のコミット。最新のコミットが valid なら null
     MainCommit:
       type: object
       required: [number, commit, committed_at, apply_request_id]
@@ -1383,7 +1328,7 @@ components:
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。コミットの記録の trailer（Logiforge-Apply-Request）の値。反映によらないコミットでは null
+          description: 反映した apply request。worker が取り込むときに、反映した pull request の一覧から引く。見つからなければ null（../../design/backend/invalid-main.md の「どの apply request の反映か」）
     Commit:
       type: string
       minLength: 1
@@ -1426,10 +1371,8 @@ components:
             | validation_failed | 422 | 文字数や形が正しくない。または、不変条件を満たさない |
             | unauthenticated | 401 | トークンがない、正しくない、または Logiforge の主体でない |
             | forbidden | 403 | 主体の種類が、その操作を使えない。または、user でない主体が設定の API を使おうとした |
-            | session_required | 400 | Logiforge-Session-Id がない |
             | not_found | 404 | 対象がない |
-            | same_session | 403 | 差分を書いたどれかのセッションと同じセッションでレビューした |
-            | not_open | 409 | open でない apply request を変えようとした。レビューの鎖が切れた apply request にレビューしようとした（detail に、opener の手：close して、同じブランチから作り直す）。または、回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
+            | not_open | 409 | open でない apply request を変えようとした。回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
             | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料を返せない |
             | overlay_conflict | 409 | apply request の差分を、今の main に重ねられない（向き先が main のときだけ）。detail に、衝突したパスを書く |
             | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
@@ -1442,7 +1385,7 @@ components:
             | setup_done | 409 | セットアップが終わったあとに、セットアップの API（getSetup を除く）を呼んだ |
             | setup_in_progress | 409 | セットアップが、ほかのブラウザで進んでいる（セットアップのトークンがないか違う） |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, session_required, not_found, same_session, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, setup_in_progress, internal]
+          enum: [validation_failed, unauthenticated, forbidden, not_found, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, setup_in_progress, internal]
 
     Tree:
       type: object
@@ -1451,9 +1394,15 @@ components:
         root_hypothesis_id: { type: string, pattern: '^h-' }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         commit: { $ref: '#/components/schemas/Commit' }
+        valid_commit:
+          type: [string, 'null']
+          description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md）
+        invalid_since:
+          type: [string, 'null']
+          description: Repository の invalid_since と同じ
         warnings:
           type: array
-          description: 反映の手順によらない変更が木にあるときの警告
+          description: このコミットの警告（../../design/backend/worker/patrol.md の「コミットの警告」）
           items: { type: string }
 
     Node:
@@ -1554,7 +1503,7 @@ components:
           type: array
           description: この検証結果が差し替えた検証結果の識別子
           items: { type: string, pattern: '^v-' }
-        apply_request_id: { type: string, pattern: '^apr_' }
+        apply_request_id: { type: string, pattern: '^[1-9][0-9]*$' }
         submitted_commit: { $ref: '#/components/schemas/Commit' }
         superseded_commit:
           type: [string, 'null']
@@ -1699,13 +1648,9 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, merge_failures, awaiting, warnings]
+      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings]
       properties:
-        id: { type: string, pattern: '^apr_' }
-        kind:
-          type: string
-          enum: [change, repair.revert, repair.accept]
-          description: 直すための apply request の種類（../../design/backend/broken.md）。ふつうは change
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
@@ -1717,16 +1662,16 @@ components:
         state: { $ref: '#/components/schemas/ApplyRequestState' }
         opened_by_caller:
           type: boolean
-          description: 要求を送った主体が、この apply request を作った主体と同じか。WebUI は、approve の前に示す（../../design/settings/users.md の「WebUI からのレビュー」）
+          description: 要求を送った主体が、この apply request を作った主体（pull request の作者）と同じか。WebUI は、approve の前に示す（../../design/settings/users.md の「WebUI からのレビュー」）
         head_commit:
           $ref: '#/components/schemas/Commit'
           description: ブランチの今の先頭のコミット。レビューと反映は、このコミットを SHA で指す
         head_commits:
           type: array
-          description: ブランチに push された先頭のコミットの一覧（古い順）。worker が見つけた時刻と、書いたセッションを持つ（../../design/backend/apply-request/README.md の「先頭のコミット」）
+          description: ブランチに push された先頭のコミットの一覧（古い順）。worker が見つけた時刻を持つ（../../design/backend/apply-request/README.md の「先頭のコミット」）
           items:
             type: object
-            required: [commit, base_commit, seen_at, author_session_id]
+            required: [commit, base_commit, seen_at]
             properties:
               commit:
                 $ref: '#/components/schemas/Commit'
@@ -1737,9 +1682,6 @@ components:
                 type: [string, 'null']
                 format: date-time
                 description: worker が、そのコミットをブランチの先頭として見つけた時刻（push のおおよその時刻）。worker がまだ取り込んでいなければ null
-              author_session_id:
-                type: [string, 'null']
-                description: そのコミットを書いたセッション。コミットの trailer の自己申告で、なければ null（../../design/files/revisions.md）
         description: { type: string }
         operations:
           type: array
@@ -1747,18 +1689,25 @@ components:
         reviews:
           type: array
           items: { $ref: '#/components/schemas/Review' }
-        merge_failures:
+        comments:
           type: array
-          items: { $ref: '#/components/schemas/MergeFailure' }
+          description: >-
+            pull request のコメント（古い順）。1 件を読むときだけ入り、一覧では空である。
+            反映の失敗と close の理由も、人が読む文で、ここに入る。Logiforge は、コメントの本文を読まない（../../design/adapters/texts.md）
+          items:
+            type: object
+            required: [author, body, created_at]
+            properties:
+              author: { type: string, description: コメントを書いた GitForge のアカウント }
+              body: { type: string }
+              created_at: { type: [string, 'null'], format: date-time }
         awaiting:
           type: [string, 'null']
           enum: [review, fix, null]
           description: open のとき、レビュー待ち（review）か修正待ち（fix）か。向き先（target）が main でない apply request では null
-        closed_reason: { type: [string, 'null'] }
-        closed_by_session_id: { type: [string, 'null'] }
         warnings:
           type: array
-          description: 警告。例：reviewer の主体が、pull request を作った主体と同じだった。向き先が main でないので、approve しても Logiforge は反映しない（../../design/backend/merge.md）
+          description: 警告。例：向き先が main でないので、approve しても Logiforge は反映しない（../../design/backend/merge.md）
           items: { type: string }
         merged_commit:
           type: [string, 'null']
@@ -1768,18 +1717,14 @@ components:
       enum: [approve, request_changes, comment]
     Review:
       type: object
-      required: [id, kind, commit, reviewer_session_id, valid]
+      required: [id, kind, commit, valid]
       properties:
-        id: { type: string, pattern: '^rev_' }
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         kind: { $ref: '#/components/schemas/ReviewKind' }
         commit:
           $ref: '#/components/schemas/Commit'
           description: レビューした先頭のコミット
         body: { type: string }
-        reviewer_session_id: { type: string }
-        prompt_revision:
-          type: string
-          description: 使ったプロンプトのリビジョン。木のコミットではない
         valid:
           type: boolean
           description: ブランチの今の先頭のコミットに対するレビューなら真
@@ -1792,6 +1737,7 @@ components:
           description: レビューを書いた時刻（GitForge のコメントの時刻）。読めなければ null。reviews は、この順に並ぶ
     MergeFailure:
       type: object
+      description: レビューの応答で返す、その要求の中での反映の失敗
       required: [commit, reason, detail]
       properties:
         commit:
@@ -1799,34 +1745,16 @@ components:
           description: 反映しようとした先頭のコミット
         reason:
           type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending, repository_broken, merge_forbidden]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。repository_broken は、壊れた repository に、直すための apply request でないものを反映しようとしたこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
+          enum: [stale_target, invariant_violation, conflict, snapshot_pending, merge_forbidden]
+          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
         detail: { type: string }
     ReviewMaterial:
       type: object
       description: 材料に含めるものは ../../docs/apply-request/review.md に従う
       required: [apply_request_id, commit, operations, targets, ancestors, siblings, citations]
       properties:
-        apply_request_id: { type: string, pattern: '^apr_' }
+        apply_request_id: { type: string, pattern: '^[1-9][0-9]*$' }
         commit: { $ref: '#/components/schemas/Commit' }
-        repair:
-          type: object
-          description: 直すための apply request のときだけ。最後に正しかった時点から今の main までの、ファイルの変化（../../design/backend/broken.md）
-          required: [kind, last_good_commit, main_commit, changes]
-          properties:
-            kind: { type: string, enum: [repair.revert, repair.accept] }
-            last_good_commit: { type: string }
-            main_commit: { type: string }
-            changes:
-              type: array
-              items:
-                type: object
-                required: [path, status]
-                properties:
-                  path: { type: string }
-                  status: { type: string, enum: [added, modified, deleted] }
-                  before: { type: string, description: 前の中身。artifact と、前になかったファイルでは、ない }
-                  after: { type: string, description: 今の中身。artifact と、消えたファイルでは、ない }
         operations:
           type: array
           description: 差分そのもの
@@ -1859,7 +1787,7 @@ components:
 
     WorkKind:
       type: string
-      enum: [repair_repository, undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
+      enum: [undecided_leaf, needs_reconsideration, review_waiting, fix_waiting, human_request_answered, citation_changed]
     WorkItem:
       type: object
       required: [kind, subject_id]
@@ -1877,12 +1805,14 @@ components:
             human_request_answered では人への依頼、citation_changed では引用している検証結果（v-…）の識別子である。
         node_id:
           $ref: '#/components/schemas/NodeId'
-          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である。repair_repository では、ない（subject_id は、壊れた最初のコミット）
+          description: 作業の対象のノード。citation_changed では、検証結果を持つ仮説である
     Completion:
       type: object
       required: [commit, root_value, decided, remaining_work, done]
       properties:
         commit: { $ref: '#/components/schemas/Commit' }
+        valid_commit: { type: [string, 'null'], description: Repository の valid_commit と同じ（../../design/backend/invalid-main.md） }
+        invalid_since: { type: [string, 'null'], description: Repository の invalid_since と同じ }
         root_value: { $ref: '#/components/schemas/TruthValue' }
         decided:
           type: boolean
@@ -1905,7 +1835,7 @@ components:
       required: [id, node_id, kind, body, state]
       description: 決まりは ../../docs/human-requests/README.md に従う
       properties:
-        id: { type: string, pattern: '^hrq_' }
+        id: { type: string, pattern: '^[1-9][0-9]*$' }
         node_id: { $ref: '#/components/schemas/NodeId' }
         kind: { $ref: '#/components/schemas/HumanRequestKind' }
         body: { type: string }
@@ -1925,20 +1855,17 @@ components:
 
     NodeHistoryEntry:
       type: object
-      required: [commit, committed_at, apply_request_id, session_ids, reflected]
-      description: main のコミットの trailer から作る（design/files/revisions.md）
+      required: [commit, committed_at, apply_request_id, reflected]
+      description: main のコミットの情報から作る（design/files/revisions.md）
       properties:
         commit: { $ref: '#/components/schemas/Commit' }
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。最初のコミットと、反映によらないコミットでは null
-        session_ids:
-          type: array
-          items: { type: string }
+          description: 反映した apply request。見つからなかったコミットでは null（../../design/backend/invalid-main.md の「どの apply request の反映か」）
         reflected:
           type: boolean
-          description: 反映の記録（Logiforge-Apply-Request:）があるか。false なら、反映の手順によらない変更である（最初のコミットを除く）
+          description: 反映した apply request が見つかったか。表示だけに使う
     NodeHistoryPage:
       type: object
       required: [items, next_cursor]

@@ -17,13 +17,10 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
-	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/cli"
 	"github.com/yamambainc/logiforge/internal/ports"
-	"github.com/yamambainc/logiforge/internal/store"
-	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 func main() {
@@ -82,32 +79,32 @@ func env(name string) (string, error) {
 	return v, nil
 }
 
-// verifier は、worker の反映かの判定を、バックエンドの規則で、worker のトークンで行う。
-type verifier struct {
-	b    *backend.Backend
-	src  readSource
-	keys pullreq.Keyring
+// lookup は、worker が、main のコミットを merge のコミットに持つ pull request を、worker のトークンで探す
+// （design/backend/invalid-main.md の「どの apply request の反映か」）。
+type lookup struct {
+	forge ports.GitForge
+	src   readSource
 }
 
-// VerifyInit は、用意のコミットの署名を確かめる（design/backend/verify/init.md の「用意のコミットの署名」）。
-func (v verifier) VerifyInit(ctx context.Context, r ports.Repository, kind, parent, migratedFrom, signature string, added map[string]string) (bool, error) {
-	id, err := v.src.RepoID(ctx, r.GitForgeRef)
+func (v lookup) MergedApplyRequest(ctx context.Context, r ports.Repository, sha string, committed time.Time) (string, string, error) {
+	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
+	if err != nil {
+		return "", "", err
+	}
+	ar, err := v.forge.MergedApplyRequest(ports.WithToken(ctx, tok), r.GitForgeRef, sha, committed)
+	if err != nil {
+		return "", "", err
+	}
+	return ar.ID, ar.HeadRevision, nil
+}
+
+// Archived は、git リポジトリが archive されているかを、worker のトークンで読む（移した元の主張を確かめる。design/directory/migrate.md）。
+func (v lookup) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
+	tok, err := v.src.ReadToken(ctx, gitForgeRef)
 	if err != nil {
 		return false, err
 	}
-	files := make([]pullreq.InitFile, 0, len(added))
-	for p, sum := range added {
-		files = append(files, pullreq.InitFile{Path: p, SHA256: sum})
-	}
-	return v.keys.VerifyInit(pullreq.InitScope{Kind: kind, RepoID: id, Directory: r.Directory(), Parent: parent, MigratedFrom: migratedFrom}, files, signature) == nil, nil
-}
-
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
-	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
-	if err != nil {
-		return ports.MergeVerdict{}, err
-	}
-	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, files, broken)
+	return v.forge.Archived(ports.WithToken(ctx, tok), gitForgeRef)
 }
 
 // allowProtocol は、LOGIFORGE_GIT_ALLOW_PROTOCOL（git で使える転送の方式）を読み、git の環境変数に足す。

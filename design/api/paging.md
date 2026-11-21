@@ -19,14 +19,13 @@
 | 着手できる作業 | 作業の種類の順、次にノードの識別子の順、次に `subject_id` の順 |
 | ノードの履歴 | 新しい順 |
 
-- 作った順は、識別子の順ではない。
-  - なぜ：`Idempotency-Key` から作った識別子は、作った順に並ばないから。
+- apply request と人への依頼の識別子は、pull request と issue の番号なので、作った順に並ぶ。
 
 ## カーソル
 
-- apply request と人への依頼のカーソルには、GitForge の連番（pull request と issue の番号）を使う（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+- apply request と人への依頼のカーソルには、GitForge の連番（pull request と issue の番号）を使う（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
 - ノードの履歴のカーソルは、次に読むコミットの番号である。
-  - その番号のコミットの記録から、そのノードを前に変えたコミットを順にたどって、続きを返す（[ノードを変えたコミット](../backend/snapshot/main.md#ノードを変えたコミット)）。
+  - その番号のコミットの情報から、そのノードを前に変えたコミットを順にたどって、続きを返す（[ノードを変えたコミット](../backend/snapshot/main.md#ノードを変えたコミット)）。
 - 着手できる作業のカーソルは、応答の `commit` に結びつける。
   - なぜ：作業は、`main` のコミットから計算するので、ページの間に `main` が進むと並びがずれるから。
   - カーソルのコミットが今の `main` と違えば、そのコミットで計算し直して続きを返す。

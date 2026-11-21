@@ -21,7 +21,7 @@
 
 - 木の作業は、スナップショットツリーから計算する。
 - 向き先が `main` でない apply request は、作業に数えない（[向き先](apply-request/target.md)）。
-- apply request と人への依頼の作業は、[ブランチの履歴](snapshot/branch.md#ブランチの履歴) と、GitForge から読んだ提案、レビュー、人への依頼から計算する。
+- apply request と人への依頼の作業は、[ブランチの履歴](snapshot/branch.md#ブランチの履歴) と、GitForge から読んだ apply request、レビュー、人への依頼から計算する。
 
 ### apply request の対象ノード
 
@@ -33,10 +33,9 @@
 
 ### レビュー待ちと修正待ち
 
-- レビュー待ちと修正待ちは、先頭のコミットへの最後の決めるレビュー（`approve` か `request_changes`）と、先頭のコミットの反映の失敗で決める。
-- 修正待ち：`request_changes` か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗がある。
-- レビュー待ち：修正待ちでなく、決めるレビューがないか、最後の決めるレビューが `approve` なのに、まだ open である（`approve` し直しを待つ）。
-  - `approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗したときが、これに当たる。
+- レビュー待ちと修正待ちは、向き先が `main` の open の pull request のラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。review は読まない。
+- 修正待ち：`request changes` の review か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）での反映の失敗のあと、opener が直し終えたと申告するまで。
+- レビュー待ち：修正待ちでないもの。`approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗し、`approve` し直しを待つものも含む。
   - 向き先が `main` でないあいだに `approve` され、あとで向き先を `main` に戻したときも、これに当たる（[向き先](apply-request/target.md)）。
 - [着手できる作業](../../docs/work/README.md) の「反映に失敗して `open` に戻った」は、opener が直すべき失敗のことである。
 
@@ -49,11 +48,12 @@
   - open の apply request（向き先が `main` でないものも含む）の先頭のコミットの差分の検証結果のファイル
     - 向き先が `main` でないものも含めるのは、積み上げた変更は、いずれ `main` 向きの apply request に含まれるからである。
 - 対象ノードを最後に変えた反映のコミットが、回答より後である。
-  - 反映のコミットは、対象ノードの `last_changed` から `previous` をたどり、`Logiforge-Apply-Request:` のある最初のコミットである（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
+  - 反映のコミットは、対象ノードの `last_changed` から `previous` をたどり、worker が反映した apply request を見つけた（コミットの情報に `apply_request` がある）最初のコミットである（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
 
-- 引用とは、検証結果の artifact が、次のどちらかであることである（[人への依頼の回答](../files/artifacts.md)）。
-  - 回答の添付を読む API の URL の `link`
-  - その添付の sha256
+- 引用とは、検証結果の artifact が、次のどちらかの URL の `link` であることである（[人への依頼の回答](../files/artifacts.md)）。
+  - 回答の添付を読む API の URL（`getAnswerAttachment`。人への依頼の識別子と sha256 を含む）
+  - 人への依頼を読む API の URL
+  - なぜ URL だけか：URL が人への依頼の識別子を持つので、issue ごとにコメントを読まずに、引用かを決められるから。添付の sha256 だけで引用を決めると、作業の一覧で、回答のある issue ごとに添付を読むことになる。
 - 背景情報など、検証結果でないファイルは見ない。
 
 ## 作業の終わりの判定

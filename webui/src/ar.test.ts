@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { arTitle, opLabel } from './ar';
+import { arTitle, filterBySubjects, opLabel } from './ar';
+import type { ApplyRequest } from './api';
 import { buildIndex, filterNodes, type Filter, type Node } from './model';
 
 describe('apply request の言葉', () => {
@@ -28,8 +29,15 @@ describe('引用元が変化（作業）の絞り込み', () => {
 describe('レビュー（議論）の並び', () => {
   it('書いた時刻の順。時刻のないものは、もとの順のまま最後', async () => {
     const { byTime } = await import('./ar');
-    const r = (id: string, at: string | null) => ({ id, kind: 'comment' as const, commit: 'c', reviewer_session_id: 's', valid: true, reviewer: 'x', created_at: at });
+    const r = (id: string, at: string | null) => ({ id, kind: 'comment' as const, commit: 'c', valid: true, reviewer: 'x', created_at: at });
     expect(byTime([r('c', '2026-11-16T10:02:00Z'), r('n1', null), r('a', '2026-11-16T10:00:00Z'), r('n2', null), r('b', '2026-11-16T10:01:00Z')]).map((x) => x.id))
       .toEqual(['a', 'b', 'c', 'n1', 'n2']);
+  });
+});
+
+describe('作業としての絞り込み', () => {
+  it('一覧から、作業の対象だけを、一覧の順のまま残す（識別子は pull request の番号）', () => {
+    const ar = (id: string) => ({ id }) as ApplyRequest;
+    expect(filterBySubjects([ar('3'), ar('7'), ar('12')], new Set(['12', '3'])).map((a) => a.id)).toEqual(['3', '12']);
   });
 });

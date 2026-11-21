@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/snapshot"
 )
 
-// GetCommit は、コミットの記録を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
+// GetCommit は、コミットの情報を読む。main のコミットはフォーマットバージョンの接頭辞の下の記録から、ブランチの先頭はブランチのスナップショットから読む。
 // なければ ErrNotFound。
 func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit, error) {
 	b, err := r.Get(ctx, CommitKey(repo, sha))
@@ -33,7 +31,7 @@ func GetCommit(ctx context.Context, r Reader, repo, sha string) (snapshot.Commit
 	return d.Commit, nil
 }
 
-// GetMain は、main のコミットの記録とスナップショットツリーを読む。どちらかがなければ ErrNotFound。
+// GetMain は、main のコミットの情報とスナップショットツリーを読む。どちらかがなければ ErrNotFound。
 func GetMain(ctx context.Context, r Reader, repo, sha string) (*snapshot.Main, error) {
 	c, err := GetCommit(ctx, r, repo, sha)
 	if err != nil {
@@ -69,7 +67,7 @@ func GetBranch(ctx context.Context, r Reader, repo, sha string) (*snapshot.Branc
 	return &br, nil
 }
 
-// PutCommit は、main のコミットの記録だけを置く。main のすべてのコミットに置く（design/backend/snapshot/README.md）。
+// PutCommit は、main のコミットの情報だけを置く。main のすべてのコミットに置く（design/backend/snapshot/README.md）。
 func PutCommit(ctx context.Context, w Writer, repo string, c snapshot.Commit) error {
 	b, err := snapshot.Encode(&snapshot.CommitDoc{FormatVersion: snapshot.FormatVersion, Commit: c})
 	if err != nil {
@@ -110,7 +108,7 @@ func HasSnapshotTree(ctx context.Context, r Reader, repo, sha string) (bool, err
 	return err == nil, err
 }
 
-// PutBranch は、ブランチの先頭のスナップショット（コミットの記録と差分）を、フォーマットバージョンの接頭辞の外に 1 つにまとめて置く。
+// PutBranch は、ブランチの先頭のスナップショット（コミットの情報と差分）を、フォーマットバージョンの接頭辞の外に 1 つにまとめて置く。
 func PutBranch(ctx context.Context, w Writer, repo string, b *snapshot.Branch) error {
 	b.FormatVersion = snapshot.FormatVersion
 	data, err := snapshot.Encode(b)
@@ -165,7 +163,7 @@ func MoveLegacyBranchSnapshots(ctx context.Context, w Writer, repo string) (int,
 	return moved, nil
 }
 
-// readLegacyBranch は、古いフォーマットバージョンの下の、コミットの記録と差分を読み、1 つのブランチのスナップショットにする。
+// readLegacyBranch は、古いフォーマットバージョンの下の、コミットの情報と差分を読み、1 つのブランチのスナップショットにする。
 func readLegacyBranch(ctx context.Context, r Reader, prefix, repo, sha string) (*snapshot.Branch, error) {
 	cb, err := r.Get(ctx, prefix+repo+"/commits/"+sha)
 	if err != nil {
@@ -290,130 +288,6 @@ func PutRepositories(ctx context.Context, w Writer, names []string) error {
 		return err
 	}
 	return w.Put(ctx, RepositoriesKey, b)
-}
-
-// Broken は、repository が壊れていることの記録である（design/backend/broken.md）。壊れていなければ、置き場にない（か、空）。
-type Broken struct {
-	// LastGood は、最後に正しかった時点のコミットの SHA。今の main の並びにないことがある（main の書き換えのあと）。
-	LastGood string `json:"last_good"`
-	// First は、壊れた最初のコミットの SHA（反映によらないコミットか、書き換えのあとの main の先頭）。
-	First string `json:"first"`
-	// Reason は、no_apply_request か main_rewritten。
-	Reason string `json:"reason"`
-}
-
-// BrokenKey は、壊れていることの記録のキーである。git だけからは作り直せない（書き換えの前の latest を失う）ので、keep/ の下に置く。
-func BrokenKey(repo string) string { return KeepPrefix + repo + "/broken" }
-
-// GetBroken は、壊れていることの記録を読む。壊れていなければ nil。
-func GetBroken(ctx context.Context, r Reader, repo string) (*Broken, error) {
-	b, err := r.Get(ctx, BrokenKey(repo))
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var x Broken
-	if err := json.Unmarshal(b, &x); err != nil {
-		return nil, err
-	}
-	if x.LastGood == "" {
-		return nil, nil
-	}
-	return &x, nil
-}
-
-// PutBroken は、壊れていることの記録を書く。nil なら、壊れていない（空の記録）にする。
-func PutBroken(ctx context.Context, w Writer, repo string, x *Broken) error {
-	if x == nil {
-		x = &Broken{}
-	}
-	b, err := json.Marshal(x)
-	if err != nil {
-		return err
-	}
-	return w.Put(ctx, BrokenKey(repo), b)
-}
-
-// LoggedComment は、worker が見た記録のコメントの控えの 1 つである（design/backend/verify/records.md）。
-type LoggedComment struct {
-	ID        int64     `json:"id"`
-	Issue     int       `json:"issue"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// RecordsKey は、pull request か issue の記録の控えのキーである。GitForge の repository の識別子（署名の場所と同じ、
-// 名前を変えても owner を移しても変わらないもの）で分ける。なぜ：名前で分けると、名前が変わったとき、控えが古いキーに取り残されるから。
-func RecordsKey(repoID string, number int) string {
-	return KeepPrefix + "records/" + url.PathEscape(repoID) + "/" + strconv.Itoa(number)
-}
-
-// RecordsCursorKey は、記録の控えの、次に読む位置（コメントの updated_at）のキーである。
-func RecordsCursorKey(repoID string) string {
-	return KeepPrefix + "records/" + url.PathEscape(repoID) + "/cursor"
-}
-
-// GetRecords は、記録の控えを読む。なければ空。
-func GetRecords(ctx context.Context, r Reader, repoID string, number int) ([]LoggedComment, error) {
-	b, err := r.Get(ctx, RecordsKey(repoID, number))
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var out []LoggedComment
-	return out, json.Unmarshal(b, &out)
-}
-
-// AppendRecords は、記録の控えに、まだない id のものだけを足す。控えからは消さない。同じ id で中身が違うものは足さず、返す。
-func AppendRecords(ctx context.Context, w Writer, repoID string, number int, add []LoggedComment) (changed []LoggedComment, err error) {
-	cur, err := GetRecords(ctx, w, repoID, number)
-	if err != nil {
-		return nil, err
-	}
-	have := map[int64]string{}
-	for _, c := range cur {
-		have[c.ID] = c.Body
-	}
-	n := len(cur)
-	for _, c := range add {
-		if body, ok := have[c.ID]; ok {
-			if body != c.Body {
-				changed = append(changed, c)
-			}
-			continue
-		}
-		have[c.ID] = c.Body
-		cur = append(cur, c)
-	}
-	if len(cur) == n {
-		return changed, nil
-	}
-	b, err := json.Marshal(cur)
-	if err != nil {
-		return nil, err
-	}
-	return changed, w.Put(ctx, RecordsKey(repoID, number), b)
-}
-
-// GetRecordsCursor は、記録の控えの、次に読む位置を読む。なければ時刻のゼロ。
-func GetRecordsCursor(ctx context.Context, r Reader, repoID string) (time.Time, error) {
-	b, err := r.Get(ctx, RecordsCursorKey(repoID))
-	if errors.Is(err, ErrNotFound) {
-		return time.Time{}, nil
-	}
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.Parse(time.RFC3339Nano, strings.TrimSpace(string(b)))
-}
-
-// PutRecordsCursor は、記録の控えの、次に読む位置を書く。
-func PutRecordsCursor(ctx context.Context, w Writer, repoID string, t time.Time) error {
-	return w.Put(ctx, RecordsCursorKey(repoID), []byte(t.UTC().Format(time.RFC3339Nano)+"\n"))
 }
 
 // GetScanned は、ディレクトリの repository の scanned を読む。なければ空。

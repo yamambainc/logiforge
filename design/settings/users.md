@@ -21,7 +21,7 @@
   - 操作：人への依頼に回答する、repository を作る、apply request をレビューする（approve なら反映まで。[WebUI からのレビュー](#webui-からのレビュー)）。
   - 設定の API も、`user` であることを求める（[設定の API](../api/endpoints/settings.md)）。
 - 読む操作は、`user` でも `client` でも、主体がその repository を読めれば受け付ける（[認可](../backend/README.md#認可)）。
-- `client` の書き込み（apply request、レビュー、人への依頼の起票）は、GitForge の権限で決まる。Logiforge は、主体のトークンで書くので、GitForge が断れば断る（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
+- `client` の書き込み（apply request、レビュー、人への依頼の起票）は、GitForge の権限で決まる。Logiforge は、主体のトークンで書くので、GitForge が断れば断る（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
   - ディレクトリの repository では、そのディレクトリを置いた git リポジトリの権限を見る。
 - 構成ごとの確かめ方：
   - GitHub：主体のトークンで `GET /user/installations` と `GET /user/installations/{installation_id}/repositories` を呼び、登録した GitHub リポジトリの `permissions.push` を見る（[GitHub アダプタの認証](../adapters/github.md#認証)）。
@@ -45,7 +45,7 @@
 - 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
 - その repository に Write がなければ、`forbidden` を返す。
 - WebUI は、approve の前に、CLI の reviewer と同じレビューの材料（`getReviewMaterial`）を示す。自分が作った apply request なら、そのことも示す（[apply request と履歴](../../docs/webui/history.md)）。
-- 人については、セッションの分離は、文脈の分離を保証しない（[保証の範囲](../../docs/apply-request/review.md#保証の範囲)）。
+- 書いた人と確かめる人の分離は、GitForge のアカウントで分ける（[保証の範囲](../../docs/apply-request/review.md#保証の範囲)）。
 
 ## トークンの出どころ
 

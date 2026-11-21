@@ -71,7 +71,7 @@ func (d *CommitDoc) formatVersion() int       { return d.FormatVersion }
 func (d *SnapshotTreeDoc) formatVersion() int { return d.FormatVersion }
 func (d *DiffDoc) formatVersion() int         { return d.FormatVersion }
 
-// CommitDoc は、置き場の <repository>/commits/<SHA> に置く、コミットの記録である。
+// CommitDoc は、置き場の <repository>/commits/<SHA> に置く、コミットの情報である。
 type CommitDoc struct {
 	FormatVersion int    `json:"format_version"`
 	Commit        Commit `json:"commit"`

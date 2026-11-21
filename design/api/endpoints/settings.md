@@ -12,8 +12,6 @@
 | `GET /settings/repositories` | `listRegisteredRepositories` | 登録した repository の一覧を返す。それぞれに `prepared` を付ける |
 | `PUT /settings/repositories/{repository}` | `registerRepository` | repository を登録する。登録済みの名前の `gitforge_ref` とディレクトリは変えられない（`validation_failed`）。応答に `prepared` を付ける |
 | `DELETE /settings/repositories/{repository}` | `unregisterRepository` | repository を外す |
-| `GET /settings/record-keys` | `listRecordKeys` | 記録の署名の鍵の ID、公開鍵、作った時刻を返す |
-| `POST /settings/record-keys` | `createRecordKey` | 新しい鍵を作り、書くときの鍵にする |
 
 ## 認証と認可
 
@@ -41,13 +39,13 @@
 - 置き場のスナップショットと `keep/` は消さない。
 - 外した名前を登録し直せるのは、前と同じ `gitforge_ref` とディレクトリのときだけである。そのときは、続きから読む。
   - 違うものなら、`validation_failed` を返す。
-  - なぜ：置き場は、repository の名前をキーにするから。別の git リポジトリを同じ名前にすると、履歴が混ざり、書き換えとみなされて壊れた状態になるか、古いスナップショットを返す。
+  - なぜ：置き場は、repository の名前をキーにするから。別の git リポジトリを同じ名前にすると、履歴が混ざり、別の git リポジトリのスナップショットを返すことがあるから。
 - そのため、外した repository の名前と `gitforge_ref` とディレクトリは、設定の DB に残す。
   - なぜ：誤って外したときに、作り直さずに戻せるようにするため。
 
 ## prepared
 
-- `prepared` は、登録した git リポジトリに、用意のコミットがもうあるかである。
+- `prepared` は、登録した git リポジトリに、木の最初のコミットがもうあるかである。
   - git リポジトリ全体の repository：`main` があるか。
   - ディレクトリの repository：`main` に、そのディレクトリがあるか。
 - 要求した本人のトークンで、GitForge に聞く。

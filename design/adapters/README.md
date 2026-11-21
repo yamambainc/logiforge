@@ -13,7 +13,7 @@
 | 設定の DB | SQLite | [設定の DB](../settings/database.md) |
 
 - [worker](../backend/worker/README.md) が git を読むやり方は、[git アダプタ](git.md) に書く。
-- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge アダプタの共通の書き方](pull-requests.md) と [記録のコメントとレビュー](records.md) に書く。
+- GitHub アダプタと Forgejo アダプタに共通するところは、[GitForge のポートを pull request と issue で実装する](pull-requests.md) と [review と issue の本文](texts.md) に書く。
 - 構成ごとの設定と秘密は、[設定](../settings/README.md) と [秘密の暗号化](../settings/secrets.md) に書く。
 
 ## GitForge アダプタに求めること
@@ -21,7 +21,7 @@
 バックエンドとクライアントは、GitForge に次の性質を求める。どの GitForge でも、アダプタがこれを満たす。
 
 - pull request を、head の SHA を指定して squash merge できる。
-- merge したコミットから、その pull request を API で引ける（[反映かの判定](../backend/verify/README.md)）。
+- merge したコミットから、その pull request を API で引ける（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)）。
 - 主体のトークンで、pull request、レビュー、コメント、issue を書ける。
 - git の HTTP の Basic 認証のパスワードに、GitForge のトークンを入れて読み書きできる（[CLI](../cli/README.md)）。
 - pull request の最後の先頭のコミットを、ref に残す。

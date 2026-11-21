@@ -55,13 +55,13 @@ func TestE2ELargeTree(t *testing.T) {
 		}
 		nodes += 4
 		admin.git("add", "-A")
-		admin.git("commit", "--quiet", "-m", fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_gen%d\nLogiforge-Session-Id: s-gen", i, i))
+		admin.git("commit", "--quiet", "-m", fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_gen%d-gen", i, i))
 	}
 	head := admin.git("rev-parse", "HEAD")
 	// ブランチも、同時に push する（worker の初めての取り込みと、ar create が重なる場合）。
 	admin.git("checkout", "--quiet", "-b", "big-edit")
 	admin.write(leaves[0]+"/background.md", strings.Repeat("背景の文章。", 50)+"\n足した文章\n")
-	admin.git("commit", "--quiet", "-am", "背景を足す\n\nLogiforge-Session-Id: s-gen")
+	admin.git("commit", "--quiet", "-am", "背景を足す\n-gen")
 	admin.git("push", "--quiet", "origin", "main", "big-edit")
 	pushed := time.Now()
 	w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
@@ -91,7 +91,7 @@ func TestE2ELargeTree(t *testing.T) {
 	_, first := create("big-edit")
 	admin.git("checkout", "--quiet", "-b", "big-edit2", head)
 	admin.write(leaves[1]+"/background.md", strings.Repeat("背景の文章。", 50)+"\n別に足した文章\n")
-	admin.git("commit", "--quiet", "-am", "背景を足す 2\n\nLogiforge-Session-Id: s-gen")
+	admin.git("commit", "--quiet", "-am", "背景を足す 2\n-gen")
 	admin.git("push", "--quiet", "origin", "big-edit2")
 	_, second := create("big-edit2")
 	latest := filepath.Join(w.storeDir, filepath.FromSlash(store.LatestKey("big")))

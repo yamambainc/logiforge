@@ -2,11 +2,7 @@ package forgejo
 
 import (
 	"context"
-	"net/url"
 	"strings"
-	"time"
-
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 
 	"github.com/yamambainc/logiforge/internal/ports"
 )
@@ -52,35 +48,4 @@ func (s *WorkerSource) GitEnv(context.Context, string) ([]string, error) {
 		"LOGIFORGE_GIT_USERNAME=" + s.Login,
 		"LOGIFORGE_GIT_PASSWORD=" + s.Token,
 	}, nil
-}
-
-// RepoID は、記録の署名の場所に使う、repository の id を返す。
-func (s *WorkerSource) RepoID(ctx context.Context, gitForgeRef string) (string, error) {
-	return api{s.c}.RepoID(ports.WithToken(ctx, s.Token), gitForgeRef)
-}
-
-// CommentsSince は、repository のコメントのうち、since のあとに作られたか変わったものを返す（design/backend/verify/records.md）。
-func (s *WorkerSource) CommentsSince(ctx context.Context, gitForgeRef string, since time.Time) ([]pullreq.Comment, error) {
-	rp, err := repoPath(gitForgeRef)
-	if err != nil {
-		return nil, err
-	}
-	path := rp + "/issues/comments"
-	if !since.IsZero() {
-		path += "?since=" + url.QueryEscape(since.UTC().Format(time.RFC3339))
-	}
-	cs, err := list[commentJSON](ctx, s.c, s.Token, path)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]pullreq.Comment, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.comment())
-	}
-	return out, nil
-}
-
-// Comments は、pull request か issue のコメントを返す（反映かの判定で、今の GitForge の記録を読む）。
-func (s *WorkerSource) Comments(ctx context.Context, gitForgeRef string, number int) ([]pullreq.Comment, error) {
-	return api{s.c}.ListComments(ports.WithToken(ctx, s.Token), gitForgeRef, number)
 }

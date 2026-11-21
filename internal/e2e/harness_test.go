@@ -182,9 +182,6 @@ func (w *world) restartWorker() {
 	w.stopWorker = w.start("worker", w.workerEnv, "worker")
 }
 
-// recordSecret は、記録の署名の秘密である。worker には、ここから作った公開鍵だけを渡す。
-const recordSecret = "e2e-secret-0123456789abcdef0123456789"
-
 // setup は、Forgejo に organization と主体を作り、serve と worker を動かす。
 func setup(t *testing.T) *world { return setupWith(t, nil) }
 
@@ -233,8 +230,7 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 		GitForge: settings.GitForgeForgejo,
 		Forgejo: settings.ForgejoConfig{URL: fu, Org: w.org,
 			WorkerLogin: w.login("reader"), WorkerToken: w.tokens["reader"]},
-		Intervals:  settings.Intervals{Patrol: "1s", List: "1s", WaitTimeout: "20s"},
-		RecordKeys: []settings.RecordKey{{ID: "k1", Secret: recordSecret}},
+		Intervals: settings.Intervals{Patrol: "1s", List: "1s", WaitTimeout: "20s"},
 	}
 	// WebUI のサインインのアプリケーション。利用者（alice）は、このアプリケーションのトークン（WebUI のサインインで得るもの）で、
 	// user になる。personal access token では client である（design/settings/users.md）。
@@ -258,8 +254,8 @@ func setupFull(t *testing.T, common func(w *world, c *settings.Config), extra fu
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	w.dbPath = dbPath
 	backendKey, sharedKey := settings.NewKey(), settings.NewKey()
-	// 記録の鍵がなければ、設定の DB に書かない。セットアップの API で入れる（setup_test.go）。
-	if len(c.RecordKeys) > 0 {
+	// 構成がなければ（setup_test.go が消す）、設定の DB に書かない。セットアップの API で入れる。
+	if c.GitForge != "" {
 		w.writeSettings(dbPath, backendKey, sharedKey, c)
 	}
 	baseEnv := []string{"LOGIFORGE_STORE_DIR=" + w.storeDir, "LOGIFORGE_DB=" + dbPath, "LOGIFORGE_SHARED_KEY=" + sharedKey,
@@ -294,6 +290,13 @@ func (w *world) eventually(what string, limit time.Duration, ok func() bool) {
 // call は、Logiforge の API を、主体のトークンで呼ぶ。
 func (w *world) call(who, method, path string, in any, headers ...string) (int, []byte) {
 	w.t.Helper()
+	st, b, _ := w.callHeader(who, method, path, in, headers...)
+	return st, b
+}
+
+// callHeader は、call と同じく API を呼び、応答のヘッダーも返す。
+func (w *world) callHeader(who, method, path string, in any, headers ...string) (int, []byte, http.Header) {
+	w.t.Helper()
 	var body io.Reader
 	if in != nil {
 		b, _ := json.Marshal(in)
@@ -311,7 +314,7 @@ func (w *world) call(who, method, path string, in any, headers ...string) (int, 
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
-	return res.StatusCode, b
+	return res.StatusCode, b, res.Header
 }
 
 // user は、CLI を使う主体（エージェント）の環境である。
@@ -349,6 +352,13 @@ func (u *user) env() []string {
 // cli は、CLI を動かし、終了コードと標準出力を返す。
 func (u *user) cli(stdin string, args ...string) (int, string) {
 	u.w.t.Helper()
+	code, out, _ := u.cliErr(stdin, args...)
+	return code, out
+}
+
+// cliErr は、cli と同じく CLI を動かし、標準エラーも返す。
+func (u *user) cliErr(stdin string, args ...string) (int, string, string) {
+	u.w.t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = u.env()
 	cmd.Dir = u.dir
@@ -368,7 +378,7 @@ func (u *user) cli(stdin string, args ...string) (int, string) {
 	if code != 0 {
 		u.w.t.Logf("logiforge %s：終了コード %d：%s%s", strings.Join(args, " "), code, out.String(), errb.String())
 	}
-	return code, out.String()
+	return code, out.String(), errb.String()
 }
 
 // must は、CLI を動かし、成功しなければ止める。--json の出力を v に読む。

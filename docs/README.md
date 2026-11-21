@@ -25,13 +25,12 @@ Logiforge が何を満たすかを確かめるときに読む。
 8. [apply request](apply-request/README.md)
 9. [論理レビュー](apply-request/review.md)
 10. [論理レビューの審査観点](apply-request/review-criteria.md)
-11. [壊れた repository を直す](apply-request/repair.md)
-12. [役割](roles/README.md)
-13. [着手できる作業](work/README.md)
-14. [人への依頼（PVR と判断の依頼）](human-requests/README.md)
-15. [CLI](cli/README.md)
-16. [WebUI](webui/README.md)
-17. [全体構成](architecture/README.md)
+11. [役割](roles/README.md)
+12. [着手できる作業](work/README.md)
+13. [人への依頼（PVR と判断の依頼）](human-requests/README.md)
+14. [CLI](cli/README.md)
+15. [WebUI](webui/README.md)
+16. [全体構成](architecture/README.md)
 
 ## 使い始める
 

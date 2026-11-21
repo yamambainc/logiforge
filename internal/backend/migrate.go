@@ -15,7 +15,8 @@ import (
 // 別リポジトリ方式から移す（design/directory/migrate.md）。
 
 // migratedFrom は、repository が別リポジトリ方式から移したものなら、元の repository と移したコミットを返す。
-// 版の 1 番（用意のコミット）の trailer Logiforge-Migrated-From: で決める。この trailer は、用意のコミットの署名に含まれる。
+// 版の 1 番（用意のコミット）の trailer Logiforge-Migrated-From: を、元の repository の migrated_to と突き合わせて決める。
+// trailer はだれでも書けるので、worker が置き場で確かめて書いた元の migrated_to が、この repository のときだけ返す（design/directory/migrate.md）。
 func (b *Backend) migratedFrom(ctx context.Context, repo string) (*MigratedFrom, error) {
 	sha, err := b.Snap.MainAt(ctx, repo, 1)
 	if errors.Is(err, ports.ErrNotFound) {
@@ -35,6 +36,9 @@ func (b *Backend) migratedFrom(ctx context.Context, repo string) (*MigratedFrom,
 	name, commit, ok := strings.Cut(v, " ")
 	if !ok || name == "" || commit == "" {
 		return nil, nil
+	}
+	if to, err := b.Snap.MigratedTo(ctx, name); err != nil || to != repo {
+		return nil, err
 	}
 	return &MigratedFrom{Repository: name, Commit: commit}, nil
 }
@@ -102,12 +106,11 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 		return out, fail(CodeSnapshotPending, "元の repository の main %s を、worker がまだ取り込んでいない。少し待って送り直す", head)
 	}
 	var problems []string
-	if broken, err := b.Snap.Broken(ctx, from); err != nil {
-		return out, err
-	} else if broken != nil {
-		problems = append(problems, "元の repository が壊れている")
+	// 移した先の最初の版が valid であるように、元の最新のコミットが valid なときだけ移す（design/backend/invalid-main.md）。
+	if !src.main.SnapshotTree.Valid {
+		problems = append(problems, "元の repository の最新のコミット "+src.revision()+" が valid でない")
 	}
-	ars, err := b.Forge.ListApplyRequests(ctx, srcRef)
+	ars, err := b.Forge.ListApplyRequests(ctx, srcRef, "open")
 	if err != nil {
 		return out, err
 	}

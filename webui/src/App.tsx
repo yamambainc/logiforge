@@ -9,7 +9,7 @@ import { HumanRequests } from './screens/HumanRequests';
 import { ApplyRequests } from './screens/ApplyRequests';
 import { RepositoryList } from './screens/RepositoryList';
 import { TreeScreen } from './screens/TreeScreen';
-import { BrokenBanner } from './BrokenBanner';
+import { InvalidBanner } from './InvalidBanner';
 import { Settings } from './screens/Settings';
 import { loadAccess, useSettingsAccess } from './settings';
 
@@ -39,7 +39,7 @@ export function App() {
           onClick={(e) => { e.preventDefault(); navigate(settingsPath('repository')); }}>設定</a>}
         <button className="link" onClick={() => void signOut().then((ok) => { if (!ok) window.alert('サインアウトできませんでした。サーバにつながるか確かめて、もう一度押してください。'); })}>サインアウト</button>
       </header>
-      {'repo' in route && <BrokenBanner key={route.repo} repo={route.repo} />}
+      {'repo' in route && <InvalidBanner key={route.repo} repo={route.repo} />}
       {route.name === 'tree' ? <TreeScreen key={route.repo} repo={route.repo} />
         : route.name === 'dashboard' ? <Dashboard key={route.repo} repo={route.repo} />
         : route.name === 'human-requests' ? <HumanRequests key={route.repo} repo={route.repo} />

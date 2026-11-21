@@ -17,7 +17,7 @@ import (
 )
 
 // 作業の種類（docs/work/README.md）。並びは、この順である。
-var workKinds = []string{"repair_repository", "undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
+var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
 
 // WorkQuery は、着手できる作業の問い合わせである。
 type WorkQuery struct {
@@ -28,7 +28,7 @@ type WorkQuery struct {
 	Limit          int
 }
 
-// work は、木と、GitForge から読んだ提案と人への依頼から、着手できる作業を計算する。
+// work は、木と、GitForge から読んだ apply request と人への依頼から、着手できる作業を計算する。
 // 返すのは、active なノードに関わる作業だけである。並びは、種類、ノードの識別子、subject_id の順。
 func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *openState, includeClaimed bool) ([]WorkItem, map[string][]string, error) {
 	var items []WorkItem
@@ -68,16 +68,9 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 		}
 	}
 
-	// 壊れた repository を直すこと（design/backend/broken.md）。直すための提案が open なら、返さない。
-	if broken, err := b.Snap.Broken(ctx, repo); err != nil {
-		return nil, nil, err
-	} else if broken != nil && !slices.ContainsFunc(open.ars, func(ar ports.ApplyRequest) bool { return ar.Kind != "" }) {
-		items = append(items, WorkItem{Kind: "repair_repository", SubjectID: broken.First})
-	}
-
-	// レビュー待ちと修正待ちの提案。
+	// レビュー待ちと修正待ちの apply request。
 	for _, ar := range open.ars {
-		d, err := b.applyRequest(ctx, repo, ref, ar, false, nil)
+		d, err := b.applyRequest(ctx, repo, ref, ar, readList, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -128,49 +121,35 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 	return items, arTargets, nil
 }
 
-// answerRefPattern は、回答の添付を読む API の URL である（design/files/artifacts.md：回答の引用は、この URL の link にする）。
-var answerRefPattern = regexp.MustCompile(`/human-requests/(hrq_[0-9A-Z]+)/attachments/([0-9a-f]{64})`)
+// answerRefPattern は、回答の添付を読む API の URL と、人への依頼を読む API の URL である（design/files/artifacts.md の「人への依頼の回答」）。
+// 検証結果は、この URL の link で回答を引用する。URL が依頼の識別子を持つので、issue ごとにコメントを読まずに引用を決められる。
+var answerRefPattern = regexp.MustCompile(`/human-requests/([1-9][0-9]*)(?:/attachments/[0-9a-f]{64})?(?:$|[/?#])`)
 
-// answerRefs は、検証結果が引用している回答である。依頼の識別子と、添付の sha256 を持つ。
+// answerRefs は、検証結果が引用している回答の、依頼の識別子である。
 type answerRefs struct {
-	ids  map[string]bool
-	shas map[string]bool
+	ids map[string]bool
 }
 
 func (r answerRefs) add(v tree.VerdictContent) {
 	for _, a := range v.Artifacts {
+		if a.Kind != "link" {
+			continue
+		}
 		if m := answerRefPattern.FindStringSubmatch(a.URI); m != nil {
 			r.ids[m[1]] = true
-			r.shas[m[2]] = true
-		}
-		if a.SHA256 != "" {
-			r.shas[a.SHA256] = true
-		}
-	}
-	for _, c := range v.Citations {
-		if c.TargetKind == "artifact" {
-			r.shas[c.SHA256] = true
 		}
 	}
 }
 
 func (r answerRefs) cites(hr ports.HumanRequest) bool {
-	if r.ids[hr.ID] {
-		return true
-	}
-	for _, a := range hr.Answer.Attachments {
-		if r.shas[a.SHA256] {
-			return true
-		}
-	}
-	return false
+	return r.ids[hr.ID]
 }
 
 // usedAnswers は、回答を引用している検証結果を、1 度だけ集める。
 //   - 今の main の木の検証結果（反映された）
-//   - open の提案の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
+//   - open の apply request の、先頭のコミットの差分の検証結果のファイル（背景情報など、ほかのファイルは見ない）
 func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *openState) answerRefs {
-	refs := answerRefs{ids: map[string]bool{}, shas: map[string]bool{}}
+	refs := answerRefs{ids: map[string]bool{}}
 	for _, tv := range v.tree.Verdicts {
 		refs.add(tv.VerdictContent)
 	}
@@ -192,9 +171,9 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 }
 
 // answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/compute.md）。
-//   - その回答を引用した検証結果が、反映されたか、open の提案の差分にある。
+//   - その回答を引用した検証結果が、反映されたか、open の apply request の差分にある。
 //   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
-//     反映の記録のある最初のコミットである。
+//     worker が、merge の pull request を見つけた、最初のコミットである。
 func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
 	if refs.cites(hr) {
 		return true, nil
@@ -248,7 +227,7 @@ func (b *Backend) ListWork(ctx context.Context, c Caller, repo string, q WorkQue
 	if err != nil {
 		return WorkPage{}, err
 	}
-	out := WorkPage{Commit: v.revision(), Counts: map[string]int{}, Items: []WorkItem{}}
+	out := WorkPage{Commit: v.revision(), Validity: v.validity(), Counts: map[string]int{}, Items: []WorkItem{}}
 	var filtered []WorkItem
 	for _, it := range all {
 		if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, it.Kind) {
@@ -320,7 +299,7 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 		return Completion{}, err
 	}
 	evidence := func(id string) bool { n := v.main.SnapshotTree.Nodes[id]; return n != nil && n.Evidence }
-	out := Completion{Commit: v.revision(), RootValue: v.main.SnapshotTree.Nodes[root.ID].Value}
+	out := Completion{Commit: v.revision(), Validity: v.validity(), RootValue: v.main.SnapshotTree.Nodes[root.ID].Value}
 	out.Decided = out.RootValue != nil
 	for _, it := range all {
 		if ts, ok := arTargets[it.SubjectID]; ok {
@@ -331,7 +310,7 @@ func (b *Backend) GetCompletion(ctx context.Context, c Caller, repo string) (Com
 			out.RemainingWork++
 		}
 	}
-	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの提案があれば、根拠部分木にあるかもしれないので、終わりとしない。
+	// 対象のわからない（worker が追いついていない）レビュー待ち・修正待ちの apply request があれば、根拠部分木にあるかもしれないので、終わりとしない。
 	unknown := slices.ContainsFunc(all, func(it WorkItem) bool {
 		ts, ok := arTargets[it.SubjectID]
 		return ok && len(ts) == 0

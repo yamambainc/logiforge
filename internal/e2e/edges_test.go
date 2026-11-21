@@ -39,16 +39,13 @@ func TestE2EEdges(t *testing.T) {
 		if code, _ := w.call("reader", "GET", "/repositories/q", nil); code != 401 {
 			t.Fatalf("worker のユーザー：%d", code)
 		}
-		if code, _ := w.call("agent", "POST", "/repositories/q/apply-requests", map[string]string{"branch": "x"}); code != 400 {
-			t.Fatalf("セッションなし：%d", code)
-		}
 		w.tokens["nobody"] = "not-a-token"
 		if code, _ := w.call("nobody", "GET", "/repositories", nil); code != 401 {
 			t.Fatalf("正しくないトークン：%d", code)
 		}
 	})
 
-	// ---- 競合：同じノードを対象にする 2 つの提案。2 つ目は stale_target で修正待ちになる ----
+	// ---- 競合：同じノードを対象にする 2 つの apply request。2 つ目は stale_target で修正待ちになる ----
 	t.Run("stale_target", func(t *testing.T) {
 		agent.branch("x")
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("x.md", "x の背景\n"))
@@ -166,19 +163,21 @@ func TestE2EEdges(t *testing.T) {
 		}
 		// 版のスナップショットは worker が作るので、それまで、レビューは snapshot_pending になる。
 		reviewer.session = "s-r4"
-		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
+		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--body", "見ました", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 		if code != 1 || !strings.Contains(out, "snapshot_pending") {
 			t.Fatalf("worker が止まっているときのレビュー：%d %s", code, out)
 		}
 		w.restartWorker()
 		w.eventually("worker が戻り、レビューできる", 30*time.Second, func() bool {
-			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
+			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--body", "見ました", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 			return code == 0
 		})
 		agent.must(nil, "ar", "close", ar.ID, "--reason", "確かめ終えた")
 	})
 
-	// ---- main への直接の push：利用者とエージェントは、保護で拒まれる。保護が外れたときの push は、警告になる ----
+	// ---- main への直接の push：利用者とエージェントは、保護で拒まれる。保護が外れたときの push は、そのまま受け入れる。
+	// 木の不変条件を破る push のあいだは、木を読む API が前の valid な木を返し、CLI は警告する。直すコミットで戻る
+	// （design/backend/invalid-main.md） ----
 	t.Run("main への直接の push", func(t *testing.T) {
 		agent.git("fetch", "--quiet", "origin")
 		agent.git("checkout", "--quiet", "-B", "direct", "origin/main")
@@ -208,125 +207,75 @@ func TestE2EEdges(t *testing.T) {
 		}
 		w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
 			"enable_merge_whitelist": false}, nil, 201)
-		// 反映によらないコミットで、repository は壊れた状態になる（design/backend/broken.md）。merge した pull request がないので、
-		// worker は、初めて見てから 60 秒待ってから決める（design/backend/verify/README.md の「GitForge の API」）。木を読む CLI は、
-		// 最後に正しかった時点の木を書き、終了コード 1 で終わる。
-		w.eventually("反映によらないコミットで壊れた状態になる", 120*time.Second, func() bool {
-			code, out := agent.cli("", "tree", "view", "--json")
-			return code == 1 && strings.Contains(out, `"commit"`)
-		})
-		var info struct {
-			Broken *struct {
-				FirstCommit    string `json:"first_commit"`
-				LastGoodCommit string `json:"last_good_commit"`
-			} `json:"broken"`
-		}
-		code, out := agent.cli("", "repo", "view", "q", "--json")
-		if err := json.Unmarshal([]byte(out), &info); err != nil || info.Broken == nil || code != 1 {
-			t.Fatalf("repo view：%d %s", code, out)
-		}
-		var tr struct {
-			Commit string `json:"commit"`
-		}
-		_, out = agent.cli("", "tree", "view", "--json")
-		if json.Unmarshal([]byte(out), &tr); tr.Commit != info.Broken.LastGoodCommit {
-			t.Fatalf("木が、最後に正しかった時点 %s でない：%s", info.Broken.LastGoodCommit, tr.Commit)
-		}
-		// git を読むコマンドも、壊れていることを誤りにする。
-		if code, _ := agent.cli("", "check", "--json"); code != 1 {
-			t.Fatalf("check が壊れていることを示さない：%d", code)
-		}
-		// 壊れているあいだは、ふつうの apply request は反映しない。
-		agent.git("fetch", "--quiet", "origin")
-		agent.git("checkout", "--quiet", "-B", "while-broken", "origin/main")
-		bg := "tree/" + repo.Root + "/background.md"
-		agent.write(bg, agent.git("show", "origin/main:"+bg)+"\n壊れているあいだ\n")
-		agent.git("add", "-A")
-		agent.git("commit", "--quiet", "-m", "壊れているあいだ", "--trailer", "Logiforge-Session-Id: "+agent.session)
-		agent.git("push", "--quiet", "origin", "while-broken")
-		code, out = agent.cli("", "ar", "create", "--branch", "while-broken", "--json")
-		var waiting applyRequest
-		if code != 1 || json.Unmarshal([]byte(out), &waiting) != nil || waiting.ID == "" {
-			t.Fatalf("壊れているあいだの ar create が、壊れていることを示さない：%d %s", code, out)
-		}
-
-		// 戻す：repair revert でブランチを作り、push し、直すための apply request にして反映する。
-		var rv struct {
-			Branch string `json:"branch"`
-		}
-		agent.must(&rv, "repair", "revert")
-		agent.git("push", "--quiet", "origin", rv.Branch)
-		var fix applyRequest
-		agent.must(&fix, "ar", "create", "--branch", rv.Branch, "--kind", "repair.revert")
-		w.eventually("worker が直すブランチを取り込む", 30*time.Second, func() bool { return agent.headReady(fix.ID, 1) })
-		var mat struct {
-			Repair *struct {
-				Changes []struct {
-					Path   string `json:"path"`
-					Status string `json:"status"`
-				} `json:"changes"`
-			} `json:"repair"`
-		}
-		reviewer.must(&mat, "ar", "material", fix.ID, "--repo", "q")
-		if mat.Repair == nil || len(mat.Repair.Changes) != 1 || mat.Repair.Changes[0].Path != bg {
-			t.Fatalf("戻すレビューの材料に、反映によらない変更がない：%+v", mat.Repair)
-		}
-		got, code, out := reviewer.review(fix.ID, "approve", 1)
-		if code != 0 || got.State != "merged" {
-			t.Fatalf("戻す apply request の approve：%d %s", code, out)
-		}
-		w.eventually("戻したら直る", 30*time.Second, func() bool {
-			code, _ := agent.cli("", "repo", "view", "q", "--json")
-			return code == 0
-		})
-		agent.must(nil, "ar", "close", waiting.ID, "--reason", "確かめ終えた")
-
-		// 認める：もう一度、保護を外して直接 push し、repair accept で認める（空のコミットの squash merge）。
-		w.forgejoCall(w.admin, "DELETE", "/repos/"+ref+"/branch_protections/main", nil, nil, 204)
-		agent.git("fetch", "--quiet", "origin")
-		agent.git("checkout", "--quiet", "-B", "direct2", "origin/main")
-		agent.write(bg, agent.git("show", "origin/main:"+bg)+"\n直接 2\n")
-		agent.git("commit", "--quiet", "-am", "直接 2")
-		cmd = exec.Command("git", "push", "--quiet", u.String()+"/"+ref+".git", "HEAD:main")
-		cmd.Env, cmd.Dir = agent.env(), agent.dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("2 回目の直接の push：%v %s", err, out)
-		}
-		w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
-			"enable_merge_whitelist": false}, nil, 201)
-		w.eventually("2 回目の直接の push で壊れる", 120*time.Second, func() bool {
-			code, _ := agent.cli("", "repo", "view", "q", "--json")
-			return code == 1
-		})
-		code, out = agent.cli("", "repo", "view", "q", "--json")
-		info.Broken = nil
-		if err := json.Unmarshal([]byte(out), &info); err != nil || info.Broken == nil {
-			t.Fatalf("2 回目の repo view：%d %s", code, out)
-		}
-		lastGood2 := info.Broken.LastGoodCommit
-		var ac struct {
-			Branch string `json:"branch"`
-		}
-		agent.must(&ac, "repair", "accept")
-		agent.git("push", "--quiet", "origin", ac.Branch)
-		var accept applyRequest
-		agent.must(&accept, "ar", "create", "--branch", ac.Branch, "--kind", "repair.accept")
-		w.eventually("worker が認めるブランチを取り込む", 30*time.Second, func() bool { return agent.headReady(accept.ID, 1) })
-		got, code, out = reviewer.review(accept.ID, "approve", 1)
-		if code != 0 || got.State != "merged" {
-			t.Fatalf("認める apply request の approve：%d %s", code, out)
-		}
-		w.eventually("認めたら直る", 30*time.Second, func() bool {
-			code, _ := agent.cli("", "repo", "view", "q", "--json")
-			return code == 0
-		})
-		// 認めたあとの木は、最後に正しかった時点でなく、認めた変更を含む今の main の木である。
+		// valid な直接の push は、そのまま受け入れる。反映の apply request は、ない。
+		direct := agent.git("rev-parse", "HEAD")
 		var tv struct {
-			Commit string `json:"commit"`
+			Commit       string  `json:"commit"`
+			ValidCommit  *string `json:"valid_commit"`
+			InvalidSince *string `json:"invalid_since"`
 		}
-		agent.must(&tv, "tree", "view")
-		if tv.Commit == lastGood2 {
-			t.Fatalf("認めたのに、木が最後に正しかった時点 %s のまま", lastGood2)
+		w.eventually("worker が直接の push を取り込む", 120*time.Second, func() bool {
+			agent.must(&tv, "tree", "view")
+			return tv.Commit == direct
+		})
+		if tv.InvalidSince != nil || tv.ValidCommit == nil || *tv.ValidCommit != direct {
+			t.Fatalf("valid な直接の push：%+v", tv)
+		}
+		pushMain := func(what string) string {
+			t.Helper()
+			w.forgejoCall(w.admin, "DELETE", "/repos/"+ref+"/branch_protections/main", nil, nil, 204)
+			cmd := exec.Command("git", "push", "--quiet", u.String()+"/"+ref+".git", "HEAD:main")
+			cmd.Env, cmd.Dir = agent.env(), agent.dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%s：%v %s", what, err, out)
+			}
+			w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/branch_protections", map[string]any{"rule_name": "main", "enable_push": false,
+				"enable_merge_whitelist": false}, nil, 201)
+			return agent.git("rev-parse", "HEAD")
+		}
+
+		// 木の外のファイルを置く直接の push。最新のコミットは valid でない。
+		agent.write("README.md", "木の外\n")
+		agent.git("add", "-A")
+		agent.git("commit", "--quiet", "-m", "木の外")
+		invalid := pushMain("valid でない直接の push")
+		var rv struct {
+			ValidCommit  *string `json:"valid_commit"`
+			InvalidSince *string `json:"invalid_since"`
+		}
+		w.eventually("最新のコミットが valid でないと分かる", 120*time.Second, func() bool {
+			st, b := w.call("alice", "GET", "/repositories/q", nil)
+			return st == 200 && json.Unmarshal(b, &rv) == nil && rv.InvalidSince != nil
+		})
+		if *rv.InvalidSince != invalid || rv.ValidCommit == nil || *rv.ValidCommit != direct {
+			t.Fatalf("valid_commit と invalid_since：%+v（valid でないのは %s、前の valid は %s）", rv, invalid, direct)
+		}
+		// 木を読む API は、前の valid な木を返し、ヘッダー Logiforge-Latest-Invalid に、そのコミットを付ける。
+		st, b, h := w.callHeader("alice", "GET", "/repositories/q/tree", nil)
+		if json.Unmarshal(b, &tv); st != 200 || tv.Commit != direct || h.Get("Logiforge-Latest-Invalid") != direct {
+			t.Fatalf("木を読む API：%d %s %q", st, b, h.Get("Logiforge-Latest-Invalid"))
+		}
+		// CLI は、結果を書いたうえで、標準エラーに警告を書く。止めない。
+		for _, args := range [][]string{{"tree", "view", "--json"}, {"check", "--json"}} {
+			code, _, errOut := agent.cliErr("", args...)
+			if !strings.Contains(errOut, "valid でない") || !strings.Contains(errOut, direct) {
+				t.Fatalf("%v が警告しない：%d %s", args, code, errOut)
+			}
+			if args[0] == "tree" && code != 0 {
+				t.Fatalf("tree view の終了コード：%d", code)
+			}
+		}
+
+		// 直すコミット（木の外のファイルを消す）で、最新のコミットが valid に戻る。
+		agent.git("rm", "--quiet", "README.md")
+		agent.git("commit", "--quiet", "-m", "直した")
+		fixed := pushMain("直す直接の push")
+		w.eventually("直したら、最新のコミットの木を返す", 120*time.Second, func() bool {
+			st, b, h := w.callHeader("alice", "GET", "/repositories/q/tree", nil)
+			return st == 200 && json.Unmarshal(b, &tv) == nil && tv.Commit == fixed && tv.InvalidSince == nil && h.Get("Logiforge-Latest-Invalid") == ""
+		})
+		if code, _, errOut := agent.cliErr("", "tree", "view", "--json"); code != 0 || strings.Contains(errOut, "valid でない") {
+			t.Fatalf("直したあとの警告：%d %s", code, errOut)
 		}
 		agent.git("checkout", "--quiet", "main")
 	})

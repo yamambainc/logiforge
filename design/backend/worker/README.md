@@ -20,7 +20,6 @@ git を読んで、スナップショットを作り続ける worker を、動�
   - すべての `main` のコミットにスナップショットツリーを作るので、バックエンドが worker に作らせるものがない（[すべてのコミットに作る](../snapshot/main.md#すべてのコミットに作る)）。
   - 見回りの間隔が短いので、起こす要求も要らない。
 - worker は、git と GitForge を読むだけである。git にも GitForge にも書かない。書く鍵も持たない。
-- worker は、記録を作る秘密鍵を持たない。記録の署名の公開鍵だけを持つ（[反映かの判定](../verify/README.md)）。
 - スナップショットを作って置き場に書くのは、worker だけである（[スナップショットの考え方](../snapshot/README.md#考え方)）。
   - worker、バックエンド、CLI の `check` は、同じ解析のコードを使う（[ひな形と check](../../cli/local.md)）。
 - worker は、永続するストレージを 1 つ持ち、その中に repository ごとの clone を持ち続ける。
@@ -36,8 +35,7 @@ git を読んで、スナップショットを作り続ける worker を、動�
 | ファイルの解析のコード | git のファイルからスナップショットを作る。CLI の `check` と同じコード |
 | 置き場への書き込み | 下に書くものを書く。バックエンドのポート（読むだけ）とは別のインターフェース |
 | リモートの git リポジトリ | GitForge。読むだけの資格情報を使う |
-| GitForge の読むだけの API | `main` のコミットが反映によるものかを確かめる（[反映かの判定](../verify/README.md)）。git と同じ資格情報を使う |
-| 記録の署名の公開鍵 | 反映かの判定で、記録を確かめる。見た記録を控えに足す（[記録の控え](../verify/records.md)） |
+| GitForge の読むだけの API | `main` のコミットを反映した apply request を探す（[どの apply request の反映か](patrol.md#どの-apply-request-の反映か)）。git と同じ資格情報を使う |
 
 - worker は、置き場のすべてのキーを書く。キーの一覧は、[スナップショットの置き場](../ports/snapshot-store.md#置いてあるもの) に書く。
 

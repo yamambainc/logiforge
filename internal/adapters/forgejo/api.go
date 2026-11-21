@@ -23,6 +23,19 @@ type user struct {
 	Login string `json:"login"`
 }
 
+type labelJSON struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func labelNames(ls []labelJSON) []string {
+	out := make([]string, 0, len(ls))
+	for _, l := range ls {
+		out = append(out, l.Name)
+	}
+	return out
+}
+
 type pullJSON struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
@@ -30,10 +43,12 @@ type pullJSON struct {
 	State  string `json:"state"`
 	Merged bool   `json:"merged"`
 	// Mergeable は、Forgejo が merge できるかを確かめた結果。
-	Mergeable      bool      `json:"mergeable"`
-	MergeCommitSHA string    `json:"merge_commit_sha"`
-	User           user      `json:"user"`
-	CreatedAt      time.Time `json:"created_at"`
+	Mergeable      bool        `json:"mergeable"`
+	MergeCommitSHA string      `json:"merge_commit_sha"`
+	User           user        `json:"user"`
+	Labels         []labelJSON `json:"labels"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 	Head           struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
@@ -45,29 +60,12 @@ type pullJSON struct {
 
 func (p pullJSON) pull() pullreq.Pull {
 	pr := pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
-		State: p.State, Merged: p.Merged, Base: p.Base.Ref, Author: p.User.Login, CreatedAt: p.CreatedAt}
+		State: p.State, Merged: p.Merged, Base: p.Base.Ref, Author: p.User.Login, Labels: labelNames(p.Labels),
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 	if p.Merged {
 		pr.MergeCommit = p.MergeCommitSHA
 	}
 	return pr
-}
-
-// RepoID は、Forgejo の repository の id を返す。名前を変えても、organization を移しても変わらない。
-func (a api) RepoID(ctx context.Context, repo string) (string, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return "", err
-	}
-	var r struct {
-		ID int64 `json:"id"`
-	}
-	if err := a.w(ctx, http.MethodGet, rp, nil, &r); err != nil {
-		if statusOf(err) == http.StatusNotFound {
-			return "", ports.ErrNotFound
-		}
-		return "", err
-	}
-	return "forgejo:" + strconv.FormatInt(r.ID, 10), nil
 }
 
 func (a api) w(ctx context.Context, method, path string, in, out any) error {
@@ -105,12 +103,12 @@ func (a api) GetPull(ctx context.Context, repo string, number int) (pullreq.Pull
 	return p.pull(), err
 }
 
-func (a api) ListPulls(ctx context.Context, repo string) ([]pullreq.Pull, error) {
+func (a api) ListPulls(ctx context.Context, repo, state string) ([]pullreq.Pull, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := list[pullJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/pulls?state=all&sort=oldest")
+	ps, err := list[pullJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/pulls?state="+url.QueryEscape(state)+"&sort=oldest")
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +118,26 @@ func (a api) ListPulls(ctx context.Context, repo string) ([]pullreq.Pull, error)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out, nil
+}
+
+// closedPageSize は、反映した pull request の一覧の 1 ページの件数である。
+const closedPageSize = 50
+
+func (a api) ClosedPullsPage(ctx context.Context, repo string, page int) ([]pullreq.Pull, bool, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	var ps []pullJSON
+	path := fmt.Sprintf("%s/pulls?state=closed&sort=recentupdate&page=%d&limit=%d", rp, page, closedPageSize)
+	if err := a.w(ctx, http.MethodGet, path, nil, &ps); err != nil {
+		return nil, false, err
+	}
+	out := make([]pullreq.Pull, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.pull())
+	}
+	return out, len(ps) == closedPageSize, nil
 }
 
 func (a api) EditPullBody(ctx context.Context, repo string, number int, body string) error {
@@ -202,28 +220,18 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 }
 
 type commentJSON struct {
-	ID             int64     `json:"id"`
-	Body           string    `json:"body"`
-	User           user      `json:"user"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	IssueURL       string    `json:"issue_url"`
-	PullRequestURL string    `json:"pull_request_url"`
-	Assets         []struct {
+	ID        int64     `json:"id"`
+	Body      string    `json:"body"`
+	User      user      `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+	Assets    []struct {
 		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	} `json:"assets"`
 }
 
-func (c commentJSON) comment() pullreq.Comment {
-	out := pullreq.Comment{ID: c.ID, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
-	u := c.IssueURL
-	if u == "" {
-		u = c.PullRequestURL
-	}
-	if i := strings.LastIndex(u, "/"); i >= 0 {
-		out.IssueNumber, _ = strconv.Atoi(u[i+1:])
-	}
+func (c commentJSON) comment(number int) pullreq.Comment {
+	out := pullreq.Comment{ID: c.ID, IssueNumber: number, Body: c.Body, Author: c.User.Login, CreatedAt: c.CreatedAt}
 	if len(c.Assets) > 0 {
 		out.Attachments = map[string]string{}
 		for _, as := range c.Assets {
@@ -242,9 +250,7 @@ func (a api) CreateComment(ctx context.Context, repo string, number int, body st
 	if err := a.w(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/comments", rp, number), map[string]string{"body": body}, &c); err != nil {
 		return pullreq.Comment{}, err
 	}
-	out := c.comment()
-	out.IssueNumber = number
-	return out, nil
+	return c.comment(number), nil
 }
 
 func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullreq.Comment, error) {
@@ -258,49 +264,194 @@ func (a api) ListComments(ctx context.Context, repo string, number int) ([]pullr
 	}
 	out := make([]pullreq.Comment, 0, len(cs))
 	for _, c := range cs {
-		x := c.comment()
-		x.IssueNumber = number
-		out = append(out, x)
+		out = append(out, c.comment(number))
 	}
 	return out, nil
 }
 
-func (a api) ListRepoComments(ctx context.Context, repo string) ([]pullreq.Comment, error) {
+// reviewState は、Forgejo の review の state と、ports.ReviewKind の対応である。
+var reviewState = map[string]ports.ReviewKind{"APPROVED": ports.ReviewApprove, "REQUEST_CHANGES": ports.ReviewRequestChanges, "COMMENT": ports.ReviewComment}
+
+var reviewEvent = map[ports.ReviewKind]string{ports.ReviewApprove: "APPROVED", ports.ReviewRequestChanges: "REQUEST_CHANGES", ports.ReviewComment: "COMMENT"}
+
+type reviewJSON struct {
+	ID          int64     `json:"id"`
+	User        *user     `json:"user"`
+	Body        string    `json:"body"`
+	State       string    `json:"state"`
+	CommitID    string    `json:"commit_id"`
+	Dismissed   bool      `json:"dismissed"`
+	Official    bool      `json:"official"`
+	SubmittedAt time.Time `json:"submitted_at"`
+}
+
+func (r reviewJSON) review() (pullreq.PullReview, bool) {
+	k, ok := reviewState[r.State]
+	if !ok || r.User == nil {
+		return pullreq.PullReview{}, false
+	}
+	// Forgejo は、書く権限を持つ人の、いちばん新しい approve と request changes を official にする（design/adapters/pull-requests.md の
+	// 「数える review」）。ほかの人の権限を読む API（collaborators/{user}/permission）は、repository の admin しか使えないので、使わない。
+	official := r.Official
+	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: r.Dismissed,
+		CanPush: &official, SubmittedAt: r.SubmittedAt}, true
+}
+
+func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
 	rp, err := repoPath(repo)
 	if err != nil {
 		return nil, err
 	}
-	cs, err := list[commentJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/issues/comments")
+	rs, err := list[reviewJSON](ctx, a.client, ports.TokenFrom(ctx), fmt.Sprintf("%s/pulls/%d/reviews", rp, number))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]pullreq.Comment, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.comment())
+	var out []pullreq.PullReview
+	for _, r := range rs {
+		if x, ok := r.review(); ok {
+			out = append(out, x)
+		}
+	}
+	return out, nil
+}
+
+func (a api) CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (pullreq.PullReview, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return pullreq.PullReview{}, err
+	}
+	var r reviewJSON
+	err = a.w(ctx, http.MethodPost, fmt.Sprintf("%s/pulls/%d/reviews", rp, number),
+		map[string]string{"event": reviewEvent[event], "body": body, "commit_id": commitID}, &r)
+	if err != nil {
+		return pullreq.PullReview{}, err
+	}
+	x, _ := r.review()
+	return x, nil
+}
+
+func (a api) labels(ctx context.Context, rp string) ([]labelJSON, error) {
+	return list[labelJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/labels")
+}
+
+// EnsureLabel は、ラベルがなければ作る。
+func (a api) EnsureLabel(ctx context.Context, repo string, l pullreq.Label) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	have, err := a.labels(ctx, rp)
+	if err != nil {
+		return err
+	}
+	for _, x := range have {
+		if x.Name == l.Name {
+			return nil
+		}
+	}
+	return a.w(ctx, http.MethodPost, rp+"/labels", map[string]string{"name": l.Name, "color": l.Color, "description": l.Description}, nil)
+}
+
+// AddLabel は、ラベルを名前で付ける。
+func (a api) AddLabel(ctx context.Context, repo string, number int, name string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	return a.w(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/labels", rp, number), map[string][]string{"labels": {name}}, nil)
+}
+
+// RemoveLabel は、ラベルを外す。Forgejo は、識別子で外すので、ラベルの一覧から引く。
+func (a api) RemoveLabel(ctx context.Context, repo string, number int, name string) error {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return err
+	}
+	have, err := a.labels(ctx, rp)
+	if err != nil {
+		return err
+	}
+	for _, x := range have {
+		if x.Name != name {
+			continue
+		}
+		err := a.w(ctx, http.MethodDelete, fmt.Sprintf("%s/issues/%d/labels/%d", rp, number, x.ID), nil, nil)
+		if statusOf(err) == http.StatusNotFound {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+type timelineJSON struct {
+	Type      string     `json:"type"`
+	Body      string     `json:"body"`
+	User      *user      `json:"user"`
+	Label     *labelJSON `json:"label"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// ListEvents は、issue の timeline（GET /issues/{index}/timeline）を読む。pull request も issue として読める。
+// ラベルの出来事は、本文が "1" なら付けた、それ以外なら外した、である。
+func (a api) ListEvents(ctx context.Context, repo string, number int) ([]pullreq.Event, error) {
+	rp, err := repoPath(repo)
+	if err != nil {
+		return nil, err
+	}
+	ts, err := list[timelineJSON](ctx, a.client, ports.TokenFrom(ctx), fmt.Sprintf("%s/issues/%d/timeline", rp, number))
+	if err != nil {
+		return nil, err
+	}
+	var out []pullreq.Event
+	for _, t := range ts {
+		e := pullreq.Event{CreatedAt: t.CreatedAt}
+		if t.User != nil {
+			e.Actor = t.User.Login
+		}
+		switch t.Type {
+		case "label":
+			if t.Label == nil {
+				continue
+			}
+			e.Kind, e.Label = "unlabeled", t.Label.Name
+			if t.Body == "1" {
+				e.Kind = "labeled"
+			}
+		case "close":
+			e.Kind = "closed"
+		case "reopen":
+			e.Kind = "reopened"
+		default:
+			continue
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
 
 type issueJSON struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	Body      string    `json:"body"`
-	State     string    `json:"state"`
-	User      user      `json:"user"`
-	CreatedAt time.Time `json:"created_at"`
+	Number    int         `json:"number"`
+	Title     string      `json:"title"`
+	Body      string      `json:"body"`
+	State     string      `json:"state"`
+	User      user        `json:"user"`
+	Labels    []labelJSON `json:"labels"`
+	CreatedAt time.Time   `json:"created_at"`
+	ClosedAt  *time.Time  `json:"closed_at"`
 }
 
 func (i issueJSON) issue() pullreq.Issue {
-	return pullreq.Issue{Number: i.Number, Title: i.Title, Body: i.Body, State: i.State, Author: i.User.Login, CreatedAt: i.CreatedAt}
+	is := pullreq.Issue{Number: i.Number, Title: i.Title, Body: i.Body, State: i.State, Author: i.User.Login, Labels: labelNames(i.Labels), CreatedAt: i.CreatedAt}
+	if i.ClosedAt != nil {
+		is.ClosedAt = *i.ClosedAt
+	}
+	return is
 }
 
-// labelIDs は、ラベルの名前から識別子を求める。なければ作る。ラベルは表示のためだけに付ける。
+// labelIDs は、ラベルの名前から識別子を求める。ラベルは、先に EnsureLabel で作っておく。
 func (a api) labelIDs(ctx context.Context, rp string, names []string) ([]int64, error) {
-	type labelJSON struct {
-		ID   int64  `json:"id"`
-		Name string `json:"name"`
-	}
-	have, err := list[labelJSON](ctx, a.client, ports.TokenFrom(ctx), rp+"/labels")
+	have, err := a.labels(ctx, rp)
 	if err != nil {
 		return nil, err
 	}
@@ -314,11 +465,7 @@ func (a api) labelIDs(ctx context.Context, rp string, names []string) ([]int64, 
 			}
 		}
 		if !found {
-			var l labelJSON
-			if err := a.w(ctx, http.MethodPost, rp+"/labels", map[string]string{"name": n, "color": "#5319e7"}, &l); err != nil {
-				return nil, err
-			}
-			ids = append(ids, l.ID)
+			return nil, fmt.Errorf("forgejo: ラベル %q がない", n)
 		}
 	}
 	return ids, nil
@@ -405,24 +552,4 @@ func (a api) DownloadAttachment(ctx context.Context, repo string, commentID int6
 		return nil, err
 	}
 	return a.download(ctx, ports.TokenFrom(ctx), as.URL)
-}
-
-// MergedPull は、sha を merge のコミットにした、向き先が main の pull request を返す（design/backend/verify/README.md の「GitForge の API」）。
-// GET /repos/{owner}/{repo}/commits/{sha}/pull は、そのコミットを merge した pull request を返し、なければ 404 を返す。
-func (a api) MergedPull(ctx context.Context, repo, sha string) (pullreq.Pull, bool, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return pullreq.Pull{}, false, err
-	}
-	var p pullJSON
-	if err := a.do(ctx, ports.TokenFrom(ctx), http.MethodGet, rp+"/commits/"+url.PathEscape(sha)+"/pull", nil, &p); err != nil {
-		if statusOf(err) == http.StatusNotFound {
-			return pullreq.Pull{}, false, nil
-		}
-		return pullreq.Pull{}, false, err
-	}
-	if !p.Merged || p.MergeCommitSHA != sha || p.Base.Ref != "main" {
-		return pullreq.Pull{}, false, nil
-	}
-	return p.pull(), true, nil
 }

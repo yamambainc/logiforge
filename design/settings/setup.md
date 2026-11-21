@@ -26,11 +26,9 @@
 2. WebUI のセットアップの画面で、構成（GitHub か Forgejo）を選び、GitForge の設定を入れる（下の 2 つの節）。
 3. GitHub の構成では、最初の repository を登録する（名前と `owner/name`。ディレクトリの repository ならパスも。[repository の登録](../adapters/README.md#repository-の登録)）。
 4. その GitForge でサインインする（[サインイン](../webui/auth.md)）。
-5. バックエンドは、サインインした主体が `user` であることを確かめる（[利用者の決め方](users.md#利用者の決め方)）。記録の署名の鍵を 1 つ作る。セットアップを終わりにする。
+5. バックエンドは、サインインした主体が `user` であることを確かめる（[利用者の決め方](users.md#利用者の決め方)）。セットアップを終わりにする。
    - GitHub の構成では、3 の repository に Write 以上がなければ、断る（`forbidden`）。
    - Forgejo の構成では、organization の team で `write` 以上がなければ、断る。
-   - 置き場に、すでに取り込んだ repository があれば（置き場の `repositories` か `keep/records` がある）、断る（`validation_failed`）。3 で登録しただけの repository は、まだ置き場にない。worker は、セットアップが終わるまで見回らないから。
-   - なぜ：新しい鍵では、それまでの記録を確かめられず、repository が壊れた状態になるから。初回のセットアップは、空の置き場で行う。
 6. 利用者が、[設定の画面](../../docs/webui/settings.md) で、ほかの repository を登録する。
 
 - 3 までに入れた設定は、そのつど設定の DB に置く。途中でページを閉じても、バックエンドを起動し直しても、続きから進める。

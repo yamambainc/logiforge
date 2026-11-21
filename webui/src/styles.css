@@ -397,7 +397,7 @@ button.file { width: 100%; text-align: left; background: var(--panel); cursor: p
 .history .h-ar { min-width: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history .dim { white-space: nowrap; }
 .notice { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #fff8e6; border-bottom: 1px solid var(--line); font-size: 13px; }
-.notice.broken { background: #fdecec; color: #7a1414; flex-wrap: wrap; }
+.notice.invalid { background: #fdecec; color: #7a1414; flex-wrap: wrap; }
 /* 時点と、重ねる AR を選ぶ（design/webui/overlay.md） */
 .sources { display: flex; gap: 8px; min-width: 0; }
 .pick { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; max-width: 240px; min-width: 0; }

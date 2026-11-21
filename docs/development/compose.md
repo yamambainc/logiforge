@@ -25,7 +25,7 @@ docker compose up -d --wait
 
 - 起動時に渡すのは、設定の DB の場所と 2 つの鍵と、ホストに結び付くものだけである（[compose.yaml](../../compose.yaml)、[環境変数](../../design/deploy/env.md)）。
 - 2 つの鍵は `.compose/secrets/` に置き、compose の `secrets` でファイルとして渡す。worker には、バックエンドの鍵を渡さない。
-- ほかの設定（Forgejo の URL と organization、OAuth2 のアプリケーション、worker のトークン、記録の鍵）は、`scripts/compose-setup.sh` が `logiforge settings load` で設定の DB に書く（[設定のコマンド](../../design/settings/README.md#設定のコマンド)）。
+- ほかの設定（Forgejo の URL と organization、OAuth2 のアプリケーション、worker のトークン）は、`scripts/compose-setup.sh` が `logiforge settings load` で設定の DB に書く（[設定のコマンド](../../design/settings/README.md#設定のコマンド)）。
   - そのため、compose では、セットアップの画面を通らない。
   - 設定の DB は、ボリューム `config` に置く。worker は、読むだけでマウントする。
 

@@ -34,8 +34,10 @@ export interface Repository {
   root_hypothesis_id: string;
   root_statement: string | null;
   root_value: boolean | null;
-  /** 壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。 */
-  broken?: { first_commit: string; last_good_commit: string; reason: string } | null;
+  /** 木を読む API が返す木のコミットと、そのあとの最初の valid でないコミット（design/backend/invalid-main.md の「木を読む API」）。
+   * 最新のコミットが valid なら invalid_since は null */
+  valid_commit?: string | null;
+  invalid_since?: string | null;
   /** ディレクトリの repository のパス（design/directory/README.md）。 */
   directory?: string;
   /** 別リポジトリ方式から移した repository のとき、元の repository と移したコミット（design/directory/migrate.md）。 */
@@ -72,7 +74,7 @@ export interface Verdict {
   supersedes?: string[]; apply_request_id?: string; submitted_commit: string; superseded_commit?: string | null;
 }
 export interface NodeDetail { commit: string; node: Node; children: Node[]; verdict?: Verdict | null; cited_by: string[] }
-export interface HistoryEntry { commit: string; committed_at: string; apply_request_id: string | null; session_ids: string[]; reflected: boolean }
+export interface HistoryEntry { commit: string; committed_at: string; apply_request_id: string | null; reflected: boolean }
 
 const enc = encodeURIComponent;
 /** 木を読む時点。どちらもなければ今の main。commit は main かブランチのコミット、apply_request は反映したあとの姿。 */
@@ -132,14 +134,15 @@ export type Operation =
   | { kind: 'story.inactivate'; position: number; story_id: string; reason: string }
   | { kind: 'verdict.submit'; position: number; verdict_id: string; hypothesis_id: string; value: boolean; report_body: string }
   | { kind: 'node.edit'; position: number; hypothesis_id: string; append_background: string };
-export interface Review { id: string; kind: 'approve' | 'request_changes' | 'comment'; commit: string; body?: string; reviewer_session_id: string; valid: boolean; reviewer?: string; created_at?: string | null }
+export interface Review { id: string; kind: 'approve' | 'request_changes' | 'comment'; commit: string; body?: string; valid: boolean; reviewer?: string; created_at?: string | null }
 export interface ApplyRequest {
   id: string; state: 'open' | 'merged' | 'closed'; branch: string; target: string; description?: string; head_commit: string;
-  head_commits?: { commit: string; base_commit: string; seen_at: string | null; author_session_id: string | null }[];
+  head_commits?: { commit: string; base_commit: string; seen_at: string | null }[];
   operations?: Operation[];
   reviews?: Review[];
-  merge_failures?: { commit: string; reason: string; detail: string }[];
-  awaiting?: 'review' | 'fix' | null; closed_reason?: string | null; warnings?: string[]; merged_commit?: string | null;
+  /** pull request のコメント（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、人が読む文で入る */
+  comments?: { author: string; body: string; created_at: string | null }[];
+  awaiting?: 'review' | 'fix' | null; warnings?: string[]; merged_commit?: string | null;
   /** 要求を送った主体が、この apply request を作った主体と同じか。approve の前に示す（design/settings/users.md の「WebUI からのレビュー」） */
   opened_by_caller?: boolean;
 }
@@ -154,18 +157,19 @@ export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(
 /** レビューの材料（getReviewMaterial）。説明欄は含まない（docs/apply-request/review.md の「レビューの材料」） */
 export interface ReviewMaterial {
   apply_request_id: string; commit: string;
-  repair?: { kind: 'repair.revert' | 'repair.accept'; last_good_commit: string; main_commit: string; changes: { path: string; status: 'added' | 'modified' | 'deleted'; before?: string; after?: string }[] };
   operations: Operation[]; targets: Node[]; ancestors: Hypothesis[]; siblings: Story[];
   citations: { citation: Citation; nodes?: Node[]; artifact?: Artifact }[];
 }
 export const getReviewMaterial = (repo: string, id: string) => call<ReviewMaterial>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/review-material`);
 
 export type ReviewKind = Review['kind'];
+/** その要求の中で反映しようとして、できなかったときの理由（レビューの応答だけに入る） */
+export interface MergeFailure { commit: string; reason: string; detail: string }
 /** レビューを付ける。commit は、画面で示した先頭のコミット。user（WebUI）は prompt_revision を送らない */
-export const reviewApplyRequest = (repo: string, id: string, sessionId: string, r: { kind: ReviewKind; commit: string; body: string }) =>
-  call<{ review: Review; apply_request: ApplyRequest }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
+export const reviewApplyRequest = (repo: string, id: string, r: { kind: ReviewKind; commit: string; body: string }) =>
+  call<{ review: Review; apply_request: ApplyRequest; merge_failure?: MergeFailure }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Logiforge-Session-Id': sessionId },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(r.body ? { kind: r.kind, commit: r.commit, body: r.body } : { kind: r.kind, commit: r.commit }),
   });
 

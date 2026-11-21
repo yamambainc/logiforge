@@ -7,17 +7,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// chainBrokenDetail は、レビューの鎖が切れているときの、opener の手である（design/adapters/records.md の「レビューの書き方」）。
-const chainBrokenDetail = "レビューの鎖が切れている（数えないレビューがある）ので、この apply request には、レビューも反映もできない。" +
-	"opener は、この apply request を close し、同じブランチから apply request を作り直す"
-
-// UserPromptRevision は、user（WebUI）のレビューの記録に書く、プロンプトのリビジョンである（design/api/endpoints/apply-request/review.md）。
+// UserPromptRevision は、user（WebUI）のレビューの、プロンプトのリビジョンである（design/api/endpoints/apply-request/review.md）。
 const UserPromptRevision = "-"
 
 // NewReview は、レビューの要求である。
@@ -26,35 +21,37 @@ type NewReview struct {
 	Commit         string
 	Body           string
 	PromptRevision string
-	Session        string
 }
 
 // ReviewResult は、レビューの応答である。
 type ReviewResult struct {
 	Review       Review       `json:"review"`
 	ApplyRequest ApplyRequest `json:"apply_request"`
+	// MergeFailure は、この要求の中で反映しようとして、できなかったときの理由である。GitForge には、pull request のコメントとして残る。
+	MergeFailure *MergeFailure `json:"merge_failure,omitempty"`
 }
 
 // ReviewApplyRequest は、レビューを付ける。approve で反映の条件を満たしたら、この要求の中で反映する（design/backend/merge.md）。
-// 反映に失敗しても、エラーにはしない。応答の apply_request.merge_failures に理由が入る。
+// 反映に失敗しても、エラーにはしない。応答の merge_failure に理由が入る。
 func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id string, n NewReview) (Written[ReviewResult], error) {
 	var out Written[ReviewResult]
 	// client と、その repository に Write がある user が使える（design/settings/users.md の「WebUI からのレビュー」）。
 	if c.Principal.Kind == ports.PrincipalUser {
-		if err := requireSession(n.Session); err != nil {
-			return out, err
-		}
 		if err := b.requireUserOn(ctx, c, repo); err != nil {
 			return out, err
 		}
 		// user（WebUI）のレビューには、プロンプトのリビジョンがない。記録には - を書く。
 		n.PromptRevision = UserPromptRevision
-	} else if err := requireClient(c, n.Session); err != nil {
+	} else if err := requireClient(c); err != nil {
 		return out, err
 	}
 	kind := ports.ReviewKind(n.Kind)
 	if kind != ports.ReviewApprove && kind != ports.ReviewRequestChanges && kind != ports.ReviewComment {
 		return out, fail(CodeValidationFailed, "kind は approve、request_changes、comment のどれか")
+	}
+	// GitForge は、本文のない comment と request changes の review を拒む（GitHub と Forgejo）。
+	if (kind == ports.ReviewComment || kind == ports.ReviewRequestChanges) && strings.TrimSpace(n.Body) == "" {
+		return out, fail(CodeValidationFailed, "comment と request_changes には body（本文）が要る")
 	}
 	if kind == ports.ReviewApprove && n.PromptRevision == "" {
 		return out, fail(CodeValidationFailed, "approve では prompt_revision が必須")
@@ -73,7 +70,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
 	if e := AsError(err); e != nil && e.Code == CodeNotOpen && kind == ports.ReviewApprove {
 		// approve の送り直し：反映済みで、最後の決めるレビューが、同じセッションの approve なら、成功として今の状態を返す。
-		if res, ok, err := b.approveResent(ctx, c, repo, ref, id, n.Session); err != nil || ok {
+		if res, ok, err := b.approveResent(ctx, c, repo, ref, id); err != nil || ok {
 			out.Value = res
 			return out, err
 		}
@@ -81,8 +78,9 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if err != nil {
 		return out, err
 	}
-	if d.reviews.ChainBroken {
-		return out, fail(CodeNotOpen, chainBrokenDetail)
+	// GitForge は、pull request の作者自身の approve を拒む（design/adapters/pull-requests.md の「数える review」）。
+	if kind == ports.ReviewApprove && strings.EqualFold(c.Principal.Login, d.port.Opener) {
+		return out, fail(CodeValidationFailed, "apply request を作ったアカウント %s では approve できない。opener と別のアカウントでレビューする", d.port.Opener)
 	}
 	rev := n.Commit
 	if rev != d.current.Commit {
@@ -92,46 +90,44 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if d.branch == nil {
 		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", d.current.Commit)
 	}
-	// 差分を書いたどのセッションとも、別のセッションでレビューする。
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && *v.AuthorSessionID == n.Session {
-			return out, fail(CodeSameSession, "コミット %s を書いたセッションと同じセッションで、レビューした", v.Commit)
-		}
-	}
-	if kind == ports.ReviewApprove && d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
-		return out, fail(CodeValidationFailed, "先頭のコミットに Logiforge-Session-Id: がないので、approve できない（design/files/revisions.md の「セッション」）")
-	}
-	r := ports.Review{ID: ids.NewULID(ids.PrefixReview, b.now()), Kind: kind, Body: n.Body, Revision: rev,
-		Reviewer: c.Principal.Login, Session: n.Session, PromptRevision: n.PromptRevision}
-	if err := b.Forge.AddReview(ctx, ref, id, r); err != nil {
+	r, err := b.Forge.AddReview(ctx, ref, id, ports.Review{Kind: kind, Body: n.Body, Revision: rev,
+		Reviewer: c.Principal.Login, PromptRevision: n.PromptRevision})
+	if err != nil {
 		return out, err
 	}
 	var warnings []string
-	if c.Principal.Login == d.port.Opener {
-		warnings = append(warnings, "reviewer の主体が、apply request を作った主体と同じ（セッションは自己申告なので、確かめられない）")
+	var failure *MergeFailure
+	// request changes を出したら、修正待ちのラベルに付け替える（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+	if kind == ports.ReviewRequestChanges && targetsMain(d.port) {
+		if err := b.Forge.SetWaiting(ctx, ref, id, ports.WaitingFix); err != nil {
+			warnings = append(warnings, "修正待ちのラベルを付けられない（書く権限のある人が読めば直る）："+err.Error())
+		}
 	}
 	// 向き先が main でない apply request は、Logiforge の反映の対象でない。approve は記録するだけで、反映の手順に進まない
 	// （design/backend/apply-request/target.md の「向き先」）。
 	if kind == ports.ReviewApprove && !targetsMain(d.port) {
 		warnings = append(warnings, "向き先が main でない（"+d.port.Target+"）ので、approve しても Logiforge は反映しない")
 	} else if kind == ports.ReviewApprove {
-		pending, err := b.merge(ctx, repo, ref, id)
+		pending, mf, err := b.merge(ctx, repo, ref, id)
 		if err != nil {
 			return out, err
 		}
 		out.Pending = pending
+		if mf != nil {
+			failure = &MergeFailure{Commit: mf.Revision, Reason: mf.Reason, Detail: mf.Detail}
+		}
 	}
 	ar, err := b.GetApplyRequest(ctx, c, repo, id)
 	if err != nil {
 		return out, err
 	}
 	ar.Warnings = append(ar.Warnings, warnings...)
-	out.Value = ReviewResult{ApplyRequest: ar, Review: reviewOf(r, true)}
+	out.Value = ReviewResult{ApplyRequest: ar, Review: reviewOf(r, true), MergeFailure: failure}
 	return out, nil
 }
 
-// approveResent は、反映済みの提案への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
-func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, session string) (ReviewResult, bool, error) {
+// approveResent は、反映済みの apply request への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
+func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id string) (ReviewResult, bool, error) {
 	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
 	if err != nil || ar.State != ports.StateMerged {
 		return ReviewResult{}, false, nil
@@ -141,7 +137,7 @@ func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, se
 		return ReviewResult{}, false, err
 	}
 	last := lastDecisive(reviews.Items, "")
-	if last == nil || last.Kind != ports.ReviewApprove || last.Session != session {
+	if last == nil || last.Kind != ports.ReviewApprove || !strings.EqualFold(last.Reviewer, c.Principal.Login) {
 		return ReviewResult{}, false, nil
 	}
 	model, err := b.GetApplyRequest(ctx, c, repo, id)
@@ -164,23 +160,21 @@ func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
 
 // merge は、反映の手順を行う（design/backend/merge.md の「手順」）。反映できなければ、失敗の理由を GitForge に記録し、エラーにしない。
 // 反映のコミットが読む側に出るのを待ち、上限を過ぎたら、そのコミットを返す。
-func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, error) {
+func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, *ports.MergeFailure, error) {
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	failure := func(reason, detail string) (string, error) {
-		return "", b.Forge.RecordMergeFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail})
+	failure := func(reason, detail string) (string, *ports.MergeFailure, error) {
+		f := ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail}
+		return "", &f, b.recordFailure(ctx, ref, id, f)
 	}
 	// 1. 反映の条件。
 	if d.branch == nil {
 		return failure("snapshot_pending", "先頭のコミットのスナップショットが、まだない")
 	}
-	if d.reviews.ChainBroken {
-		return "", fail(CodeNotOpen, chainBrokenDetail)
-	}
 	if approvalProblem(d) != "" {
-		return "", nil
+		return "", nil, nil
 	}
 	// 2. 今の main のスナップショット。GitForge の main が latest より進んでいれば、worker が追いつくのを待つ。
 	// 待ち始めに読んだ head が、latest の history に入ったら抜ける（そのあとに main が進んでもよい）。
@@ -189,63 +183,43 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 			return failure("snapshot_pending", "GitForge の main "+head+" に、worker がまだ追いついていない")
 		}
 	} else if !errors.Is(err, ports.ErrNotFound) {
-		return "", err
+		return "", nil, err
 	}
 	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		if e := AsError(err); e != nil && e.Code == CodeSnapshotPending {
 			return failure("snapshot_pending", "今の main のスナップショットが、まだない")
 		}
-		return "", err
-	}
-	// 壊れた repository には、直すための apply request しか反映しない（design/backend/broken.md）。
-	broken, err := b.Snap.Broken(ctx, repo)
-	if err != nil {
-		return "", err
-	}
-	kind := d.port.Kind
-	if kind != "" {
-		problem, err := b.repairProblem(ctx, repo, kind, d.branch, latest, broken)
-		if err != nil {
-			return "", err
-		}
-		if problem != "" {
-			return failure("repository_broken", problem)
-		}
-		return b.squash(ctx, repo, ref, id, d, "\nLogiforge-Repair: "+repairTrailer(kind))
-	}
-	if broken != nil {
-		return failure("repository_broken", fmt.Sprintf("repository が壊れている（%s から）。直すための apply request を先に反映する", broken.First))
+		return "", nil, err
 	}
 	// 3. 対象ノードの変化、重ねられるか、差分の検査。
 	if reason, detail, err := b.changeProblem(ctx, latest, d.branch, d.model.Operations); err != nil || reason != "" {
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		return failure(reason, detail)
 	}
-	return b.squash(ctx, repo, ref, id, d, "")
+	return b.squash(ctx, repo, ref, id, d)
+}
+
+// recordFailure は、反映の失敗を GitForge に残す（pull request のふつうのコメント）。
+// opener が直すべき理由なら修正待ちに、ほかの理由ならレビュー待ちに、ラベルを付け替える
+// （design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.MergeFailure) error {
+	w := ports.WaitingReview
+	if openerFixes[f.Reason] {
+		w = ports.WaitingFix
+	}
+	return b.Forge.RecordMergeFailure(ctx, ref, id, f, w)
 }
 
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
 //   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
-//     （design/backend/verify/README.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
-//   - 先頭のコミットに、書いたセッションの trailer がある。reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
+//     （design/backend/merge.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
 func approvalProblem(d *arDetail) string {
-	if d.reviews.ChainBroken {
-		return "レビューの鎖が切れている"
-	}
 	last := lastDecisive(d.reviews.Items, "")
 	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
 		return "最後の決めるレビューが、先頭のコミット " + d.current.Commit + " への approve でない"
-	}
-	if len(d.model.HeadCommits) == 0 || d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
-		return "先頭のコミットに、書いたセッションの trailer がない"
-	}
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && *v.AuthorSessionID == last.Session {
-			return "reviewer のセッション " + last.Session + " が、先頭のコミットを書いたセッションと同じ"
-		}
 	}
 	return ""
 }
@@ -291,28 +265,20 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 	return "", "", nil
 }
 
-// squash は、反映の手順の 4 と 5 である。extra は、記録の trailer のあとに足す行（直すための apply request の Logiforge-Repair:）。
-func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail, extra string) (string, error) {
-	failure := func(reason, detail string) (string, error) {
-		return "", b.Forge.RecordMergeFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail})
+// squash は、反映の手順の 4 と 5 である。メッセージに、機械が読む trailer は書かない。どのコミットがどの apply request の反映かは、
+// worker が、merge の pull request を探して、コミットに置く（design/backend/invalid-main.md の「どの apply request の反映か」）。
+func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail) (string, *ports.MergeFailure, error) {
+	failure := func(reason, detail string) (string, *ports.MergeFailure, error) {
+		f := ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail}
+		return "", &f, b.recordFailure(ctx, ref, id, f)
 	}
 	// 4. head の SHA を指定して squash merge する。
-	title := fmt.Sprintf("apply request %s を反映した", id)
-	// 反映したすべての先頭のコミットのセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
-	// Logiforge-Version: の番号は、先頭のコミットの一覧の中の位置である。trailer の形は変えない（design/files/revisions.md）。
-	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s", id, len(d.model.HeadCommits), d.current.Commit)
-	var sessions []string
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && !slices.Contains(sessions, *v.AuthorSessionID) {
-			sessions = append(sessions, *v.AuthorSessionID)
-			message += "\nLogiforge-Session-Id: " + *v.AuthorSessionID
-		}
-	}
-	message += extra
+	title := fmt.Sprintf("apply request #%s を反映した", id)
+	message := ""
 	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Commit, title, message)
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):
-		return "", fail(CodeCommitConflict, "反映の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
+		return "", nil, fail(CodeCommitConflict, "反映の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
 	case errors.Is(err, ports.ErrConflict):
 		return failure("conflict", err.Error())
 	case errors.Is(err, ports.ErrMergeForbidden):
@@ -320,13 +286,13 @@ func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail,
 		// apply request は open のまま残る。merge の権限のある reviewer が approve し直せば、反映される。
 		return failure("merge_forbidden", "approve した reviewer に、GitForge で merge する権限がない："+err.Error())
 	case err != nil:
-		return "", err
+		return "", nil, err
 	}
 	// 5. 反映のコミットが読む側に出るまで待つ。
 	if !b.waitLatest(ctx, repo, func(l string) bool { return l == sha }) {
-		return sha, nil
+		return sha, nil, nil
 	}
-	return "", nil
+	return "", nil, nil
 }
 
 // targetsOf は、操作の対象ノードを返す（design/backend/merge.md の「対象ノードの変化」）。

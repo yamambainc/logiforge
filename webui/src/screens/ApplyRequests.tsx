@@ -3,8 +3,8 @@
 // 状態（見るもの、状態、選んだ apply request、作業の絞り込み）は URL に持つ。
 // open の apply request は、その repository に Write がある利用者が、ここでレビューできる（approve なら反映まで）。
 import { useEffect, useState } from 'react';
-import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, FAILURE, opLabel, REVIEW, STATE } from '../ar';
+import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
+import { arTitle, AWAITING, byTime, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -64,10 +64,10 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
     const live = () => alive;
     setItems(null); setNext(null); setError(null);
     if (work) {
-      // 作業としての絞り込み：作業の対象の apply request だけを、1 つずつ読む（数は件数と同じで、多くない）
-      workSubjects(repo, work)
-        .then((ids) => Promise.all([...ids].map((i) => getApplyRequest(repo, i))))
-        .then((r) => live() && setItems(r))
+      // 作業としての絞り込み：作業の一覧と、open の apply request の一覧を 1 回ずつ読み、識別子で絞る。
+      // 1 つずつは読まない（design/backend/list-reads.md）
+      Promise.all([workSubjects(repo, work), listOpenApplyRequests(repo)])
+        .then(([ids, all]) => live() && setItems(filterBySubjects(all, ids)))
         .catch((e) => live() && fail(e));
     } else void more(null, live);
     return () => { alive = false; };
@@ -137,7 +137,6 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         {a.state === 'merged' && a.merged_commit && <a className="btn" href={tree(`commit=${a.merged_commit}`)} onClick={open(tree(`commit=${a.merged_commit}`))}>反映した時点を見る</a>}
       </div>
       {a.target !== 'main' && <p className="note">main 向きではないので、Logiforge は検査も反映もしません。</p>}
-      {a.closed_reason && <p className="note">閉じた理由：{a.closed_reason}</p>}
       {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
 
       <h3 className="sec">差分</h3>
@@ -160,7 +159,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
       <h3 className="sec">先頭のコミット</h3>
       <ol className="commits">
         {(a.head_commits ?? []).map((c) => (
-          <li key={c.commit}><span className="mono">{c.commit.slice(0, 7)}</span><span className="dim">{c.seen_at ? fmt(c.seen_at) : '取り込み中'}</span>{c.author_session_id && <span className="dim mono">{c.author_session_id}</span>}</li>
+          <li key={c.commit}><span className="mono">{c.commit.slice(0, 7)}</span><span className="dim">{c.seen_at ? fmt(c.seen_at) : '取り込み中'}</span></li>
         ))}
       </ol>
 
@@ -169,7 +168,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         <ol className="reviews">
           {byTime(a.reviews!).map((r) => (
             <li key={r.id} className={r.valid ? '' : 'stale'}>
-              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.reviewer_session_id}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
+              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
               {/* 本文は Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
               {r.body && <Markdown className="report" text={r.body} />}
             </li>
@@ -177,10 +176,18 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         </ol>
       )}
 
-      {(a.merge_failures ?? []).length > 0 && (
+      {(a.comments ?? []).length > 0 && (
         <>
-          <h3 className="sec">反映できなかったこと</h3>
-          <ul className="ops">{a.merge_failures!.map((f, i) => <li key={i}><span>{FAILURE[f.reason] ?? f.reason}</span><span className="dim">{f.detail}</span><span className="mono dim">{f.commit.slice(0, 7)}</span></li>)}</ul>
+          {/* pull request のコメントを、そのまま示す。反映の失敗と close の理由も、ここに人が読む文で入る */}
+          <h3 className="sec">コメント</h3>
+          <ol className="reviews">
+            {a.comments!.map((c, i) => (
+              <li key={i}>
+                <div className="r-head"><b className="r-who">{c.author}</b><span className="dim">{fmt(c.created_at)}</span></div>
+                <Markdown className="report" text={c.body} />
+              </li>
+            ))}
+          </ol>
         </>
       )}
 
@@ -191,7 +198,6 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
 }
 
 const VALUE = (v: boolean | null) => (v === true ? '真' : v === false ? '偽' : '未決');
-const CHANGE: Record<string, string> = { added: '加わる', modified: '変わる', deleted: '消える' };
 const KINDS: { k: ReviewKind; label: string }[] = [{ k: 'comment', label: 'コメント' }, { k: 'request_changes', label: 'request_changes' }, { k: 'approve', label: 'approve' }];
 
 // レビューの欄（docs/webui/history.md の「apply request の閲覧」）。
@@ -304,12 +310,6 @@ function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
   const line = (n: Node) => <li key={n.id}>{node(n.id)}<span>{textOf(n)}</span><span className="dim">{VALUE(n.value)}{n.inactive ? '・inactive' : ''}</span></li>;
   return (
     <div className="material">
-      {m.repair && (
-        <>
-          <h5>直すための変化（{m.repair.kind}）</h5>
-          <ul className="ops">{m.repair.changes.map((c) => <li key={c.path}><span className="mono">{c.path}</span><span className="dim">{CHANGE[c.status] ?? c.status}</span></li>)}</ul>
-        </>
-      )}
       <h5>差分</h5>
       {m.operations.length === 0 ? <p className="dim">差分の操作はありません。</p> : (
         <ul className="ops">{m.operations.map((op) => { const l = opLabel(op); return <li key={op.position}><span>{l.what}</span>{node(l.target)}</li>; })}</ul>

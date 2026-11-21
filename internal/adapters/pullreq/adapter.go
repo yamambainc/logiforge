@@ -4,11 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yamambainc/logiforge/internal/ports"
 )
@@ -26,563 +27,478 @@ type Repos interface {
 	Prepared(ctx context.Context, gitForgeRef string) (bool, error)
 }
 
-// Adapter は、API と鍵から、GitForge のポートを実装する。repo の引数は gitforge_ref である。
+// Adapter は、API から、GitForge のポートを実装する。repo の引数は gitforge_ref である。
 // GitForge には、ctx の主体のトークン（ports.WithToken）で読み書きする。
 type Adapter struct {
 	Repos
-	API  API
-	Keys Keyring
-	// Log は、worker の記録の控えである（design/backend/verify/records.md）。nil なら読まない。
-	// 読む記録は、GitForge のコメントと控えを合わせたものである。GitForge から消された記録も、控えにあれば数える。
-	Log RecordLog
-}
-
-// RecordLog は、worker が見た記録のコメントの控えを読む。repoID は、GitForge の repository の識別子（API.RepoID）である。
-type RecordLog interface {
-	Comments(ctx context.Context, repoID string, number int) ([]Comment, error)
+	API API
+	// Now は、今の時刻である。nil なら time.Now。
+	Now func() time.Time
 }
 
 var _ ports.GitForge = (*Adapter)(nil)
 
-// titlePrefix は、pull request と issue のタイトルの接頭辞である。タイトルは、探すための手がかりにだけ使い、記録としては読まない。
+func (a *Adapter) now() time.Time {
+	if a.Now != nil {
+		return a.Now()
+	}
+	return time.Now()
+}
+
+// titlePrefix は、pull request と issue のタイトルの接頭辞である。画面で見分けるためだけに付け、読まない。
 const titlePrefix = "[Logiforge] "
 
-type parsed struct {
-	Record
-	Comment Comment
+// ラベル（design/adapters/pull-requests.md）。
+const (
+	LabelReviewWaiting = "logiforge/review-waiting"
+	LabelFixWaiting    = "logiforge/fix-waiting"
+	labelPrefix        = "logiforge/"
+)
+
+// waitingLabels は、レビュー待ちと修正待ちのラベルの色と説明である。
+var waitingLabels = map[string]Label{
+	LabelReviewWaiting: {Name: LabelReviewWaiting, Color: "#1d76db", Description: "Logiforge：レビュー待ち"},
+	LabelFixWaiting:    {Name: LabelFixWaiting, Color: "#d93f0b", Description: "Logiforge：修正待ち"},
 }
 
-// records は、コメントのうち、その場所に置かれた、署名の合う記録を返す。だれが書いたかは見ない。
-// 署名が合わないもの（編集された、ほかの場所から写された、など）は数えず、警告にする。
-func (a *Adapter) records(repoID string, comments []Comment) (recs []parsed, warnings []string) {
-	return Records(a.Keys, repoID, comments)
+// 本文に書く、人が読む文の頭（design/adapters/texts.md）。バックエンドは、これを読まない。
+const (
+	promptPrefix = "プロンプトの版："
+	closePrefix  = "閉じた理由："
+)
+
+// withSentence は、本文の最後に、人が読む文を 1 つ足す。文が空なら、本文をそのまま返す。
+func withSentence(body, sentence string) string {
+	body = strings.TrimRight(body, "\n")
+	if sentence == "" {
+		return body
+	}
+	if body == "" {
+		return sentence
+	}
+	return body + "\n\n" + sentence
 }
 
-// Records は、コメントのうち、その場所に置かれた、署名の合う記録を、コメントの id の順に返す。worker も使う。
-func Records(keys Keyring, repoID string, comments []Comment) (recs []parsed, warnings []string) {
-	comments = slices.Clone(comments)
-	sort.SliceStable(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
-	for _, c := range comments {
-		r, err := keys.Parse(c.Body, Scope{RepoID: repoID, Number: c.IssueNumber})
-		switch {
-		case errors.Is(err, ErrNoRecord):
-		case err != nil:
-			warnings = append(warnings, fmt.Sprintf("コメント %d：%v", c.ID, err))
-		default:
-			recs = append(recs, parsed{Record: r, Comment: c})
-		}
+// nodeTitle は、人への依頼の issue のタイトルである。対象ノードの識別子で始め、そのあとに要約を書く（design/adapters/texts.md の
+// 「人への依頼の issue」）。nodeOfTitle は、タイトルの頭から、対象ノードの識別子を読む。
+func nodeTitle(node, summary string) string { return node + titleSeparator + summary }
+
+const titleSeparator = " について："
+
+func nodeOfTitle(title string) string {
+	node, _, ok := strings.Cut(title, titleSeparator)
+	if !ok || strings.ContainsAny(node, " \t") {
+		return ""
 	}
-	return recs, warnings
+	return node
 }
 
-func (a *Adapter) comment(ctx context.Context, repo string, number int, r Record) (Comment, error) {
-	repoID, err := a.API.RepoID(ctx, repo)
-	if err != nil {
-		return Comment{}, err
+func number(id string) (int, error) {
+	n, err := strconv.Atoi(id)
+	if err != nil || n <= 0 || strconv.Itoa(n) != id {
+		return 0, ports.ErrNotFound
 	}
-	text, err := a.Keys.Format(r, Scope{RepoID: repoID, Number: number})
-	if err != nil {
-		return Comment{}, err
-	}
-	return a.API.CreateComment(ctx, repo, number, text)
+	return n, nil
 }
 
-// recordsIn は、records と同じく読む。repository の識別子を GitForge に問い合わせる。
-func (a *Adapter) recordsIn(ctx context.Context, repo string, comments []Comment) ([]parsed, []string, error) {
-	repoID, err := a.API.RepoID(ctx, repo)
-	if err != nil {
-		return nil, nil, err
+// ---- apply request ----
+
+func waitingOf(labels []string) ports.Waiting {
+	r, f := slices.Contains(labels, LabelReviewWaiting), slices.Contains(labels, LabelFixWaiting)
+	switch {
+	case r && f:
+		return ports.WaitingBoth
+	case r:
+		return ports.WaitingReview
+	case f:
+		return ports.WaitingFix
 	}
-	recs, warnings := a.records(repoID, comments)
-	return recs, warnings, nil
+	return ports.WaitingNone
 }
 
-func byIssue(comments []Comment) map[int][]Comment {
-	m := map[int][]Comment{}
-	for _, c := range comments {
-		m[c.IssueNumber] = append(m[c.IssueNumber], c)
-	}
-	return m
-}
-
-// withRepository は、ディレクトリの repository の記録に、trailer Logiforge-Repository:（ディレクトリのパス）を足す。署名に含まれる。
-// git リポジトリ全体の repository では、足さない（design/directory/README.md の「apply request とみなす PR」）。
-func withRepository(ts []Trailer, ref string) []Trailer {
-	if _, dir := ports.SplitRef(ref); dir != "" {
-		ts = append(ts, Trailer{KeyRepository, dir})
-	}
-	return ts
-}
-
-// forRepository は、記録のうち、apply_request と human_request の記録で、Logiforge-Repository: が ref のディレクトリと違うもの
-// （ほかの repository の記録）を除く。1 つの git リポジトリに、repository がいくつもあるからである。
-// 除いた記録の提案や依頼は、ほかの記録があっても、この repository のものにならない。
-func forRepository(recs []parsed, ref string) []parsed {
-	_, dir := ports.SplitRef(ref)
-	out := recs[:0:0]
-	for _, r := range recs {
-		switch r.Get(KeyRecord) {
-		case RecordApplyRequest, RecordHumanRequest:
-			if r.Get(KeyRepository) != dir {
-				continue
-			}
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
-// ---- 提案 ----
-
-// applyRequest は、pull request と、その記録から提案を組み立てる。
-// 最初の apply_request の記録が、提案の識別子を決める。ほかの記録は、その識別子を持つものだけを数える。
-func applyRequest(p Pull, recs []parsed, warnings []string) (ports.ApplyRequest, bool) {
-	ar := ports.ApplyRequest{Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body, HeadRevision: p.HeadSHA, CreatedAt: p.CreatedAt, Warnings: warnings}
-	found, closed := false, false
-	for _, r := range recs {
-		kind := r.Get(KeyRecord)
-		if kind == RecordApplyRequest {
-			if found {
-				ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：apply_request の記録が重なっている", r.Comment.ID))
-				continue
-			}
-			found = true
-			ar.ID, ar.FirstRevision, ar.Opener, ar.Kind = r.Get(KeyApplyRequest), r.Get(KeyFirstRevision), r.Get(KeyPrincipal), r.Get(KeyApplyRequestKind)
-			continue
-		}
-		if !found || r.Get(KeyApplyRequest) != ar.ID {
-			ar.Warnings = append(ar.Warnings, fmt.Sprintf("コメント %d：提案の識別子が合わない記録", r.Comment.ID))
-			continue
-		}
-		switch kind {
-		case RecordClose:
-			if !closed {
-				closed = true
-				ar.CloseReason, ar.CloseSession = r.Body, r.Get(KeySession)
-			}
-		case RecordMergeFailure:
-			ar.MergeFailures = append(ar.MergeFailures, ports.MergeFailure{Revision: r.Get(KeyRevision), Reason: r.Get(KeyMergeFailure), Detail: r.Body})
-		}
-	}
+// toApplyRequest は、pull request の一覧に入っているものだけから apply request を作る。
+func toApplyRequest(p Pull) ports.ApplyRequest {
+	ar := ports.ApplyRequest{ID: strconv.Itoa(p.Number), Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body,
+		HeadRevision: p.HeadSHA, Opener: p.Author, Waiting: waitingOf(p.Labels), CreatedAt: p.CreatedAt}
 	switch {
 	case p.Merged:
 		ar.State, ar.MergedRevision = ports.StateMerged, p.MergeCommit
-	case closed || p.State == "closed":
+	case p.State == "closed":
 		ar.State = ports.StateClosed
 	default:
 		ar.State = ports.StateOpen
 	}
-	return ar, found
-}
-
-func (a *Adapter) readPull(ctx context.Context, repo string, p Pull) (ports.ApplyRequest, bool, error) {
-	comments, err := a.withLog(ctx, repo, p.Number)
-	if err != nil {
-		return ports.ApplyRequest{}, false, err
-	}
-	recs, warnings, err := a.recordsIn(ctx, repo, comments)
-	if err != nil {
-		return ports.ApplyRequest{}, false, err
-	}
-	ar, ok := applyRequest(p, forRepository(recs, repo), warnings)
-	return ar, ok, nil
+	return ar
 }
 
 func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.NewApplyRequest) (ports.ApplyRequest, error) {
-	pulls, err := a.API.ListPulls(ctx, repo)
+	pulls, err := a.API.ListPulls(ctx, repo, "open")
 	if err != nil {
 		return ports.ApplyRequest{}, err
 	}
-	var pull *Pull
-	for i, p := range pulls {
-		if p.State != "open" || p.Merged || p.Head != n.Branch {
+	for _, p := range pulls {
+		if p.Head != n.Branch {
 			continue
 		}
-		ar, ok, err := a.readPull(ctx, repo, p)
-		if err != nil {
-			return ports.ApplyRequest{}, err
+		// 送り直し：同じ主体が作った open の pull request があれば、それを返す（design/api/writes.md の「同じ要求の繰り返し」）。
+		if strings.EqualFold(p.Author, n.Opener) {
+			return a.GetApplyRequest(ctx, repo, strconv.Itoa(p.Number))
 		}
-		if ok {
-			if ar.ID == n.ID {
-				return ar, nil
-			}
-			return ports.ApplyRequest{}, ports.ErrBranchHasOpen
-		}
-		// 作ったあと、記録を書く前に止まったもの。新しく作らずに、記録を書く。
-		pull = &pulls[i]
-	}
-	adopted := pull != nil
-	if !adopted {
-		p, err := a.API.CreatePull(ctx, repo, n.Branch, titlePrefix+n.ID, n.Description)
-		if err != nil {
-			return ports.ApplyRequest{}, err
-		}
-		pull = &p
-	}
-	rec := Record{Trailers: []Trailer{{KeyRecord, RecordApplyRequest}, {KeyApplyRequest, n.ID}, {KeyFirstRevision, n.FirstRevision}, {KeyPrincipal, n.Opener}}}
-	rec.Trailers = withRepository(rec.Trailers, repo)
-	if n.Kind != "" {
-		rec.Trailers = append(rec.Trailers, Trailer{KeyApplyRequestKind, n.Kind})
-	}
-	if _, err := a.comment(ctx, repo, pull.Number, rec); err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	// 書いたあとに読み直す。同じ pull request を、別の要求が同時に引き取ったなら、最初の記録が勝つ。
-	ar, ok, err := a.readPull(ctx, repo, *pull)
-	if err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	if !ok || ar.ID != n.ID {
 		return ports.ApplyRequest{}, ports.ErrBranchHasOpen
 	}
-	return ar, nil
+	p, err := a.API.CreatePull(ctx, repo, n.Branch, titlePrefix+n.Branch, n.Description)
+	if err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	var warnings []string
+	if err := a.setWaiting(ctx, repo, p.Number, nil, ports.WaitingReview); err != nil {
+		warnings = append(warnings, fmt.Sprintf("レビュー待ちのラベルを付けられない：%v", err))
+	}
+	ar, err := a.GetApplyRequest(ctx, repo, strconv.Itoa(p.Number))
+	ar.Warnings = append(ar.Warnings, warnings...)
+	return ar, err
 }
 
-// findPull は、識別子の提案を探す。タイトルを手がかりに、その pull request のコメントだけを読む。
-// 見つからなければ、repository のコメントの一覧から探す。
-func (a *Adapter) findPull(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
-	pulls, err := a.API.ListPulls(ctx, repo)
-	if err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	for _, p := range pulls {
-		if strings.Contains(p.Title, id) {
-			ar, ok, err := a.readPull(ctx, repo, p)
-			if err != nil {
-				return ports.ApplyRequest{}, err
-			}
-			if ok && ar.ID == id {
-				return ar, nil
-			}
-		}
-	}
-	all, err := a.listApplyRequests(ctx, repo, pulls)
-	if err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	for _, ar := range all {
-		if ar.ID == id {
-			return ar, nil
-		}
-	}
-	return ports.ApplyRequest{}, ports.ErrNotFound
-}
-
-func (a *Adapter) MergedApplyRequest(ctx context.Context, repo, sha string) (ports.ApplyRequest, error) {
-	p, ok, err := a.API.MergedPull(ctx, repo, sha)
-	if err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	if !ok {
-		return ports.ApplyRequest{}, ports.ErrNotFound
-	}
-	ar, found, err := a.readPull(ctx, repo, p)
-	if err != nil {
-		return ports.ApplyRequest{}, err
-	}
-	if !found {
-		return ports.ApplyRequest{Number: p.Number, Branch: p.Head, Target: p.Base, HeadRevision: p.HeadSHA, State: ports.StateMerged, MergedRevision: p.MergeCommit}, nil
-	}
-	return ar, nil
-}
-
+// GetApplyRequest は、pull request を 1 件読む。コメントと、レビュー待ちと修正待ちのラベルを最後に付けた時刻も読む。
 func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
-	return a.findPull(ctx, repo, id)
-}
-
-func (a *Adapter) ListApplyRequests(ctx context.Context, repo string) ([]ports.ApplyRequest, error) {
-	pulls, err := a.API.ListPulls(ctx, repo)
+	num, err := number(id)
 	if err != nil {
-		return nil, err
+		return ports.ApplyRequest{}, err
 	}
-	return a.listApplyRequests(ctx, repo, pulls)
-}
-
-func (a *Adapter) listApplyRequests(ctx context.Context, repo string, pulls []Pull) ([]ports.ApplyRequest, error) {
-	comments, err := a.API.ListRepoComments(ctx, repo)
+	p, err := a.API.GetPull(ctx, repo, num)
 	if err != nil {
-		return nil, err
+		return ports.ApplyRequest{}, err
 	}
-	repoID, err := a.API.RepoID(ctx, repo)
+	ar := toApplyRequest(p)
+	evs, err := a.API.ListEvents(ctx, repo, num)
 	if err != nil {
-		return nil, err
+		return ports.ApplyRequest{}, err
 	}
-	by := byIssue(comments)
-	var out []ports.ApplyRequest
-	seen := map[string]bool{}
-	for _, p := range pulls {
-		recs, warnings := a.records(repoID, by[p.Number])
-		ar, ok := applyRequest(p, forRepository(recs, repo), warnings)
-		if !ok || seen[ar.ID] {
+	for _, e := range evs {
+		if e.Kind != "labeled" {
 			continue
 		}
-		seen[ar.ID] = true
-		out = append(out, ar)
+		switch {
+		case e.Label == LabelReviewWaiting && e.CreatedAt.After(ar.ReviewWaitingAt):
+			ar.ReviewWaitingAt = e.CreatedAt
+		case e.Label == LabelFixWaiting:
+			ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{Actor: e.Actor, At: e.CreatedAt})
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
+	cs, err := a.API.ListComments(ctx, repo, num)
+	if err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	ar.Comments = make([]ports.Comment, 0, len(cs))
+	for _, c := range cs {
+		ar.Comments = append(ar.Comments, ports.Comment{Author: c.Author, Body: c.Body, CreatedAt: c.CreatedAt})
+	}
+	return ar, nil
+}
+
+// ListApplyRequests は、pull request の一覧だけから読む。pull request ごとに GitForge を呼ばない（design/backend/list-reads.md）。
+func (a *Adapter) ListApplyRequests(ctx context.Context, repo, state string) ([]ports.ApplyRequest, error) {
+	if state == "" {
+		state = "all"
+	}
+	pulls, err := a.API.ListPulls(ctx, repo, state)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.ApplyRequest, 0, len(pulls))
+	for _, p := range pulls {
+		out = append(out, toApplyRequest(p))
+	}
 	return out, nil
 }
 
 func (a *Adapter) UpdateDescription(ctx context.Context, repo, id, description string) error {
-	ar, err := a.findPull(ctx, repo, id)
+	num, err := number(id)
 	if err != nil {
 		return err
 	}
-	return a.API.EditPullBody(ctx, repo, ar.Number, description)
+	return a.API.EditPullBody(ctx, repo, num, description)
 }
 
 func (a *Adapter) Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error) {
-	ar, err := a.findPull(ctx, repo, id)
+	num, err := number(id)
 	if err != nil {
 		return "", err
 	}
-	return a.API.MergePull(ctx, repo, ar.Number, headSHA, title, message)
+	sha, err := a.API.MergePull(ctx, repo, num, headSHA, title, message)
+	if err != nil {
+		return "", err
+	}
+	// ラベルは、反映したら外す。外せなくても、一覧は merged の pull request のラベルを見ないので、反映は成功とする。
+	_ = a.setWaiting(ctx, repo, num, nil, ports.WaitingNone)
+	return sha, nil
 }
 
-func (a *Adapter) Close(ctx context.Context, repo, id, reason, session string) error {
-	ar, err := a.findPull(ctx, repo, id)
+func (a *Adapter) Close(ctx context.Context, repo, id, reason string) error {
+	num, err := number(id)
 	if err != nil {
 		return err
 	}
-	if ar.State != ports.StateOpen {
+	p, err := a.API.GetPull(ctx, repo, num)
+	if err != nil {
+		return err
+	}
+	if p.State != "open" {
 		return nil
 	}
-	// 記録を先に書く。close の前に止まっても、記録があれば closed として扱う。
-	rec := Record{Body: reason, Trailers: []Trailer{{KeyRecord, RecordClose}, {KeyApplyRequest, id}, {KeySession, session}}}
-	if _, err := a.comment(ctx, repo, ar.Number, rec); err != nil {
+	if _, err := a.API.CreateComment(ctx, repo, num, closePrefix+oneLine(reason)); err != nil {
 		return err
 	}
-	return a.API.ClosePull(ctx, repo, ar.Number)
+	if err := a.API.ClosePull(ctx, repo, num); err != nil {
+		return err
+	}
+	_ = a.setWaiting(ctx, repo, num, p.Labels, ports.WaitingNone)
+	return nil
 }
 
-func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
-	ar, err := a.findPull(ctx, repo, id)
+// oneLine は、値を 1 行にする。本文の行は 1 行ずつ読むからである。
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure, w ports.Waiting) error {
+	num, err := number(id)
 	if err != nil {
 		return err
 	}
-	_, err = a.comment(ctx, repo, ar.Number, Record{Body: f.Detail, Trailers: []Trailer{{KeyRecord, RecordMergeFailure}, {KeyApplyRequest, id}, {KeyMergeFailure, f.Reason}, {KeyRevision, f.Revision}}})
-	return err
+	text := fmt.Sprintf("Logiforge：先頭のコミット %s を反映できなかった（%s）。", f.Revision, f.Reason)
+	if strings.TrimSpace(f.Detail) != "" {
+		text += "\n\n" + f.Detail
+	}
+	if _, err := a.API.CreateComment(ctx, repo, num, text); err != nil {
+		return err
+	}
+	p, err := a.API.GetPull(ctx, repo, num)
+	if err != nil {
+		return err
+	}
+	// 既に付いていても、外して付け直す。付けた出来事が、失敗を書いた主体のものとして残るようにするため
+	// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+	labels := p.Labels
+	if want := waitingName[w]; want != "" && slices.Contains(labels, want) {
+		if err := a.API.RemoveLabel(ctx, repo, num, want); err != nil {
+			return err
+		}
+		labels = slices.DeleteFunc(slices.Clone(labels), func(l string) bool { return l == want })
+	}
+	if labels == nil {
+		labels = []string{}
+	}
+	return a.setWaiting(ctx, repo, num, labels, w)
+}
+
+func (a *Adapter) SetWaiting(ctx context.Context, repo, id string, w ports.Waiting) error {
+	num, err := number(id)
+	if err != nil {
+		return err
+	}
+	return a.setWaiting(ctx, repo, num, nil, w)
+}
+
+// setWaiting は、レビュー待ちか修正待ちかのラベルを 1 つだけにする。labels が nil なら、pull request を読んで今のラベルを知る。
+func (a *Adapter) setWaiting(ctx context.Context, repo string, num int, labels []string, w ports.Waiting) error {
+	if labels == nil {
+		p, err := a.API.GetPull(ctx, repo, num)
+		if err != nil {
+			return err
+		}
+		labels = p.Labels
+	}
+	want := waitingName[w]
+	if want != "" && !slices.Contains(labels, want) {
+		if err := a.addLabel(ctx, repo, num, waitingLabels[want]); err != nil {
+			return err
+		}
+	}
+	for _, name := range []string{LabelReviewWaiting, LabelFixWaiting} {
+		if name != want && slices.Contains(labels, name) {
+			if err := a.API.RemoveLabel(ctx, repo, num, name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// waitingName は、レビュー待ちか修正待ちかの、ラベルの名前である。
+var waitingName = map[ports.Waiting]string{ports.WaitingReview: LabelReviewWaiting, ports.WaitingFix: LabelFixWaiting}
+
+// addLabel は、ラベルがなければ作ってから付ける。GitHub は、ない名前を付けると既定の色で作るからである。
+func (a *Adapter) addLabel(ctx context.Context, repo string, num int, l Label) error {
+	if err := a.API.EnsureLabel(ctx, repo, l); err != nil {
+		return err
+	}
+	return a.API.AddLabel(ctx, repo, num, l.Name)
 }
 
 // ---- レビュー ----
 
-// noPrevious は、最初のレビューの Logiforge-Previous-Review: の値である。
-const noPrevious = "-"
-
-// AddReview は、レビューを、pull request の記録のコメントとして書く（design/adapters/records.md の「レビューの書き方」）。
-// 直前のレビューの識別子を Logiforge-Previous-Review: に書き、レビューを鎖にする。
-func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r ports.Review) error {
-	ar, err := a.findPull(ctx, repo, applyRequestID)
+// AddReview は、pull request に review を出す。プロンプトの版があれば、本文の最後に、人が読む文で書く（design/adapters/texts.md の「review の本文」）。
+func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r ports.Review) (ports.Review, error) {
+	num, err := number(applyRequestID)
 	if err != nil {
-		return err
+		return ports.Review{}, err
 	}
-	got, err := a.ListReviews(ctx, repo, applyRequestID)
+	prompt := ""
+	if r.PromptRevision != "" && r.PromptRevision != "-" {
+		prompt = promptPrefix + oneLine(r.PromptRevision)
+	}
+	body := withSentence(r.Body, prompt)
+	got, err := a.API.CreateReview(ctx, repo, num, r.Kind, body, r.Revision)
 	if err != nil {
-		return err
+		return ports.Review{}, err
 	}
-	if got.ChainBroken {
-		return fmt.Errorf("pullreq: レビューの鎖が切れているので、レビューを足さない：%v", got.Warnings)
-	}
-	previous := noPrevious
-	if n := len(got.Items); n > 0 {
-		previous = got.Items[n-1].ID
-	}
-	_, err = a.comment(ctx, repo, ar.Number, Record{Body: r.Body, Trailers: []Trailer{
-		{KeyRecord, RecordReview}, {KeyApplyRequest, applyRequestID}, {KeyReviewID, r.ID}, {KeyPreviousReview, previous},
-		{KeyReviewKind, string(r.Kind)}, {KeyReviewRevision, r.Revision}, {KeyPrincipal, r.Reviewer}, {KeySession, r.Session},
-		{KeyPromptRevision, r.PromptRevision},
-	}})
-	return err
+	return toReview(got), nil
 }
 
+func toReview(pr PullReview) ports.Review {
+	return ports.Review{ID: strconv.FormatInt(pr.ID, 10), Kind: pr.Kind, Body: pr.Body, Revision: pr.CommitID, Reviewer: pr.Author, CreatedAt: pr.SubmittedAt}
+}
+
+// ListReviews は、数える review だけを、出した順に返す（design/adapters/pull-requests.md の「数える review」）。
+// 1 件の apply request を読むときだけ呼ぶ。一覧では呼ばない。
 func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) (ports.Reviews, error) {
-	ar, err := a.findPull(ctx, repo, applyRequestID)
+	num, err := number(applyRequestID)
 	if err != nil {
 		return ports.Reviews{}, err
 	}
-	repoID, err := a.API.RepoID(ctx, repo)
+	rs, err := a.API.ListReviews(ctx, repo, num)
 	if err != nil {
 		return ports.Reviews{}, err
 	}
-	comments, err := a.withLog(ctx, repo, ar.Number)
-	if err != nil {
-		return ports.Reviews{}, err
-	}
-	return Reviews(a.Keys, Scope{RepoID: repoID, Number: ar.Number}, applyRequestID, comments), nil
-}
-
-// withLog は、pull request か issue のコメントに、worker の控えのコメントを合わせて返す（design/backend/verify/records.md）。
-// 同じコメントの id が両方にあれば、控えのもの（worker が最初に見た中身）を使う。GitForge から消されたものも、控えにあれば返す。
-func (a *Adapter) withLog(ctx context.Context, repo string, number int) ([]Comment, error) {
-	cur, err := a.API.ListComments(ctx, repo, number)
-	if err != nil {
-		return nil, err
-	}
-	if a.Log == nil {
-		return cur, nil
-	}
-	repoID, err := a.API.RepoID(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	logged, err := a.Log.Comments(ctx, repoID, number)
-	if err != nil {
-		return nil, err
-	}
-	return MergeComments(logged, cur), nil
-}
-
-// MergeComments は、控えのコメントと今のコメントを合わせる。同じ id は、本文だけ控えのもの（worker が最初に見た中身）を使い、
-// 添付などの GitForge の側の情報は、今のものを使う（控えは、本文しか持たないから）。id の順に並べる。
-func MergeComments(logged, cur []Comment) []Comment {
-	now := map[int64]Comment{}
-	for _, c := range cur {
-		now[c.ID] = c
-	}
-	seen := map[int64]bool{}
-	out := make([]Comment, 0, len(logged)+len(cur))
-	for _, c := range logged {
-		if seen[c.ID] {
-			continue
-		}
-		seen[c.ID] = true
-		if x, ok := now[c.ID]; ok {
-			x.Body = c.Body
-			c = x
-		}
-		out = append(out, c)
-	}
-	for _, c := range cur {
-		if !seen[c.ID] {
-			seen[c.ID] = true
-			out = append(out, c)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
-// reviewMark は、レビューの記録の目印である。これを含むのに署名が合わないコメントは、書き換えられたレビューとみなす。
-const reviewMark = KeyRecord + ": " + RecordReview
-
-// Reviews は、pull request のコメントから、その提案のレビューを、コメントの id の順に読む。worker も使う。
-//   - 署名の合う、その提案のレビューの記録だけを数える。だれが書いたかは見ない。
-//   - レビューの記録の目印があるのに数えないもの（署名が合わない、提案の識別子が違う、識別子が重なる）があれば、鎖が切れたとする。
-//   - 各レビューの Logiforge-Previous-Review: が、それより前に数えたレビューのどれか（最初は `-`）でなければ、鎖が切れたとする。
-//     同時に 2 つのレビューが同じ直前のレビューを指すのは、正しい。鎖が見つけるのは、途中のレビューが丸ごと消されたことである。
-//
-// 鎖が切れていれば、バックエンドは反映しない。
-func Reviews(keys Keyring, at Scope, id string, comments []Comment) ports.Reviews {
 	var out ports.Reviews
-	seen := map[string]bool{noPrevious: true}
-	comments = slices.Clone(comments)
-	sort.SliceStable(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
-	for _, c := range comments {
-		if !strings.Contains(c.Body, reviewMark) {
+	for _, pr := range rs {
+		if pr.Dismissed {
 			continue
 		}
-		broken := func(why string) {
-			out.ChainBroken = true
-			out.Warnings = append(out.Warnings, fmt.Sprintf("コメント %d：%s", c.ID, why))
+		r := toReview(pr)
+		// approve と request changes は、書く権限を持つ人のものだけを数える。
+		// なぜ request changes も：public の repository では、書く権限のない人も review を出せ、反映を止められてしまうから。
+		// comment は、反映の条件に効かないので、だれのものでも数える。
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			// 書く権限を持つかを読めなければ、数えない（閉じる側に倒す）。
+			if pr.CanPush == nil {
+				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s に書く権限があるかを確かめられないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
+				continue
+			}
+			if !*pr.CanPush {
+				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s は書く権限がないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
+				continue
+			}
 		}
-		r, err := keys.Parse(c.Body, at)
-		if err != nil {
-			broken(err.Error())
-			continue
-		}
-		if r.Get(KeyRecord) != RecordReview {
-			continue
-		}
-		if r.Get(KeyApplyRequest) != id {
-			broken("提案の識別子が合わない")
-			continue
-		}
-		rev, rid := r.Get(KeyReviewRevision), r.Get(KeyReviewID)
-		if rid == noPrevious || seen[rid] {
-			broken("識別子が重なっている")
-			continue
-		}
-		if !seen[r.Get(KeyPreviousReview)] {
-			broken("Logiforge-Previous-Review: が、前に数えたレビューを指していない（途中のレビューが消された）")
-		}
-		seen[rid] = true
-		out.Items = append(out.Items, ports.Review{
-			ID: rid, Kind: ports.ReviewKind(r.Get(KeyReviewKind)), Body: r.Body, Revision: rev,
-			Reviewer: r.Get(KeyPrincipal), Session: r.Get(KeySession), PromptRevision: r.Get(KeyPromptRevision), CreatedAt: c.CreatedAt,
-		})
+		out.Items = append(out.Items, r)
 	}
-	return out
+	return out, nil
+}
+
+// clockSlack は、merge のコミットの時刻と、pull request の updated_at を付ける時計のずれとして見込む時間である（design/backend/list-reads.md）。
+const clockSlack = 5 * time.Minute
+
+// MergedApplyRequest は、反映した pull request の一覧を、更新の新しい順に読み、merge のコミットが sha のものを探す。
+// pull request の updated_at が committed より clockSlack 以上前になったら、読むのをやめる。
+func (a *Adapter) MergedApplyRequest(ctx context.Context, repo, sha string, committed time.Time) (ports.ApplyRequest, error) {
+	if now := a.now(); committed.IsZero() || committed.After(now) {
+		committed = now
+	}
+	stop := committed.Add(-clockSlack)
+	for page := 1; ; page++ {
+		pulls, more, err := a.API.ClosedPullsPage(ctx, repo, page)
+		if err != nil {
+			return ports.ApplyRequest{}, err
+		}
+		done := false
+		for _, p := range pulls {
+			if p.Merged && p.MergeCommit == sha && p.Base == "main" {
+				return toApplyRequest(p), nil
+			}
+			if p.UpdatedAt.Before(stop) {
+				done = true
+			}
+		}
+		if done || !more || len(pulls) == 0 {
+			return ports.ApplyRequest{}, ports.ErrNotFound
+		}
+	}
 }
 
 // ---- 人への依頼 ----
 
-// humanRequest は、issue と、その記録から人への依頼を組み立てる。answer の記録は、依頼の識別子が合うものの最初だけを数える。
-func humanRequest(is Issue, recs []parsed, warnings []string) (ports.HumanRequest, *parsed, bool) {
-	hr := ports.HumanRequest{Number: is.Number, CreatedAt: is.CreatedAt, Warnings: warnings}
-	var answer *parsed
-	found := false
-	for i, r := range recs {
-		switch r.Get(KeyRecord) {
-		case RecordHumanRequest:
-			if found {
-				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：human_request の記録が重なっている", r.Comment.ID))
-				continue
-			}
-			found = true
-			hr.ID, hr.Kind, hr.TargetNode = r.Get(KeyHumanRequest), ports.HumanRequestKind(r.Get(KeyHumanKind)), r.Get(KeyTargetNode)
-			hr.Body, hr.Requester, hr.Session = r.Body, r.Get(KeyPrincipal), r.Get(KeySession)
-		case RecordAnswer:
-			switch {
-			case !found || r.Get(KeyHumanRequest) != hr.ID:
-				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：依頼の識別子が合わない回答", r.Comment.ID))
-			case answer != nil:
-				hr.Warnings = append(hr.Warnings, fmt.Sprintf("コメント %d：回答が重なっている", r.Comment.ID))
-			default:
-				answer = &recs[i]
-				ans := &ports.Answer{Body: r.Body, AnsweredBy: r.Get(KeyAnsweredBy), CreatedAt: r.Comment.CreatedAt}
-				for _, v := range r.All(KeyAttachment) {
-					name, sha := splitAttachment(v)
-					ans.Attachments = append(ans.Attachments, ports.Attachment{Name: name, SHA256: sha, ID: r.Comment.Attachments[name]})
-				}
-				hr.Answer = ans
-			}
+var humanKinds = []ports.HumanRequestKind{ports.HumanRequestPVR, ports.HumanRequestDecision}
+
+// dirLabel は、ディレクトリの repository の依頼に付けるラベルである（design/directory/README.md の「人への依頼」）。
+func dirLabel(ref string) string {
+	if _, dir := ports.SplitRef(ref); dir != "" {
+		return labelPrefix + dir
+	}
+	return ""
+}
+
+// humanKindOf は、issue が、ref の repository の人への依頼なら、その種類を返す。
+func humanKindOf(is Issue, ref string) (ports.HumanRequestKind, bool) {
+	if d := dirLabel(ref); d != "" && !slices.Contains(is.Labels, d) {
+		return "", false
+	}
+	for _, k := range humanKinds {
+		if slices.Contains(is.Labels, labelPrefix+string(k)) {
+			return k, true
 		}
 	}
-	return hr, answer, found
+	return "", false
 }
 
-func attachmentTrailer(name, sha string) string { return name + " sha256:" + sha }
-
-func splitAttachment(v string) (name, sha string) {
-	i := strings.LastIndex(v, " sha256:")
-	if i < 0 {
-		return v, ""
+// toHumanRequest は、issue の一覧に入っているものだけから、人への依頼を作る。回答は、閉じた時刻だけを入れる。
+func toHumanRequest(is Issue, kind ports.HumanRequestKind) ports.HumanRequest {
+	hr := ports.HumanRequest{ID: strconv.Itoa(is.Number), Number: is.Number, Kind: kind, TargetNode: nodeOfTitle(is.Title), Body: is.Body,
+		Requester: is.Author, CreatedAt: is.CreatedAt}
+	if hr.TargetNode == "" {
+		hr.Warnings = append(hr.Warnings, fmt.Sprintf("issue #%d のタイトルが、対象ノードの識別子と「%s」で始まらない", is.Number, strings.TrimSpace(titleSeparator)))
 	}
-	return v[:i], v[i+len(" sha256:"):]
+	if is.State == "closed" {
+		hr.Answer = &ports.Answer{CreatedAt: is.ClosedAt}
+	}
+	return hr
 }
+
+// resendWindow は、人への依頼の起票の送り直しとみなす時間である（design/api/writes.md の「同じ要求の繰り返し」）。
+const resendWindow = 10 * time.Minute
 
 func (a *Adapter) CreateHumanRequest(ctx context.Context, repo string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
-	title := titlePrefix + n.ID
+	summary := "人への依頼"
 	if first, _, _ := strings.Cut(strings.TrimSpace(n.Body), "\n"); first != "" {
-		title += " " + truncate(first, 60)
+		summary = truncate(first, 60)
 	}
-	is, err := a.API.CreateIssue(ctx, repo, title, n.Body, []string{"logiforge/" + string(n.Kind)})
+	title := nodeTitle(n.TargetNode, summary)
+	body := strings.TrimRight(n.Body, "\n")
+	// 送り直し：同じ主体が、同じタイトルと本文で、少し前に作った open の issue があれば、それを返す。
+	issues, err := a.API.ListIssues(ctx, repo)
 	if err != nil {
 		return ports.HumanRequest{}, err
 	}
-	rec := Record{Body: n.Body, Trailers: []Trailer{
-		{KeyRecord, RecordHumanRequest}, {KeyHumanRequest, n.ID}, {KeyHumanKind, string(n.Kind)}, {KeyTargetNode, n.TargetNode},
-		{KeyPrincipal, n.Requester}, {KeySession, n.Session},
-	}}
-	rec.Trailers = withRepository(rec.Trailers, repo)
-	if _, err := a.comment(ctx, repo, is.Number, rec); err != nil {
-		return ports.HumanRequest{}, err
+	for _, is := range issues {
+		if _, ok := humanKindOf(is, repo); ok && is.State == "open" && strings.EqualFold(is.Author, n.Requester) && is.Title == title &&
+			strings.TrimRight(is.Body, "\n") == body && a.now().Sub(is.CreatedAt) < resendWindow {
+			return a.GetHumanRequest(ctx, repo, strconv.Itoa(is.Number))
+		}
 	}
-	f, err := a.readIssue(ctx, repo, is)
+	labels := []string{labelPrefix + string(n.Kind)}
+	if d := dirLabel(repo); d != "" {
+		labels = append(labels, d)
+	}
+	for _, name := range labels {
+		if err := a.API.EnsureLabel(ctx, repo, Label{Name: name, Color: "#fbca04", Description: "Logiforge：人への依頼"}); err != nil {
+			return ports.HumanRequest{}, err
+		}
+	}
+	is, err := a.API.CreateIssue(ctx, repo, title, body, labels)
 	if err != nil {
 		return ports.HumanRequest{}, err
 	}
-	return f.hr, nil
+	return a.GetHumanRequest(ctx, repo, strconv.Itoa(is.Number))
 }
 
 func truncate(s string, n int) string {
@@ -593,89 +509,118 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-type foundIssue struct {
-	hr     ports.HumanRequest
-	issue  Issue
-	answer *parsed
-	ok     bool
+// answered は、閉じた issue の回答のコメントである。添付は、コメントの添付である（名前 → GitForge の添付の識別子）。
+type answered struct {
+	comment Comment
+	body    string
 }
 
-func (a *Adapter) readIssue(ctx context.Context, repo string, is Issue) (foundIssue, error) {
-	comments, err := a.withLog(ctx, repo, is.Number)
+// readAnswer は、閉じた issue の回答を読む。回答は、issue を閉じた人が、閉じる前に書いた最後のコメントである（design/adapters/texts.md の「回答」）。
+func (a *Adapter) readAnswer(ctx context.Context, repo string, is Issue) (*answered, string, error) {
+	evs, err := a.API.ListEvents(ctx, repo, is.Number)
 	if err != nil {
-		return foundIssue{}, err
+		return nil, "", err
 	}
-	recs, warnings, err := a.recordsIn(ctx, repo, comments)
+	closer := ""
+	for _, e := range evs {
+		if e.Kind == "closed" {
+			closer = e.Actor
+		}
+	}
+	comments, err := a.API.ListComments(ctx, repo, is.Number)
 	if err != nil {
-		return foundIssue{}, err
+		return nil, "", err
 	}
-	hr, answer, ok := humanRequest(is, forRepository(recs, repo), warnings)
-	return foundIssue{hr, is, answer, ok}, nil
+	var found *Comment
+	for i, c := range comments {
+		if strings.EqualFold(c.Author, closer) && (is.ClosedAt.IsZero() || !c.CreatedAt.After(is.ClosedAt.Add(time.Minute))) {
+			found = &comments[i]
+		}
+	}
+	if found == nil {
+		return nil, closer, nil
+	}
+	return &answered{comment: *found, body: normalize(found.Body)}, closer, nil
 }
 
-func (a *Adapter) findIssue(ctx context.Context, repo, id string) (foundIssue, error) {
-	issues, err := a.API.ListIssues(ctx, repo)
-	if err != nil {
-		return foundIssue{}, err
-	}
-	for _, is := range issues {
-		if strings.Contains(is.Title, id) {
-			f, err := a.readIssue(ctx, repo, is)
-			if err != nil {
-				return foundIssue{}, err
-			}
-			if f.ok && f.hr.ID == id {
-				return f, nil
-			}
+// attachmentSHAs は、回答のコメントの添付を読み、名前ごとの sha256 を求める。添付の中身を読むのは、1 件の読みのときだけである。
+func (a *Adapter) attachmentSHAs(ctx context.Context, repo string, c Comment) (map[string]string, error) {
+	out := map[string]string{}
+	for name, aid := range c.Attachments {
+		data, err := a.API.DownloadAttachment(ctx, repo, c.ID, aid)
+		if err != nil {
+			return nil, err
 		}
+		out[name] = sha256Hex(data)
 	}
-	comments, err := a.API.ListRepoComments(ctx, repo)
+	return out, nil
+}
+
+func (a *Adapter) getIssue(ctx context.Context, repo, id string) (Issue, ports.HumanRequestKind, error) {
+	num, err := number(id)
 	if err != nil {
-		return foundIssue{}, err
+		return Issue{}, "", err
 	}
-	repoID, err := a.API.RepoID(ctx, repo)
+	is, err := a.API.GetIssue(ctx, repo, num)
 	if err != nil {
-		return foundIssue{}, err
+		return Issue{}, "", err
 	}
-	by := byIssue(comments)
-	for _, is := range issues {
-		recs, warnings := a.records(repoID, by[is.Number])
-		if hr, answer, ok := humanRequest(is, forRepository(recs, repo), warnings); ok && hr.ID == id {
-			return foundIssue{hr, is, answer, true}, nil
-		}
+	kind, ok := humanKindOf(is, repo)
+	if !ok {
+		return Issue{}, "", ports.ErrNotFound
 	}
-	return foundIssue{}, ports.ErrNotFound
+	return is, kind, nil
 }
 
 func (a *Adapter) GetHumanRequest(ctx context.Context, repo, id string) (ports.HumanRequest, error) {
-	f, err := a.findIssue(ctx, repo, id)
-	return f.hr, err
+	is, kind, err := a.getIssue(ctx, repo, id)
+	if err != nil {
+		return ports.HumanRequest{}, err
+	}
+	hr := toHumanRequest(is, kind)
+	if is.State != "closed" {
+		return hr, nil
+	}
+	ans, closer, err := a.readAnswer(ctx, repo, is)
+	if err != nil {
+		return ports.HumanRequest{}, err
+	}
+	if ans == nil {
+		hr.Warnings = append(hr.Warnings, "issue は閉じているが、閉じた人の回答のコメントがない")
+		hr.Answer.AnsweredBy = closer
+		return hr, nil
+	}
+	hr.Answer = &ports.Answer{Body: ans.body, AnsweredBy: ans.comment.Author, CreatedAt: is.ClosedAt}
+	if hr.Answer.CreatedAt.IsZero() {
+		hr.Answer.CreatedAt = ans.comment.CreatedAt
+	}
+	shas, err := a.attachmentSHAs(ctx, repo, ans.comment)
+	if err != nil {
+		return ports.HumanRequest{}, err
+	}
+	names := make([]string, 0, len(shas))
+	for n := range shas {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		hr.Answer.Attachments = append(hr.Answer.Attachments, ports.Attachment{Name: name, SHA256: shas[name], ID: ans.comment.Attachments[name]})
+	}
+	return hr, nil
 }
 
+// ListHumanRequests は、issue の一覧だけから読む。issue ごとに GitForge を呼ばない（design/backend/list-reads.md）。
 func (a *Adapter) ListHumanRequests(ctx context.Context, repo string) ([]ports.HumanRequest, error) {
 	issues, err := a.API.ListIssues(ctx, repo)
 	if err != nil {
 		return nil, err
 	}
-	comments, err := a.API.ListRepoComments(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	repoID, err := a.API.RepoID(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	by := byIssue(comments)
 	var out []ports.HumanRequest
-	seen := map[string]bool{}
 	for _, is := range issues {
-		recs, warnings := a.records(repoID, by[is.Number])
-		if hr, _, ok := humanRequest(is, forRepository(recs, repo), warnings); ok && !seen[hr.ID] {
-			seen[hr.ID] = true
-			out = append(out, hr)
+		if kind, ok := humanKindOf(is, repo); ok {
+			out = append(out, toHumanRequest(is, kind))
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out, nil
 }
 
@@ -684,96 +629,132 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func attachmentKeys(names, shas []string) []string {
-	out := make([]string, len(names))
-	for i := range names {
-		out[i] = attachmentTrailer(names[i], shas[i])
-	}
-	slices.Sort(out)
-	return out
+func normalize(body string) string {
+	return strings.TrimRight(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
 }
 
-// Answer は、回答を記録する。記録を書いたあとに添付を上げ、issue を閉じる。
-// 途中で止まったときは、同じ本文・回答者・添付で呼び直せば、足りない添付を上げて閉じる。中身が違えば ErrAlreadyAnswered を返す。
+// Answer は、回答のコメントを書き、添付を上げ、issue を閉じる（design/backend/human-requests.md の「回答」）。
+// 途中で止まったときは、同じ本文・回答者・添付で呼び直せば、書き直さずに続きから行う。違う回答がすでにあれば ErrAlreadyAnswered を返す。
 func (a *Adapter) Answer(ctx context.Context, repo, id, body, answeredBy string, files []ports.NewAttachment) error {
-	// 添付を持てない GitForge では、記録を書く前に断る。書いたあとでは、上げられない添付を持つ記録が残るから。
+	// 添付を持てない GitForge では、コメントを書く前に断る。
 	if len(files) > 0 && !a.API.AttachmentsSupported() {
 		return ports.ErrAttachmentsUnsupported
 	}
-	f, err := a.findIssue(ctx, repo, id)
+	is, _, err := a.getIssue(ctx, repo, id)
 	if err != nil {
 		return err
 	}
-	var names, shas []string
+	var names []string
+	shas := map[string]string{}
 	for _, file := range files {
 		if slices.Contains(names, file.Name) {
 			return fmt.Errorf("pullreq: 添付の名前 %q が重なっている", file.Name)
 		}
-		names, shas = append(names, file.Name), append(shas, sha256Hex(file.Content))
+		names = append(names, file.Name)
+		shas[file.Name] = sha256Hex(file.Content)
 	}
-	var commentID int64
-	have := map[string]bool{}
-	if f.hr.Answer != nil {
-		var gotNames, gotShas []string
-		for _, at := range f.hr.Answer.Attachments {
-			gotNames, gotShas = append(gotNames, at.Name), append(gotShas, at.SHA256)
-			if at.ID != "" {
-				have[at.SHA256] = true
+	// same は、回答のコメントが、この要求と同じ回答かを返す。添付は、中身の sha256 で比べる（送り直しのときだけ読む）。
+	same := func(ans *answered) (bool, error) {
+		if ans == nil || ans.body != normalize(body) || !strings.EqualFold(ans.comment.Author, answeredBy) || len(ans.comment.Attachments) > len(shas) {
+			return false, nil
+		}
+		for n := range ans.comment.Attachments {
+			if _, ok := shas[n]; !ok {
+				return false, nil
 			}
 		}
-		normalized := strings.TrimRight(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
-		if f.hr.Answer.Body != normalized || f.hr.Answer.AnsweredBy != answeredBy || !slices.Equal(attachmentKeys(names, shas), attachmentKeys(gotNames, gotShas)) {
-			return ports.ErrAlreadyAnswered
+		got, err := a.attachmentSHAs(ctx, repo, ans.comment)
+		if err != nil {
+			return false, err
 		}
-		commentID = f.answer.Comment.ID
-	} else {
-		trailers := []Trailer{{KeyRecord, RecordAnswer}, {KeyHumanRequest, id}, {KeyAnsweredBy, answeredBy}}
-		for i := range files {
-			trailers = append(trailers, Trailer{KeyAttachment, attachmentTrailer(names[i], shas[i])})
+		for n, s := range got {
+			if shas[n] != s {
+				return false, nil
+			}
 		}
-		// 添付の sha256 の一覧も MAC に含める。添付は、記録を書いたあとに付ける。
-		c, err := a.comment(ctx, repo, f.issue.Number, Record{Body: body, Trailers: trailers})
+		return true, nil
+	}
+	if is.State == "closed" {
+		ans, _, err := a.readAnswer(ctx, repo, is)
 		if err != nil {
 			return err
 		}
-		commentID = c.ID
-	}
-	for i, file := range files {
-		if have[shas[i]] {
-			continue
-		}
-		if _, err := a.API.UploadAttachment(ctx, repo, commentID, file.Name, file.Content); err != nil {
+		ok, err := same(ans)
+		if err != nil {
 			return err
 		}
-		have[shas[i]] = true
+		if !ok || len(ans.comment.Attachments) != len(shas) {
+			return ports.ErrAlreadyAnswered
+		}
+		return nil
 	}
-	return a.API.CloseIssue(ctx, repo, f.issue.Number)
+	// コメントを書いたあと、閉じる前に止まった送り直しなら、書き直さない。添付は、まだ上がっていない分だけ上げる。
+	comments, err := a.API.ListComments(ctx, repo, is.Number)
+	if err != nil {
+		return err
+	}
+	var ans *answered
+	for _, c := range comments {
+		if !strings.EqualFold(c.Author, answeredBy) || normalize(c.Body) != normalize(body) {
+			continue
+		}
+		x := &answered{comment: c, body: normalize(c.Body)}
+		ok, err := same(x)
+		if err != nil {
+			return err
+		}
+		if ok {
+			ans = x
+		}
+	}
+	if ans == nil {
+		c, err := a.API.CreateComment(ctx, repo, is.Number, body)
+		if err != nil {
+			return err
+		}
+		ans = &answered{comment: c, body: normalize(c.Body)}
+	}
+	for _, file := range files {
+		if ans.comment.Attachments[file.Name] != "" {
+			continue
+		}
+		if _, err := a.API.UploadAttachment(ctx, repo, ans.comment.ID, file.Name, file.Content); err != nil {
+			return err
+		}
+	}
+	return a.API.CloseIssue(ctx, repo, is.Number)
 }
 
 // ReadAttachment は、回答の添付を sha256 で引いて読み、中身の sha256 を確かめる。
 func (a *Adapter) ReadAttachment(ctx context.Context, repo, humanRequestID, sha string) ([]byte, error) {
-	f, err := a.findIssue(ctx, repo, humanRequestID)
+	is, _, err := a.getIssue(ctx, repo, humanRequestID)
 	if err != nil {
 		return nil, err
 	}
-	if f.hr.Answer == nil {
+	if is.State != "closed" {
 		return nil, ports.ErrNotFound
 	}
-	for _, at := range f.hr.Answer.Attachments {
-		if at.SHA256 != sha {
-			continue
-		}
-		if at.ID == "" {
-			return nil, ports.ErrNotFound
-		}
-		data, err := a.API.DownloadAttachment(ctx, repo, f.answer.Comment.ID, at.ID)
+	ans, _, err := a.readAnswer(ctx, repo, is)
+	if err != nil {
+		return nil, err
+	}
+	if ans == nil {
+		return nil, ports.ErrNotFound
+	}
+	// 添付の sha256 は、中身から求める。名前の順に読み、合うものを返す。
+	names := make([]string, 0, len(ans.comment.Attachments))
+	for n := range ans.comment.Attachments {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		data, err := a.API.DownloadAttachment(ctx, repo, ans.comment.ID, ans.comment.Attachments[name])
 		if err != nil {
 			return nil, err
 		}
-		if sha256Hex(data) != sha {
-			return nil, ports.ErrAttachmentTamper
+		if sha256Hex(data) == sha {
+			return data, nil
 		}
-		return data, nil
 	}
 	return nil, ports.ErrNotFound
 }

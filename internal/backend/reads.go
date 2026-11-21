@@ -91,6 +91,27 @@ func (b *Backend) ListRepositories(ctx context.Context, c Caller, cursor string,
 	return page(out, limit, func(Repository) bool { return true }, func(r Repository) string { return r.Name }), nil
 }
 
+// LatestInvalid は、最新のコミットが valid でなければ、木を読む API が返す木のコミット（valid_commit、なければ最新のコミット）を返す。
+// valid なら空（design/backend/invalid-main.md の「木を読む API」）。応答のヘッダー Logiforge-Latest-Invalid に使う。
+func (b *Backend) LatestInvalid(ctx context.Context, repo string) (string, error) {
+	latest, err := b.Snap.Latest(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	m, err := b.Snap.Main(ctx, repo, latest)
+	if err != nil {
+		return "", err
+	}
+	switch t := m.SnapshotTree; {
+	case t.Valid:
+		return "", nil
+	case t.ValidCommit != "":
+		return t.ValidCommit, nil
+	default:
+		return latest, nil
+	}
+}
+
 // GetRepository は、repository を返す。
 func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Repository, error) {
 	ref, err := b.access(ctx, c, repo)
@@ -103,11 +124,7 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 	}
 	_, dir := ports.SplitRef(ref)
 	r := Repository{Name: repo, GitURL: b.Forge.GitURL(ref), Directory: dir}
-	if br, err := b.Snap.Broken(ctx, repo); err != nil {
-		return Repository{}, err
-	} else if br != nil {
-		r.Broken = &BrokenState{FirstCommit: br.First, LastGoodCommit: br.LastGood, Reason: br.Reason}
-	}
+	r.Validity = v.validity()
 	if r.MigratedFrom, err = b.migratedFrom(ctx, repo); err != nil {
 		return Repository{}, err
 	}
@@ -139,7 +156,7 @@ func (b *Backend) GetTree(ctx context.Context, c Caller, repo string, at At) (Tr
 	if root == nil {
 		return Tree{}, fail(CodeNotFound, "根の仮説がない")
 	}
-	return Tree{RootHypothesisID: root.ID, RootValue: v.main.SnapshotTree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings()}, nil
+	return Tree{RootHypothesisID: root.ID, RootValue: v.main.SnapshotTree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings(), Validity: v.validity()}, nil
 }
 
 // ListNodes は、木か部分木のノードを返す。depth が負なら、すべての段。
@@ -167,7 +184,7 @@ func (b *Backend) ListNodes(ctx context.Context, c Caller, repo string, at At, r
 	if len(nodes) == 0 {
 		return NodeList{}, fail(CodeNotFound, "ノード %s がない", root)
 	}
-	return NodeList{Commit: v.revision(), Nodes: nodes}, nil
+	return NodeList{Commit: v.revision(), Validity: v.validity(), Nodes: nodes}, nil
 }
 
 // GetNode は、ノードの詳細を返す。
@@ -334,14 +351,9 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 			out.NextCursor = &next
 			return false
 		}
-		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
+		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt}
 		if ar := snapshot.ApplyRequestOf(cm); ar != "" {
 			e.ApplyRequestID, e.Reflected = &ar, true
-		}
-		for _, t := range cm.Trailers {
-			if t.Key == trailerSession {
-				e.SessionIDs = append(e.SessionIDs, t.Value)
-			}
 		}
 		out.Items = append(out.Items, e)
 		return true
@@ -352,7 +364,7 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 	return out, nil
 }
 
-// ListApplyRequests は、提案を作った順に返す。カーソルは、GitForge の連番（pull request の番号）である。
+// ListApplyRequests は、apply request を作った順に返す。カーソルは、GitForge の連番（pull request の番号）である。
 func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, cursor string, limit int) (Page[ApplyRequest], error) {
 	limit, err := CheckLimit(limit)
 	if err != nil {
@@ -369,7 +381,9 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 	if err != nil {
 		return Page[ApplyRequest]{}, err
 	}
-	all, err := b.Forge.ListApplyRequests(ctx, ref)
+	// GitForge の状態で先に絞る（design/backend/list-reads.md）。ブランチが消えた open のものは closed に数えるので、closed では open も読む。
+	forgeState := map[string]string{"": "all", "open": "open", "merged": "closed", "closed": "all"}[state]
+	all, err := b.Forge.ListApplyRequests(ctx, ref, forgeState)
 	if err != nil {
 		return Page[ApplyRequest]{}, err
 	}
@@ -383,9 +397,15 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 		if ar.Number <= after {
 			continue
 		}
-		d, err := b.applyRequest(ctx, repo, ref, ar, false, latest)
+		if state == "merged" && ar.State != ports.StateMerged || state == "closed" && ar.State == ports.StateMerged {
+			continue
+		}
+		d, err := b.applyRequest(ctx, repo, ref, ar, readList, latest)
 		if err != nil {
 			return Page[ApplyRequest]{}, err
+		}
+		if !inRepository(ref, d.history) {
+			continue
 		}
 		if state != "" && d.model.State != state {
 			continue
@@ -401,7 +421,7 @@ func (b *Backend) ListApplyRequests(ctx context.Context, c Caller, repo, state, 
 	return out, nil
 }
 
-// GetApplyRequest は、提案の詳細を返す。
+// GetApplyRequest は、apply request の詳細を返す。
 func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string) (ApplyRequest, error) {
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
@@ -415,10 +435,11 @@ func (b *Backend) GetApplyRequest(ctx context.Context, c Caller, repo, id string
 	if err != nil {
 		return ApplyRequest{}, err
 	}
-	d, err := b.applyRequest(ctx, repo, ref, ar, true, latest)
+	d, err := b.applyRequest(ctx, repo, ref, ar, readDetail, latest)
 	if err != nil {
 		return ApplyRequest{}, err
 	}
+	b.repairWaiting(ctx, ref, d)
 	d.model.OpenedByCaller = ar.Opener != "" && strings.EqualFold(ar.Opener, c.Principal.Login)
 	return d.model, nil
 }
@@ -539,15 +560,11 @@ func (b *Backend) GetAnswerAttachment(ctx context.Context, c Caller, repo, id, s
 	if err != nil {
 		return nil, err
 	}
-	data, err := b.Forge.ReadAttachment(ctx, ref, id, sha)
-	if errors.Is(err, ports.ErrAttachmentTamper) {
-		return nil, fail(CodeNotFound, "添付の中身が、記録の sha256 と合わない")
-	}
-	return data, err
+	return b.Forge.ReadAttachment(ctx, ref, id, sha)
 }
 
 // ListCommits は、worker が取り込んだ main のコミットを、新しい順に返す（design/webui/screens.md の「WebUI のための API」）。
-// カーソルは、次に読むコミットの number である。main の並びの索引とコミットの記録から引く。
+// カーソルは、次に読むコミットの number である。main の並びの索引とコミットの情報から引く。
 func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string, limit int) (Page[MainCommit], error) {
 	limit, err := CheckLimit(limit)
 	if err != nil {
@@ -601,7 +618,7 @@ func (b *Backend) ListCommits(ctx context.Context, c Caller, repo, cursor string
 // listCommitsParallel は、listCommits で並べて読む数である。
 const listCommitsParallel = 12
 
-// mainCommit は、番号の main のコミットを、main の並びの索引とコミットの記録から引く。どちらかがなければ、worker が書いている途中なので snapshot_pending。
+// mainCommit は、番号の main のコミットを、main の並びの索引とコミットの情報から引く。どちらかがなければ、worker が書いている途中なので snapshot_pending。
 func (b *Backend) mainCommit(ctx context.Context, repo string, num int) (MainCommit, error) {
 	sha, err := b.Snap.MainAt(ctx, repo, num)
 	if err == nil {

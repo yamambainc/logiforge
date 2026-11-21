@@ -7,7 +7,7 @@ import type { GitForgeKind } from './setup';
 
 export interface SecretState { set: boolean; updated_by?: string | null; updated_at?: string | null }
 export interface IntervalSettings {
-  patrol_seconds?: number; list_seconds?: number; records_seconds?: number; git_timeout_seconds?: number; write_wait_seconds?: number;
+  patrol_seconds?: number; list_seconds?: number; git_timeout_seconds?: number; write_wait_seconds?: number;
 }
 export interface GitHubSettings {
   app_id?: number; client_id?: string; slug?: string; api_url?: string; web_url?: string;
@@ -35,7 +35,6 @@ export interface ForgejoSettingsInput {
 export interface GitForgePatch { github?: GitHubSettingsInput; forgejo?: ForgejoSettingsInput; intervals?: IntervalSettings }
 /** prepared：スナップショットツリーがもうあるか。BE が GitForge に聞けなかったときは入らない（docs/webui/settings.md の「repository を足す」）。 */
 export interface RegisteredRepository { name: string; gitforge_ref: string; directory?: string; prepared?: boolean }
-export interface RecordKey { key_id: string; public_key: string; created_at: string; primary: boolean }
 
 const enc = encodeURIComponent;
 const jsonInit = (method: string, body?: unknown): RequestInit =>
@@ -48,8 +47,6 @@ export const listRegisteredRepositories = () => call<{ items: RegisteredReposito
 export const registerRepository = (name: string, gitforgeRef: string, directory = '') =>
   call<RegisteredRepository>(`/settings/repositories/${enc(name)}`, jsonInit('PUT', directory ? { gitforge_ref: gitforgeRef, directory } : { gitforge_ref: gitforgeRef }));
 export const unregisterRepository = async (name: string) => { await send(`/settings/repositories/${enc(name)}`, { method: 'DELETE' }); };
-export const listRecordKeys = () => call<{ items: RecordKey[] }>('/settings/record-keys').then((r) => r.items);
-export const createRecordKey = () => call<RecordKey>('/settings/record-keys', { method: 'POST' });
 
 // --- メニューに出すか ---
 
@@ -95,7 +92,7 @@ export type GitHubForm = Record<'app_id' | 'client_id' | 'slug' | 'api_url' | 'w
 export type ForgejoForm = Record<'url' | 'public_url' | 'organization' | 'client_id' | 'worker_user' | 'client_secret' | 'worker_token', string>;
 export type IntervalForm = Record<keyof Required<IntervalSettings>, string>;
 
-export const INTERVAL_KEYS: (keyof IntervalForm)[] = ['patrol_seconds', 'list_seconds', 'records_seconds', 'git_timeout_seconds', 'write_wait_seconds'];
+export const INTERVAL_KEYS: (keyof IntervalForm)[] = ['patrol_seconds', 'list_seconds', 'git_timeout_seconds', 'write_wait_seconds'];
 const GITHUB_PLAIN = ['client_id', 'slug', 'api_url', 'web_url'] as const;
 const GITHUB_SECRETS = ['private_key', 'client_secret'] as const;
 const FORGEJO_PLAIN = ['url', 'public_url', 'organization', 'client_id', 'worker_user'] as const;
@@ -149,7 +146,6 @@ export function buildPatch(s: Settings, form: { github: GitHubForm; forgejo: For
 /** 外すときの確かめの文（docs/webui/settings.md の「外すときの確かめ」）。 */
 export const unregisterConfirm = (name: string) => `${name} を外します。スナップショットツリーは読めなくなります。git リポジトリは消えません。`;
 /** 鍵を作るときの確かめの文。 */
-export const createKeyConfirm = '新しい記録の署名の鍵を作り、これから書く記録に使います。古い鍵の公開鍵は残すので、前の記録はそのまま確かめられます。';
 
 // --- repository を足す流れ（docs/webui/settings.md の「repository を足す」） ---
 

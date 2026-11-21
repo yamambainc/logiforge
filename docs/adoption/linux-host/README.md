@@ -107,6 +107,6 @@ scripts/deploy-linux.sh admin@logiforge-host
 ## バックアップ
 
 - 置き場の `/var/lib/logiforge/store/keep/` を、写して取る（[組み合わせ](../../../design/adapters/README.md#組み合わせ)）。
-- 設定の DB（`/var/lib/logiforge/config/settings.db`）を、写して取る。記録の署名の鍵が入っている。なくすと、それまでの記録を確かめられない。
+- 設定の DB（`/var/lib/logiforge/config/settings.db`）を、写して取る。なくすと、セットアップからやり直す（[バックアップ](../../../design/settings/README.md#バックアップ)）。
   - 写すときは、`logiforge-serve` を止めるか、`sqlite3 settings.db ".backup <先>"` を使う。
 - 2 つの鍵（`/etc/logiforge/secrets/backend_key` と `shared_key`）は、設定の DB と別の場所に控える。鍵がないと、設定の DB の秘密を読めない（[鍵を置く場所](../../../design/settings/secrets.md#鍵を置く場所)）。

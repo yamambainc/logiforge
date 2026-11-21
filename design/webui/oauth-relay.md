@@ -2,6 +2,8 @@
 
 BE の、WebUI のサインインのための要求を実装するときに読む。
 サインインの方式と、なぜ BE が中継するかは、[サインイン](auth.md) に書く。
+要求と応答の詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig` と `exchangeOAuthCode` に書く。
+サインインに使うアプリを作り、client_id と client secret を設定の DB に置く手順は、[初回のセットアップ](../settings/setup.md) に書く。
 
 ## 要求
 
@@ -47,8 +49,6 @@ BE は、WebUI のサインインのために、次の 2 つの要求を持つ�
 - GitForge が交換を拒んだら（code が正しくない、使い済み、PKCE が合わない）、BE は `unauthenticated`（401）を返す。
 - GitForge につながらないとき、または GitForge が 5xx を返したときは、`unavailable`（503）を返す。WebUI は、「しばらくしてから、もう一度サインインしてください」と示す。
 
-## ほかの決まり
+## ログ
 
 - BE は、受け取った code、トークン、セッション ID をログに書かない。
-- 詳細は、[openapi.yaml](../api/openapi.yaml) の `getOAuthConfig` と `exchangeOAuthCode` に書く。
-- サインインに使うアプリを作り、client_id と client secret を設定の DB に置く手順は、[初回のセットアップ](../settings/setup.md) に書く。

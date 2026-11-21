@@ -20,9 +20,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeValidationFailed:        http.StatusUnprocessableEntity,
 	backend.CodeUnauthenticated:         http.StatusUnauthorized,
 	backend.CodeForbidden:               http.StatusForbidden,
-	backend.CodeSessionRequired:         http.StatusBadRequest,
 	backend.CodeNotFound:                http.StatusNotFound,
-	backend.CodeSameSession:             http.StatusForbidden,
 	backend.CodeNotOpen:                 http.StatusConflict,
 	backend.CodeCommitConflict:          http.StatusConflict,
 	backend.CodeOverlayConflict:         http.StatusConflict,
@@ -66,7 +64,6 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("GET /v1/repositories", s.listRepositories)
 	route("GET "+repo, s.getRepository)
 	route("GET "+repo+"/tree", s.getTree)
-	route("GET "+repo+"/repair-files", s.getRepairFiles)
 	route("GET "+repo+"/tree/nodes", s.listNodes)
 	route("GET "+repo+"/tree/completion", s.getCompletion)
 	route("GET "+repo+"/tree/export", s.exportTree)
@@ -87,6 +84,7 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("PATCH "+repo+"/apply-requests/{applyRequestId}", s.updateApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/reviews", s.reviewApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
+	route("POST "+repo+"/apply-requests/{applyRequestId}/fixed", s.markApplyRequestFixed)
 	route("POST "+repo+"/human-requests", s.createHumanRequest)
 	route("POST "+repo+"/human-requests/{humanRequestId}/answer", s.answerHumanRequest)
 	// ヘルスチェック。/v1 の外に置き、認証を求めない。GitForge や置き場には触れない（design/deploy/README.md）。
@@ -125,10 +123,10 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 			// GitForge には、要求を送った主体のトークンで読み書きする（design/adapters/pull-requests.md）。
 			out, err = h(ports.WithToken(r.Context(), strings.TrimSpace(token)), c, r)
 			if err == nil {
-				// 壊れた repository の木を読む応答には、最後に正しかった時点のコミットを付ける（design/backend/broken.md）。
+				// 最新のコミットが valid でなければ、木を読む応答に、返した木のコミットを付ける（design/backend/invalid-main.md の「木を読む API」）。
 				if name := r.PathValue("repository"); name != "" && r.Method == http.MethodGet && readsTree(r.Pattern) {
-					if last, berr := s.b.BrokenLastGood(r.Context(), name); berr == nil && last != "" {
-						w.Header().Set("Logiforge-Repository-Broken", last)
+					if shown, verr := s.b.LatestInvalid(r.Context(), name); verr == nil && shown != "" {
+						w.Header().Set("Logiforge-Latest-Invalid", shown)
 					}
 				}
 				if rw, ok := out.(raw); ok {
@@ -346,8 +344,6 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 
-func session(r *http.Request) string { return r.Header.Get("Logiforge-Session-Id") }
-
 func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
 		Name       string `json:"name"`
@@ -377,7 +373,6 @@ func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http
 
 func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
-		Kind        string `json:"kind"`
 		Branch      string `json:"branch"`
 		Commit      string `json:"commit"`
 		Description string `json:"description"`
@@ -385,8 +380,8 @@ func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *ht
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Kind: in.Kind, Branch: in.Branch, Commit: in.Commit,
-		Description: in.Description, Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Branch: in.Branch, Commit: in.Commit,
+		Description: in.Description})
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +398,7 @@ func (s *server) updateApplyRequest(ctx context.Context, c backend.Caller, r *ht
 	if in.Description == nil {
 		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "description がない"}
 	}
-	return s.b.UpdateApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), *in.Description)
+	return s.b.UpdateApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), *in.Description)
 }
 
 func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -417,7 +412,7 @@ func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	out, err := s.b.ReviewApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), backend.NewReview{Kind: in.Kind,
-		Commit: in.Commit, Body: in.Body, PromptRevision: in.PromptRevision, Session: session(r)})
+		Commit: in.Commit, Body: in.Body, PromptRevision: in.PromptRevision})
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +426,11 @@ func (s *server) closeApplyRequest(ctx context.Context, c backend.Caller, r *htt
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), in.Reason)
+	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), in.Reason)
+}
+
+func (s *server) markApplyRequestFixed(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	return s.b.MarkApplyRequestFixed(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"))
 }
 
 func (s *server) createHumanRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -443,8 +442,7 @@ func (s *server) createHumanRequest(ctx context.Context, c backend.Caller, r *ht
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	hr, err := s.b.CreateHumanRequest(ctx, c, r.PathValue("repository"), backend.NewHumanRequest{NodeID: in.NodeID, Kind: in.Kind, Body: in.Body,
-		Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	hr, err := s.b.CreateHumanRequest(ctx, c, r.PathValue("repository"), backend.NewHumanRequest{NodeID: in.NodeID, Kind: in.Kind, Body: in.Body})
 	if err != nil {
 		return nil, err
 	}
@@ -483,11 +481,7 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-func (s *server) getRepairFiles(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetRepairFiles(ctx, c, r.PathValue("repository"))
-}
-
-// readsTree は、route が repository の木を読むものか（壊れていれば、最後に正しかった時点の木を返すもの）を返す。
+// readsTree は、route が repository の木を読むものか（最新のコミットが valid でなければ、valid_commit の木を返すもの）を返す。
 // apply request と人への依頼を読むものは、含めない。
 func readsTree(pattern string) bool {
 	return strings.HasSuffix(pattern, "/{repository}") || strings.Contains(pattern, "/tree") ||

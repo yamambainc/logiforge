@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,16 +56,33 @@ type fakePull struct {
 	// mergedBy は、merge した主体。
 	mergedBy string
 	// base は、向き先。空なら main。
-	base string
+	base      string
+	labels    []string
+	updatedAt time.Time
+}
+
+type fakeReview struct {
+	ID       int64
+	State    string
+	Body     string
+	Author   string
+	CommitID string
+	At       time.Time
+}
+
+type fakeEvent struct {
+	Event, Label, Actor string
+	At                  time.Time
 }
 
 type fakeIssue struct {
-	Number int
-	Title  string
-	Body   string
-	State  string
-	Labels []string
-	Author string
+	Number   int
+	Title    string
+	Body     string
+	State    string
+	Labels   []string
+	Author   string
+	closedAt *time.Time
 }
 
 type fakeGitHub struct {
@@ -76,10 +94,15 @@ type fakeGitHub struct {
 	trees      map[string]map[string]string
 	gitCommits map[string][2]string
 
-	mu       sync.Mutex
-	next     int // pull request と issue の番号（共通）
-	pulls    map[int]*fakePull
-	issues   map[int]*fakeIssue
+	mu      sync.Mutex
+	next    int // pull request と issue の番号（共通）
+	pulls   map[int]*fakePull
+	issues  map[int]*fakeIssue
+	reviews map[int][]*fakeReview
+	labels  map[string]bool
+	events  map[int][]fakeEvent
+	// writers は、リポジトリに書く権限を持つログイン名（review を数えるか）。
+	writers  map[string]bool
 	comments []*fakeComment
 	files    map[string]string
 	commits  int
@@ -89,6 +112,12 @@ type fakeGitHub struct {
 	permCalls int
 	// readable は、トークンごとに読める repository。
 	readable map[string]bool
+	// userRepoCalls は、GET /user/repos の回数。hideFromUserRepos なら、読めても一覧に出さない（関わっていない public のリポジトリ）。
+	userRepoCalls     int
+	hideFromUserRepos bool
+	extraUserRepos    []string
+	served            int
+	repoGets          int
 	// limited は、次の要求を、制限の応答にする回数。
 	limited int
 	// failPut は、contents の PUT を失敗させる回数（その前の PUT は通す）：after 回通したあとに 1 回失敗させる。
@@ -147,6 +176,7 @@ type fakeUser struct {
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	f := &fakeGitHub{t: t, next: 1, trees: map[string]map[string]string{}, gitCommits: map[string][2]string{}, pulls: map[int]*fakePull{}, issues: map[int]*fakeIssue{}, files: map[string]string{},
+		reviews: map[int][]*fakeReview{}, labels: map[string]bool{}, events: map[int][]fakeEvent{}, writers: map[string]bool{"alice": true, "bob": true, fakeAgentLogin: true},
 		users: map[string]fakeUser{}, readable: map[string]bool{}, failPutAfter: -1, ownTokens: map[string]bool{}, branchFiles: map[string]map[string]string{}, branchHead: map[string]string{}}
 	f.users[fakeAgent] = fakeUser{login: fakeAgentLogin}
 	f.readable[fakeAgent] = true
@@ -203,7 +233,7 @@ func page[T any](w http.ResponseWriter, r *http.Request, all []T) {
 func (f *fakeGitHub) pullJSON(p *fakePull) map[string]any {
 	m := map[string]any{"number": p.Number, "title": p.Title, "body": p.Body, "state": p.State, "user": map[string]string{"login": p.Author},
 		"head": map[string]string{"ref": p.Head, "sha": p.HeadSHA}, "base": map[string]string{"ref": cmp.Or(p.base, "main")}, "created_at": p.createdAt,
-		"merged": p.Merged, "merge_commit_sha": p.MergeSHA, "merged_at": nil}
+		"merged": p.Merged, "merge_commit_sha": p.MergeSHA, "merged_at": nil, "labels": labelObjs(p.labels), "updated_at": p.updatedAt}
 	if p.Merged {
 		m["merged_at"] = "2026-11-17T00:00:00Z"
 		m["merged_by"] = map[string]string{"login": p.mergedBy}
@@ -220,12 +250,33 @@ func (f *fakeGitHub) pullJSON(p *fakePull) map[string]any {
 	return m
 }
 
+func labelObjs(ls []string) []map[string]string {
+	out := []map[string]string{}
+	for _, l := range ls {
+		out = append(out, map[string]string{"name": l})
+	}
+	return out
+}
+
+// labelsOf は、番号の pull request か issue のラベルを返す。
+func (f *fakeGitHub) labelsOf(n int) *[]string {
+	if x, ok := f.pulls[n]; ok {
+		return &x.labels
+	}
+	return &f.issues[n].Labels
+}
+
 var (
-	rePull     = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)$`)
-	reMerge    = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)/merge$`)
-	reIssue    = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)$`)
-	reComments = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/comments$`)
-	reContents = regexp.MustCompile(`^/repos/acme/study/contents/(.+)$`)
+	reReviews   = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)/reviews$`)
+	reIssLabels = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/labels$`)
+	reIssLabel  = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/labels/(.+)$`)
+	reEvents    = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/events$`)
+	reLabel     = regexp.MustCompile(`^/repos/acme/study/labels/(.+)$`)
+	rePull      = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)$`)
+	reMerge     = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)/merge$`)
+	reIssue     = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)$`)
+	reComments  = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/comments$`)
+	reContents  = regexp.MustCompile(`^/repos/acme/study/contents/(.+)$`)
 )
 
 func num(re *regexp.Regexp, p string) int {
@@ -233,9 +284,17 @@ func num(re *regexp.Regexp, p string) int {
 	return n
 }
 
+// requests は、受けた HTTP の要求の数である（呼び出しの回数のテスト）。
+func (f *fakeGitHub) requests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.served
+}
+
 func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.served++
 	if f.limited > 0 {
 		f.limited--
 		w.Header().Set("Retry-After", "1")
@@ -295,6 +354,17 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		write(w, http.StatusOK, map[string]string{"login": u.login})
 		return
+	case p == "/user/repos":
+		f.userRepoCalls++
+		var rs []map[string]any
+		if f.readable[tok] && !f.hideFromUserRepos {
+			rs = append(rs, map[string]any{"full_name": "acme/study"})
+			for _, n := range f.extraUserRepos {
+				rs = append(rs, map[string]any{"full_name": n})
+			}
+		}
+		write(w, http.StatusOK, rs)
+		return
 	case p == "/user/installations":
 		if _, ok := f.users[tok]; !ok {
 			fail(w, http.StatusUnauthorized, "Bad credentials")
@@ -329,6 +399,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	login := f.users[tok].login
 	switch {
 	case p == "/repos/acme/study" && r.Method == http.MethodGet:
+		f.repoGets++
 		write(w, http.StatusOK, map[string]string{"node_id": "R_x"})
 	case p == "/repos/acme/study/git/ref/heads/main":
 		if f.commits == 0 {
@@ -467,15 +538,66 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.messages = append(f.messages, str("message"))
 		f.commits++
 		write(w, http.StatusCreated, map[string]any{"commit": map[string]string{"sha": mainSHA(f.commits)}})
-	case strings.HasPrefix(p, "/repos/acme/study/commits/") && strings.HasSuffix(p, "/pulls") && r.Method == http.MethodGet:
-		sha := strings.TrimSuffix(strings.TrimPrefix(p, "/repos/acme/study/commits/"), "/pulls")
+	case p == "/graphql" && r.Method == http.MethodPost:
+		// 1 件の pull request の review を、書いた人が push できるかと一緒に返す（api.go の reviewsQuery）。
+		vars, _ := in["variables"].(map[string]any)
+		n := int(vars["number"].(float64))
+		var nodes []map[string]any
+		for _, rv := range f.reviews[n] {
+			nodes = append(nodes, map[string]any{"databaseId": rv.ID, "state": rv.State, "body": rv.Body, "submittedAt": rv.At,
+				"authorCanPushToRepository": f.writers[rv.Author], "author": map[string]string{"login": rv.Author}, "commit": map[string]string{"oid": rv.CommitID}})
+		}
+		write(w, http.StatusOK, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+			"reviews": map[string]any{"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""}, "nodes": nodes}}}}})
+	case reReviews.MatchString(p) && r.Method == http.MethodGet:
 		var out []map[string]any
-		for i := 1; i < f.next; i++ {
-			if x, ok := f.pulls[i]; ok && x.MergeSHA == sha {
-				m := f.pullJSON(x)
-				delete(m, "merged_by") // 一覧の応答には merged_by がない
-				out = append(out, m)
+		for _, rv := range f.reviews[num(reReviews, p)] {
+			out = append(out, map[string]any{"id": rv.ID, "state": rv.State, "body": rv.Body, "user": map[string]string{"login": rv.Author}, "commit_id": rv.CommitID, "submitted_at": rv.At})
+		}
+		page(w, r, out)
+	case reReviews.MatchString(p) && r.Method == http.MethodPost:
+		n := num(reReviews, p)
+		state := map[string]string{"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}[str("event")]
+		if state == "APPROVED" && f.pulls[n].Author == login {
+			fail(w, http.StatusUnprocessableEntity, "Can not approve your own pull request")
+			return
+		}
+		rv := &fakeReview{ID: int64(len(f.reviews[n]) + 1), State: state, Body: str("body"), Author: login, CommitID: str("commit_id"), At: time.Now()}
+		f.reviews[n] = append(f.reviews[n], rv)
+		f.pulls[n].updatedAt = time.Now()
+		write(w, http.StatusOK, map[string]any{"id": rv.ID, "state": rv.State, "body": rv.Body, "user": map[string]string{"login": login}, "commit_id": rv.CommitID, "submitted_at": rv.At})
+	case reLabel.MatchString(p) && r.Method == http.MethodGet:
+		if !f.labels[reLabel.FindStringSubmatch(p)[1]] {
+			fail(w, http.StatusNotFound, "Not Found")
+			return
+		}
+		write(w, http.StatusOK, map[string]string{"name": reLabel.FindStringSubmatch(p)[1]})
+	case p == "/repos/acme/study/labels" && r.Method == http.MethodPost:
+		f.labels[str("name")] = true
+		write(w, http.StatusCreated, map[string]string{"name": str("name")})
+	case reIssLabels.MatchString(p) && r.Method == http.MethodPost:
+		n := num(reIssLabels, p)
+		ls := f.labelsOf(n)
+		for _, l := range in["labels"].([]any) {
+			name := l.(string)
+			f.labels[name] = true
+			if !slices.Contains(*ls, name) {
+				*ls = append(*ls, name)
 			}
+			f.events[n] = append(f.events[n], fakeEvent{Event: "labeled", Label: name, Actor: login, At: time.Now()})
+		}
+		write(w, http.StatusOK, labelObjs(*ls))
+	case reIssLabel.MatchString(p) && r.Method == http.MethodDelete:
+		m := reIssLabel.FindStringSubmatch(p)
+		n, _ := strconv.Atoi(m[1])
+		ls := f.labelsOf(n)
+		*ls = slices.DeleteFunc(*ls, func(x string) bool { return x == m[2] })
+		f.events[n] = append(f.events[n], fakeEvent{Event: "unlabeled", Label: m[2], Actor: login, At: time.Now()})
+		write(w, http.StatusOK, labelObjs(*ls))
+	case reEvents.MatchString(p) && r.Method == http.MethodGet:
+		var out []map[string]any
+		for _, e := range f.events[num(reEvents, p)] {
+			out = append(out, map[string]any{"event": e.Event, "label": map[string]string{"name": e.Label}, "actor": map[string]string{"login": e.Actor}, "created_at": e.At})
 		}
 		page(w, r, out)
 	case p == "/repos/acme/study/pulls" && r.Method == http.MethodPost:
@@ -489,18 +611,34 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		if h, ok := f.branchHead[str("head")]; ok {
 			head = h
 		}
-		pr := &fakePull{Number: f.next, Title: str("title"), Body: str("body"), Head: str("head"), HeadSHA: head, State: "open", Author: login, pending: 1, createdAt: time.Now()}
+		pr := &fakePull{Number: f.next, Title: str("title"), Body: str("body"), Head: str("head"), HeadSHA: head, State: "open", Author: login, pending: 1, createdAt: time.Now(), updatedAt: time.Now()}
 		f.pulls[f.next] = pr
 		f.next++
 		write(w, http.StatusCreated, f.pullJSON(pr))
 	case p == "/repos/acme/study/pulls" && r.Method == http.MethodGet:
-		var out []map[string]any
+		q := r.URL.Query()
+		var xs []*fakePull
 		for i := 1; i < f.next; i++ {
-			if x, ok := f.pulls[i]; ok {
-				m := f.pullJSON(x)
-				delete(m, "merged") // 一覧の応答には merged がない
-				out = append(out, m)
+			if x, ok := f.pulls[i]; ok && (q.Get("state") == "all" || q.Get("state") == x.State) {
+				xs = append(xs, x)
 			}
+		}
+		if q.Get("sort") == "updated" {
+			slices.SortStableFunc(xs, func(a, b *fakePull) int { return b.updatedAt.Compare(a.updatedAt) })
+		}
+		var out []map[string]any
+		for _, x := range xs {
+			m := f.pullJSON(x)
+			delete(m, "merged") // 一覧の応答には merged がない
+			out = append(out, m)
+		}
+		if q.Get("per_page") != "" && q.Get("page") != "" && q.Get("sort") == "updated" {
+			// 反映した pull request の一覧は、1 ページずつ読む（Link は見ない）。
+			pp, _ := strconv.Atoi(q.Get("per_page"))
+			pg, _ := strconv.Atoi(q.Get("page"))
+			lo, hi := min((pg-1)*pp, len(out)), min(pg*pp, len(out))
+			write(w, http.StatusOK, append([]map[string]any{}, out[lo:hi]...))
+			return
 		}
 		page(w, r, out)
 	case rePull.MatchString(p) && r.Method == http.MethodGet:
@@ -517,6 +655,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if str("state") == "closed" {
 			x.State = "closed"
+			f.events[x.Number] = append(f.events[x.Number], fakeEvent{Event: "closed", Actor: login, At: time.Now()})
 		}
 		write(w, http.StatusOK, f.pullJSON(x))
 	case reMerge.MatchString(p) && r.Method == http.MethodPut:
@@ -544,7 +683,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		case str("merge_method") != "squash":
 			fail(w, http.StatusUnprocessableEntity, "squash だけ")
 		default:
-			x.Merged, x.State, x.MergeSHA, x.mergedBy = true, "closed", "m"+x.HeadSHA, login
+			x.Merged, x.State, x.MergeSHA, x.mergedBy, x.updatedAt = true, "closed", "m"+x.HeadSHA, login, time.Now()
 			for k, v := range f.branchFiles[x.Head] {
 				f.files[k] = v
 			}
@@ -563,12 +702,6 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			if c.Issue == n {
 				out = append(out, f.commentJSON(r, c))
 			}
-		}
-		page(w, r, out)
-	case p == "/repos/acme/study/issues/comments" && r.Method == http.MethodGet:
-		var out []map[string]any
-		for _, c := range f.comments {
-			out = append(out, f.commentJSON(r, c))
 		}
 		page(w, r, out)
 	case p == "/repos/acme/study/issues" && r.Method == http.MethodPost:
@@ -603,6 +736,11 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case reIssue.MatchString(p) && r.Method == http.MethodPatch:
 		is := f.issues[num(reIssue, p)]
 		is.State = str("state")
+		if is.State == "closed" {
+			now := time.Now()
+			is.closedAt = &now
+			f.events[is.Number] = append(f.events[is.Number], fakeEvent{Event: "closed", Actor: login, At: now})
+		}
 		write(w, http.StatusOK, f.issueJSON(is))
 	default:
 		f.t.Errorf("偽の GitHub が知らない要求：%s %s", r.Method, r.URL)
@@ -639,5 +777,6 @@ func (f *fakeGitHub) commentJSON(r *http.Request, c *fakeComment) map[string]any
 }
 
 func (f *fakeGitHub) issueJSON(is *fakeIssue) map[string]any {
-	return map[string]any{"number": is.Number, "title": is.Title, "body": is.Body, "state": is.State, "user": map[string]string{"login": is.Author}, "created_at": time.Now()}
+	return map[string]any{"number": is.Number, "title": is.Title, "body": is.Body, "state": is.State, "user": map[string]string{"login": is.Author}, "created_at": time.Now(),
+		"labels": labelObjs(is.Labels), "closed_at": is.closedAt}
 }

@@ -14,7 +14,7 @@ import (
 )
 
 // main が短く書き換えられたあと、main の並びの索引に古い SHA が残っていても、並びにあると判定しない
-// （design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+// （design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
 func TestMainNumberAfterShortRewrite(t *testing.T) {
 	ctx := context.Background()
 	r := &remote{t: t, dir: t.TempDir()}
@@ -22,12 +22,12 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	r.write(dH0+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H0, Statement: "根"}))
 	c1 := r.commit("用意\n\nLogiforge-Init: 1")
 	r.write(dH0+"/background.md", []byte("1\n"))
-	c2 := r.commit("反映\n\nLogiforge-Apply-Request: apr_1")
+	c2 := r.commit("反映\n\nTest-Apply-Request: apr_1")
 	r.write(dH0+"/background.md", []byte("1\n2\n"))
-	c3 := r.commit("反映\n\nLogiforge-Apply-Request: apr_2")
+	c3 := r.commit("反映\n\nTest-Apply-Request: apr_2")
 
 	st := &store.Dir{Root: t.TempDir()}
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{r.dir}}, source{r.dir}, st)
 	w.SyncAll(ctx)
 	b := &Backend{Snap: &snapstore.Adapter{Store: st}}
 	v, err := b.mainAt(ctx, "q", "")
@@ -49,11 +49,8 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	if v, err = b.currentMain(ctx, "q"); err != nil || v.revision() != c2 {
 		t.Fatalf("latest: %v", err)
 	}
-	// 短い書き換えも、壊れた状態にする。木を読む今の main は、書き換えの前の latest（c3）である（design/backend/broken.md）。
-	if br, _ := store.GetBroken(ctx, st, "q"); br == nil || br.LastGood != c3 || br.Reason != "main_rewritten" {
-		t.Fatalf("壊れた状態：%+v", br)
-	}
-	if rv, err := b.mainAt(ctx, "q", ""); err != nil || rv.revision() != c3 {
+	// 短い書き換えも、そのまま受け入れる。木を読む今の main も、c2 である（design/backend/invalid-main.md の「main はいつも正しい」）。
+	if rv, err := b.mainAt(ctx, "q", ""); err != nil || rv.revision() != c2 {
 		t.Fatalf("読む今の main：%v", err)
 	}
 	if n, _ := b.mainNumber(ctx, v, c3); n != 0 {
@@ -67,20 +64,20 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 // syncMain は、テストの worker で、remote を取り込む。
 func syncFixture(t *testing.T, f *fixture) {
 	t.Helper()
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(context.Background())
 }
 
-// ノードの履歴は、ページに分けて、コミットの記録の previous をたどって読む。最後のページで終わる。
+// ノードの履歴は、ページに分けて、コミットの情報の previous をたどって読む。最後のページで終わる。
 // カーソルが、そのノードを変えたコミットでなければ、validation_failed にする。
 func TestNodeHistoryPaging(t *testing.T) {
 	ctx := context.Background()
 	f := setup(t)
 	f.r.git("checkout", "--quiet", "main")
 	f.r.write(dH2+"/background.md", []byte("1\n"))
-	c3 := f.r.commit("反映\n\nLogiforge-Apply-Request: apr_3")
+	c3 := f.r.commit("反映\n\nTest-Apply-Request: apr_3")
 	f.r.write(dH2+"/background.md", []byte("1\n2\n"))
-	c4 := f.r.commit("手で直した")
+	c4 := f.r.commit("反映 2\n\nTest-Apply-Request: apr_4")
 	syncFixture(t, f)
 
 	p1, err := f.b.GetNodeHistory(ctx, f.caller, "q", H2, "", 2)
@@ -98,33 +95,32 @@ func TestNodeHistoryPaging(t *testing.T) {
 }
 
 // 回答済みの人への依頼は、対象ノードを最後に変えた反映のコミットが回答より後なら、作業から外れる。
-// 最後の変更が反映によらない push なら、その前の反映のコミットまでたどる。
+// 反映によらない push では、外れない（repository が壊れ、読む側には最後に正しかった時点が出る）。
 func TestAnsweredRequestAfterNonApplyPush(t *testing.T) {
 	ctx := context.Background()
-	f := setup(t)
-	f.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
-	answered := func() bool {
+	answered := func(f *fixture) bool {
 		w, err := f.b.ListWork(ctx, f.caller, "q", WorkQuery{Kinds: []string{"human_request_answered"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return len(w.Items) == 1
 	}
+	f := setup(t)
+	f.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
 	f.r.git("checkout", "--quiet", "main")
-	// 反映によらない push だけでは、外れない（その前は、反映でない用意のコミットしかない）。
 	f.r.write(dH2+"/background.md", []byte("1\n"))
 	f.r.commit("手で直した")
 	syncFixture(t, f)
-	if !answered() {
+	if !answered(f) {
 		t.Fatal("反映によらない push で、作業から外れた")
 	}
-	// 反映のあとに、反映によらない push があっても、その前の反映までたどって外れる。
-	f.r.write(dH2+"/background.md", []byte("1\n2\n"))
-	f.r.commit("反映\n\nLogiforge-Apply-Request: apr_3")
-	f.r.write(dH2+"/background.md", []byte("1\n2\n3\n"))
-	f.r.commit("手で直した 2")
-	syncFixture(t, f)
-	if answered() {
+	g := setup(t)
+	g.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
+	g.r.git("checkout", "--quiet", "main")
+	g.r.write(dH2+"/background.md", []byte("1\n2\n"))
+	g.r.commit("反映\n\nTest-Apply-Request: apr_3")
+	syncFixture(t, g)
+	if answered(g) {
 		t.Fatal("回答のあとの反映があるのに、作業から外れない")
 	}
 }
@@ -160,5 +156,52 @@ func TestListCommits(t *testing.T) {
 	}
 	if _, err := f.b.ListCommits(ctx, f.caller, "q", "", 10); code(err) != CodeSnapshotPending {
 		t.Fatalf("索引の抜け：%v", err)
+	}
+}
+
+// 最新のコミットが valid でなければ、木を読む今の main は、その前の、いちばん新しい valid なコミットである。
+// 書く操作の検査（currentMain）は、最新のコミットを読む。直したコミットで、最新のコミットに戻る（design/backend/invalid-main.md）。
+func TestInvalidLatestShowsValidTree(t *testing.T) {
+	ctx := context.Background()
+	r := &remote{t: t, dir: t.TempDir()}
+	r.git("init", "--quiet", "--initial-branch=main")
+	r.write(dH0+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H0, Statement: "根"}))
+	c1 := r.commit("用意")
+	r.write("README.md", []byte("木の外\n"))
+	c2 := r.commit("直接の push")
+	r.write(dH0+"/background.md", []byte("背景\n"))
+	c3 := r.commit("もう 1 つ")
+	st := &store.Dir{Root: t.TempDir()}
+	w := worker.New(worker.Config{Dir: t.TempDir()}, source{r.dir}, st)
+	w.SyncAll(ctx)
+	b := &Backend{Snap: &snapstore.Adapter{Store: st}}
+	v, err := b.mainAt(ctx, "q", "")
+	if err != nil || v.revision() != c1 {
+		t.Fatalf("木を読む今の main：%v", err)
+	}
+	if got := v.validity(); got.ValidCommit == nil || *got.ValidCommit != c1 || got.InvalidSince == nil || *got.InvalidSince != c2 {
+		t.Fatalf("validity：%+v", got)
+	}
+	if shown, err := b.LatestInvalid(ctx, "q"); err != nil || shown != c1 {
+		t.Fatalf("ヘッダーの値：%s %v", shown, err)
+	}
+	if cur, err := b.currentMain(ctx, "q"); err != nil || cur.revision() != c3 {
+		t.Fatalf("最新のコミット：%v", err)
+	}
+	// 直す。
+	if err := os.Remove(r.dir + "/README.md"); err != nil {
+		t.Fatal(err)
+	}
+	c4 := r.commit("直した")
+	w.SyncAll(ctx)
+	v, err = b.mainAt(ctx, "q", "")
+	if err != nil || v.revision() != c4 {
+		t.Fatalf("直したあと：%v", err)
+	}
+	if got := v.validity(); got.ValidCommit == nil || *got.ValidCommit != c4 || got.InvalidSince != nil {
+		t.Fatalf("直したあとの validity：%+v", got)
+	}
+	if shown, _ := b.LatestInvalid(ctx, "q"); shown != "" {
+		t.Fatalf("直したあとのヘッダー：%s", shown)
 	}
 }

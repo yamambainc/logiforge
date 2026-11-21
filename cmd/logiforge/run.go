@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
@@ -71,29 +69,13 @@ func openSettings(backend bool) (*settings.DB, settings.Keys, error) {
 		}
 	} else if os.Getenv(envBackendKey) != "" || os.Getenv(envBackendKey+"_FILE") != "" {
 		// worker に、バックエンドの鍵を渡さない（design/settings/secrets.md の「2 つの鍵」）。
-		return nil, keys, fmt.Errorf("worker に %s を渡さない。記録の署名の秘密鍵と、GitHub App の client secret を、worker から隠すため", envBackendKey)
+		return nil, keys, fmt.Errorf("worker に %s を渡さない。GitHub App の秘密鍵と client secret を、worker から隠すため", envBackendKey)
 	}
 	db, err := settings.Open(path, !backend)
 	if err != nil {
 		return nil, keys, err
 	}
 	return db, keys, nil
-}
-
-// keyringOf は、設定の DB の記録の鍵から、Keyring を作る。種がなければ（worker）、公開鍵だけの Keyring にする。
-func keyringOf(ks []settings.RecordKey) (pullreq.Keyring, error) {
-	if len(ks) > 0 && ks[0].Seed != nil {
-		ids, seeds := make([]string, len(ks)), make([][]byte, len(ks))
-		for i, k := range ks {
-			ids[i], seeds[i] = k.ID, k.Seed
-		}
-		return pullreq.NewKeyring(ids, seeds)
-	}
-	ring := pullreq.Keyring{Public: map[string]ed25519.PublicKey{}}
-	for _, k := range ks {
-		ring.Public[k.ID] = k.Public
-	}
-	return ring, nil
 }
 
 // runServe は、バックエンドの API を動かす。
@@ -236,21 +218,15 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if err := c.Ready(); err != nil {
 		return nil, nil, err
 	}
-	ring, err := keyringOf(c.RecordKeys)
+	fs, err := setupForge(c, true, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	fs, err := setupForge(c, ring, true, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	// 反映の手順でも、worker の記録の控えを合わせて読む（design/backend/merge.md の手順 1）。
-	fs.forge.Log = snapstore.RecordLog{Store: l.store}
 	b := &backend.Backend{Forge: fs.forge, Auth: fs.auth, Snap: &snapstore.Adapter{Store: l.store}, Git: l.git}
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}
-	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth}, slog.Default())
+	st := api.SettingsHandler(&settingsService{db: l.db, keys: l.keys, auth: fs.auth, store: l.store}, slog.Default())
 	return api.NewServer(b, slog.Default(), api.Options{OAuth: oauthOf(c, sessionStore{l.db, l.keys}), WebUI: webui.Dist(), Setup: l.setup, Settings: st}), fs.reader, nil
 }
 
@@ -448,21 +424,15 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 	if err := c.Ready(); err != nil {
 		return nil, 0, err
 	}
-	pub, err := keyringOf(c.RecordKeys)
-	if err != nil {
-		return nil, 0, err
-	}
-	pub = pub.VerifyOnly()
 	interval := settings.Duration(c.Intervals.Patrol, worker.DefaultInterval)
 	gitTimeout := settings.Duration(c.Intervals.GitTimeout, worker.DefaultGitTimeout)
 	listInterval := settings.Duration(c.Intervals.List, worker.DefaultListInterval)
-	recordInterval := settings.Duration(c.Intervals.Record, 0)
-	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。記録は、公開鍵だけで確かめる。
+	// どの apply request の反映かは、読むだけのトークンで、merge の pull request を探して置く（design/backend/invalid-main.md）。
 	var tokens github.TokenSource
 	if c.GitForge == gitforgeGitHub && c.GitHub.AppID != "" {
 		tokens = dbTokens{db: db, keys: keys}
 	}
-	fs, err := setupForge(c, pub, false, tokens)
+	fs, err := setupForge(c, false, tokens)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -472,11 +442,9 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 		return nil, 0, fmt.Errorf("git の操作の時間の上限（%v）は、GitHub を使う構成では %v より短くする", gitTimeout, github.RefreshBefore)
 	}
 	src := fs.reader
-	fs.forge.Log = snapstore.RecordLog{Store: st}
-	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src, keys: pub}
-	records := snapstore.LogSyncer{Source: src, Keys: pub, Store: st}
+	v := lookup{forge: fs.forge, src: src}
 	w := worker.New(worker.Config{Dir: dir, GitEnv: gitEnv, GitCredentials: src.GitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
-		Verifier: v, Records: records, RecordInterval: recordInterval}, src, st)
+		Lookup: v}, src, st)
 	slog.Info("worker の設定を読んだ", "interval", interval, "git_timeout", gitTimeout)
 	return w, listInterval, nil
 }
@@ -502,7 +470,7 @@ func workerHealth() error {
 
 // runSettings は、`logiforge settings` のコマンドである。
 //
-//	logiforge settings load <ファイル>   JSON の設定を、設定の DB に書く（全体を置き換える。記録の鍵は足すだけ）
+//	logiforge settings load <ファイル>   JSON の設定を、設定の DB に書く（全体を置き換える）
 //	logiforge settings rekey --old-backend-key-file <ファイル> --old-shared-key-file <ファイル>
 //	                                    すべての秘密を、新しい鍵（LOGIFORGE_BACKEND_KEY と LOGIFORGE_SHARED_KEY）で暗号化し直す
 func runSettings(ctx context.Context, args []string) error {

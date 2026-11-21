@@ -86,6 +86,7 @@
 - 正式なデータを変えられるのは、承認された [apply request](../apply-request/README.md) の反映だけである。
   - なぜ：すべての変更を、審査と履歴の対象にするため。
 - 例外は、利用者による repository の作成（根の主文の作成）だけである。
+- apply request によらずに `main` が変えられても、Logiforge は受け入れる。そのときの扱いは、[main への直接の変更](../apply-request/README.md#main-への直接の変更) に書く。
 
 ## 対応しないこと
 

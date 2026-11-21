@@ -7,8 +7,7 @@ apply request が、どういう条件で反映され、論理レビューがど
 
 [apply request](README.md) は、次の条件をすべて満たすと反映される。
 
-- 差分を書いたどのセッションとも別のセッションによる `approve` がある。
-  - push された先頭のコミットは、どれも、書いたセッションが記録される。
+- apply request を作った人とは別の GitForge のアカウントによる `approve` がある。
 - `approve` が有効なのは、`approve` した時点の差分に対してだけである。
   - apply request が更新されたら、それまでの `approve` は無効になる。
 - 最新の差分に対するレビューのうち、最後のものが `approve` である。
@@ -18,7 +17,6 @@ apply request が、どういう条件で反映され、論理レビューがど
 - 論理レビューは、CLI を使う主体か、WebUI の利用者が行う。人も reviewer になれる。
   - WebUI のレビューは、CLI のレビューと同じ意味である。approve で反映の条件を満たしたら、反映まで行う。
   - WebUI でレビューできるのは、その repository に書ける利用者だけである（[役割](../roles/README.md#利用者)）。
-  - WebUI のセッションは、ブラウザのタブごとに別である。そのため、差分を書いた CLI のセッションとは、いつも別のセッションになる。
 
 ## 起動
 
@@ -80,21 +78,20 @@ apply request の説明欄は、材料に含めない。
 
 Logiforge が確かめること：
 
-- reviewer のセッション ID が、差分を書いたどのセッション ID とも違うこと。
-  - 差分を書いたセッション ID は、差分を書いた主体の自己申告である。Logiforge は、それが正しいかを確かめない。
-  - 差分を書いたセッションを正しく申告するのは、CLI を使う側の責任である。
-  - 差分を書いたセッションを申告していない先頭のコミットは、`approve` できない。
-  - 短い間に何度も push されると、Logiforge が見なかった途中のコミットのセッションは、記録されない。
-  - WebUI のレビューでは、セッションの分離は、文脈の分離を保証しない。WebUI のタブは、いつも別のセッションだから。
-    - 自分が書いた差分や、自分が指示した差分を、自分で `approve` しないのは、人の責任である。
-    - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request と履歴](../webui/history.md)）。
+- reviewer は、apply request を作った人と別の GitForge のアカウントである。GitForge が、自分の pull request の `approve` を拒むから。
+  - 書いた人と確かめる人を分ける保証は、この 1 つである。同じアカウントの別のセッションで書き、確かめることはできない。
+  - GitForge の画面から直接出した review も、Logiforge を通した review と同じに数える。
+- 数えるのは、その repository に書く権限（Write）を持つ人の review だけである。
+- WebUI のレビューでも、別のアカウントであることを、GitForge が確かめる。
+  - 自分が指示した差分を、自分のアカウントで `approve` しないのは、人の責任である。
+  - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request と履歴](../webui/history.md)）。
 
-Logiforge が記録すること：
+Logiforge が review の本文に書くこと：
 
-- `approve` ごとの、reviewer のセッション ID
-- `approve` ごとの、使ったプロンプトのリビジョン
+- client の `approve` ごとの、使ったプロンプトのリビジョン（人が読む文として）
 
 対応しないこと：
 
-- 同じ主体が、別のセッションを名乗るなりすまし
+- 同じアカウントを、複数の人やエージェントで使うこと
+- Write を持つ主体による、review の本文、コメント、ラベルの書き換え
   - 認証基盤は、この仕様の範囲外である（[目的と範囲](../concepts/README.md)）。

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/settings"
 )
@@ -41,8 +40,7 @@ func TestSettingsAPI(t *testing.T) {
 	keys := settings.Keys{Backend: bk, Shared: sk}
 	c := &settings.Config{GitForge: settings.GitForgeGitHub, WebUIURL: "https://lf.example",
 		GitHub:       settings.GitHubConfig{APIURL: gh.URL, AppID: "42", Slug: "logiforge-test", AppPrivateKey: pemKey, ClientID: "Iv1.cid", ClientSecret: "csecret"},
-		Repositories: []settings.Repository{{Name: "q", GitForgeRef: "acme/q"}},
-		RecordKeys:   []settings.RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef"}}}
+		Repositories: []settings.Repository{{Name: "q", GitForgeRef: "acme/q"}}}
 	if err := db.Save(t.Context(), keys, c, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +51,7 @@ func TestSettingsAPI(t *testing.T) {
 		}
 		return c
 	}
-	fs, err := setupForge(load(), pullreq.Keyring{}, true, nil)
+	fs, err := setupForge(load(), true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,15 +143,8 @@ func TestSettingsAPI(t *testing.T) {
 	if st, out, _ := call("ghu_alice", "GET", "/v1/settings/repositories", nil); st != 200 || len(out["items"].([]any)) != 2 {
 		t.Fatalf("一覧：%v", out)
 	}
-	// 記録の鍵：新しい鍵を書くときの鍵にし、古い鍵は残す。
-	st, out, b = call("ghu_alice", "POST", "/v1/settings/record-keys", nil)
-	if st != 201 || out["primary"] != true {
-		t.Fatalf("鍵を作る：%d %s", st, b)
-	}
-	if _, out, b := call("ghu_alice", "GET", "/v1/settings/record-keys", nil); len(out["items"].([]any)) != 2 || strings.Contains(b, "private") {
-		t.Fatalf("鍵の一覧：%s", b)
-	}
-	if c := load(); c.RecordKeys[0].ID == "k1" || len(c.RecordKeys) != 2 {
-		t.Fatalf("書くときの鍵：%v", c.RecordKeys[0].ID)
+	// 記録の鍵の API は、もうない。
+	if st, _, _ := call("ghu_alice", "GET", "/v1/settings/record-keys", nil); st != 404 {
+		t.Fatalf("記録の鍵の API が残っている：%d", st)
 	}
 }

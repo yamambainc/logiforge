@@ -6,17 +6,18 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 ## 守ること
 
 - プロジェクトの人は、コードの PR を、プロジェクトの決まりで merge する。
-- 登録したディレクトリは、apply request の反映でだけ変わる。反映によるものかは、だれが merge したかでなく、中身で決める（[反映かの判定](../backend/verify/README.md)、[履歴](history.md) の「反映かの判定」）。
+- 登録したディレクトリは、apply request の反映で変える。
+- Logiforge は、ディレクトリを変えた `main` のコミットを、どう入ったかによらず受け入れる（[main はいつも正しい](../backend/invalid-main.md#main-はいつも正しい)、[履歴](history.md) の「valid」）。
   - Logiforge は、GitForge に書くための自分のアカウント（書き込み主体）を持たない。反映は、`approve` をした reviewer のトークンで merge する（[反映の手順](../backend/merge.md)）。
 - 守る設定は、git リポジトリ全体の repository と同じく、勧めるが求めない（[main を守る](../adapters/pull-requests.md#main-を守る)）。
-  - 守る設定がなくても、ディレクトリを変える反映によらないコミットは、worker が見つけ、その repository を壊れた状態にする（[壊れた repository](../backend/broken.md)）。
-  - 守る設定は、壊れる前に止めるためのものである。
+  - 守る設定がなければ、apply request を通らずにディレクトリを変えられる。そのコミットも受け入れる。木が不変条件を破れば、valid でないコミットとして示す（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
+  - 守る設定は、論理レビューを通らない変更を、`main` に入る前に止めるためのものである。
 - 書き込み主体がないので、「ディレクトリを変える PR を merge できるのは、Logiforge だけ」という守り方はできない。守る設定でできるのは、ディレクトリを変える PR を merge できる人を、Logiforge の reviewer に絞ることまでである。
-  - 絞れないときは、守りは「後から検査」（worker が見つけて、壊れた状態にする）だけでよい。
+  - 絞れないときは、守る設定なしで使う。
 
 ## GitHub の守る設定
 
-使えるときは、プロジェクトのリポジトリに、`main` のブランチのルールセットを 2 つ作る。使わなければ、後から検査だけで守る。
+使えるときは、プロジェクトのリポジトリに、`main` のブランチのルールセットを 2 つ作る。使わなければ、守る設定なしで使う。
 
 | ルールセット | Rules | Bypass list |
 |---|---|---|
@@ -31,7 +32,7 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
 
 - ディレクトリを変える PR は、その team の承認が要るが、承認できる人がいないので、reviewer の team のほかは、だれも merge できない。
   - reviewer の team の人は、bypass で merge できる。バックエンドは、反映の手順 4 で、`approve` をした reviewer のトークンで merge する。
-  - reviewer の team の人が、承認されていない PR を GitHub の画面で merge しても、守る設定では止まらない。そのときは、worker が、反映によらないコミットとして見つける。
+  - reviewer の team の人が、承認されていない PR を GitHub の画面で merge しても、守る設定では止まらない。そのコミットも、Logiforge は受け入れる。
 - ディレクトリを変えない PR（コードの PR）には、この規則は効かない。
 - なぜ必須の check にしないか：PR の側の workflow は、PR が書き換えたり、同じ名前の job を足したりして通せるから。ルールセットは、リポジトリのファイルの外にあるので、PR からは変えられない。
 - 使えるのは、organization のリポジトリだけである。public なら Free で、private なら Team 以上で使える。
@@ -48,7 +49,7 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
 
 Forgejo では、ディレクトリを変える PR の merge を、特定の人に絞る方法が、リポジトリの admin の `force_merge` しかない。reviewer をリポジトリの admin にすると、リポジトリの設定まで変えられるので、勧めない。
 
-- そのため、Forgejo では、ディレクトリの守りは、後から検査だけにする。`protected_file_patterns` は使わない。
+- そのため、Forgejo では、ディレクトリの守る設定は使わない。`protected_file_patterns` は使わない。
   - なぜ：`protected_file_patterns` を掛けると、リポジトリの admin でない reviewer も、ディレクトリを変える apply request を merge できなくなり、反映できないから。
   - Forgejo は、`protected_file_patterns` に掛かる PR を、リポジトリの admin のほかは `Changed protected files` で断る。リポジトリの admin は、`force_merge: true` でだけ merge できる。
   - Forgejo は、rename の新しいパスだけを見る。そのため、ディレクトリの中のファイルを外へ rename する PR は、`protected_file_patterns` でも止まらない。
@@ -64,10 +65,10 @@ Forgejo では、ディレクトリを変える PR の merge を、特定の人�
 
 - リポジトリの admin と organization の owner は、信頼の境界の中に入る（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。どちらの GitForge でも同じである。
   - この人たちは、守る設定を外すか越えて、ディレクトリを変えられる。既存のリポジトリでは、organization の owner がいるので、この人たちをなくせない。
-  - この人たちがディレクトリを変えたら、worker が見つけ、repository を壊れた状態にする。
+  - この人たちがディレクトリを変えても、Logiforge は受け入れる。木が不変条件を破れば、valid でないコミットとして示す。
 - GitHub では、Logiforge の承認の team に、メンバーを足さない。足された人は、ディレクトリを変える PR を承認して、merge できるようになる。team のメンバーを変えられる人（organization の owner と team の maintainer）も、信頼の境界の中に入る。
 - GitHub の reviewer の team の人は、bypass で、`main` のコードの PR も、承認なしに merge できる。
-  - これを受け入れる。なぜ：コードの PR の承認は、プロジェクトの決まりで、bypass をだれに与えるかもプロジェクトが決めるから。受け入れられなければ、ディレクトリの守りを使わず、後から検査だけにする。
+  - これを受け入れる。なぜ：コードの PR の承認は、プロジェクトの決まりで、bypass をだれに与えるかもプロジェクトが決めるから。受け入れられなければ、ディレクトリの守る設定を使わない。
 
 ## 反映の順番
 

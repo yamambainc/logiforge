@@ -1,8 +1,6 @@
 package snapshot
 
 import (
-	"strings"
-
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
@@ -12,35 +10,11 @@ const (
 	RuleOverlap tree.Rule = "overlap"
 	// RuleOverlapUnchecked は、反映した先頭のコミットか base が見つからず、重なりを確かめられなかったことである。
 	RuleOverlapUnchecked tree.Rule = "overlap_unchecked"
-	// RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことである。
-	RuleMainRewritten tree.Rule = "main_rewritten"
 )
 
-// TrailerVersion は、反映のコミットの、反映した先頭のコミットの trailer である（例：`3 <commit SHA>`）。
-const TrailerVersion = "Logiforge-Version"
+// ApplyRequestOf は、main のコミットを merge のコミットに持つ pull request（apply request）の識別子を返す。なければ空。
+// worker が、取り込むときに、反映した pull request の一覧で探したものである（design/backend/invalid-main.md の「どの apply request の反映か」）。
+func ApplyRequestOf(c Commit) string { return c.ApplyRequest }
 
-// HasTrailer は、コミットの記録の trailer の値を返す。なければ空。
-func HasTrailer(c Commit, key string) string { return trailer(c.Trailers, key) }
-
-// ApplyRequestOf は、main のコミットを反映した apply request の識別子を返す。反映によらないコミット（警告 no_apply_request）なら空。
-// worker が判定で見つけたものがなければ、trailer（Logiforge-Apply-Request:）を使う。
-func ApplyRequestOf(c Commit) string {
-	for _, w := range c.Warnings {
-		if w.Rule == RuleNoApplyRequest {
-			return ""
-		}
-	}
-	if c.ApplyRequest != "" {
-		return c.ApplyRequest
-	}
-	return trailer(c.Trailers, TrailerApplyRequest)
-}
-
-// VersionCommit は、反映のコミットの記録から、反映した先頭のコミットの SHA を返す。なければ空。
-func VersionCommit(c Commit) string {
-	f := strings.Fields(trailer(c.Trailers, TrailerVersion))
-	if len(f) == 0 {
-		return ""
-	}
-	return f[len(f)-1]
-}
+// VersionCommit は、反映のコミットの情報から、反映した先頭のコミットの SHA を返す。なければ空。
+func VersionCommit(c Commit) string { return c.MergedHead }

@@ -101,7 +101,7 @@ func TestSettingsLoad(t *testing.T) {
 	t.Setenv(envBackendKey, bk)
 	t.Setenv(envSharedKey, sk)
 	p := filepath.Join(dir, "c.json")
-	if err := os.WriteFile(p, []byte(`{"gitforge":"github","github":{"app_id":"42","app_private_key":"pem","client_id":"i","client_secret":"s"},"repositories":[{"name":"q","gitforge_ref":"acme/q"}],"record_keys":[{"id":"k1","secret":"0123456789abcdef0123456789abcdef-test"}]}`), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(`{"gitforge":"github","github":{"app_id":"42","app_private_key":"pem","client_id":"i","client_secret":"s"},"repositories":[{"name":"q","gitforge_ref":"acme/q"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := runSettings(t.Context(), []string{"load", p}); err != nil {
@@ -159,8 +159,7 @@ func TestLiveServerReloads(t *testing.T) {
 	if rec := get("/v1/repositories"); rec.Code != 503 || !strings.Contains(rec.Body.String(), "setup_required") {
 		t.Fatalf("セットアップの前：%d %s", rec.Code, rec.Body)
 	}
-	c := &settings.Config{GitForge: settings.GitForgeForgejo, Forgejo: settings.ForgejoConfig{URL: "http://127.0.0.1:1", Org: "o", WorkerLogin: "r", WorkerToken: "t"},
-		RecordKeys: []settings.RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef"}}}
+	c := &settings.Config{GitForge: settings.GitForgeForgejo, Forgejo: settings.ForgejoConfig{URL: "http://127.0.0.1:1", Org: "o", WorkerLogin: "r", WorkerToken: "t"}}
 	if err := db.Save(t.Context(), keys, c, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -207,8 +206,7 @@ func TestMintWorkerTokens(t *testing.T) {
 	sk, _ := settings.ParseKey(settings.NewKey())
 	keys := settings.Keys{Backend: bk, Shared: sk}
 	c := &settings.Config{GitForge: settings.GitForgeGitHub, GitHub: settings.GitHubConfig{APIURL: srv.URL, AppID: "42", AppPrivateKey: pemKey},
-		Repositories: []settings.Repository{{Name: "q", GitForgeRef: "acme/q"}},
-		RecordKeys:   []settings.RecordKey{{ID: "k1", Secret: "0123456789abcdef0123456789abcdef"}}}
+		Repositories: []settings.Repository{{Name: "q", GitForgeRef: "acme/q"}}}
 	if err := db.Save(t.Context(), keys, c, ""); err != nil {
 		t.Fatal(err)
 	}

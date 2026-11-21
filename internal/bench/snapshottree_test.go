@@ -118,11 +118,11 @@ func makeRepo(t *testing.T, targetNodes, commits int) (*gitx.Repo, string, []str
 			g.bg[h] += fmt.Sprintf("足した文章 %d\n", i)
 			files = map[string]string{h + "/background.md": g.bg[h]}
 		}
-		g.commit("refs/heads/main", fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_gen%d\nLogiforge-Session-Id: s-gen", i, i), files, "")
+		g.commit("refs/heads/main", fmt.Sprintf("反映 %d", i), files, "")
 	}
 	tip := fmt.Sprintf(":%d", g.mark)
 	// AR のブランチ：先頭の main から、ストーリー 1 つと仮説 3 つを足す（4 ノード）。
-	g.commit("refs/heads/ar-edit", "提案\n\nLogiforge-Session-Id: s-gen", g.grow(commits), tip)
+	g.commit("refs/heads/ar-edit", "提案", g.grow(commits), tip)
 	cmd := exec.Command("git", "--git-dir", dir, "fast-import", "--quiet")
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 	cmd.Stdin = &g.buf
@@ -148,7 +148,7 @@ type phases struct {
 	write    time.Duration // 置き場に書く
 	treeSize int           // 圧縮後のスナップショットツリーの大きさ
 	rawSize  int           // 圧縮前の JSON の大きさ
-	commit   int           // 圧縮後のコミットの記録の大きさ
+	commit   int           // 圧縮後のコミットの情報の大きさ
 }
 
 func (p phases) withoutPut() time.Duration { return p.apply + p.build }
@@ -215,9 +215,9 @@ func measure(t *testing.T, targetNodes, commits int) result {
 		// worker と同じく、木の組み立ては BuildSnapshotTree の中の 1 回だけである。新しく破れた不変条件も、その結果から求める。
 		t0 = time.Now()
 		tr := snapshot.BuildSnapshotTree(files, x)
-		newly, _ := tree.NewlyBroken(broken, tr.Broken)
+		newly, _ := tree.NewlyBroken(broken, tr.Violations)
 		x.AddNewlyBroken(&rec, newly...)
-		broken = tr.Broken
+		broken = tr.Violations
 		tr.Warned = x.Warned()
 		p.build = time.Since(t0)
 
@@ -362,7 +362,7 @@ func TestSnapshotTree(t *testing.T) {
 	}
 	t.Logf("go %s, GOMAXPROCS %d, main のコミット %d", runtime.Version(), runtime.GOMAXPROCS(0), commits)
 	var out strings.Builder
-	out.WriteString("\n| ノード | git 読み | ApplyChanges | BuildSnapshotTree | PutSnapshotTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildSnapshotTree | 全体 PutSnapshotTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの記録 | 全コミット取り込み | 置き場の合計 |\n")
+	out.WriteString("\n| ノード | git 読み | ApplyChanges | BuildSnapshotTree | PutSnapshotTree 抜き計 | gzip+JSON | 書く | 1 コミット計 | 全体 ReadFiles | 全体 BuildSnapshotTree | 全体 PutSnapshotTree | BE GetMain | BE 展開 | BE Overlay | BE Build | BE Compute | BE 計 | (参考) CheckChange | 圧縮後 | 圧縮前 | コミットの情報 | 全コミット取り込み | 置き場の合計 |\n")
 	out.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	sizes := []int{100, 1000, 4000}
 	if v := os.Getenv("BENCH_NODES"); v != "" { // 例：BENCH_NODES=1000,4000

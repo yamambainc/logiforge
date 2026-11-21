@@ -43,7 +43,6 @@ type ForgejoSettings struct {
 type IntervalSettings struct {
 	PatrolSeconds     float64 `json:"patrol_seconds,omitempty"`
 	ListSeconds       float64 `json:"list_seconds,omitempty"`
-	RecordsSeconds    float64 `json:"records_seconds,omitempty"`
 	GitTimeoutSeconds float64 `json:"git_timeout_seconds,omitempty"`
 	WriteWaitSeconds  float64 `json:"write_wait_seconds,omitempty"`
 }
@@ -85,7 +84,6 @@ type ForgejoSettingsInput struct {
 type IntervalSettingsInput struct {
 	PatrolSeconds     *float64 `json:"patrol_seconds"`
 	ListSeconds       *float64 `json:"list_seconds"`
-	RecordsSeconds    *float64 `json:"records_seconds"`
 	GitTimeoutSeconds *float64 `json:"git_timeout_seconds"`
 	WriteWaitSeconds  *float64 `json:"write_wait_seconds"`
 }
@@ -98,14 +96,6 @@ type GitForgeSettingsInput struct {
 	Intervals *IntervalSettingsInput `json:"intervals"`
 }
 
-// RecordKeyOut は、記録の署名の鍵の、返すものである。
-type RecordKeyOut struct {
-	KeyID     string `json:"key_id"`
-	PublicKey string `json:"public_key"`
-	CreatedAt string `json:"created_at"`
-	Primary   bool   `json:"primary"`
-}
-
 // SettingsService は、設定の API の中身である（design/api/endpoints/settings.md）。cmd/logiforge が、設定の DB とアダプタで実装する。
 // token は、要求の Authorization のトークンである。実装は、キャッシュを使わずに、WebUI のサインインの user かを確かめる。
 type SettingsService interface {
@@ -114,8 +104,6 @@ type SettingsService interface {
 	ListRepositories(ctx context.Context, token string) ([]SetupRepository, error)
 	RegisterRepository(ctx context.Context, token string, r SetupRepository) (SetupRepository, error)
 	UnregisterRepository(ctx context.Context, token, name string) error
-	ListRecordKeys(ctx context.Context, token string) ([]RecordKeyOut, error)
-	CreateRecordKey(ctx context.Context, token string) (RecordKeyOut, error)
 }
 
 // SettingsHandler は、/v1/settings の下の API のハンドラーである。
@@ -172,27 +160,6 @@ func SettingsHandler(s SettingsService, log *slog.Logger) http.Handler {
 	mux.HandleFunc("DELETE /v1/settings/repositories/{repository}", func(w http.ResponseWriter, r *http.Request) {
 		h.reply(w, r, func(ctx context.Context) (any, error) {
 			return nil, s.UnregisterRepository(ctx, tok(r), r.PathValue("repository"))
-		})
-	})
-	mux.HandleFunc("GET /v1/settings/record-keys", func(w http.ResponseWriter, r *http.Request) {
-		h.reply(w, r, func(ctx context.Context) (any, error) {
-			ks, err := s.ListRecordKeys(ctx, tok(r))
-			if err != nil {
-				return nil, err
-			}
-			if ks == nil {
-				ks = []RecordKeyOut{}
-			}
-			return map[string]any{"items": ks}, nil
-		})
-	})
-	mux.HandleFunc("POST /v1/settings/record-keys", func(w http.ResponseWriter, r *http.Request) {
-		h.reply(w, r, func(ctx context.Context) (any, error) {
-			k, err := s.CreateRecordKey(ctx, tok(r))
-			if err != nil {
-				return nil, err
-			}
-			return created{status: http.StatusCreated, body: k}, nil
 		})
 	})
 	mux.HandleFunc("/v1/settings/", func(w http.ResponseWriter, _ *http.Request) {

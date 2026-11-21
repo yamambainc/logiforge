@@ -15,7 +15,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | apply request と履歴 | `/r/{repository}/apply-requests?state=&id=` |
 | ダッシュボード | `/r/{repository}` |
 | セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
-| 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`、`record-keys`。`add` は `new` か `first` で、repository を足す段を開く） |
+| 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`。`add` は `new` か `first` で、repository を足す段を開く） |
 | サインインから戻る先 | `/oauth/callback`（[サインインの流れ](signin-flow.md)） |
 
 ## 画面ごとの API
@@ -30,6 +30,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - スナップショットツリー：`getTree` と `listNodes`（`root` と `depth` は指定しない）。
 - 詳細のパネル：`getNode`。検証結果のレポートは `getVerdict`、ファイルは `getArtifact`、履歴は `getNodeHistory`。
 - 読み方と表示の決まりは、[スナップショットツリーのビュワー](snapshot-tree-viewer.md) に書く。
+- 木の応答の `invalid_since` が null でなければ、画面の上に「最新のコミットは valid でない。コミット X の木を示している」と示す。X は応答の `valid_commit` である（[WebUI](../backend/invalid-main.md#webui)）。
 
 ### [人への依頼](../../docs/webui/human-requests.md)
 
@@ -51,12 +52,12 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 ### [apply request と履歴](../../docs/webui/history.md)
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
-- 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews` で示す。
+- 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews`、pull request のコメントは `comments` で示す。
+  - コメントは、書いた人と時刻を添えて、本文をそのまま Markdown として示す。反映の失敗と close の理由も、ここに入る。
 - レビューの材料：`getReviewMaterial`。レビューの欄に示す。説明欄は示さない。
 - 自分が作ったか：`getApplyRequest` の `opened_by_caller`。`true` なら、approve の前に示す。
 - レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
-  - `Logiforge-Session-Id` は、タブごとに乱数で作り、`sessionStorage` に置く（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）。
-  - 応答の `apply_request` で、反映したか、反映の失敗の理由を示す。
+  - 応答の `apply_request` で反映したかを、`merge_failure` で反映できなかった理由を示す。
   - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、`created_at` の順に示し、書いた人（`reviewer`）と時刻を添える。
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
@@ -77,7 +78,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - ダッシュボードの「引用元が変化した検証結果」は、ビュワーを `f=cited` で開く。`listWork` の `citation_changed` の `node_id`（検証結果を持つ仮説）だけを示す。
   - 件数の単位は検証結果である。1 つの仮説が、引用元の変わった検証結果を 2 つ持つこともあるので、ビュワーの帯には「検証結果 N 件（仮説 M 個）」と両方を示す。
 - ダッシュボードの件数には、単位（件）を添える。
-- 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[すべての画面の決まり](mobile.md#すべての画面の決まり)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
+- 画面の切り替え：デスクトップは上の帯のタブ、モバイルは下のタブ（[画面の骨組み](mobile.md#画面の骨組み)）。URL は `/r/{repository}` がダッシュボード、`/r/{repository}/tree` がビュワーである。
 
 セットアップと設定の画面が使う API は、[セットアップと設定の画面と API](screens-setup.md) に書く。
 
@@ -87,9 +88,9 @@ API は、WebUI のために次の 2 つを持つ。どれも、BE が持つも�
 
 | もの | 返すもの | 使う画面 | 元 |
 |---|---|---|---|
-| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの記録（[スナップショット](../backend/snapshot/README.md)） |
+| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの情報（[スナップショット](../backend/snapshot/README.md)） |
 | `Repository` の `root_statement` | 根の仮説の主文 | repository の一覧 | 今の `main` のスナップショットツリー |
 
-- `listCommits` の `apply_request_id` は、コミットの記録の trailer `Logiforge-Apply-Request:` の値である（[main のコミットと記録](../files/revisions.md)）。ない（反映によらないコミット）なら null である。
+- `listCommits` の `apply_request_id` は、worker が反映した pull request の一覧で見つけた apply request である（[反映のコミット](../files/revisions.md#反映のコミット)）。見つからなかったコミット（`main` への直接の push など）なら null である。
 - `listCommits` のページングは、ほかの一覧と同じくカーソルで分ける。カーソルは、次に読むコミットの `number` である（[ページング](../api/paging.md)）。
 - なぜ `root_statement` を持つか：持たないと、一覧の行ごとに `getNode` を呼ぶことになるから。

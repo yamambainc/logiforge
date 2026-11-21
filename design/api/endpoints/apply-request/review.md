@@ -10,13 +10,14 @@ reviewer が、論理レビューの結果を付けるときに、CLI か WebUI 
 
 ## すること
 
-- approve、request_changes、comment のどれかを付ける。
-- レビューした先頭のコミットと、使ったプロンプトのリビジョンを記録する。
-  - `user`（WebUI）のレビューには、プロンプトのリビジョンがない。記録には `-` を書く。
+- approve、request_changes、comment のどれかの review を、呼んだ主体のトークンで、GitForge の pull request に出す。
+- comment と request_changes には、本文が要る。GitHub も Forgejo も、本文のない comment と request changes の review を拒むので、本文が空なら、GitForge に送らずに validation_failed で断る。approve は、本文がなくてよい。
+- review は、レビューした先頭のコミットに出す。client の review では、本文の最後に、使ったプロンプトのリビジョンを、人が読む文で書く（[review の本文](../../../adapters/texts.md#review-の本文)）。
+  - `user`（WebUI）のレビューには、プロンプトのリビジョンがない。書かない。
+- 呼んだ主体が、その pull request の作者なら、GitForge が approve を拒む。opener と reviewer は、別の GitForge のアカウントである。
 - `client` も `user` も呼べる。`user` は、その repository に Write があるときだけ受け付ける。
-- どちらも、`Logiforge-Session-Id` を求める。WebUI は、ブラウザのタブごとに乱数で作り、`sessionStorage` に置く。
 - approve で反映の条件を満たしたら、この呼び出しの中で反映する。
-- 反映に失敗しても、エラーにはせず、失敗の理由を記録する。
+- 反映に失敗しても、エラーにはしない。失敗の理由を、応答の `merge_failure` で返し、pull request のふつうのコメントに書く（[反映の手順](../../../backend/merge.md)）。
 
 ## 関係する要件
 

@@ -1,7 +1,7 @@
 # Forgejo アダプタ
 
 自前で持つ構成で、[Forgejo](https://forgejo.org/) を使って Logiforge を動かすときに、[GitForge のポート](../backend/ports/gitforge.md) と [認証](../backend/ports/authentication.md) のポートをどう実装するかを確かめるために読む。
-GitHub アダプタと共通のところは、[GitForge アダプタの共通の書き方](pull-requests.md) に書く。
+GitHub アダプタと共通のところは、[GitForge のポートを pull request と issue で実装する](pull-requests.md) に書く。
 
 ## Forgejo を使う理由
 
@@ -14,14 +14,13 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 
 | 主体 | 使う者 | 権限 |
 |---|---|---|
-| 読むだけのユーザー | [worker](../backend/worker/README.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository`、`read:organization`（repository を列挙するため）、`read:issue`（記録のコメントを読むため）だけにする。organization が private なら、コード、issue、pull request を読むだけの team に入れる |
+| 読むだけのユーザー | [worker](../backend/worker/README.md)、バックエンドの作業用の git の複製 | repository を読む。トークンの範囲は `read:repository`、`read:organization`（repository を列挙するため）、`read:issue`（issue と pull request のコメントを読むため）だけにする。organization が private なら、コード、issue、pull request を読むだけの team に入れる |
 | 利用者 | WebUI | repository を作り（team の `can_create_org_repo`）、読み、issue と pull request にコメントを書き、WebUI のレビューで merge する。team の権限は、コード、issue、pull request の書き込みにする |
 | opener と reviewer（人とエージェント） | CLI | repository を読み、`main` 以外のブランチに push し、pull request とレビューとコメントを書き、reviewer は merge する。team の権限は、コード、issue、pull request の書き込みにする |
 
-- Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge アダプタの共通の書き方](pull-requests.md)）。
+- Logiforge は、Forgejo に書くための自分のユーザー（書き込み主体）を持たない。書くのは、いつも、API の要求を送った主体のトークンである（[GitForge のポートを pull request と issue で実装する](pull-requests.md)）。
 - worker のユーザーとトークンは、設定の DB に置く（[設定の DB に置くもの](../settings/README.md#設定の-db-に置くもの)、[秘密の暗号化](../settings/secrets.md)）。
-- 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体の記録のコメントを編集し、消し、pull request を close できる。
-  - 編集は署名で見つけ、worker の控えに残る記録は、消されても判定に使う（[信頼の境界](pull-requests.md#信頼の境界)）。
+- 利用者とエージェントは、issue と pull request を書く権限を持つので、ほかの主体のコメントと本文を編集し、消し、pull request を close できる。そういう主体を信じる（[信頼の境界](pull-requests.md#信頼の境界)）。
 
 ## 対応
 
@@ -30,10 +29,12 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 | repository | 設定した organization の repository。gitforge_ref は `<organization>/<名前>` |
 | repository を列挙する | `GET /orgs/{org}/repos` |
 | repository を用意する | [repository の用意](#repository-の用意) |
-| 提案を作る | `POST /repos/{owner}/{repo}/pulls` |
+| apply request を作る | `POST /repos/{owner}/{repo}/pulls` |
 | 反映する | `POST /repos/{owner}/{repo}/pulls/{index}/merge` に、`Do: squash`、`head_commit_id`（先頭のコミット）、`MergeTitleField` と `MergeMessageField`（trailer を含むメッセージ）を渡す |
-| レビュー | pull request の記録のコメント（`POST /repos/{owner}/{repo}/issues/{index}/comments`。[レビューの書き方](records.md#レビューの書き方)） |
-| 反映かの判定 | `GET /repos/{owner}/{repo}/commits/{sha}/pull` と `GET /repos/{owner}/{repo}/issues/comments?since=`（[反映かの判定](../backend/verify/README.md)） |
+| レビュー | `POST /repos/{owner}/{repo}/pulls/{index}/reviews`（`event` は `APPROVED`、`REQUEST_CHANGES`、`COMMENT`。本文は [review の本文](texts.md#review-の本文)） |
+| 反映の失敗 | `POST /repos/{owner}/{repo}/issues/{index}/comments`（理由を書いたふつうのコメント）と、ラベルの付け替え |
+| ラベルの付け外し | `POST /repos/{owner}/{repo}/issues/{index}/labels`（名前で付けられる）、`DELETE /repos/{owner}/{repo}/issues/{index}/labels/{id}`。付ける前に、なければ `POST /repos/{owner}/{repo}/labels` で作る。書く権限で足りる |
+| どの apply request の反映か | `GET /repos/{owner}/{repo}/pulls?state=closed&sort=recentupdate`（[どの apply request の反映か](../backend/invalid-main.md#どの-apply-request-の反映か)） |
 | close | `PATCH /repos/{owner}/{repo}/pulls/{index}` で `state: closed` |
 | 人への依頼と回答 | issue とコメント |
 | 回答の添付 | コメントの添付（`POST /repos/{owner}/{repo}/issues/comments/{id}/assets`）。上限は、artifact と同じ 10 MiB |
@@ -45,7 +46,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 作る利用者のトークンで、次の順に行う。repository を作った主体は、その repository の admin になる。
 
 1. `POST /orgs/{org}/repos` で、repository を作る。`auto_init` は付けない。
-2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。trailer `Logiforge-Init:` と `Logiforge-Init-Signature:` を付ける（[repository の用意のコミット](../backend/verify/init.md#repository-の用意のコミット)）。
+2. `POST /repos/{owner}/{repo}/contents` で、根のファイルを 1 つのコミットにまとめて `main` に置く。
 3. `POST /repos/{owner}/{repo}/branch_protections` で、`main` を守る。
    - 最初のコミットのあとに作る。なぜ：`main` への push を禁じたあとでは、最初のコミットを置けないから。
 
@@ -56,7 +57,7 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 `main` を守る設定は、次のとおりである。
 
 - `enable_push: false`：だれも `main` に push できない。
-- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。承認されていない pull request の merge は、worker が見つける（[反映かの判定](../backend/verify/README.md)）。
+- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。
 - `block_on_outdated_branch: false`：`main` に追いついていることを merge の条件にしない。
 
 - pull request の最後の先頭のコミットは、`refs/pull/<index>/head` で取れる（[ブランチの履歴](../backend/snapshot/README.md)）。
@@ -64,6 +65,12 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 ## Forgejo の挙動
 
 アダプタと worker が前提にする、Forgejo の挙動である。
+
+- pull request の作者は、自分の pull request を `approve` できない（422）。
+- 同じ人があとで `approve` すると、その人の前の `request changes` は `dismissed` になる。`official` は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` にだけ付く。`comment` の review には付かない。
+- ほかの人の権限を読む API（`GET /repos/{owner}/{repo}/collaborators/{user}/permission`）は、repository の admin しか使えない。
+- draft の項目はなく、タイトルの接頭辞（`WIP: ` など）で決まる。Logiforge は、draft を使わない。
+- timeline のラベルの出来事は、付けたときに本文が `1` になる。
 
 - 空の repository にも、`POST /repos/{owner}/{repo}/contents` で最初のコミットを置ける。`auto_init` は要らない。
 - `enable_push: false` の `main` には、repository の admin も Forgejo の site admin も push できない。pre-receive で拒まれる。
@@ -74,8 +81,6 @@ GitHub アダプタと共通のところは、[GitForge アダプタの共通の
 - merge の API は、head が `head_commit_id` と違えば、409 を返す。
 - merge の権限のない主体が merge を呼ぶと、405 で、`message` が `User not allowed to merge PR` になる。
   - アダプタは、待たずに反映の失敗 `merge_forbidden` にする（[反映の手順](../backend/merge.md)）。
-- merge のすぐあとは、`GET /repos/{owner}/{repo}/commits/{sha}/pull` が 404 を返すことがある。
-  - そのため、worker は、pull request が見つからないコミットを、すぐには反映によらないものと決めない（[反映かの判定](../backend/verify/README.md)）。
 - `GET /repos/{owner}/{repo}/issues/comments?since=` は、編集されたコメントも返す。`updated_at` は、編集の時刻になる。
 - コメントを読むには、`read:issue` のスコープと、issue と pull request を読める team が要る。`read:repository` だけでは 403 になる。
 

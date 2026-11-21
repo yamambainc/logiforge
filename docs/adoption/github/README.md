@@ -9,12 +9,12 @@ apply request と人への依頼は、GitHub の pull request と issue にな�
 - Logiforge は、GitHub に書くための自分のアカウントを持たない。GitHub に書くのは、いつも、要求を送った人やエージェントのトークンである（[GitHub App とトークン](../../../design/adapters/github-app.md)）。
   - Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。worker の読み取りと、WebUI のサインインに使う（[GitHub App](apps.md)）。
   - personal access token は使わない。
-  - 反映（merge）は、`approve` をした reviewer のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい。反映によるものかは、worker が中身で決める（[反映かの判定](../../../design/backend/verify/README.md)）。
+  - 反映（merge）は、`approve` をした reviewer のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい。
 - repository は、GitHub でリポジトリを作る人（owner の admin か、repository を作れる人）が GitHub に作り、利用者が設定の画面で登録する。登録していない名前では作れない（`repository_not_registered`）。
 - 登録する repository の owner（organization か個人）は、いくつでもよい。
 - repository は、public でも private でもよい。
   - `main` を守る設定は、勧めるが求めない（下の「main を守る」）。GitHub Free の private のリポジトリでは、守る設定が使えない。そのときは、守る設定なしで使う。
-  - 守る設定がなくても、反映によらない変更は、worker が見つけて、repository を壊れた状態にする（[壊れた repository を直す](../../apply-request/repair.md)）。
+  - 守る設定がなくても、Logiforge は `main` のコミットをそのまま受け入れる。木が不変条件を満たさないコミットの扱いは、[main への直接の変更](../../apply-request/README.md#main-への直接の変更) に書く。
 
 ## Logiforge を動かす
 
@@ -57,7 +57,7 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 
 1. 空の GitHub のリポジトリを作る。README などは足さない。
 2. 利用者とエージェントに、リポジトリの Write の権限を与える。
-   - 利用者は、repository の用意のコミットを置き、回答のコメントを書き、WebUI でレビューする。
+   - 利用者は、repository の最初のコミットを置き、回答のコメントを書き、WebUI でレビューする。
    - エージェントは、ブランチを push し、pull request とコメントを書く。
    - reviewer は、merge する。
 3. App の install の設定で、そのリポジトリを選び足す（App を「Only select repositories」で install したとき）。
@@ -70,7 +70,7 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 
 ## 見回りの間隔
 
-- 利用者が、設定の画面の「GitForge」で、見回りの間隔を 10 秒に、記録を読む間隔を 30 秒にする。既定の見回りの間隔は 1 秒である。
+- 利用者が、設定の画面の「GitForge」で、見回りの間隔を 10 秒にする。既定の見回りの間隔は 1 秒である。
   - なぜ：GitHub の git の操作と REST の上限に当たらないようにするため（[GitHub アダプタ](../../../design/adapters/github.md) の「見回りの間隔」）。
 
 ## main を守る

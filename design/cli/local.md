@@ -36,8 +36,6 @@ base は、サーバと同じく、`HEAD` と `origin/main` の分かれた点�
 - コミットしていない変更があるか（警告）
   - なぜ：`check` は作業ツリーを見るが、push するのは `HEAD` だから。
 - 普通のファイル（100644）だけか
-- ブランチの先頭のコミットに、セッションの trailer があるか
-  - なければ警告し、付け方を示す（`git commit --amend --trailer "Logiforge-Session-Id: <ID>"`）。
 - artifact の大きさが上限を超えていないか
 - artifact のファイル名が、中身のハッシュと合うか
 

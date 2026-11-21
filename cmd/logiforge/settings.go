@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -12,12 +11,12 @@ import (
 
 	"github.com/yamambainc/logiforge/internal/adapters/forgejo"
 	"github.com/yamambainc/logiforge/internal/adapters/github"
-	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
 	"github.com/yamambainc/logiforge/internal/api"
 	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/settings"
+	"github.com/yamambainc/logiforge/internal/store"
 )
 
 // settingsService は、設定の API の中身である（design/api/endpoints/settings.md）。設定の版ごとに作る。
@@ -26,6 +25,8 @@ type settingsService struct {
 	db   *settings.DB
 	keys settings.Keys
 	auth ports.Authenticator
+	// store は、スナップショットの置き場。repository の一覧の prepared を、latest があるかで決めるのに使う。
+	store store.Reader
 }
 
 var _ api.SettingsService = (*settingsService)(nil)
@@ -57,7 +58,7 @@ func (s *settingsService) user(ctx context.Context, token string, fresh bool) (p
 // 設定を変える前に呼ぶ。なぜ：サインインの資格情報や repository の一覧を変えて、変えた本人も含めて、だれも user でなくなると、
 // 設定の画面から戻せないから（design/settings/users.md の「締め出されたとき」）。
 func asUser(ctx context.Context, c2 *settings.Config, token string) (ports.Authenticator, error) {
-	fs, err := setupForge(c2, pullreq.Keyring{}, true, nil)
+	fs, err := setupForge(c2, true, nil)
 	if err != nil {
 		return nil, problem(backend.CodeValidationFailed, "変えたあとの設定で、GitForge につなげない：%v", err)
 	}
@@ -102,7 +103,7 @@ func (s *settingsService) settingsOf(ctx context.Context) (api.Settings, error) 
 	}
 	out := api.Settings{GitForge: c.GitForge, WebUIURL: c.WebUIURL, UpdatedBy: last.By, UpdatedAt: last.At,
 		Intervals: api.IntervalSettings{PatrolSeconds: seconds(c.Intervals.Patrol), ListSeconds: seconds(c.Intervals.List),
-			RecordsSeconds: seconds(c.Intervals.Record), GitTimeoutSeconds: seconds(c.Intervals.GitTimeout), WriteWaitSeconds: seconds(c.Intervals.WaitTimeout)}}
+			GitTimeoutSeconds: seconds(c.Intervals.GitTimeout), WriteWaitSeconds: seconds(c.Intervals.WaitTimeout)}}
 	switch c.GitForge {
 	case gitforgeGitHub:
 		g := c.GitHub
@@ -222,7 +223,7 @@ func (s *settingsService) UpdateGitForge(ctx context.Context, token string, in a
 	}
 	if iv := in.Intervals; iv != nil {
 		for name, ptr := range map[string]*float64{"interval.patrol": iv.PatrolSeconds, "interval.list": iv.ListSeconds,
-			"interval.record": iv.RecordsSeconds, "interval.git_timeout": iv.GitTimeoutSeconds, "interval.wait_timeout": iv.WriteWaitSeconds} {
+			"interval.git_timeout": iv.GitTimeoutSeconds, "interval.wait_timeout": iv.WriteWaitSeconds} {
 			if ptr == nil {
 				continue
 			}
@@ -309,17 +310,31 @@ func (s *settingsService) ListRepositories(ctx context.Context, token string) ([
 		return nil, err
 	}
 	var out []api.SetupRepository
-	prepared := preparedOf(ctx, c, token)
 	for _, r := range c.Repositories {
-		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: prepared(r.Name)})
+		out = append(out, api.SetupRepository{Name: r.Name, GitForgeRef: r.GitForgeRef, Directory: r.Directory, Prepared: s.latestPrepared(ctx, r.Name)})
 	}
 	return out, nil
+}
+
+// latestPrepared は、repository の一覧の prepared を、置き場の latest があるかで決める（design/backend/list-reads.md の「置き場の読み」）。
+// なぜ：repository ごとに GitForge に聞かずに分かるから。worker が取り込むまでは false に見える。読めなければ nil。
+func (s *settingsService) latestPrepared(ctx context.Context, name string) *bool {
+	if s.store == nil {
+		return nil
+	}
+	sha, err := store.GetLatest(ctx, s.store, name)
+	if err != nil {
+		slog.Warn("用意が済んでいるかを確かめられない", "repository", name, "err", err)
+		return nil
+	}
+	ok := sha != ""
+	return &ok
 }
 
 // preparedOf は、repository の名前から、スナップショットツリーがもうあるかを、利用者のトークンで GitForge に聞く関数を返す
 // （docs/webui/settings.md の「repository を足す」）。聞けなかったときは nil を返す。なぜ：一覧と登録を、GitForge の一時的な失敗で止めないため。
 func preparedOf(ctx context.Context, c *settings.Config, token string) func(name string) *bool {
-	fs, err := setupForge(c, pullreq.Keyring{}, true, nil)
+	fs, err := setupForge(c, true, nil)
 	if err != nil {
 		slog.Warn("用意が済んでいるかを確かめられない", "err", err)
 		return func(string) *bool { return nil }
@@ -442,36 +457,4 @@ func (s *settingsService) UnregisterRepository(ctx context.Context, token, name 
 	}
 	slog.Info("repository を外した", "user", p.Login, "repository", name)
 	return nil
-}
-
-func keyOut(k settings.RecordKeyInfo) api.RecordKeyOut {
-	return api.RecordKeyOut{KeyID: k.ID, PublicKey: k.PublicKey, CreatedAt: k.CreatedAt, Primary: k.Primary}
-}
-
-func (s *settingsService) ListRecordKeys(ctx context.Context, token string) ([]api.RecordKeyOut, error) {
-	if _, err := s.user(ctx, token, false); err != nil {
-		return nil, err
-	}
-	ks, err := s.db.ListRecordKeys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]api.RecordKeyOut, 0, len(ks))
-	for _, k := range ks {
-		out = append(out, keyOut(k))
-	}
-	return out, nil
-}
-
-func (s *settingsService) CreateRecordKey(ctx context.Context, token string) (api.RecordKeyOut, error) {
-	p, err := s.user(ctx, token, true)
-	if err != nil {
-		return api.RecordKeyOut{}, err
-	}
-	k, err := s.db.CreateRecordKey(ctx, s.keys)
-	if err != nil {
-		return api.RecordKeyOut{}, fmt.Errorf("記録の鍵を作れない：%w", err)
-	}
-	slog.Info("記録の鍵を作った", "user", p.Login, "key_id", k.ID)
-	return keyOut(k), nil
 }

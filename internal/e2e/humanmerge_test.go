@@ -3,15 +3,16 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-// 反映かは、だれがどこから merge したかでなく、中身で決める（design/backend/verify/README.md）。
-//   - 承認された apply request を、人が Forgejo の画面から merge しても、正しい反映になる。
-//   - approve のあとに request_changes が付いた apply request を、人が merge すると、壊れた状態になる。
-//   - merge の権限のない reviewer の approve は、反映の失敗 merge_forbidden になり、権限のある reviewer の approve し直しで反映される。
+// main は、だれがどこから merge しても、そのまま受け入れる（design/backend/invalid-main.md の「main はいつも正しい」）。
+//   - apply request を、人が Forgejo の画面から merge しても、木に入り、コミットの一覧に、その apply request の反映と示す。
+//   - approve のあとに request_changes が付いた apply request を、人が merge しても、受け入れる。review は見ない。
+//   - コードを書く権限のない reviewer の approve は数えず、権限のある reviewer の approve し直しで反映される。
 //
 // approve したときに Logiforge が反映しないよう、向き先を main でないブランチにしてからレビューし、
 // あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。
@@ -71,10 +72,8 @@ func TestE2EHumanMerge(t *testing.T) {
 		w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/branches/main", nil, &b, 200)
 		return b.Commit.ID
 	}
-	type brokenInfo struct {
-		Broken *struct {
-			FirstCommit string `json:"first_commit"`
-		} `json:"broken"`
+	type validity struct {
+		InvalidSince *string `json:"invalid_since"`
 	}
 	// mainCommit は、worker が取り込んだ main のコミット sha の、反映した apply request を返す。まだ取り込んでいなければ false。
 	mainCommit := func(sha string) (*string, bool) {
@@ -105,9 +104,9 @@ func TestE2EHumanMerge(t *testing.T) {
 	}
 	sha := humanMerge(ok, "merge")
 	w.eventually("worker が人の merge を取り込む", 90*time.Second, func() bool { return ingested(sha) })
-	var info brokenInfo
-	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.Broken != nil {
-		t.Fatalf("承認された apply request の人の merge で、壊れた：%d %s", code, out)
+	var info validity
+	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.InvalidSince != nil {
+		t.Fatalf("人の merge で、valid でなくなった：%d %s", code, out)
 	}
 	var node struct {
 		Node struct {
@@ -127,7 +126,7 @@ func TestE2EHumanMerge(t *testing.T) {
 		t.Fatalf("人の merge のコミットが、%s の反映にならない：%v", ok.ID, id)
 	}
 
-	// ---- merge の権限のない reviewer の approve：GitForge が merge を断り、反映の失敗 merge_forbidden として記録する ----
+	// ---- コードを書く権限のない reviewer の approve は、数えない ----
 	// コードを読むだけで、pull request と issue を書ける team の、エージェント（client）。
 	var nm struct {
 		ID int64 `json:"id"`
@@ -148,21 +147,23 @@ func TestE2EHumanMerge(t *testing.T) {
 	fb := agent.create("forbidden")
 	var forbidden struct {
 		ApplyRequest struct {
-			State         string  `json:"state"`
-			Awaiting      *string `json:"awaiting"`
-			MergeFailures []struct {
-				Reason string `json:"reason"`
-			} `json:"merge_failures"`
+			State    string   `json:"state"`
+			Awaiting *string  `json:"awaiting"`
+			Warnings []string `json:"warnings"`
 		} `json:"apply_request"`
+		MergeFailure *struct {
+			Reason string `json:"reason"`
+		} `json:"merge_failure"`
 	}
+	// 書く権限（コード）のない人の approve は、数える review にならない（design/adapters/pull-requests.md の「数える review」）。
+	// そのため、反映を試さず、レビュー待ちのままで、警告を返す。
 	_, code, out = weak.review(fb.ID, "approve", 1)
 	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
-		t.Fatalf("merge の権限のない reviewer の approve：%d %s", code, out)
+		t.Fatalf("書く権限のない reviewer の approve：%d %s", code, out)
 	}
-	fs := forbidden.ApplyRequest.MergeFailures
-	if forbidden.ApplyRequest.State != "open" || len(fs) == 0 || fs[len(fs)-1].Reason != "merge_forbidden" ||
-		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" {
-		t.Fatalf("merge_forbidden として記録しない：%s", out)
+	if forbidden.ApplyRequest.State != "open" || forbidden.MergeFailure != nil ||
+		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" || !strings.Contains(strings.Join(forbidden.ApplyRequest.Warnings, " "), "数えない") {
+		t.Fatalf("書く権限のない reviewer の approve を数えている：%s", out)
 	}
 	// merge の権限のある reviewer が approve し直せば、反映される。
 	reviewer.session = "s-rev-hm-3"
@@ -180,35 +181,23 @@ func TestE2EHumanMerge(t *testing.T) {
 	if _, code, out := reviewer.review(ng.ID, "request-changes", 1); code != 0 {
 		t.Fatalf("request_changes：%d %s", code, out)
 	}
-	// worker が記録を控えに足すのを待ってから、merge する（控えにない記録は、消されると判定に使えない）。
-	time.Sleep(3 * time.Second)
 	sha = humanMerge(ng, "squash")
-	w.eventually("request_changes のあとの人の merge で壊れる", 120*time.Second, func() bool {
-		code, out := agent.cli("", "repo", "view", "q", "--json")
-		info = brokenInfo{}
-		return code == 1 && json.Unmarshal([]byte(out), &info) == nil && info.Broken != nil
-	})
-	if info.Broken.FirstCommit != sha {
-		t.Fatalf("壊れた最初のコミット：%s（merge したのは %s）", info.Broken.FirstCommit, sha)
+	w.eventually("worker が request_changes のあとの人の merge を取り込む", 90*time.Second, func() bool { return ingested(sha) })
+	info = validity{}
+	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.InvalidSince != nil {
+		t.Fatalf("request_changes のあとの人の merge で、valid でなくなった：%d %s", code, out)
 	}
-	if id, _ := mainCommit(sha); id != nil {
-		t.Fatalf("request_changes のあとの merge が、%s の反映になった", *id)
+	if id, _ := mainCommit(sha); id == nil || *id != ng.ID {
+		t.Fatalf("request_changes のあとの merge が、%s の反映と示されない：%v", ng.ID, id)
 	}
 }
 
-// pullNumber は、apply request の pull request の番号を返す。
+// pullNumber は、apply request の pull request の番号を返す。apply request の識別子は、pull request の番号である。
 func (w *world) pullNumber(repo, arID string) int {
 	w.t.Helper()
-	var pulls []struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
+	n, err := strconv.Atoi(arID)
+	if err != nil || n <= 0 {
+		w.t.Fatalf("%s は pull request の番号でない", arID)
 	}
-	w.forgejoCall(w.admin, "GET", "/repos/"+w.org+"/"+repo+"/pulls?state=all&limit=50", nil, &pulls, 200)
-	for _, p := range pulls {
-		if strings.Contains(p.Title, arID) {
-			return p.Number
-		}
-	}
-	w.t.Fatalf("%s の pull request がない", arID)
-	return 0
+	return n
 }

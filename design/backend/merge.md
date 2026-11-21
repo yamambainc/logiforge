@@ -7,39 +7,38 @@ apply request を `main` に反映するとき、バックエンドが何を確�
 
 `approve` を受け付けたら、バックエンドは次の順に処理する。
 
-1. 反映の条件を、GitForge から読んだ pull request とレビュー、worker の記録の控え（[記録の控え](verify/records.md)）、[スナップショット](snapshot/README.md) で確かめる。
-   - レビューは、GitForge の記録と控えの記録の、署名の合うものを合わせて読む。なぜ：GitForge から消された `request_changes` を、見落とさないため。
-   - pull request の向き先が `main` である。違えば、反映の手順に進まない。レビューを記録し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request/target.md#向き先)）。
-   - repository が壊れていれば、直すための apply request である（[壊れた repository](broken.md)）。違えば、反映の失敗の理由を `repository_broken` として記録する。
-   - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` として記録する。
-   - レビューの鎖が切れていない（[レビューの書き方](../adapters/records.md#レビューの書き方)）。
+1. 反映の条件を、GitForge から読んだ pull request と review、[スナップショット](snapshot/README.md) で確かめる。
+   - review は、その pull request の review の一覧を、その場で読む。数えるのは、[数える review](../adapters/pull-requests.md#数える-review) だけである。
+   - pull request の向き先が `main` である。違えば、反映の手順に進まない。review は出し、応答の警告に、Logiforge の反映の対象でないことを書く（[向き先](apply-request/target.md#向き先)）。
+   - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` にする（手順 6）。
    - すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、先頭のコミット（head のコミット）への `approve` である。
-     - なぜ先頭のコミットに限らないか：worker の判定（[反映かの判定](verify/README.md)）と同じ条件にするため。ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさない。
-   - 先頭のコミットに、書いたセッションの trailer がある（[セッション](../files/revisions.md#セッション)）。
-   - その reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
+     - なぜ先頭のコミットに限らないか：ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさないため。
+   - reviewer は、pull request の作者と別の GitForge のアカウントである。GitForge が、作者自身の `approve` を拒む（[数える review](../adapters/pull-requests.md#数える-review)）。
+     - なぜセッションを確かめないか：書いた人と確かめる人を分ける保証は、アカウントで GitForge が行うから。セッション ID は自己申告で、偽れるので、確かめても保証にならない。
 2. `latest` を読み、今の `main` のスナップショットを得る。
-   - GitForge の `main` が `latest` より進んでいれば、worker が追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` として記録する。
+   - GitForge の `main` が `latest` より進んでいれば、worker が追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` にする（手順 6）。
    - GitForge の `main` は、GitForge のポートの「`main` の先頭を読む」で読む（[GitForge のポート](ports/gitforge.md)）。
-   - 待ち始めに読んだ `main` の先頭が、`main` の並びに入り、その番号が `latest` の番号以下になったら、待つのをやめる（[コミットの記録から引くもの](snapshot/main.md#コミットの記録から引くもの)）。そのあとに `main` がさらに進んでもよい。
+   - 待ち始めに読んだ `main` の先頭が、`main` の並びに入り、その番号が `latest` の番号以下になったら、待つのをやめる（[コミットの情報から引くもの](snapshot/main.md#コミットの情報から引くもの)）。そのあとに `main` がさらに進んでもよい。
 3. 今の `main` のスナップショットで、次のことを確かめる。
    - 対象ノードが、base のあとに変わっていない（下の「対象ノードの変化」）。変わっていれば、`stale_target`。
    - 先頭のコミットの差分を、今の `main` に重ねる（重ね方は [向き先に重ねる](snapshot/branch.md#向き先に重ねる)）。重ねられなければ、`conflict`。
    - 先頭のコミットの差分を今の `main` に重ねた木に、[差分の検査](checks.md) を行う。破れていれば、`invariant_violation`。
+   - 今の `main` は、`latest` のコミットである。`latest` が valid でなくても、`valid_commit` に戻さない（[木を読む API](invalid-main.md#木を読む-api)）。
 4. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、`approve` をした reviewer のトークンで呼ぶ。
    - なぜ reviewer のトークンか：反映は、`approve` の要求の中で同期で行うので、そのトークンがいつも手元にあるから。
-   - Logiforge は、merge するための自分のアカウントを持たない（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）。
-   - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗の理由を `merge_forbidden` として記録する。
+   - Logiforge は、merge するための自分のアカウントを持たない（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
+   - reviewer に merge の権限がなければ、GitForge が拒む。そのときは、反映の失敗の理由を `merge_forbidden` にする（手順 6）。
      - apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
      - `merge_forbidden` は、opener が直すものではないので、修正待ちにしない（レビュー待ちのまま）。
-   - 承認された apply request を、人が GitForge の画面で merge してもよい。worker は、中身で反映かを決める（[反映かの判定](verify/README.md)）。
-   - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
+   - 承認された apply request を、人が GitForge の画面で merge してもよい。`main` のコミットは、どう入ったかによらず受け入れる（[main はいつも正しい](invalid-main.md#main-はいつも正しい)）。
+   - メッセージには、機械が読む trailer を書かない（[反映のコミット](../files/revisions.md#反映のコミット)）。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。
    - このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request/target.md#向き先)）。
-6. 手順 1〜4 で反映できなければ、失敗の理由を GitForge に記録する。apply request は open のまま残る。
+6. 手順 1〜4 で反映できなければ、理由を、pull request のふつうのコメントに、人が読む文で書く。opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）なら修正待ちの、ほかの理由ならレビュー待ちの、ラベルに付け替える（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。apply request は open のまま残る。
+   - 理由は、その review の応答の `merge_failure` で返す。あとから読むときは、apply request の詳細の `comments` で、コメントをそのまま読む。バックエンドは、このコメントを読まない。
 
-- reviewer の主体が、pull request を作った主体と同じなら、反映はするが、レビューの応答と apply request に警告を付ける。
-  - なぜ：セッションは自己申告なので、同じ主体による書き込みとレビューは、確かめられないから（[保証の範囲](../../docs/apply-request/review.md)）。
+- reviewer は、pull request を作った主体と別の GitForge のアカウントである。GitForge が、作者自身の `approve` を拒むから（[数える review](../adapters/pull-requests.md#数える-review)）。
 
 ## 対象ノードの変化
 
@@ -50,13 +49,13 @@ apply request を `main` に反映するとき、バックエンドが何を確�
     - 今の `main` にないノードは、同じ apply request で加えるノードなので、変わったとみなさない。
 - 今の `main` のスナップショットツリーで、対象ノードの `last_changed` の番号が、base の番号より大きければ、変わったとみなす（[ノードを変えたコミット](snapshot/main.md#ノードを変えたコミット)）。
   - 1 つのスナップショットツリーを読むだけで確かめられる。
-  - base が `main` の並びになければ、変わったものとみなす（[コミットの記録から引くもの](snapshot/main.md#コミットの記録から引くもの)）。
+  - base が `main` の並びになければ、変わったものとみなす（[コミットの情報から引くもの](snapshot/main.md#コミットの情報から引くもの)）。
 - 伝播で値だけが変わることは、ファイルに現れないので、「変わった」に含まれない。
   - なぜ：値は保存しないから（[保存しないもの](../files/layout.md)）。
 
 ## 衝突
 
-- 手順 3 を通っても、git の衝突で merge できないことがある（例：同じ `background.md` の末尾への追加どうし）。GitForge の merge が失敗したら、反映の失敗の理由を `conflict` として記録する。
+- 手順 3 を通っても、git の衝突で merge できないことがある（例：同じ `background.md` の末尾への追加どうし）。GitForge の merge が失敗したら、反映の失敗の理由を `conflict` にする（手順 6）。
   - opener は、ブランチを今の `main` に合わせて直し、push する。新しい先頭のコミットになるので、レビューからやり直す。
 - 手順 4 で、pull request の head が指定した SHA でなければ、GitForge の merge が失敗する。バックエンドは `commit_conflict` を返す。
   - なぜ：レビューのあとに push されたコミットを、レビューなしに反映しないため。
@@ -70,7 +69,7 @@ apply request を `main` に反映するとき、バックエンドが何を確�
   - なぜふさがないか：ふさぐには、`main` への書き込みをバックエンドの側で直列にする仕組みが要る。起きる頻度に対して、仕組みが重いから。
 - [worker](worker/README.md) は、反映のあとの `main` で、不変条件と、同じ対象ノードへの重なりと、引用した部分木の変化を確かめ、見つけたら警告する（[コミットの警告](worker/patrol.md#コミットの警告)）。
   - 警告を見た opener と reviewer は、新しい apply request で直す（例：ストーリーを inactive にする）。
-  - 直すための apply request は、すでに破れている条件では拒まれない（[差分の検査](checks.md)）。
+  - 直す apply request は、すでに破れている条件では拒まれない（[差分の検査](checks.md)）。
 
 ## 反映できなかったとき
 
@@ -79,11 +78,3 @@ apply request を `main` に反映するとき、バックエンドが何を確�
   - それまでの approve は、新しい先頭のコミットには効かない（[反映の条件](../../docs/apply-request/review.md)）。
 - 修正待ちになるのは、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）のときだけである。
 - `snapshot_pending` のあとは、reviewer が `approve` し直す（[計算](compute.md#レビュー待ちと修正待ち)）。
-
-## レビューの鎖が切れたとき
-
-- レビューの鎖が切れた apply request には、レビューも反映もできない（[レビューの書き方](../adapters/records.md#レビューの書き方)）。
-- レビューの API は、`not_open` を返す。応答の `detail` に、opener の手を書く。
-- opener の手：その apply request を close し、同じブランチから、apply request を作り直す。
-  - 新しい apply request は、新しい pull request なので、レビューの鎖は空から始まる。
-  - なぜ作り直すか：切れた鎖を、正しい形に戻す手段がないから。数えないレビューを消すことは、GitForge の権限で防いでいる。

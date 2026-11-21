@@ -66,7 +66,6 @@ func (d *DB) Rekey(ctx context.Context, old, next Keys) (int, error) {
 			sel, table, col, prefix string
 			class                   keyClass
 		}{
-			{`SELECT key_id, private_key FROM record_keys`, "record_keys", "private_key", "record_key.", backendOnly},
 			{`SELECT owner, token FROM worker_tokens`, "worker_tokens", "token", "worker_token.", shared},
 		} {
 			rows, err := tx.QueryContext(ctx, q.sel)
@@ -94,7 +93,7 @@ func (d *DB) Rekey(ctx context.Context, old, next Keys) (int, error) {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM webui_sessions`); err != nil && !isNoTable(err) {
 			return err
 		}
-		keyCol := map[string]string{"settings": "name", "record_keys": "key_id", "worker_tokens": "owner"}
+		keyCol := map[string]string{"settings": "name", "worker_tokens": "owner"}
 		for _, u := range ups {
 			if _, err := tx.ExecContext(ctx, `UPDATE `+u.table+` SET `+u.col+` = ? WHERE `+keyCol[u.table]+` = ?`, u.val, u.key); err != nil {
 				return err

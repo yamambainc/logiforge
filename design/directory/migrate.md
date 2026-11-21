@@ -9,8 +9,15 @@
 - 移さないもの：`main` の履歴、apply request、レビュー、人への依頼、ブランチの履歴。どれも、元の repository に残る。
   - なぜ：移した先は、別の git リポジトリなので、元のコミットと pull request と issue を持ち込めないから。
 - 移した先では、移したファイルを、1 つの用意のコミットとして置く（[履歴](history.md) の「用意のコミット」）。そのコミットが、移した先の[版](history.md#版)の 1 番である。
-  - 用意のコミットに、trailer `Logiforge-Migrated-From: <元の repository の名前> <移したコミットの SHA>` を書く。この値も、用意のコミットの署名に含める。
-    - なぜ：元の repository のノードの履歴へのリンクに使うので、書き換えられないようにするため（下の「ノードの履歴」）。
+  - 用意のコミットに、trailer `Logiforge-Migrated-From: <元の repository の名前> <移したコミットの SHA>` を書く。
+    - なぜ：元の repository のノードの履歴へのリンクに使うため（下の「ノードの履歴」）。
+  - trailer は、用意のコミットを置ける人ならだれでも書ける。そのため、worker は、次の 3 つを確かめてから、元の repository に `migrated_to` を書く。
+    - 移したコミットが、元の repository の `latest` と同じである（置き場）。
+    - 用意のコミットの `tree/` と `artifacts/` が、元の repository のそのスナップショットと同じである（置き場）。
+    - 元の git リポジトリが、GitForge で archive されている。worker の読むだけのトークンで読む。
+      - なぜ：本物の移行では、移す前に元を archive にするから（下の「移す前の条件」）。archive にはリポジトリの admin の権限が要るので、移した先の Write を持つだけの主体は、これを満たせない。
+    - なぜ：確かめないと、移した先の Write を持つだけの主体が、ほかの repository を「移した」と見せ、本物の移行を先回りして止められるから。repository ごとの Write の外に効く。
+  - バックエンドは、元の repository の `migrated_to` が移した先のときだけ、移した先に `migrated_from` を返す。
 
 ## 移す前の条件
 
@@ -18,9 +25,10 @@
 
 - open の apply request がない。
 - open の人への依頼がない。
-- 壊れていない（[壊れた repository](../backend/broken.md)）。
 - 移した先の名前で、ディレクトリが登録されていて、そのディレクトリがまだない（[ディレクトリ方式](README.md) の「登録」）。
+- 最新のコミットが valid である（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
 
+- なぜ valid でないものを断るか：移した先の最初の版が、valid でない木になるから。元を直してから移す。
 - なぜ open のものを断るか：open の apply request と人への依頼は、元の repository の pull request と issue で、移した先に持ち込めないから。片付けずに移すと、反映も回答もできないまま残る。
 
 ## 手順
@@ -29,7 +37,7 @@
 
 1. リポジトリの admin が、移す前に、元のリポジトリを GitForge で archive にしておく（読むだけにする）。バックエンドは、利用者のトークンで元のリポジトリを読み、archive になっていなければ断る。
    - なぜ先に archive にするか：移すあいだに、元の repository の `main` が進まないようにするため。archive のリポジトリには、pull request を作れず、merge もできない。
-   - なぜリポジトリの admin が行うか：Logiforge は、GitForge に書くための自分のアカウントを持たず（[GitForge アダプタの共通の書き方](../adapters/pull-requests.md)）、archive にはリポジトリの admin の権限が要るから。移す利用者が、その権限を持つとは限らない。
+   - なぜリポジトリの admin が行うか：Logiforge は、GitForge に書くための自分のアカウントを持たず（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）、archive にはリポジトリの admin の権限が要るから。移す利用者が、その権限を持つとは限らない。
 2. 元の repository の `main` の先頭のスナップショットから、`tree/` と `artifacts/` のファイルを読み、利用者のトークンで、ディレクトリの下に置く用意のコミットを置く（[履歴](history.md) の「用意のコミット」）。
 3. 送り直しでは、用意のコミットがまだなければ、もう一度置く。
 

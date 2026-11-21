@@ -11,33 +11,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // ErrSetupDone は、初回のセットアップが、もう終わっていることである。
 var ErrSetupDone = errors.New("初回のセットアップは、もう終わっている")
 
 // SetupDone は、初回のセットアップが終わったかを返す（design/settings/setup.md）。
-// 記録の鍵がすでにあるとき（`settings load` で設定を入れたとき）も、終わったとみなす。
+// `settings load` で設定を入れたときも、終わったものとして記録する（Save）。
 func (d *DB) SetupDone(ctx context.Context) (bool, error) {
 	var done string
 	err := d.db.QueryRowContext(ctx, `SELECT done_at FROM setup WHERE id = 1`).Scan(&done)
 	switch {
-	case isNoTable(err):
+	case isNoTable(err), errors.Is(err, sql.ErrNoRows):
 		return false, nil
-	case err == nil && done != "":
-		return true, nil
-	case err != nil && !errors.Is(err, sql.ErrNoRows):
+	case err != nil:
 		return false, err
 	}
-	var n int
-	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_keys`).Scan(&n); err != nil {
-		if isNoTable(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return n > 0, nil
+	return done != "", nil
 }
 
 // ErrSetupStarted は、初回のセットアップを、ほかのブラウザがもう始めたことである。
@@ -66,13 +56,6 @@ func (d *DB) StartSetup(ctx context.Context, keys Keys, values map[string]string
 			return ErrSetupDone
 		case hash != "":
 			return ErrSetupStarted
-		}
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_keys`).Scan(&n); err != nil {
-			return err
-		}
-		if n > 0 {
-			return ErrSetupDone
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO setup (id, token_hash, created_at) VALUES (1, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at`, tokenHash(tok), now()); err != nil {
@@ -184,37 +167,24 @@ func (d *DB) SetFirstRepository(ctx context.Context, r Repository, by string) er
 	})
 }
 
-// FinishSetup は、記録の署名の鍵を 1 つ作り、セットアップを終える。1 つのトランザクションで行う。
-// すでに終わっていれば、ErrSetupDone を返す。
+// FinishSetup は、セットアップを終える。すでに終わっていれば、ErrSetupDone を返す。
 func (d *DB) FinishSetup(ctx context.Context, keys Keys, by string) error {
-	if keys.Backend == nil {
-		return errors.New("settings: セットアップを終えるには、バックエンドの鍵が要る")
-	}
-	seed := make([]byte, 32)
-	if _, err := rand.Read(seed); err != nil {
-		return err
-	}
-	id := "rk-" + time.Now().UTC().Format("20060102")
 	return d.write(ctx, func(tx *sql.Tx) error {
 		var done string
 		err := tx.QueryRowContext(ctx, `SELECT done_at FROM setup WHERE id = 1`).Scan(&done)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_keys`).Scan(&n); err != nil {
-			return err
-		}
-		if done != "" || n > 0 {
+		if done != "" {
 			return ErrSetupDone
 		}
-		at := now()
-		if err := saveRecordKeys(ctx, tx, keys.Backend, []RecordKey{{ID: id, Seed: seed}}, at); err != nil {
-			return err
-		}
-		// トークンは消す。セットアップが終わったら、使えなくするため。
-		_, err = tx.ExecContext(ctx, `INSERT INTO setup (id, created_at, done_at) VALUES (1, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET token_hash = '', done_at = excluded.done_at`, at, at)
-		return err
+		return markSetupDone(ctx, tx, now())
 	})
+}
+
+// markSetupDone は、セットアップを終わったものとして記録する。トークンは消す。セットアップが終わったら、使えなくするため。
+func markSetupDone(ctx context.Context, tx *sql.Tx, at string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO setup (id, created_at, done_at) VALUES (1, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET token_hash = '', done_at = excluded.done_at`, at, at)
+	return err
 }

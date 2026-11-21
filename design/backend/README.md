@@ -5,7 +5,7 @@
 
 ## 読む順
 
-1. このページ：持つルール、認可、repository の用意、操作と差分、状態を持たない
+1. このページ：受け持つ要件、認可、repository の用意、操作と差分、状態を持たない
 2. [差分の検査](checks.md)
 3. [反映の手順](merge.md)
 4. [計算](compute.md)
@@ -14,12 +14,13 @@
 7. [ポート](ports/README.md)
 8. [スナップショット](snapshot/README.md)
 9. [worker](worker/README.md)
-10. [反映かの判定](verify/README.md)
-11. [壊れた repository](broken.md)
+10. [最新のコミットが valid でないとき](invalid-main.md)
+11. [一覧の読み](list-reads.md)
+12. [キャッシュ](caches.md)
 
-## 持つルール
+## 受け持つ要件
 
-| ルール | 要件 | 実現 |
+| 受け持つもの | 要件 | 実現 |
 |---|---|---|
 | 不変条件 | [仮説とストーリーの木](../../docs/tree/README.md)、[inactive 化](../../docs/tree/inactive.md) | [差分の検査](checks.md) |
 | 反映の条件 | [論理レビュー](../../docs/apply-request/review.md) | [反映の手順](merge.md) |
@@ -94,9 +95,10 @@
 - git に書くのは、GitForge の API で、repository の用意と pull request の merge だけである（[GitForge のポート](ports/gitforge.md)）。
   - なぜ：ブランチの先頭のコミットや `main` の更新を、GitForge の pull request の仕組みにそのまま任せ、バックエンドが git の ref を自前で扱わずに済むようにするため。
 - 置き場と GitForge から読んだものも、要求ごとに読み直す。
+  - 一覧は、GitForge の一覧の API で読み、項目ごとに GitForge を呼ばない（[一覧の読み](list-reads.md)）。
   - 置き場は、転送の費用なしで読める場所に置く。遅さが問題になったときは、置き場の手前に CDN などを置く（[スナップショットの置き場のアダプタ](../adapters/snapshot-store.md)）。
 - 認証も、要求ごとに GitForge で確かめる。結果を保持しない（[認証](ports/authentication.md)）。
 - repository の一覧は、そのつど置き場の `repositories` から読む（[latest](snapshot/main.md#latest)）。
   - `latest` がある repository だけが入る。`latest` のないものは `not_found` に見える。
   - なぜ：用意が途中で止まった repository を、スナップショットツリーのない repository として見せないため。同じ名前で作り直せば、用意の続きから終わる。
-- 反映によらない変更と force push の警告は、worker が作るスナップショットから出す。定期的な突き合わせは、行わない。
+- `main` のコミットが valid か（[最新のコミットが valid でないとき](invalid-main.md)）は、worker が作るスナップショットから出す。定期的な突き合わせは、行わない。

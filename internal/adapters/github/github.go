@@ -45,9 +45,8 @@ func (c Config) webURL() string {
 
 // forge は、ctx の主体のトークン（ports.WithToken）で REST を呼ぶ。
 type forge struct {
-	cfg  Config
-	c    *client
-	keys pullreq.Keyring
+	cfg Config
+	c   *client
 }
 
 // w は、ctx の主体のトークンで呼ぶ。トークンがなければ、認証なしで呼ぶ（public のリポジトリを読むとき）。
@@ -55,13 +54,13 @@ func (f *forge) w(ctx context.Context, _ string, method, path string, in, out an
 	return f.c.do(ctx, ports.TokenFrom(ctx), method, path, in, out)
 }
 
-// New は、GitHub の GitForge アダプタと認証のアダプタを作る。keys は、記録と、用意の 2 つ目のコミットの署名に使う。
-func New(cfg Config, keys pullreq.Keyring) (*pullreq.Adapter, *Auth, error) {
+// New は、GitHub の GitForge アダプタと認証のアダプタを作る。
+func New(cfg Config) (*pullreq.Adapter, *Auth, error) {
 	if err := cfg.check(); err != nil {
 		return nil, nil, err
 	}
-	f := &forge{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP), keys: keys}
-	return &pullreq.Adapter{Repos: repos{f}, API: api{f}, Keys: keys}, &Auth{f: f}, nil
+	f := &forge{cfg: cfg, c: newClient(cfg.APIURL, cfg.HTTP)}
+	return &pullreq.Adapter{Repos: repos{f}, API: api{f}}, &Auth{f: f}, nil
 }
 
 func (c Config) check() error {
@@ -157,8 +156,8 @@ func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error)
 // SetupRepository は、GitHub で作った空の repository に、用意のコミットを置く（design/adapters/github.md の「repository を用意する」）。
 // 呼ぶのは、repository を作る利用者のトークンである。
 //   - 根のコミット：contents API（PUT /contents）で、根の仮説のファイルを置く。空のリポジトリでは、ほかの方法がないから。
-//   - 2 つ目のコミット：残りのファイル（背景情報）を、Git Data API で 1 つのコミットにまとめて置き、
-//     trailer Logiforge-Init-Signature: を付ける（design/backend/verify/init.md の「repository の用意のコミット」）。
+//   - 2 つ目のコミット：残りのファイル（背景情報）を、Git Data API で 1 つのコミットにまとめて置く。メッセージは、根と同じく
+//     trailer Logiforge-Init: を持つ（送り直しを見分けるため。design/adapters/github.md の「repository を用意する」）。
 //
 // main が呼ぶ前からあれば、用意の続き（2 つ目のコミット）だけを行い、ErrMainExists を返す。repository がなければ ErrNotFound を返す。
 func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error {
@@ -191,17 +190,7 @@ func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []
 			SHA string `json:"sha"`
 		} `json:"commit"`
 	}
-	// 根のコミットにも、署名を付ける。なぜ：repository の admin が Write を与えてから用意するまでのあいだに、ほかの人が Logiforge-Init: 付きの
-	// 根を push できるから。worker は、署名で用意のコミットと決める（design/backend/verify/init.md の「repository の用意のコミット」）。
-	repoID, err := api(r).RepoID(ctx, gitForgeRef)
-	if err != nil {
-		return err
-	}
-	rootMessage, err := r.keys.InitMessage(message, pullreq.InitScope{Kind: ports.InitRoot, RepoID: repoID}, files[:1])
-	if err != nil {
-		return err
-	}
-	body := map[string]string{"message": rootMessage, "content": base64.StdEncoding.EncodeToString(files[0].Content), "branch": "main"}
+	body := map[string]string{"message": message, "content": base64.StdEncoding.EncodeToString(files[0].Content), "branch": "main"}
 	if err := r.w(ctx, gitForgeRef, http.MethodPut, rp+"/contents/"+escapePath(files[0].Path), body, &res); err != nil {
 		return err
 	}
@@ -215,10 +204,6 @@ func (r repos) putSecond(ctx context.Context, ref, root string, files []ports.Fi
 		return nil
 	}
 	rp, _ := repoPath(ref)
-	repoID, err := api(r).RepoID(ctx, ref)
-	if err != nil {
-		return err
-	}
 	var rootCommit struct {
 		Tree struct {
 			SHA string `json:"sha"`
@@ -237,31 +222,16 @@ func (r repos) putSecond(ctx context.Context, ref, root string, files []ports.Fi
 	for _, f := range files {
 		entries = append(entries, entry{Path: f.Path, Mode: "100644", Type: "blob", Content: string(f.Content)})
 	}
-	msg, err := r.keys.InitMessage(stripInitSignature(message), pullreq.InitScope{Kind: ports.InitSecond, RepoID: repoID, Parent: root}, files)
-	if err != nil {
-		return err
-	}
 	var tree, commit struct {
 		SHA string `json:"sha"`
 	}
 	if err := r.w(ctx, ref, http.MethodPost, rp+"/git/trees", map[string]any{"base_tree": rootCommit.Tree.SHA, "tree": entries}, &tree); err != nil {
 		return err
 	}
-	if err := r.w(ctx, ref, http.MethodPost, rp+"/git/commits", map[string]any{"message": msg, "tree": tree.SHA, "parents": []string{root}}, &commit); err != nil {
+	if err := r.w(ctx, ref, http.MethodPost, rp+"/git/commits", map[string]any{"message": message, "tree": tree.SHA, "parents": []string{root}}, &commit); err != nil {
 		return err
 	}
 	return r.w(ctx, ref, http.MethodPatch, rp+"/git/refs/heads/main", map[string]any{"sha": commit.SHA, "force": false}, nil)
-}
-
-// stripInitSignature は、メッセージから Logiforge-Init-Signature: の行を除く（送り直しで、署名を重ねないため）。
-func stripInitSignature(message string) string {
-	var out []string
-	for _, l := range strings.Split(message, "\n") {
-		if !strings.HasPrefix(l, snapshot.TrailerInitSignature+":") {
-			out = append(out, l)
-		}
-	}
-	return strings.Join(out, "\n")
 }
 
 // resumeSetup は、用意が根のコミットのあとで止まっていたら、2 つ目のコミットを置いて続ける。
@@ -471,36 +441,75 @@ func (a *Auth) ownToken(ctx context.Context, token string) (bool, error) {
 }
 
 // CanRead は、主体のトークンで、登録した GitHub の repository を読めるかを確かめる。
+// まず、主体が読めるリポジトリの一覧（GET /user/repos。60 秒持つ）で決める。一覧にないもの（主体が関わっていない public のリポジトリなど）だけ、
+// そのリポジトリを 1 件読んで確かめ、その結果も 60 秒持つ（design/backend/list-reads.md の「置き場の読み」）。
+// なぜ：repository の一覧で、repository ごとに GET /repos を呼ばないため。
 func (a *Auth) CanRead(ctx context.Context, token, repo string) (bool, error) {
 	ref, err := lookup(a.f.cfg.Repositories, repo)
 	if err != nil {
 		return false, nil
 	}
+	git, _ := ports.SplitRef(ref)
+	git = strings.ToLower(git)
+	readable, err := a.readable(ctx, token)
+	if err != nil {
+		return false, err
+	}
+	if readable[git] {
+		return true, nil
+	}
+	q := "read:" + git
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, q); ok {
+			return v.(bool), nil
+		}
+	}
 	rp, err := repoPath(ref)
 	if err != nil {
 		return false, err
 	}
+	ok := true
 	if err := a.f.c.do(ctx, token, http.MethodGet, rp, nil, nil); err != nil {
 		if s := statusOf(err); s == http.StatusNotFound || s == http.StatusForbidden || s == http.StatusUnauthorized {
-			return false, nil
+			ok = false
+		} else {
+			return false, err
 		}
-		return false, err
 	}
-	return true, nil
+	a.cache.Put(token, q, ok)
+	return ok, nil
+}
+
+// readable は、主体のトークンで読めるリポジトリ（owner/name は小文字）を、GET /user/repos の一覧で返す。60 秒持つ。
+func (a *Auth) readable(ctx context.Context, token string) (map[string]bool, error) {
+	if !ports.Fresh(ctx) {
+		if v, ok := a.cache.Get(token, "read"); ok {
+			return v.(map[string]bool), nil
+		}
+	}
+	type repo struct {
+		FullName string `json:"full_name"`
+	}
+	rs, err := list[repo](ctx, a.f.c, token, "/user/repos?affiliation=owner,collaborator,organization_member")
+	if err != nil {
+		if s := statusOf(err); s == http.StatusUnauthorized || s == http.StatusForbidden {
+			rs = nil
+		} else {
+			return nil, err
+		}
+	}
+	out := map[string]bool{}
+	for _, r := range rs {
+		out[strings.ToLower(r.FullName)] = true
+	}
+	a.cache.Put(token, "read", out)
+	return out, nil
 }
 
 // setupDirectory は、ディレクトリの repository の用意のコミットを、利用者のトークンで、プロジェクトのリポジトリの main に置く
 // （design/directory/history.md の「用意のコミット」）。今の main の木にディレクトリのファイルを足したコミットを Git Data API で作り、
 // main を fast-forward で進める。main がそのあいだに進んでいたら、読み直して作り直す。ディレクトリがすでにあれば ErrMainExists。
 func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []ports.File, message string) error {
-	repoID, err := api(r).RepoID(ctx, ref)
-	if err != nil {
-		return err
-	}
-	signed, err := r.keys.InitMessage(stripInitSignature(message), pullreq.InitScope{Kind: ports.InitDirectory, RepoID: repoID, Directory: dir, MigratedFrom: migratedFrom(message)}, files)
-	if err != nil {
-		return err
-	}
 	type entry struct {
 		Path    string `json:"path"`
 		Mode    string `json:"mode"`
@@ -539,7 +548,7 @@ func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []
 		if err := r.w(ctx, ref, http.MethodPost, rp+"/git/trees", map[string]any{"base_tree": commit.Tree.SHA, "tree": entries}, &t); err != nil {
 			return err
 		}
-		if err := r.w(ctx, ref, http.MethodPost, rp+"/git/commits", map[string]any{"message": signed, "tree": t.SHA, "parents": []string{head}}, &c); err != nil {
+		if err := r.w(ctx, ref, http.MethodPost, rp+"/git/commits", map[string]any{"message": message, "tree": t.SHA, "parents": []string{head}}, &c); err != nil {
 			return err
 		}
 		err = r.w(ctx, ref, http.MethodPatch, rp+"/git/refs/heads/main", map[string]any{"sha": c.SHA, "force": false}, nil)
@@ -549,16 +558,6 @@ func (r repos) setupDirectory(ctx context.Context, ref, rp, dir string, files []
 		}
 		return err
 	}
-}
-
-// migratedFrom は、メッセージの trailer Logiforge-Migrated-From: の値を返す。なければ空（design/directory/migrate.md）。
-func migratedFrom(message string) string {
-	for _, l := range strings.Split(message, "\n") {
-		if v, ok := strings.CutPrefix(l, snapshot.TrailerMigratedFrom+": "); ok {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 // Archived は、git リポジトリが archive（読むだけ）かを、主体のトークンで読む。

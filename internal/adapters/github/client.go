@@ -90,6 +90,21 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// graphQLURL は、GraphQL の URL である。github.com では https://api.github.com/graphql、GitHub Enterprise Server では
+// REST の /api/v3 のかわりに /api/graphql である。
+func (c *client) graphQLURL() string {
+	if strings.HasSuffix(c.apiURL, "/api/v3") {
+		return strings.TrimSuffix(c.apiURL, "/v3") + "/graphql"
+	}
+	return c.apiURL + "/graphql"
+}
+
+// graphQL は、token で GraphQL を 1 回呼び、応答の JSON を out に読む。1 件の pull request の review を読むときだけ使う
+// （design/adapters/pull-requests.md の「数える review」）。
+func (c *client) graphQL(ctx context.Context, token, query string, vars map[string]any, out any) error {
+	return c.do(ctx, token, http.MethodPost, c.graphQLURL(), map[string]any{"query": query, "variables": vars}, out)
+}
+
 // do は、token で API を呼び、応答の JSON を out に読む。path は、/ で始まるパスか、完全な URL（ページの次の URL）。
 func (c *client) do(ctx context.Context, token, method, path string, in, out any) error {
 	_, err := c.doHeader(ctx, token, method, path, in, out)
@@ -114,7 +129,7 @@ func (c *client) doHeader(ctx context.Context, token, method, path string, in, o
 	u := path
 	if strings.HasPrefix(path, "/") {
 		u = c.apiURL + path
-	} else if !strings.HasPrefix(path, c.apiURL+"/") {
+	} else if !strings.HasPrefix(path, c.apiURL+"/") && path != c.graphQLURL() {
 		return nil, fmt.Errorf("github: API の URL の下にない URL は呼ばない: %s", path)
 	}
 	maxWait := c.maxWait

@@ -31,6 +31,7 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
   - レビュー。だれが、いつ書いたかも示す。
     - 議論は、`comment` のレビューで示す（[レビューの種類](../apply-request/README.md)）。
+  - pull request のコメント。だれが、いつ書いたかも示す。反映できなかった理由と、閉じた理由も、ここに入る。
 - open の apply request は、その repository に書ける利用者が、この画面でレビューできる（[反映の条件](../apply-request/review.md)）。
   - レビューは、approve、request_changes、comment のどれかと、本文である。
   - レビューの欄には、CLI の reviewer と同じレビューの材料を示す（[レビューの材料](../apply-request/review.md#レビューの材料)）。

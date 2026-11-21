@@ -49,20 +49,10 @@ sequenceDiagram
   3. clone の git の設定 `logiforge.repository`（`repo clone` が書く）
 - なぜ：clone の中では、名前を毎回書かずに済むようにするため。
 
-## セッション
+## 書いた人と確かめる人
 
-- 書き込みのコマンドは、セッション ID を必ず送る（[セッション ID](../api/README.md#セッション-id)）。
-- コミットを書いたセッションは、先頭のコミットのメッセージの trailer `Logiforge-Session-Id:` に書く（[セッション](../files/revisions.md#セッション)）。
-  - `logiforge commit` は、`git commit` にこの trailer を付けて呼ぶ。
-    - `git commit --trailer "Logiforge-Session-Id: <ID>"` と同じである。
-  - `check` は、ブランチの先頭のコミットに trailer がなければ、警告する。
-    - なぜ：trailer のない先頭のコミットは `approve` できないから。
-- セッション ID は、次の順に探す。
-  1. フラグ `--session`
-  2. 環境変数 `LOGIFORGE_SESSION_ID`
-- 見つからなければ、書き込みのコマンドは失敗する。
-- CLI は、セッション ID を作らない。
-  - なぜ：差分を書いたセッションと reviewer のセッションを分けるのは、CLI を使う側の責任だから（[保証の範囲](../../docs/apply-request/review.md)）。
+- CLI は、セッション ID を送らず、コミットに trailer も付けない。
+- 書いた人と確かめる人を分けるのは、GitForge のアカウントである。opener と reviewer は、別のアカウントのトークンで CLI を使う（[数える review](../adapters/pull-requests.md#数える-review)）。
 
 ## 出力
 
@@ -73,10 +63,7 @@ sequenceDiagram
 - エラーのときは、終了コードを 0 以外にする。
   - `--json` では、API の `Problem` をそのまま書く。
   - CLI の中のエラー（git の失敗など）は、`code` が `cli_error` の `Problem` の形で書く。
-- repository が壊れているときは、木を読むコマンドは、次のようにする（[壊れた repository](../backend/broken.md)）。
-  - 最後に正しかった時点の木を、標準出力に書く。
-  - `code` が `repository_broken` の `Problem` を、標準エラーに書く。
-  - 終了コード 1 で終わる。
+- 最新のコミットが valid でないとき、git を読むコマンドと、API の木を読むコマンドは、標準エラーに警告を書き、止めずに続ける。終了コードは変えない（[CLI](../backend/invalid-main.md#cli)）。
 - 終了コードは、次のとおりである。
   - 0：成功
   - 1：エラー（API のエラー、`check` の誤り、git の失敗）

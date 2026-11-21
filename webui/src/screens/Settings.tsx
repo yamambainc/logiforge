@@ -2,13 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { createRepository, Problem } from '../api';
 import { navigate, settingsPath, type AddParam, type SettingsTab } from '../router';
 import {
-  afterRegister, buildPatch, charCount, createKeyConfirm, firstStep, MAX_STATEMENT, validateName, validateStatement, type AddStep, createRecordKey, formsFrom, getSettings, installUrlFrom, INTERVAL_KEYS, listRecordKeys,
+  afterRegister, buildPatch, charCount, firstStep, MAX_STATEMENT, validateName, validateStatement, type AddStep, formsFrom, getSettings, installUrlFrom, INTERVAL_KEYS,
   listRegisteredRepositories, noteAccess, registerRepository, unregisterConfirm, unregisterRepository, updateGitForgeSettings,
-  type ForgejoForm, type GitHubForm, type IntervalForm, type RecordKey, type RegisteredRepository, type SecretState, type Settings as SettingsValue,
+  type ForgejoForm, type GitHubForm, type IntervalForm, type RegisteredRepository, type SecretState, type Settings as SettingsValue,
 } from '../settings';
 
 const fmt = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
-const TAB_LABELS: Record<SettingsTab, string> = { repository: 'repository', gitforge: 'GitForge', 'record-keys': '記録の鍵' };
+const TAB_LABELS: Record<SettingsTab, string> = { repository: 'repository', gitforge: 'GitForge' };
 /** エラーを文にする。401 はサインインに任せるので、何も示さない。 */
 const message = (e: unknown): string | null =>
   e instanceof Problem ? (e.status === 401 ? null : e.code === 'forbidden' ? '設定を変えられるのは、利用者だけです。' : e.detail || e.code) : String(e);
@@ -43,8 +43,7 @@ export function Settings({ tab, add }: { tab: SettingsTab; add?: AddParam }) {
         </div>
       </div>
       {tab === 'repository' ? <RepositoryTab settings={s} add={add} onChanged={() => void reload()} />
-        : tab === 'gitforge' ? <GitForgeTab settings={s} onSaved={setS} />
-        : <RecordKeysTab onChanged={() => void reload()} />}
+        : <GitForgeTab settings={s} onSaved={setS} />}
       <p className="settings-updated dim">最後に変えた人：{s.updated_by || '—'}　{fmt(s.updated_at)}</p>
     </main>
   );
@@ -93,6 +92,8 @@ function RepositoryTab({ settings, add, onChanged }: { settings: SettingsValue; 
               <span className="mono strong">{r.name}</span>
               <span className="mono">{r.gitforge_ref}{r.directory ? ` : ${r.directory}` : ''}</span>
               <span className="spacer" />
+              {/* prepared は、worker が取り込んだか（latest があるか）で決まるので、登録した直後は false に見える（design/webui/screens-setup.md） */}
+              {r.prepared === false && <span className="dim small">取り込み待ちか、最初の問いがない</span>}
               {r.prepared === false && <button className="btn primary" disabled={!!flow} onClick={() => setFlow({ at: 'question', name: r.name })}>最初の問いを入れる</button>}
               <button className="btn" disabled={busy === r.name} onClick={() => void remove(r.name)}>外す</button>
             </li>
@@ -115,7 +116,7 @@ function AddFlow({ github, step, onStep, onClose, onRegistered }: {
         <li className={second}>2. 最初の問い{step.at === 'exists' && '（もうある）'}</li>
       </ol>
       {step.at === 'repository' ? <RepositoryStep github={github} onNext={onStep} onCancel={onClose} onRegistered={onRegistered} />
-        : step.at === 'question' ? <QuestionStep name={step.name} onDone={() => { onStep({ at: 'done', name: step.name }); onRegistered(); }} onCancel={onClose} />
+        : step.at === 'question' ? <QuestionStep name={step.name} onDone={(exists) => { onStep({ at: exists ? 'exists' : 'done', name: step.name }); onRegistered(); }} onCancel={onClose} />
         : <Finished name={step.name} exists={step.at === 'exists'} onClose={onClose} />}
     </div>
   );
@@ -177,12 +178,11 @@ function RepositoryStep({ github, onNext, onCancel, onRegistered }: { github: bo
 }
 
 const CREATE_ERRORS: Record<string, string> = {
-  repository_exists: 'その名前の repository は、もうあります。',
   forbidden: 'repository を作れるのは、利用者だけです。',
   repository_not_registered: 'その名前の repository は、登録されていません。',
 };
 
-function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: () => void; onCancel: () => void }) {
+function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: (exists: boolean) => void; onCancel: () => void }) {
   const [statement, setStatement] = useState('');
   const [background, setBackground] = useState('');
   const [busy, setBusy] = useState(false);
@@ -196,10 +196,12 @@ function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: () => 
     try {
       // スナップショットツリーがまだ出ていなくても（Logiforge-Pending-Commit）、用意は済んでいる。ビュワーが「取り込み中」と示して読み直す
       await createRepository(name, statement.trim(), background.trim());
-      onDone();
+      onDone(false);
     } catch (err) {
       setBusy(false);
       if (err instanceof Problem && err.status === 401) return;
+      // 取り込み待ちで prepared が false に見えていた repository は、用意が済んでいる（design/webui/screens-setup.md）
+      if (err instanceof Problem && err.code === 'repository_exists') { onDone(true); return; }
       setError(err instanceof Problem ? CREATE_ERRORS[err.code] ?? (err.detail || err.code) : String(err));
     }
   };
@@ -250,7 +252,7 @@ function Secret({ label, state, children }: { label: string; state?: SecretState
 }
 
 const INTERVAL_LABELS: Record<keyof IntervalForm, string> = {
-  patrol_seconds: '見回りの間隔', list_seconds: 'repository の一覧を読み直す間隔', records_seconds: '記録を読む間隔',
+  patrol_seconds: '見回りの間隔', list_seconds: 'repository の一覧を読み直す間隔',
   git_timeout_seconds: 'git の操作の時間の上限', write_wait_seconds: '書いたものが読む側に出るまで待つ上限',
 };
 
@@ -341,43 +343,3 @@ function GitForgeTab({ settings, onSaved }: { settings: SettingsValue; onSaved: 
   );
 }
 
-// --- 記録の鍵 ---
-
-const shortKey = (k: string) => (k.length > 24 ? `${k.slice(0, 12)}…${k.slice(-8)}` : k);
-
-function RecordKeysTab({ onChanged }: { onChanged: () => void }) {
-  const [items, setItems] = useState<RecordKey[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const load = () => listRecordKeys().then(setItems).catch((e) => setError(message(e)));
-  useEffect(() => { void load(); }, []);
-  const create = async () => {
-    if (!window.confirm(createKeyConfirm)) return;
-    setBusy(true); setError(null);
-    try { await createRecordKey(); await load(); onChanged(); } catch (e) { setError(message(e)); }
-    setBusy(false);
-  };
-  return (
-    <section className="card">
-      <div className="page-head">
-        <h2>記録の鍵</h2>
-        <span className="spacer" />
-        <button className="btn" disabled={busy} onClick={() => void create()}>{busy ? '作っています…' : '新しい鍵を作る'}</button>
-      </div>
-      <p className="dim small">記録の署名の鍵です。新しい鍵を作ると、これから書く記録に使います。古い鍵の公開鍵は残すので、前の記録はそのまま確かめられます。</p>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {!items ? <p className="dim">読み込み中…</p> : items.length === 0 ? <p className="dim">鍵はありません。</p> : (
-        <ul className="settings-list">
-          {items.map((k) => (
-            <li key={k.key_id}>
-              <span className="mono strong">{k.key_id}</span>
-              <span className="mono" title={k.public_key}>{shortKey(k.public_key)}</span>
-              <span className="dim small">{fmt(k.created_at)}</span>
-              {k.primary && <span className="badge-primary">書くときの鍵</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}

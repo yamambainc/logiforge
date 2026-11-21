@@ -255,8 +255,8 @@ func TestSetupGitHub(t *testing.T) {
 	// 終わったら、設定の API が使える（セットアップの前は setup_required）。
 	want(call("GET", "/v1/settings", "ghu_alice", nil), 200, "セットアップのあとの getSettings")
 	c, err := db.Load(t.Context(), keys)
-	if err != nil || len(c.RecordKeys) != 1 || c.Ready() != nil {
-		t.Fatalf("記録の鍵：%v %v", c, err)
+	if err != nil || c.Ready() != nil {
+		t.Fatalf("セットアップのあとの設定：%v %v", c, err)
 	}
 }
 

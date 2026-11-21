@@ -22,7 +22,7 @@ const github: Settings = {
   gitforge: 'github', webui_url: 'https://lf.example',
   github: { app_id: 12, client_id: 'Iv1.abc', slug: 'lf', api_url: 'https://api.github.com', web_url: 'https://github.com', private_key: { set: true, updated_by: 'alice', updated_at: '2026-11-18T12:00:00Z' }, client_secret: { set: true } },
   forgejo: null,
-  intervals: { patrol_seconds: 1, list_seconds: 60, records_seconds: 5, git_timeout_seconds: 300, write_wait_seconds: 10 },
+  intervals: { patrol_seconds: 1, list_seconds: 60, git_timeout_seconds: 300, write_wait_seconds: 10 },
   updated_by: 'alice', updated_at: '2026-11-18T12:00:00Z',
 };
 const forgejo: Settings = {
@@ -36,7 +36,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 describe('URL', () => {
   it('/settings の tab。ないか知らない値なら repository', () => {
     expect(match('/settings', '?tab=gitforge')).toEqual({ name: 'settings', tab: 'gitforge' });
-    expect(match('/settings', '?tab=record-keys')).toEqual({ name: 'settings', tab: 'record-keys' });
+    expect(match('/settings', '?tab=record-keys')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings', '?tab=repository')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings', '')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings', '?tab=nothing')).toEqual({ name: 'settings', tab: 'repository' });
@@ -46,7 +46,7 @@ describe('URL', () => {
     expect(match('/settings', '?tab=repository&add=x')).toEqual({ name: 'settings', tab: 'repository' });
     expect(match('/settings', '?tab=gitforge&add=new')).toEqual({ name: 'settings', tab: 'gitforge' });
     expect(settingsPath('repository', 'new')).toBe('/settings?tab=repository&add=new');
-    expect(settingsPath('record-keys')).toBe('/settings?tab=record-keys');
+    expect(settingsPath('gitforge')).toBe('/settings?tab=gitforge');
   });
 });
 
@@ -118,16 +118,6 @@ describe('API の呼び方', () => {
     const s = await load();
     await s.unregisterRepository('q');
     expect(callOf()).toMatchObject({ url: '/v1/settings/repositories/q', init: { method: 'DELETE' } });
-  });
-
-  it('一覧は items を返す。鍵は POST で作る', async () => {
-    stubFetch((url, init) => url === '/v1/settings/record-keys' && init?.method === 'POST'
-      ? ok({ key_id: 'k2', public_key: 'p', created_at: '2026-11-18T12:00:00Z', primary: true }, 201)
-      : ok({ items: [{ key_id: 'k1', public_key: 'p', created_at: '2026-11-18T12:00:00Z', primary: true }] }));
-    const s = await load();
-    expect((await s.listRecordKeys()).map((k) => k.key_id)).toEqual(['k1']);
-    expect((await s.createRecordKey()).key_id).toBe('k2');
-    expect(callOf(1).init.method).toBe('POST');
   });
 
   it('validation_failed の detail は Problem に入る', async () => {

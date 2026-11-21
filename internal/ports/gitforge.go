@@ -14,7 +14,7 @@ import (
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrMainExists    = errors.New("main がすでにある")
-	ErrBranchHasOpen = errors.New("そのブランチに open の提案がすでにある")
+	ErrBranchHasOpen = errors.New("そのブランチに open の apply request がすでにある")
 	ErrHeadMoved     = errors.New("pull request の head が、指定した SHA でない")
 	ErrConflict      = errors.New("git の衝突で merge できない")
 	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
@@ -22,8 +22,7 @@ var (
 	ErrAlreadyAnswered = errors.New("すでに回答がある")
 	ErrUnauthenticated = errors.New("この主体は、Logiforge の主体でない")
 	// ErrNotRegistered は、repository の名前が、サーバの設定に登録されていないことを表す（GitHub を使う構成）。
-	ErrNotRegistered    = errors.New("repository の名前が、サーバの設定に登録されていない")
-	ErrAttachmentTamper = errors.New("添付の sha256 が、記録と合わない")
+	ErrNotRegistered = errors.New("repository の名前が、サーバの設定に登録されていない")
 	// ErrAttachmentsUnsupported は、回答の添付をファイルで受け付けない GitForge であることを表す（添付はリンクだけ）。
 	ErrAttachmentsUnsupported = errors.New("この GitForge は、回答の添付をファイルで受け付けない")
 )
@@ -51,7 +50,7 @@ type File struct {
 	Content []byte
 }
 
-// State は、提案の状態である。
+// State は、apply request の状態である。
 type State string
 
 const (
@@ -60,51 +59,74 @@ const (
 	StateClosed State = "closed"
 )
 
-// ApplyRequest は、GitForge から読んだ提案である。
-// head のブランチが消えた open の提案を closed として扱うのは、ブランチの履歴を読むバックエンドである。
+// ApplyRequest は、GitForge から読んだ apply request（pull request）である（design/adapters/pull-requests.md）。
+// head のブランチが消えた open の apply request を closed として扱うのは、ブランチの履歴を読むバックエンドである。
 type ApplyRequest struct {
+	// ID は、pull request の番号を 10 進の文字列にしたものである。
 	ID     string
 	Number int
 	Branch string
 	// Target は、向き先のブランチ（pull request の base）である。
-	Target        string
-	Description   string
-	FirstRevision string
-	HeadRevision  string
-	State         State
-	// Opener は、提案を作った主体である（バックエンドを通した記録の値）。
+	Target       string
+	Description  string
+	HeadRevision string
+	State        State
+	// Opener は、apply request を作った主体（pull request の作者）である。
 	Opener string
-	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
-	Kind         string
-	CloseReason  string
-	CloseSession string
-	// MergeFailures は、反映の失敗の記録である（古い順）。
-	MergeFailures []MergeFailure
-	CreatedAt     time.Time
+	// Waiting は、pull request のラベルが表す、レビュー待ちか修正待ちか（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+	Waiting Waiting
+	// ReviewWaitingAt は、レビュー待ちのラベルを最後に付けた時刻である。1 件を読むときだけ入る（ずれを直すのに使う）。
+	ReviewWaitingAt time.Time
+	// FixWaitingLabeled は、修正待ちのラベルを付けた出来事（だれが、いつ）である（古い順）。1 件を読むときだけ入る（ずれを直すのに使う）。
+	FixWaitingLabeled []LabelEvent
+	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、ここに人が読む文で入る。
+	Comments  []Comment
+	CreatedAt time.Time
 	// MergedRevision は、反映したときの merge のコミットの SHA である。反映していなければ空。
 	MergedRevision string
-	// Warnings は、数えなかった記録（MAC が合わない、など）である。
+	// Warnings は、読むときに見つけたことの警告である。
 	Warnings []string
 }
 
-// MergeFailure は、反映の失敗の記録である。
+// Waiting は、レビュー待ちか修正待ちかのラベルである。
+type Waiting string
+
+const (
+	// WaitingNone は、どちらのラベルもないこと。一覧では、レビュー待ちとみなす。
+	WaitingNone   Waiting = ""
+	WaitingReview Waiting = "review"
+	WaitingFix    Waiting = "fix"
+	// WaitingBoth は、2 つとも付いていること。一覧では、修正待ちとみなす。
+	WaitingBoth Waiting = "both"
+)
+
+// LabelEvent は、ラベルを付けた出来事である。
+type LabelEvent struct {
+	Actor string
+	At    time.Time
+}
+
+// Comment は、pull request のコメントである。
+type Comment struct {
+	Author    string
+	Body      string
+	CreatedAt time.Time
+}
+
+// MergeFailure は、反映の失敗である。GitForge には、pull request のふつうのコメントとして書く（design/adapters/texts.md）。
 type MergeFailure struct {
 	// Revision は、反映しようとした先頭のコミット。
 	Revision string
-	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending のどれか。
+	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending などの理由。
 	Reason string
 	Detail string
 }
 
-// NewApplyRequest は、提案を作るときに渡すものである。
+// NewApplyRequest は、apply request を作るときに渡すものである。識別子は、GitForge が pull request の番号で決める。
 type NewApplyRequest struct {
-	ID string
-	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
-	Kind          string
-	Branch        string
-	Description   string
-	FirstRevision string
-	Opener        string
+	Branch      string
+	Description string
+	Opener      string
 }
 
 // ReviewKind は、レビューの種類である。
@@ -116,25 +138,24 @@ const (
 	ReviewComment        ReviewKind = "comment"
 )
 
-// Review は、レビューである。
+// Review は、レビュー（pull request の review）である。ID は、GitForge の review の識別子である。
 type Review struct {
-	ID             string
-	Kind           ReviewKind
-	Body           string
-	Revision       string
-	Reviewer       string
-	Session        string
+	ID       string
+	Kind     ReviewKind
+	Body     string
+	Revision string
+	Reviewer string
+	// PromptRevision は、review を出すときに、本文の最後に人が読む文で書くプロンプトの版である。読むときは入らない
+	// （design/adapters/texts.md の「review の本文」）。
 	PromptRevision string
 	CreatedAt      time.Time
 }
 
-// Reviews は、提案のレビューの一覧である。
+// Reviews は、apply request のレビューの一覧である。
 type Reviews struct {
-	// Items は、数えたレビューを、記録した順に並べたもの。
-	Items []Review
-	// ChainBroken は、レビューの鎖が切れていること（数えないレビューがある、など）である。切れていれば、反映しない。
-	ChainBroken bool
-	Warnings    []string
+	// Items は、数えたレビュー（design/adapters/pull-requests.md の「数える review」）を、出した順に並べたもの。
+	Items    []Review
+	Warnings []string
 }
 
 // HumanRequestKind は、人への依頼の種類である。
@@ -145,7 +166,7 @@ const (
 	HumanRequestDecision HumanRequestKind = "decision"
 )
 
-// HumanRequest は、人への依頼である。
+// HumanRequest は、人への依頼（issue）である。ID は、issue の番号を 10 進の文字列にしたものである。
 type HumanRequest struct {
 	ID         string
 	Number     int
@@ -153,21 +174,18 @@ type HumanRequest struct {
 	TargetNode string
 	Body       string
 	Requester  string
-	Session    string
 	CreatedAt  time.Time
-	// Answer は、回答。まだなければ nil。
+	// Answer は、回答。まだなければ nil。一覧では、本文と添付は空で、時刻（issue を閉じた時刻）だけが入る。
 	Answer   *Answer
 	Warnings []string
 }
 
-// NewHumanRequest は、人への依頼を起票するときに渡すものである。
+// NewHumanRequest は、人への依頼を起票するときに渡すものである。識別子は、GitForge が issue の番号で決める。
 type NewHumanRequest struct {
-	ID         string
 	Kind       HumanRequestKind
 	TargetNode string
 	Body       string
 	Requester  string
-	Session    string
 }
 
 // Answer は、人への依頼の回答である。
@@ -208,26 +226,36 @@ type GitForge interface {
 
 	CreateApplyRequest(ctx context.Context, repo string, ar NewApplyRequest) (ApplyRequest, error)
 	GetApplyRequest(ctx context.Context, repo, id string) (ApplyRequest, error)
-	ListApplyRequests(ctx context.Context, repo string) ([]ApplyRequest, error)
+	// ListApplyRequests は、state（open、closed、all。空なら all）の apply request を、pull request の一覧だけから読む。
+	// ラベル（Waiting）は入るが、close のコメント、反映の失敗、ReviewWaitingAt は入らない。
+	ListApplyRequests(ctx context.Context, repo, state string) ([]ApplyRequest, error)
 	UpdateDescription(ctx context.Context, repo, id, description string) error
 	// Merge は、head の SHA を指定して squash merge する。ErrHeadMoved か ErrConflict を返しうる。
 	// 戻り値は、反映のコミットの SHA である。
 	Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error)
-	Close(ctx context.Context, repo, id, reason, session string) error
-	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure) error
+	// Close は、理由を書いた pull request のコメントのあとに、pull request を close する。
+	Close(ctx context.Context, repo, id, reason string) error
+	// RecordMergeFailure は、反映の失敗の理由を、pull request のふつうのコメントに書き、ラベルを w にする。
+	// ラベルが既に w でも、外して付け直す。失敗を書いた主体がラベルを付けた出来事を残し、ずれ直しで失敗の出来事として読むためである。
+	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure, w Waiting) error
+	// SetWaiting は、レビュー待ちか修正待ちかのラベルを付け替える。WaitingNone なら、両方を外す。
+	SetWaiting(ctx context.Context, repo, id string, w Waiting) error
 
-	AddReview(ctx context.Context, repo, applyRequestID string, r Review) error
+	// AddReview は、pull request に review を出し、出した review を返す。
+	AddReview(ctx context.Context, repo, applyRequestID string, r Review) (Review, error)
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
-	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の提案を返す（design/backend/verify/README.md）。
-	// そういう pull request がなければ ErrNotFound。pull request に apply_request の記録がなければ、ID が空の提案を返す。
-	MergedApplyRequest(ctx context.Context, repo, sha string) (ApplyRequest, error)
+	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の apply request を返す。
+	// worker が、どの apply request の反映かを、コミットに置くのに使う（design/backend/invalid-main.md の「どの apply request の反映か」）。
+	// committed は、sha の committer date で、反映した pull request の一覧を読むのをやめる位置に使う（design/backend/list-reads.md）。
+	// そういう pull request がなければ ErrNotFound。
+	MergedApplyRequest(ctx context.Context, repo, sha string, committed time.Time) (ApplyRequest, error)
 
 	CreateHumanRequest(ctx context.Context, repo string, hr NewHumanRequest) (HumanRequest, error)
 	GetHumanRequest(ctx context.Context, repo, id string) (HumanRequest, error)
 	ListHumanRequests(ctx context.Context, repo string) ([]HumanRequest, error)
-	// Answer は、回答を記録する。すでに回答があれば ErrAlreadyAnswered を返す。
+	// Answer は、回答のコメントを書き、issue を閉じる。すでに違う回答があれば ErrAlreadyAnswered を返す。
 	Answer(ctx context.Context, repo, id, body, answeredBy string, files []NewAttachment) error
-	// ReadAttachment は、添付の中身を読み、記録の sha256 と合うかを確かめる。
+	// ReadAttachment は、添付の中身を読み、回答のコメントに書いた sha256 と合うかを確かめる。
 	ReadAttachment(ctx context.Context, repo, humanRequestID, sha256 string) ([]byte, error)
 }
 
@@ -271,16 +299,6 @@ func WithFresh(ctx context.Context) context.Context { return context.WithValue(c
 // Fresh は、ctx が、キャッシュを使わない問い合わせかを返す。
 func Fresh(ctx context.Context) bool { v, _ := ctx.Value(freshKey{}).(bool); return v }
 
-// 用意のコミットの種類（design/backend/verify/init.md の「用意のコミットの署名」）。
-const (
-	// InitRoot は、根のコミットである。
-	InitRoot = "init-root"
-	// InitSecond は、GitHub で、根の次に背景情報を置くコミットである。
-	InitSecond = "init-second"
-	// InitDirectory は、ディレクトリの repository の用意のコミットである。
-	InitDirectory = "init-directory"
-)
-
 // tokenKey は、GitForge を呼ぶ主体のトークンを、ctx で渡す鍵である。
 type tokenKey struct{}
 
@@ -294,21 +312,6 @@ func WithToken(ctx context.Context, token string) context.Context {
 func TokenFrom(ctx context.Context) string {
 	t, _ := ctx.Value(tokenKey{}).(string)
 	return t
-}
-
-// MergeVerdict は、main のコミットが反映によるものかの判定である（design/backend/verify/README.md）。
-type MergeVerdict struct {
-	// Pending は、まだ決められないこと（C を merge した pull request が見つからない、など）。次の見回りでやり直す。
-	Pending bool
-	// MissingHead は、pull request の先頭のコミットのスナップショットがないとき、その SHA である。作ってから、やり直す。
-	MissingHead string
-	// Authorized は、反映によるものか。
-	Authorized bool
-	// ApplyRequest は、反映した apply request の識別子、Kind はその種類（直すための apply request なら repair.revert か repair.accept）。
-	ApplyRequest string
-	Kind         string
-	// Detail は、反映によるものでないときの、満たさなかった条件である。
-	Detail string
 }
 
 // CheckDirectories は、ディレクトリの repository の登録を確かめる（design/directory/README.md の「登録」）。
@@ -344,7 +347,7 @@ func CheckDirectories(rs []Repository) error {
 		byGit[key] = append(byGit[key], dir)
 	}
 	// 同じ git リポジトリを、全体の repository とディレクトリの repository の両方には登録しない。
-	// なぜ：全体の repository は、ディレクトリの repository の反映を、反映によらないものとして壊れた状態になるから。
+	// なぜ：全体の repository の木に、ディレクトリの repository のファイルが木の外のファイルとして入り、valid でなくなるから。
 	for key := range byGit {
 		if whole[key] {
 			return fmt.Errorf("git リポジトリ %s が、全体の repository とディレクトリの repository の両方に登録されている", key)

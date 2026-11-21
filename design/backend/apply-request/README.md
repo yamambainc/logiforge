@@ -1,7 +1,7 @@
 # apply request
 
 バックエンドが、apply request を GitForge の pull request としてどう扱い、先頭のコミット・更新・close をどうするかを確かめるときに読む。
-API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要求の繰り返し](../../api/writes.md) が正本である。反映は [反映の手順](../merge.md) に書く。
+送り直しの扱いは、[同じ要求の繰り返し](../../api/writes.md) が正本である。反映は [反映の手順](../merge.md) に書く。
 
 ## 読む順
 
@@ -15,9 +15,12 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 | apply request | GitForge |
 |---|---|
 | apply request | 利用者のブランチから `main` への pull request |
+| 識別子 | pull request の番号 |
+| apply request を作った主体（opener） | pull request の作者 |
 | 先頭のコミット | pull request の head のコミット |
 | 新しい先頭のコミット | 利用者が、同じブランチに push する |
-| レビュー | pull request のレビュー |
+| レビュー | pull request の review（[数える review](../../adapters/pull-requests.md#数える-review)） |
+| 反映の失敗 | 理由を書いた pull request のふつうのコメントと、レビュー待ちか修正待ちかのラベル |
 | 反映 | pull request の squash merge（head の SHA を指定する） |
 | close | pull request の close |
 
@@ -26,19 +29,19 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - 利用者がブランチを消すと、apply request は close になる。
   - head のブランチがない open の pull request は、バックエンドが closed として扱う。worker の [ブランチの履歴](../snapshot/branch.md#ブランチの履歴) で、消えたことがわかる。
   - なぜ：ブランチを消したときに、GitForge が pull request を閉じるかどうかによらずに、同じ結果にするため。
-- 状態（open、merged、closed）は、pull request の状態と、署名の合う記録から決める（[提案の状態](../../adapters/pull-requests.md)）。
-- apply request の識別子、作ったときの先頭、close の記録は、pull request の本文ではなく、記録のコメントに置く（[記録のコメント](../../adapters/records.md#記録のコメント)）。
+- 状態（open、merged、closed）は、pull request の状態から決める（[apply request の状態](../../adapters/pull-requests.md#apply-request-の状態)）。
 - pull request は、apply request を作る主体（opener）のトークンで作る。
-  - なぜ：pull request の本文は、repository に書く権限を持つ人が書き換えられるから。
+  - なぜ：作った主体を、GitForge が記録する pull request の作者で決めるため。作者は、だれにも書き換えられない。
 
 ## 先頭のコミット
 
 - apply request の先頭のコミットは、[worker](../worker/README.md) が見たブランチの先頭のコミットである。SHA で指す。
   - worker は、ブランチごとに、先頭のコミットが変わった順の一覧を、置き場に書く（[ブランチの履歴](../snapshot/branch.md#ブランチの履歴)）。
-  - apply request の先頭のコミットの一覧は、その一覧のうち、apply request を作ったときの先頭のコミットから後のものである。
+  - apply request の先頭のコミットの一覧は、その一覧のうち、pull request を作ったときの先頭のコミットから後のものである。
   - 利用者が短い間に何度も push すると、worker が見なかったコミットは、一覧に入らない。
-- 一覧の始まりは、ブランチの履歴のうち、apply request を作ったときの先頭のコミットの項目である。
-  - 同じ SHA が何度も出るときは、apply request を作った時刻までに見たもののうち、最後のものにする。
+- 一覧の始まりは、ブランチの履歴のうち、worker が pull request を作った時刻（GitForge の `created_at`）の 5 分前より後に見た、最初の項目である。その前にしか見ていなければ、最後の項目である。
+  - なぜ 5 分前か：作ったときの先頭を、worker が作る前に見たか後に見たかは、時計のずれでわからないから。前の項目が 1 つ多く入っても、レビューの条件（すべての先頭のコミットへの最後の決めるレビュー）が厳しくなるだけである。
+  - 先頭が `main` と同じ（base と同じで、ブランチに自分のコミットがない）項目は、一覧に入れない。なぜ：`main` から作ったばかりのブランチを worker が見ると、`main` のコミットが先頭に見えるから。
   - 一覧は、ブランチが消えた項目で終わる。
 - 一覧の各項目には、worker がそのコミットを見た時刻（`seen_at`）を添える。
 - GitForge の今の head が、まだブランチの履歴にない（worker が追いついていない）ときは、それを、base のない最後の項目として見せる。その差分は、スナップショットができるまで返さない。
@@ -46,7 +49,6 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 - ブランチの先頭が、前に見た SHA に戻ったら（A → B → A）、今の先頭のコミットは A である。A への前のレビューは、A に対するものとして有効である。
   - なぜ：レビューした差分と、今の差分が同じだからである。
 - 先頭のコミットの差分は、そのコミットと `main` の分かれた点（base）からの差分である。ブランチの途中のコミットは見ない。
-- コミットを書いたセッションは、先頭のコミットのメッセージの trailer `Logiforge-Session-Id:` の自己申告である（[セッション](../../files/revisions.md#セッション)）。
 
 ## 更新
 
@@ -57,8 +59,8 @@ API の決まり（`Idempotency-Key` と識別子の作り方）は、[同じ要
 
 ## close
 
-1. GitForge で、pull request を close する。
-2. GitForge に、close の理由とセッションを記録する。
+1. close する主体のトークンで、close の理由を、人が読む文で書いた pull request のコメントを書く（[close のコメント](../../adapters/texts.md#close-のコメント)）。
+2. 同じトークンで、pull request を close する。
 3. 応答する。
 
 - すでに閉じていれば、今の状態を返す。

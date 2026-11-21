@@ -114,9 +114,9 @@ func (d *Dir) PutIf(ctx context.Context, key string, data, old []byte) error {
 
 // キーの決まり（design/backend/ports/snapshot-store.md の「置いてあるもの」）。
 //
-// git から作り直せるもの（コミットの記録、スナップショットツリー、main の並びの索引、latest、repositories、scanned）は、フォーマットバージョンの接頭辞（例：`v4/`）の下に置く。
+// git から作り直せるもの（コミットの情報、スナップショットツリー、main の並びの索引、latest、repositories、scanned）は、フォーマットバージョンの接頭辞（例：`v4/`）の下に置く。
 // フォーマットバージョンが変わったら、新しい版の worker は、空の接頭辞から作り直す。古い版は消さない。
-// 作り直せないもの（ブランチの履歴とその一覧、ブランチのスナップショット、壊れていることの記録、記録の控え、移した先の名前）と、
+// 作り直せないもの（ブランチの履歴とその一覧、ブランチのスナップショット、移した先の名前）と、
 // 形を持たないもの（artifact の中身）は、
 // フォーマットバージョンの接頭辞の外の `keep/` の下に置く。
 // 置き場の直下には、フォーマットバージョンの接頭辞と `keep/` だけを置く。repository の名前（`v4` など）と、ぶつからないようにするため。
@@ -132,7 +132,7 @@ func LatestKey(repo string) string        { return Prefix + repo + "/latest" }
 // （design/directory/history.md の「worker」）。git リポジトリ全体の repository では使わない（latest と同じになるから）。
 func ScannedKey(repo string) string { return Prefix + repo + "/scanned" }
 
-// MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+// MainIndexKey は、main の並びの索引のキーである。番号 number の main のコミットの SHA を置く（design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
 func MainIndexKey(repo string, number int) string {
 	return Prefix + repo + "/main/" + strconv.Itoa(number)
 }
@@ -151,7 +151,7 @@ func BranchKey(repo, branch string) string {
 	return KeepPrefix + repo + "/branches/" + url.PathEscape(branch)
 }
 
-// BranchSnapshotKey は、ブランチの先頭のスナップショットのキーである。コミットの記録と差分を、1 つにまとめて置く。
+// BranchSnapshotKey は、ブランチの先頭のスナップショットのキーである。コミットの情報と差分を、1 つにまとめて置く。
 // 消えたブランチの版は git から作り直せないので、版の外に置き、中に自分のフォーマットバージョンを持たせる。
 func BranchSnapshotKey(repo, sha string) string {
 	return KeepPrefix + repo + "/branch-snapshots/" + sha

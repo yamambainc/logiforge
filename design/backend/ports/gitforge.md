@@ -1,6 +1,6 @@
 # GitForge
 
-バックエンドが、repository、提案（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるときに読む。
+バックエンドが、repository、apply request（pull request）、レビュー、人への依頼を扱うときに、GitForge に何を求めるかを確かめるときに読む。
 このポートを実装するのが、GitForge アダプタである（[アダプタ](../../adapters/README.md)）。
 
 GitForge は、ルールを判定しない。受け取ったものを置き、求められたら返すだけである。
@@ -16,39 +16,37 @@ GitForge は、ルールを判定しない。受け取ったものを置き、�
 - `main` の先頭を読む。GitForge の今の `main` の SHA を返す。反映の前に、worker が追いついているかを確かめるのに使う（[反映の手順](../merge.md)）。
 - ほかの操作は、どれも repository を指定して行う。
 
-## 提案
+## apply request
 
-提案（apply request）は、GitForge の pull request である（[apply request と pull request](../apply-request/README.md)）。
+apply request は、GitForge の pull request である（[apply request と pull request](../apply-request/README.md)）。
 
-- 提案を作る。識別子、説明欄、ブランチ、作ったときの先頭のコミットを渡す。
-  - そのブランチに open の提案がすでにあれば、そのことがわかる形で失敗する。
+- apply request を作る。説明欄とブランチを渡し、GitForge が決めた識別子を受け取る。
+  - そのブランチに open の apply request がすでにあれば、そのことがわかる形で失敗する。
 - 説明欄を書き換える。
-- 提案を読む。状態（open、merged、closed）、ブランチ、向き先（pull request の base のブランチ）、作ったときの先頭のコミット、今の head のコミット、反映したときは merge のコミットを返す。
-- 提案を作った順に読む。
+- apply request を読む。状態（open、merged、closed）、作った主体と時刻、ブランチ、向き先（pull request の base のブランチ）、今の head のコミット、ラベル、反映したときは merge のコミットを返す。
+- apply request を作った順に読む。
 - 反映する。head のコミットの SHA と、反映のコミットのメッセージを渡し、squash merge する。
   - head が指定した SHA でなければ、そのことがわかる形で失敗する。
   - git の衝突で merge できなければ、そのことがわかる形で失敗する。
-- close する。理由と、close したセッションを記録する。
-- 反映の失敗の理由を記録する。
+- close する。理由を、人が読む文で、close する主体の名で残す。
+- 反映の失敗の理由を、pull request のふつうのコメントに残す。
 
 ## レビュー
 
-- レビューを記録する。
+- レビューを出す。
   - 種類（`approve`、`request_changes`、`comment`）、本文、レビューした先頭のコミット
-  - reviewer のセッションと、使ったプロンプトのリビジョン
-- 提案ごとのレビューを、記録した順に読む。
+  - 使ったプロンプトのリビジョン（本文の最後に、人が読む文で書く。読むときは返さない）
+- apply request ごとのレビューを、出された順に読む。書いた人と、書いた人が repository に書く権限を持つかも返す（[数える review](../../adapters/pull-requests.md#数える-review)）。
 
 ## 人への依頼
 
-- 人への依頼を記録する（対象ノード、種類、本文、起票したセッション）。
-- 回答を記録する（本文、回答した利用者、添付のファイル）。すでに回答があれば、そのことがわかる形で失敗する。
+- 人への依頼を起票する（対象ノード、種類、本文）。GitForge が決めた識別子を受け取る。
+- 回答を書く（本文、回答した利用者、添付のファイル）。すでに回答があれば、そのことがわかる形で失敗する。
   - 添付のファイルは、GitForge の側に置く（[人への依頼の回答](../../files/artifacts.md)）。
 - 人への依頼と回答を、作った順に読む。添付のファイルの中身を読む。
 
 ## 識別子
 
-- apply request、レビュー、人への依頼の識別子は、バックエンドが決める。
-  - 形は、接頭辞（`apr_`、`rev_`、`hrq_`）と、Crockford の base32 の 26 文字である。
-  - 26 文字は、ULID か、`Idempotency-Key` から決定的に作ったものである（[同じ要求の繰り返し](../../api/writes.md)）。
-- GitForge は、受け取った識別子で置き、その識別子で返す。
-- GitForge は、一覧を作った順に返す。識別子の順ではない。
+- apply request、レビュー、人への依頼の識別子は、GitForge が決める。それぞれ、pull request の番号、review の id、issue の番号である。
+  - なぜ：GitForge がすでに一意の番号を持つので、バックエンドが別の識別子を作って対応を持たずに済むから。
+- GitForge は、一覧を作った順に返す。

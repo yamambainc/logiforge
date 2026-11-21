@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Put は、送った設定だけを置き換え、ほかの秘密を消さない。FinishSetup は、記録の鍵を作り、セットアップを終える。
+// Put は、送った設定だけを置き換え、ほかの秘密を消さない。FinishSetup は、セットアップを終える。
 func TestPutAndFinishSetup(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "s.db"), false)
 	if err != nil {
@@ -43,8 +43,5 @@ func TestPutAndFinishSetup(t *testing.T) {
 	}
 	if err := db.FinishSetup(ctx, keys, "alice"); err != ErrSetupDone {
 		t.Fatalf("2 回目：%v", err)
-	}
-	if c, _ := db.Load(ctx, keys); len(c.RecordKeys) != 1 || c.RecordKeys[0].Seed == nil {
-		t.Fatalf("記録の鍵：%+v", c.RecordKeys)
 	}
 }

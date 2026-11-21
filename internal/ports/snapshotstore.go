@@ -20,13 +20,11 @@ type SnapshotStore interface {
 	Latest(ctx context.Context, repo string) (string, error)
 	Commit(ctx context.Context, repo, sha string) (snapshot.Commit, error)
 	Main(ctx context.Context, repo, sha string) (*snapshot.Main, error)
-	// MainAt は、main の並びの索引から、番号 number の main のコミットの SHA を返す（design/backend/snapshot/main.md の「コミットの記録から引くもの」）。
+	// MainAt は、main の並びの索引から、番号 number の main のコミットの SHA を返す（design/backend/snapshot/main.md の「コミットの情報から引くもの」）。
 	MainAt(ctx context.Context, repo string, number int) (string, error)
 	Branch(ctx context.Context, repo, sha string) (*snapshot.Branch, error)
 	BranchHistory(ctx context.Context, repo, branch string) (store.BranchHistory, error)
 	Artifact(ctx context.Context, repo, sha256 string) ([]byte, error)
-	// Broken は、repository が壊れていれば、その記録を返す。壊れていなければ nil（design/backend/broken.md）。
-	Broken(ctx context.Context, repo string) (*store.Broken, error)
 	// Scanned は、ディレクトリの repository で、worker が読み終えた git の main の先頭を返す。なければ空。
 	Scanned(ctx context.Context, repo string) (string, error)
 	// MigratedTo は、ほかの repository に移した元の repository なら、移した先の名前を返す。なければ空（design/directory/migrate.md）。
