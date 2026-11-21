@@ -208,7 +208,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 		if problem != "" {
 			return failure("repository_broken", problem)
 		}
-		return b.squash(ctx, repo, ref, id, d, "\nLogiforge-Repair: "+repairTrailer(kind))
+		return b.squash(ctx, repo, ref, id, d)
 	}
 	if broken != nil {
 		return failure("repository_broken", fmt.Sprintf("repository が壊れている（%s から）。直すための apply request を先に反映する", broken.First))
@@ -220,7 +220,7 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, erro
 		}
 		return failure(reason, detail)
 	}
-	return b.squash(ctx, repo, ref, id, d, "")
+	return b.squash(ctx, repo, ref, id, d)
 }
 
 // recordFailure は、反映の失敗を GitForge に残す（head の commit status と、pull request のコメント）。
@@ -297,24 +297,15 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 	return "", "", nil
 }
 
-// squash は、反映の手順の 4 と 5 である。extra は、記録の trailer のあとに足す行（直すための apply request の Logiforge-Repair:）。
-func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail, extra string) (string, error) {
+// squash は、反映の手順の 4 と 5 である。メッセージに、機械が読む trailer は書かない。どのコミットがどの apply request の反映かは、
+// worker の反映かの判定の結果が正本である（design/files/revisions.md）。
+func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail) (string, error) {
 	failure := func(reason, detail string) (string, error) {
 		return "", b.recordFailure(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail})
 	}
 	// 4. head の SHA を指定して squash merge する。
-	title := fmt.Sprintf("apply request %s を反映した", id)
-	// 反映したすべての先頭のコミットのセッションを、重なりを除いて並べる（design/files/revisions.md の「記録の形式」）。
-	// Logiforge-Version: の番号は、先頭のコミットの一覧の中の位置である。trailer の形は変えない（design/files/revisions.md）。
-	message := fmt.Sprintf("Logiforge-Apply-Request: %s\nLogiforge-Version: %d %s", id, len(d.model.HeadCommits), d.current.Commit)
-	var sessions []string
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && !slices.Contains(sessions, *v.AuthorSessionID) {
-			sessions = append(sessions, *v.AuthorSessionID)
-			message += "\nLogiforge-Session-Id: " + *v.AuthorSessionID
-		}
-	}
-	message += extra
+	title := fmt.Sprintf("apply request #%s を反映した", id)
+	message := ""
 	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Commit, title, message)
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):

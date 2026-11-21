@@ -35,10 +35,11 @@ type CommitInfo struct {
 	CommittedAt time.Time
 	Trailers    []Trailer
 	// Authorized は、反映によるコミットか（design/backend/broken.md の「反映かの判定」）。worker が GitForge の API で決める。
-	// nil なら、決めていない。そのときは、trailer（Logiforge-Apply-Request: と Logiforge-Init:）で決める。
+	// nil なら、決めていない。
 	Authorized *bool
-	// ApplyRequest は、反映かの判定で見つけた、反映した apply request の識別子である。空なら、trailer（Logiforge-Apply-Request:）を使う。
+	// ApplyRequest と MergedHead は、反映かの判定で見つけた、反映した apply request の識別子と、その先頭のコミットである。
 	ApplyRequest string
+	MergedHead   string
 	// AuthorizationDetail は、反映によるものでないときの、満たさなかった条件である。警告に書く。
 	AuthorizationDetail string
 }
@@ -53,9 +54,10 @@ type Commit struct {
 	Kind        Kind      `json:"kind"`
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
-	// ApplyRequest は、main のコミットだけ。worker が反映かの判定で見つけた、反映した apply request の識別子である
-	// （design/backend/verify/README.md）。GitForge の画面で merge したコミットには、trailer がないので、ここに持つ。
+	// ApplyRequest と MergedHead は、main のコミットだけ。worker が反映かの判定で見つけた、反映した apply request の識別子と、
+	// その先頭のコミットである（design/backend/verify/README.md）。どのコミットがどの apply request の反映かは、これが正本である。
 	ApplyRequest string `json:"apply_request,omitempty"`
+	MergedHead   string `json:"merged_head,omitempty"`
 	// Warnings は、main のコミットだけ。反映の記録がないことと、このコミットで新しく破れた不変条件。
 	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`

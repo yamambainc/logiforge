@@ -62,7 +62,8 @@ func baseFiles() fs {
 func info(rev string, ar string) CommitInfo {
 	ci := CommitInfo{Revision: rev, CommittedAt: time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)}
 	if ar != "" {
-		ci.Trailers = []Trailer{{Key: TrailerApplyRequest, Value: ar}}
+		yes := true
+		ci.Authorized, ci.ApplyRequest = &yes, ar
 	}
 	return ci
 }

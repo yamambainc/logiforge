@@ -19,17 +19,15 @@ git リポジトリ全体の repository の決まりは、[main のコミット�
   - GitHub：Git Data API で、今の `main` の木にディレクトリのファイルを足したコミットを作り、`main` の ref を進める（fast-forward でなければ、`main` を読み直して作り直す）。
   - Forgejo：`POST /repos/{owner}/{repo}/contents` で、ディレクトリのファイルを 1 つのコミットにまとめて置く。
   - なぜ pull request にしないか：用意のコミットは、元の apply request がないので、反映かの判定の「apply request の反映のコミット」にならないから。版の位置と trailer と中身で、用意のコミットと決める（下の「反映かの判定」）。
-- 用意のコミットのメッセージに、`Logiforge-Init:` を付ける。`Logiforge-Apply-Request:` は付けない。移したときは、`Logiforge-Migrated-From:` も付ける（[別リポジトリ方式から移す](migrate.md)）。
+- 用意のコミットのメッセージに、`Logiforge-Init:` を付ける。移したときは、`Logiforge-Migrated-From:` も付ける（[別リポジトリ方式から移す](migrate.md)）。
 - 用意のコミットは、そのディレクトリの版の 1 番である。
   - そのディレクトリを変えた、前のコミットがあってはいけない。あれば、用意を断る（`repository_exists`）。
 - 守る設定は、用意のあとに、そのディレクトリに掛ける（[main の守り](main.md)）。用意のコミットは、`main` に直接置くからである。
 - 用意が止まったら（コミットを置く前に止まった、`main` が進んで置けなかった）、送り直しで、もう一度作る。
 
-## 反映のコミットの trailer
+## 反映のコミット
 
-- 反映のコミットの trailer は、[記録の形式](../files/revisions.md#記録の形式) と同じである。表示のためで、判定には使わない。
-  - `Logiforge-Version:` の意味は変わらない。先頭のコミットの一覧の中の位置と、その SHA である。
-  - バックエンドは、反映のコミットのメッセージに `Logiforge-Repository:`（ディレクトリのパス）も書く。表示のためである。
+- 反映のコミットのメッセージには、git リポジトリ全体の repository と同じく、機械が読む trailer を書かない（[反映のコミット](../files/revisions.md#反映のコミット)）。
 
 ## 反映かの判定
 

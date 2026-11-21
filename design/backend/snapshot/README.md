@@ -43,7 +43,8 @@
 | `number` | `main` のコミットだけ。最初のコミットを 1 とする、first-parent の番号 |
 | `kind` | `main`（`main` のコミット）、`branch`（利用者が push したブランチの先頭） |
 | `committed_at` | コミットの時刻 |
-| `trailers` | コミットの trailer（[記録の形式](../../files/revisions.md)） |
+| `trailers` | コミットの trailer（[反映のコミット](../../files/revisions.md#反映のコミット)） |
+| `apply_request`、`merged_head` | worker の反映かの判定で見つけた、反映した apply request の識別子と、その先頭のコミット。反映によるコミットだけ |
 | `warnings` | `main` のコミットだけ。下に書く |
 | `changes` | `main` のコミットだけ。下に書く |
 | `paths` | `branch` のコミットだけ。base から変わったファイルのパスと、変わり方（`added`、`modified`、`deleted`） |

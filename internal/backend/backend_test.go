@@ -208,7 +208,8 @@ func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string)
 		f.remote.git("reset", "--quiet", "--hard", "HEAD")
 		return "", fmt.Errorf("%w: %s", ports.ErrConflict, out)
 	}
-	sha := f.remote.commit(title + "\n\n" + message)
+	// テストの反映かの判定（trailerVerifier）が、merge した pull request を引けるように、テストだけの印を書く。
+	sha := f.remote.commit(title + "\n\n" + message + "\nTest-Apply-Request: " + id + "\nTest-Merged-Head: " + head)
 	ar.State, ar.MergedRevision = ports.StateMerged, sha
 	return sha, nil
 }
@@ -311,6 +312,30 @@ func (a fakeAuth) CanCreate(ctx context.Context, token, repo string) (bool, erro
 
 type source struct{ dir string }
 
+// trailerVerifier は、テストのための反映かの判定である。テストのリポジトリのコミットのメッセージの、テストだけの印
+// （Test-Apply-Request: と Test-Merged-Head:）で決める。本物の判定は verify.go にある。
+type trailerVerifier struct{ dir string }
+
+func (v trailerVerifier) VerifyMerge(_ context.Context, _ ports.Repository, sha string, _ []string, _ string, _ time.Time, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+	out, err := exec.Command("git", "-C", v.dir, "log", "-1", "--format=%B", sha).Output()
+	if err != nil {
+		return ports.MergeVerdict{}, err
+	}
+	var ar, head string
+	for _, l := range strings.Split(string(out), "\n") {
+		if x, ok := strings.CutPrefix(l, "Test-Apply-Request: "); ok {
+			ar = strings.TrimSpace(x)
+		}
+		if x, ok := strings.CutPrefix(l, "Test-Merged-Head: "); ok {
+			head = strings.TrimSpace(x)
+		}
+	}
+	if ar == "" {
+		return ports.MergeVerdict{Detail: "テストの反映の印がない"}, nil
+	}
+	return ports.MergeVerdict{Authorized: true, ApplyRequest: ar, MergedHead: head}, nil
+}
+
 func (s source) ListRepositories(context.Context) ([]ports.Repository, error) {
 	return []ports.Repository{{Name: "q", GitForgeRef: "o/q"}}, nil
 }
@@ -346,7 +371,7 @@ func setup(t *testing.T) *fixture {
 	r.write(tree.ArtifactPath(sha), art)
 	r.write(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: true, Report: "# 結果\n\n本文\n",
 		Artifacts: []tree.ArtifactRef{{Kind: "file", Name: "d.txt", SHA256: sha}}}))
-	c2 := r.commit("反映\n\nLogiforge-Apply-Request: apr_1\nLogiforge-Session-Id: s1")
+	c2 := r.commit("反映\n\nTest-Apply-Request: apr_1\nLogiforge-Session-Id: s1")
 	r.git("checkout", "--quiet", "-b", "b")
 	r.write(dH2+"/"+S2+"/story.md", tree.MarshalStory(tree.StoryContent{ID: S2, Title: "新しいストーリー", Summary: "s"}))
 	r.write(dH2+"/"+S2+"/"+H3+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H3, Statement: "孫"}))
@@ -354,7 +379,7 @@ func setup(t *testing.T) *fixture {
 	r.git("checkout", "--quiet", "main")
 
 	st := &store.Dir{Root: t.TempDir()}
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{r.dir}}, source{r.dir}, st)
 	w.SyncAll(ctx)
 
 	now := time.Now().UTC()
@@ -615,7 +640,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("3 の回答を見た\n"))
 	head := f.r.commit("版 2")
 	f.forge.ars[1].HeadRevision = head
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(ctx)
 	if !answered() {
 		t.Fatal("背景情報の識別子で、作業から外れた")

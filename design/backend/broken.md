@@ -50,7 +50,6 @@
 直すための apply request は、apply request の作成で種類（`kind`）を指定して作る。バックエンドは、pull request にラベル `logiforge/repair.revert` か `logiforge/repair.accept` を付ける。ふつうの apply request と同じく、論理レビューの `approve` で反映する。
 
 - 直すための apply request の reviewer の材料（`ar material` の `repair`）は、`last_good` のコミットから今の `main` の先頭までの、ファイルの変化である。
-- 反映のコミットに、trailer `Logiforge-Repair: revert` か `Logiforge-Repair: accept` を書く。表示のためで、判定には使わない。
 - worker は、反映によるコミットで、その pull request のラベルが直すための apply request の種類であり、下の条件が成り立てば、`last_good` を空に戻す。
   - なぜラベルで決めるか：人が GitForge の画面で merge すると、反映のコミットのメッセージに trailer が入らないから。
   - ラベルは、Write を持つ主体なら付け替えられる。付け替えても、下の中身の条件（木の全体の比べ方）を満たさなければ、直したことにならない（[信頼の境界](../adapters/pull-requests.md#信頼の境界)）。

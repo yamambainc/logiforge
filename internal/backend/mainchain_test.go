@@ -22,12 +22,12 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	r.write(dH0+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H0, Statement: "根"}))
 	c1 := r.commit("用意\n\nLogiforge-Init: 1")
 	r.write(dH0+"/background.md", []byte("1\n"))
-	c2 := r.commit("反映\n\nLogiforge-Apply-Request: apr_1")
+	c2 := r.commit("反映\n\nTest-Apply-Request: apr_1")
 	r.write(dH0+"/background.md", []byte("1\n2\n"))
-	c3 := r.commit("反映\n\nLogiforge-Apply-Request: apr_2")
+	c3 := r.commit("反映\n\nTest-Apply-Request: apr_2")
 
 	st := &store.Dir{Root: t.TempDir()}
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{r.dir}}, source{r.dir}, st)
 	w.SyncAll(ctx)
 	b := &Backend{Snap: &snapstore.Adapter{Store: st}}
 	v, err := b.mainAt(ctx, "q", "")
@@ -67,7 +67,7 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 // syncMain は、テストの worker で、remote を取り込む。
 func syncFixture(t *testing.T, f *fixture) {
 	t.Helper()
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(context.Background())
 }
 
@@ -78,9 +78,9 @@ func TestNodeHistoryPaging(t *testing.T) {
 	f := setup(t)
 	f.r.git("checkout", "--quiet", "main")
 	f.r.write(dH2+"/background.md", []byte("1\n"))
-	c3 := f.r.commit("反映\n\nLogiforge-Apply-Request: apr_3")
+	c3 := f.r.commit("反映\n\nTest-Apply-Request: apr_3")
 	f.r.write(dH2+"/background.md", []byte("1\n2\n"))
-	c4 := f.r.commit("手で直した")
+	c4 := f.r.commit("反映 2\n\nTest-Apply-Request: apr_4")
 	syncFixture(t, f)
 
 	p1, err := f.b.GetNodeHistory(ctx, f.caller, "q", H2, "", 2)
@@ -98,33 +98,32 @@ func TestNodeHistoryPaging(t *testing.T) {
 }
 
 // 回答済みの人への依頼は、対象ノードを最後に変えた反映のコミットが回答より後なら、作業から外れる。
-// 最後の変更が反映によらない push なら、その前の反映のコミットまでたどる。
+// 反映によらない push では、外れない（repository が壊れ、読む側には最後に正しかった時点が出る）。
 func TestAnsweredRequestAfterNonApplyPush(t *testing.T) {
 	ctx := context.Background()
-	f := setup(t)
-	f.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
-	answered := func() bool {
+	answered := func(f *fixture) bool {
 		w, err := f.b.ListWork(ctx, f.caller, "q", WorkQuery{Kinds: []string{"human_request_answered"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return len(w.Items) == 1
 	}
+	f := setup(t)
+	f.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
 	f.r.git("checkout", "--quiet", "main")
-	// 反映によらない push だけでは、外れない（その前は、反映でない用意のコミットしかない）。
 	f.r.write(dH2+"/background.md", []byte("1\n"))
 	f.r.commit("手で直した")
 	syncFixture(t, f)
-	if !answered() {
+	if !answered(f) {
 		t.Fatal("反映によらない push で、作業から外れた")
 	}
-	// 反映のあとに、反映によらない push があっても、その前の反映までたどって外れる。
-	f.r.write(dH2+"/background.md", []byte("1\n2\n"))
-	f.r.commit("反映\n\nLogiforge-Apply-Request: apr_3")
-	f.r.write(dH2+"/background.md", []byte("1\n2\n3\n"))
-	f.r.commit("手で直した 2")
-	syncFixture(t, f)
-	if answered() {
+	g := setup(t)
+	g.forge.hrs[0].Answer.CreatedAt = time.Now().Add(-time.Hour)
+	g.r.git("checkout", "--quiet", "main")
+	g.r.write(dH2+"/background.md", []byte("1\n2\n"))
+	g.r.commit("反映\n\nTest-Apply-Request: apr_3")
+	syncFixture(t, g)
+	if answered(g) {
 		t.Fatal("回答のあとの反映があるのに、作業から外れない")
 	}
 }

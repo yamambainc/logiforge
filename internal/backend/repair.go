@@ -30,13 +30,6 @@ func normalizeKind(k string) (string, error) {
 	return "", fail(CodeValidationFailed, "kind は change、repair.revert、repair.accept のどれか")
 }
 
-// repairTrailer は、直すための apply request の反映のコミットに書く Logiforge-Repair: の値である。
-func repairTrailer(kind string) string {
-	if kind == KindRepairRevert {
-		return snapshot.RepairRevert
-	}
-	return snapshot.RepairAccept
-}
 
 // repairProblem は、直すための apply request の先頭のコミットが、反映の条件を満たすかを確かめ、満たさなければ理由を返す。
 // current は今の main（壊れていても戻さない）、br は先頭のコミットのブランチのスナップショットである。

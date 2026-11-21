@@ -9,11 +9,8 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// RuleNoApplyRequest は、反映の記録（Logiforge-Apply-Request:）のない main のコミットの警告である。
+// RuleNoApplyRequest は、反映によるものでない main のコミット（worker の反映かの判定で決める）の警告である。
 const RuleNoApplyRequest tree.Rule = "no_apply_request"
-
-// TrailerApplyRequest は、反映のコミットの、apply request の識別子の trailer である（design/files/revisions.md）。
-const TrailerApplyRequest = "Logiforge-Apply-Request"
 
 // TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
 const TrailerInit = "Logiforge-Init"

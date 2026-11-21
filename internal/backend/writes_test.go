@@ -21,7 +21,7 @@ func live(t *testing.T) *fixture {
 	f := setup(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
-	w := worker.New(worker.Config{Dir: t.TempDir(), Interval: 20 * time.Millisecond}, source{f.r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Interval: 20 * time.Millisecond, Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, st)
 	done := make(chan struct{})
 	go func() { _ = w.Run(ctx); close(done) }()
 	// 一時ディレクトリを消す前に、worker を止めて、終わるのを待つ（Cleanup は、登録と逆の順に動く）。
@@ -124,7 +124,8 @@ func TestReviewAndMerge(t *testing.T) {
 		t.Fatalf("approve: %+v pending=%q %v", ok.Value.ApplyRequest, ok.Pending, err)
 	}
 	m, err := b.GetCommitForTest(ctx, "q", *ok.Value.ApplyRequest.MergedCommit)
-	if err != nil || trailerValue(m, "Logiforge-Apply-Request") != id || !strings.HasPrefix(trailerValue(m, "Logiforge-Version"), "1 ") || trailerValue(m, "Logiforge-Session-Id") != "s3" {
+	// 反映のコミットのメッセージには、機械が読む trailer を書かない（design/files/revisions.md）。
+	if err != nil || trailerValue(m, "Logiforge-Apply-Request") != "" || trailerValue(m, "Logiforge-Version") != "" || trailerValue(m, "Logiforge-Session-Id") != "" {
 		t.Fatalf("反映のコミットの trailer: %+v %v", m, err)
 	}
 	if v, _ := b.GetNode(ctx, agent, "q", H2, At{}); v.Verdict == nil || v.Verdict.ID != "v-9999999999" {
@@ -345,7 +346,7 @@ func TestMergeFailurePaths(t *testing.T) {
 		const h5 = "h-6666666666"
 		f.r.write(dS1+"/"+h5+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: h5, Statement: "子3"}))
 		f.r.git("add", "-A")
-		f.r.git("commit", "--quiet", "-m", "反映\n\nLogiforge-Apply-Request: apr_0")
+		f.r.git("commit", "--quiet", "-m", "反映\n\nTest-Apply-Request: apr_0")
 		// 2 つの apply request が、別の仮説の下に、同じ識別子のストーリーと仮説を作る。対象ノードは違う。
 		x := create(t, f, "x", "s3", story(dH2))
 		y := create(t, f, "y", "s4", story(dS1+"/"+h5))
@@ -418,7 +419,7 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 	head := f.r.commit("版 2\n\nLogiforge-Session-Id: s4")
 	f.r.git("checkout", "--quiet", "main")
 	f.forge.ar(id).HeadRevision = head
-	w := worker.New(worker.Config{Dir: t.TempDir()}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(ctx)
 
 	res, err := approve(t, f, id)
@@ -426,14 +427,10 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 		t.Fatalf("approve: %+v %v", res.Value.ApplyRequest, err)
 	}
 	c, _ := f.b.GetCommitForTest(ctx, "q", *res.Value.ApplyRequest.MergedCommit)
-	var sessions []string
 	for _, tr := range c {
 		if tr.Key == "Logiforge-Session-Id" {
-			sessions = append(sessions, tr.Value)
+			t.Fatalf("反映のコミットに、セッションの trailer を書いた：%v", c)
 		}
-	}
-	if strings.Join(sessions, ",") != "s3,s4" {
-		t.Fatalf("sessions: %v", sessions)
 	}
 	// approve の送り直しは、成功として今の状態を返す。
 	again, err := approve(t, f, id)

@@ -1364,7 +1364,7 @@ components:
         committed_at: { type: string, format: date-time }
         apply_request_id:
           type: [string, 'null']
-          description: 反映した apply request。コミットの記録の trailer（Logiforge-Apply-Request）の値。反映によらないコミットでは null
+          description: 反映した apply request。worker の反映かの判定の結果。反映によらないコミットでは null
     Commit:
       type: string
       minLength: 1
@@ -1919,7 +1919,7 @@ components:
           items: { type: string }
         reflected:
           type: boolean
-          description: 反映の記録（Logiforge-Apply-Request:）があるか。false なら、反映の手順によらない変更である（最初のコミットを除く）
+          description: worker の反映かの判定で、反映によるコミットと決まったか。false なら、反映の手順によらない変更である（最初のコミットを除く）
     NodeHistoryPage:
       type: object
       required: [items, next_cursor]

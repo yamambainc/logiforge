@@ -75,11 +75,8 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 		}
 	}
 	rev := Rev{Number: c.Number, Revision: c.Revision}
-	ar := trailer(info.Trailers, TrailerApplyRequest)
-	if info.ApplyRequest != "" {
-		ar = info.ApplyRequest
-		c.ApplyRequest = ar
-	}
+	ar := info.ApplyRequest
+	c.ApplyRequest, c.MergedHead = info.ApplyRequest, info.MergedHead
 	for _, id := range sortedKeys(x.affected(files)) {
 		ch := NodeChange{Node: id, Files: files[id]}
 		if prev, ok := x.last[id]; ok {
@@ -107,7 +104,7 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 		unauthorized = !*info.Authorized
 	}
 	if unauthorized {
-		detail := "反映の記録のないコミット"
+		detail := "反映によるものでないコミット"
 		if info.AuthorizationDetail != "" {
 			detail = "反映によるものでない：" + info.AuthorizationDetail
 		}

@@ -75,7 +75,7 @@ func (b *Backend) VerifyMerge(ctx context.Context, repo, ref, sha string, parent
 	if !tree.SameFiles(head, files) {
 		return no("木が、1 つ前の main に apply request %s の差分を重ねたものと同じでない", ar.ID)
 	}
-	ok := ports.MergeVerdict{Authorized: true, ApplyRequest: ar.ID, Kind: ar.Kind}
+	ok := ports.MergeVerdict{Authorized: true, ApplyRequest: ar.ID, Kind: ar.Kind, MergedHead: h}
 	// 6. 直すための apply request は、直す条件を確かめる。ほかは、手順 3 の検査を、P を今の main として行う。
 	if ar.Kind != "" {
 		problem, err := b.repairProblem(ctx, repo, ar.Kind, d.branch, onto, broken)

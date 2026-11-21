@@ -517,7 +517,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			return fmt.Errorf("根のコミット %s が、Logiforge の用意のコミットでない（%s）。repository を作り直す", sha, v.Detail)
 		}
 		if v != nil {
-			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
+			info.Authorized, info.ApplyRequest, info.MergedHead, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.MergedHead, v.Detail
 		}
 		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
 		// trailer は、用意のコミットを置ける人ならだれでも書けるので、置き場で確かめてから書く：移したコミットが元の latest で、
@@ -748,11 +748,11 @@ func (w *Worker) putBroken(ctx context.Context, repo string, br *store.Broken) e
 const RuleMainRewritten = snapshot.RuleMainRewritten
 
 // overlap は、反映のコミットについて、対象ノードと、加わった検証結果が引用した部分木が、その base のあとに別の反映で変わっていないかを確かめる。
-// base は、反映した先頭のコミット（Logiforge-Version:）と、反映の直前の main の分かれた点である。
+// base は、反映した先頭のコミット（反映かの判定で見つけたもの）と、反映の直前の main の分かれた点である。
 // c は、記録を作ったばかりの反映のコミットで、その親までは、コミットの記録と main の並びの索引が置いてある。
 // files は c の木、prev は 1 つ前のコミットのスナップショットツリーである。
 func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snapshot.Commit, files tree.Files, prev *snapshot.SnapshotTree) []tree.Violation {
-	if snapshot.HasTrailer(c, snapshot.TrailerApplyRequest) == "" {
+	if snapshot.ApplyRequestOf(c) == "" {
 		return nil
 	}
 	unchecked := func(why string) []tree.Violation {
@@ -760,7 +760,7 @@ func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snaps
 	}
 	version := snapshot.VersionCommit(c)
 	if version == "" {
-		return unchecked("Logiforge-Version: がない")
+		return unchecked("反映した先頭のコミットがわからない")
 	}
 	if ok, err := g.HasCommit(ctx, version); err != nil || !ok {
 		return unchecked("反映した先頭のコミット " + version + " が手元にない")

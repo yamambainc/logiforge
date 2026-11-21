@@ -318,6 +318,8 @@ type MergeVerdict struct {
 	// ApplyRequest は、反映した apply request の識別子、Kind はその種類（直すための apply request なら repair.revert か repair.accept）。
 	ApplyRequest string
 	Kind         string
+	// MergedHead は、反映した apply request の先頭のコミットである。
+	MergedHead string
 	// Detail は、反映によるものでないときの、満たさなかった条件である。
 	Detail string
 }

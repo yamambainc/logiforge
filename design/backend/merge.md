@@ -31,7 +31,7 @@ apply request を `main` に反映するとき、バックエンドが何を確�
      - apply request は open のまま残り、merge の権限のある reviewer が `approve` し直せば反映される。
      - `merge_forbidden` は、opener が直すものではないので、修正待ちにしない（レビュー待ちのまま）。
    - 承認された apply request を、人が GitForge の画面で merge してもよい。worker は、中身で反映かを決める（[反映かの判定](verify/README.md)）。
-   - メッセージの末尾に、[記録の形式](../files/revisions.md) の trailer を書く。
+   - メッセージには、機械が読む trailer を書かない（[反映のコミット](../files/revisions.md#反映のコミット)）。
 5. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 4 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。
    - このすき間は、ふさがない。`main` に入らない変更は、Logiforge の検査の対象でないからである（[向き先](apply-request/target.md#向き先)）。

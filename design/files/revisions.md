@@ -1,6 +1,6 @@
 # main のコミットと記録
 
-要件の変更が `main` のコミットにどう並ぶかと、コミットに残す記録の形式を確かめるときに読む。
+要件の変更が `main` のコミットにどう並ぶかと、反映のコミットに何を残すかを確かめるときに読む。
 
 ## main のコミット
 
@@ -31,28 +31,12 @@
 - `main` のコミット c の木は、c を checkout したときの `tree/` である。
 - 値は、その `tree/` から計算し直す（[真偽値の伝播](../../docs/tree/propagation.md)）。
 
-## 記録の形式
+## 反映のコミット
 
-バックエンドは、反映のコミットのメッセージ（squash merge のメッセージ）の末尾に、次の trailer を書く。
-
-| trailer | 内容 |
-|---|---|
-| `Logiforge-Apply-Request:` | apply request の識別子（pull request の番号） |
-| `Logiforge-Version:` | 反映した先頭のコミットの、先頭のコミットの一覧の中の位置と、その SHA（例：`3 <commit SHA>`） |
-| `Logiforge-Session-Id:` | 先頭のコミットを書いたセッション。自己申告である（下の「セッション」） |
-| `Logiforge-Repository:` | repository の名前。ディレクトリの repository だけに書く（[ディレクトリ方式の履歴](../directory/history.md)） |
-| `Logiforge-Migrated-From:` | 元の repository の名前と、移したコミットの SHA。別リポジトリ方式から移した用意のコミットだけに書く（[別リポジトリ方式から移す](../directory/migrate.md)） |
-
-- trailer の名前は変えない。
-  - なぜ：git の履歴に残る、永続する形だから。
-- `Logiforge-Version:` は、名前に Version とあるが、反映した先頭のコミットを指す。
-  - 位置の数は、API には出さない。
-- 最初のコミットは、`Logiforge-Apply-Request:` を持たない。
-- 反映によるコミットかは、trailer でなく、中身（元の pull request と、その review、差分を重ねた木）で決める（[反映かの判定](../backend/verify/README.md)）。
-  - なぜ：`main` を守る設定は求めないので、trailer はだれでも書けるから。
-- trailer に署名は付けない。
-  - なぜ：中身で決めるので、trailer を偽っても、反映によるコミットにはならないから。
-  - 人が GitForge の画面で merge して trailer がなくても、反映によるコミットになる。
+- バックエンドは、反映のコミット（squash merge）のメッセージに、機械が読む trailer を書かない。タイトルは、人が読む文（例：「apply request #42 を反映した」）である。
+- どの `main` のコミットが、どの apply request の反映かは、worker の反映かの判定の結果が正本である。worker は、反映した apply request の識別子（pull request の番号）と、反映した先頭のコミットを、コミットの記録に持つ（[反映かの判定](../backend/verify/README.md)）。
+  - なぜ trailer でなく判定の結果か：`main` を守る設定は求めないので、trailer はだれでも書けるから。人が GitForge の画面で merge したコミットにも、同じ結果が付く。
+- 用意のコミットだけは、trailer `Logiforge-Init:` を持つ。別リポジトリ方式から移した用意のコミットは、`Logiforge-Migrated-From:`（元の repository の名前と、移したコミットの SHA）も持つ（[repository の用意のコミット](../backend/verify/init.md)、[別リポジトリ方式から移す](../directory/migrate.md)）。
 - ディレクトリの repository では、[版](../directory/history.md#版)はディレクトリを変えたコミットだけである。
   - 反映かの判定も、そのコミットにだけ行う。
 
@@ -67,6 +51,6 @@
 
 - 誰が：反映のコミットの `Logiforge-Session-Id:` と、pull request の作者
 - いつ：コミットの時刻
-- どの apply request で：`Logiforge-Apply-Request:`
+- どの apply request で：worker の反映かの判定の結果
 
 レビューは、GitForge の pull request の review である（[GitForge のポート](../backend/ports/gitforge.md)）。
