@@ -89,7 +89,7 @@ type PullReview struct {
 	// Dismissed は、dismiss されたか。
 	Dismissed bool
 	// CanPush は、書いた人が repository に書く権限を持つか。読めなければ nil（GitHub は authorCanPushToRepository、Forgejo は official）。
-	CanPush *bool
+	CanPush     *bool
 	SubmittedAt time.Time
 }
 

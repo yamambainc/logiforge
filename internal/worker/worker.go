@@ -520,9 +520,10 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			info.Authorized, info.ApplyRequest, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.Detail
 		}
 		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
-		// 移した元は、用意のコミットの署名に含まれるので、偽れない。
+		// trailer は、用意のコミットを置ける人ならだれでも書けるので、置き場で確かめてから書く：移したコミットが元の latest で、
+		// 用意のコミットの tree/ と artifacts/ が、元のそのスナップショットと同じであること。
 		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && v != nil && v.Authorized && from != "" {
-			if src, _, _ := strings.Cut(from, " "); src != "" && src != repo {
+			if src, commit, _ := strings.Cut(from, " "); src != "" && src != repo && w.migratedFromMatches(ctx, src, commit, files) {
 				// 1 つの元は、1 つの先にだけ移す。すでにほかの先があれば、上書きせずに警告する。
 				switch prev, err := store.GetMigratedTo(ctx, w.store, src); {
 				case err != nil:
@@ -903,4 +904,40 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 		}
 	}
 	return nil
+}
+
+// migratedFromMatches は、移した先の用意のコミットの主張（元の repository src の、移したコミット commit）が、置き場と合うかを返す
+// （design/directory/migrate.md の「移した元」）。移したコミットが元の latest で、files の tree/ と artifacts/ が、元のそのスナップショットと
+// 同じときだけ true。読めないときは false にして、migrated_to を書かない。
+func (w *Worker) migratedFromMatches(ctx context.Context, src, commit string, files tree.Files) bool {
+	latest, err := store.GetLatest(ctx, w.store, src)
+	if err != nil || latest == "" || latest != commit {
+		w.cfg.Log.Warn("移した元の主張が、元の repository の latest と合わない。移した先を書かない", "from", src, "commit", commit, "latest", latest, "err", err)
+		return false
+	}
+	m, err := store.GetMain(ctx, w.store, src, commit)
+	if err != nil {
+		w.cfg.Log.Warn("移した元のスナップショットを読めない。移した先を書かない", "from", src, "commit", commit, "err", err)
+		return false
+	}
+	srcFiles, err := m.SnapshotTree.Files()
+	if err != nil {
+		return false
+	}
+	if !tree.SameFiles(migratedPart(files), migratedPart(srcFiles)) {
+		w.cfg.Log.Warn("移した先の用意のコミットが、元のスナップショットと同じでない。移した先を書かない", "from", src, "commit", commit)
+		return false
+	}
+	return true
+}
+
+// migratedPart は、移すもの（tree/ と artifacts/ の下）だけを返す（design/directory/migrate.md の「移すもの」）。
+func migratedPart(fs tree.Files) tree.Files {
+	out := tree.Files{}
+	for p, f := range fs {
+		if strings.HasPrefix(p, "tree/") || strings.HasPrefix(p, "artifacts/") {
+			out[p] = f
+		}
+	}
+	return out
 }
