@@ -125,13 +125,13 @@ func TestTargetNotMain(t *testing.T) {
 		t.Fatalf("H2 が作業に出ない：%+v", w.Items)
 	}
 
-	// approve しても反映しない。警告を付ける。
-	res, err := approve(t, f, "apr_2")
-	if err != nil {
-		t.Fatal(err)
+	// approve は検査せずに出し、警告を付ける。Logiforge では merge しない（GitForge で merge する）。
+	rv, err := b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: "approve", Commit: f.forge.ar("apr_2").HeadRevision, PromptRevision: "p"})
+	if err != nil || !slices.ContainsFunc(rv.Value.ApplyRequest.Warnings, func(s string) bool { return strings.Contains(s, "検査していない") }) {
+		t.Fatalf("approve：%+v %v", rv.Value.ApplyRequest, err)
 	}
-	if res.Value.ApplyRequest.State != "open" || !slices.ContainsFunc(res.Value.ApplyRequest.Warnings, func(s string) bool { return strings.Contains(s, "反映しない") }) {
-		t.Fatalf("approve：%+v", res.Value.ApplyRequest)
+	if _, err := b.MergeApplyRequest(ctx, reviewerC, "q", "apr_2"); code(err) != CodeValidationFailed {
+		t.Fatalf("main でない向き先の merge：%v", err)
 	}
 	// 向き先を main に戻すと、レビュー待ちになる（approve し直すと反映する）。
 	f.forge.ar("apr_2").Target = "main"
@@ -139,7 +139,7 @@ func TestTargetNotMain(t *testing.T) {
 	if ar.Awaiting == nil || *ar.Awaiting != "review" {
 		t.Fatalf("main に戻したあと：%+v", ar.Awaiting)
 	}
-	res, err = approve(t, f, "apr_2")
+	res, err := approve(t, f, "apr_2")
 	if err != nil || res.Value.ApplyRequest.State != "merged" {
 		t.Fatalf("approve し直し：%+v %v", res.Value.ApplyRequest, err)
 	}
