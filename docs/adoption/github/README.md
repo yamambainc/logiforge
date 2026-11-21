@@ -9,7 +9,7 @@ apply request と人への依頼は、GitHub の pull request と issue にな�
 - Logiforge は、GitHub に書くための自分のアカウントを持たない。GitHub に書くのは、いつも、要求を送った人やエージェントのトークンである（[GitHub App とトークン](../../../design/adapters/github-app.md)）。
   - Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。worker の読み取りと、WebUI のサインインに使う（[GitHub App](apps.md)）。
   - personal access token は使わない。
-  - 反映（merge）は、`approve` をした reviewer のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい。
+  - 反映（merge）は、Logiforge の merge の操作を呼んだ主体のトークンで行う。承認された apply request を、人が GitHub の画面で merge してもよい（[merge](../../apply-request/review.md#merge)）。
 - repository は、GitHub でリポジトリを作る人（owner の admin か、repository を作れる人）が GitHub に作り、利用者が設定の画面で登録する。登録していない名前では作れない（`repository_not_registered`）。
 - 登録する repository の owner（organization か個人）は、いくつでもよい。
 - repository は、public でも private でもよい。
@@ -86,7 +86,7 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 - 利用者の名簿はない。WebUI でサインインし、登録した repository のどれかに Write 以上がある人が、利用者（`user`）になる（[利用者](../../../design/settings/users.md)）。
   - サインインは、Logiforge の GitHub App で行う。
   - 利用者は、設定も変えられる。そのため、登録したリポジトリの Write は、信頼できる人にだけ配る。
-  - 利用者は、WebUI の apply request の画面で、approve、変更の求め、コメントができる。書くのは、本人のトークンである。
+  - 利用者は、WebUI の apply request の画面で、approve、変更の求め、コメント、merge ができる。書くのは、本人のトークンである。
 - CLI は `client` として動く。トークンは、[CLI の認証](../../../design/cli/auth.md) に従う。
   - 人もエージェントも、`gh auth login` でサインインして得たトークン（OAuth）を使う。スコープ `repo` が要る（`gh auth login` の既定に入っている）。personal access token は使わない。
   - エージェントの機械用アカウントは、`gh auth login` が出すコードを、そのアカウントでサインインしたブラウザで入れる。

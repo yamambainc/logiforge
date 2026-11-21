@@ -8,7 +8,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 - プロジェクトの人は、コードの PR を、プロジェクトの決まりで merge する。
 - 登録したディレクトリは、apply request の反映で変える。
 - Logiforge は、ディレクトリを変えた `main` のコミットを、どう入ったかによらず受け入れる（[main はいつも正しい](../backend/invalid-main.md#main-はいつも正しい)、[履歴](history.md) の「valid」）。
-  - Logiforge は、GitForge に書くための自分のアカウント（書き込み主体）を持たない。反映は、`approve` をした reviewer のトークンで merge する（[反映の手順](../backend/merge.md)）。
+  - Logiforge は、GitForge に書くための自分のアカウント（書き込み主体）を持たない。Logiforge からの merge は、merge の操作を呼んだ主体のトークンで行う（[merge](../backend/merge.md#merge)）。
 - 守る設定は、git リポジトリ全体の repository と同じく、勧めるが求めない（[main を守る](../adapters/pull-requests.md#main-を守る)）。
   - 守る設定がなければ、apply request を通らずにディレクトリを変えられる。そのコミットも受け入れる。木が不変条件を破れば、valid でないコミットとして示す（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
   - 守る設定は、論理レビューを通らない変更を、`main` に入る前に止めるためのものである。
@@ -31,7 +31,7 @@ git リポジトリ全体の repository の守り方は、[main を守る](../ad
 Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのいない team にし、リポジトリの Write の権限を与える。
 
 - ディレクトリを変える PR は、その team の承認が要るが、承認できる人がいないので、reviewer の team のほかは、だれも merge できない。
-  - reviewer の team の人は、bypass で merge できる。バックエンドは、反映の手順 4 で、`approve` をした reviewer のトークンで merge する。
+  - reviewer の team の人は、bypass で merge できる。バックエンドは、merge の操作を呼んだ主体のトークンで merge する（[merge](../backend/merge.md#merge)）。
   - reviewer の team の人が、承認されていない PR を GitHub の画面で merge しても、守る設定では止まらない。そのコミットも、Logiforge は受け入れる。
 - ディレクトリを変えない PR（コードの PR）には、この規則は効かない。
 - なぜ必須の check にしないか：PR の側の workflow は、PR が書き換えたり、同じ名前の job を足したりして通せるから。ルールセットは、リポジトリのファイルの外にあるので、PR からは変えられない。

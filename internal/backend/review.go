@@ -127,7 +127,7 @@ func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
 	return last
 }
 
-// checkOnCurrentMain は、今の main で、反映の手順の手順 2 と手順 3 を行う（design/backend/merge.md の「手順」）。
+// checkOnCurrentMain は、今の main での検査を行う（design/backend/merge.md の「今の main での検査」）。
 // approve の前と、merge の前に使う。通らなければ、理由を返す（GitForge には書かない）。
 func (b *Backend) checkOnCurrentMain(ctx context.Context, repo, ref string, d *arDetail) (*ports.MergeFailure, error) {
 	failure := func(reason, detail string) (*ports.MergeFailure, error) {

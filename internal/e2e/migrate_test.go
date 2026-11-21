@@ -46,7 +46,7 @@ func TestE2EMigrate(t *testing.T) {
 	merge := func(branch string) {
 		t.Helper()
 		ar := agent.create(branch)
-		if got, code, out := reviewer.review(ar.ID, "approve", 1); code != 0 || got.State != "merged" {
+		if got, code, out := reviewer.approveMerge(ar.ID, 1); code != 0 || got.State != "merged" {
 			t.Fatalf("%s の approve：%d %s", branch, code, out)
 		}
 	}
@@ -139,7 +139,7 @@ func TestE2EMigrate(t *testing.T) {
 	mover.must(nil, "node", "edit", hA, "--append-background", mover.file("abg.md", "移したあとの A の背景\n"))
 	mover.commitPush("a-bg", "A の背景")
 	mar := mover.create("a-bg")
-	if got, code, out := moverRev.review(mar.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := moverRev.approveMerge(mar.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("移した先の approve：%d %s", code, out)
 	}
 	w.eventually("移した先で A が変わると、引用元が変わったことになる", 30*time.Second, changed)

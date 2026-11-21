@@ -35,7 +35,7 @@ func TestWebUIWorkCounts(t *testing.T) {
 	merge := func(branch string) {
 		t.Helper()
 		ar := agent.create(branch)
-		if got, code, out := reviewer.review(ar.ID, "approve", 1); code != 0 || got.State != "merged" {
+		if got, code, out := reviewer.approveMerge(ar.ID, 1); code != 0 || got.State != "merged" {
 			t.Fatalf("%s の approve：%d %s", branch, code, out)
 		}
 	}

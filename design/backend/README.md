@@ -38,7 +38,7 @@
 - `user` が使える書き込みは、利用者の次の操作だけである。
   - repository の作成（根の主文を含む）
   - 人への依頼への回答
-  - apply request のレビュー（approve なら反映まで。[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）
+  - apply request のレビューと merge（[WebUI からのレビュー](../settings/users.md#webui-からのレビュー)）
   - 設定の変更（設定の API）
 - それ以外の書き込みは、`client` だけが使える。
 - 主体と主体の種類は、[認証](ports/authentication.md) で確かめる。

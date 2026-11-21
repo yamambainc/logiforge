@@ -266,7 +266,7 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f por
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf("Logiforge：先頭のコミット %s を反映できなかった（%s）。", f.Revision, f.Reason)
+	text := fmt.Sprintf("Logiforge：先頭のコミット %s は、今の main に反映できない（%s）。", f.Revision, f.Reason)
 	if strings.TrimSpace(f.Detail) != "" {
 		text += "\n\n" + f.Detail
 	}
