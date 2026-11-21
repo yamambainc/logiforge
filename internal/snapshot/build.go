@@ -74,8 +74,15 @@ func BuildBranch(baseSHA string, deltas []Delta, head tree.Files, info CommitInf
 // 部分木の引用で、引用元の変化を判定するために使う（design/backend/snapshot/main.md の「ノードを変えたコミット」）。
 // ノードがこのスナップショットツリーになければ、変わったものとみなす。
 func (t *SnapshotTree) SubtreeChangedAfter(nodeID string, number int) bool {
+	last, ok := t.SubtreeLastChanged(nodeID)
+	return !ok || last.Number > number
+}
+
+// SubtreeLastChanged は、nodeID のノードとその子孫のうち、いちばん新しく変わったものの last_changed を返す。
+// ノードがこのスナップショットツリーになければ、false を返す。
+func (t *SnapshotTree) SubtreeLastChanged(nodeID string) (Rev, bool) {
 	if _, ok := t.Nodes[nodeID]; !ok {
-		return true
+		return Rev{}, false
 	}
 	children := map[string][]string{}
 	for id, n := range t.Nodes {
@@ -83,16 +90,17 @@ func (t *SnapshotTree) SubtreeChangedAfter(nodeID string, number int) bool {
 			children[n.Parent] = append(children[n.Parent], id)
 		}
 	}
+	var last Rev
 	stack := []string{nodeID}
 	for len(stack) > 0 {
 		id := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		if t.Nodes[id].LastChanged.Number > number {
-			return true
+		if r := t.Nodes[id].LastChanged; r.Number > last.Number {
+			last = r
 		}
 		stack = append(stack, children[id]...)
 	}
-	return false
+	return last, true
 }
 
 // Files は、main のスナップショットツリーを、tree.Files に戻す。artifact は中身を持たず、SHA256 を持つ。

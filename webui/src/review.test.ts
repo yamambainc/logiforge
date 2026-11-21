@@ -56,6 +56,12 @@ describe('レビューを送る', () => {
     const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
     expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けましたが、反映できませんでした：GitForge で merge する権限がなく、GitForge が merge を断った（protected）' });
   });
+  it('stale_target は、ブランチを今の main に合わせることを見出しにする', async () => {
+    stubFetch(() => ok({ review: {}, apply_request: ar(), merge_failure: { commit: 'c1', reason: 'stale_target', detail: 'd' } }, 201));
+    const { submitReview } = await load();
+    const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
+    expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けましたが、反映できませんでした：ブランチを今の main に合わせる必要がある（d）' });
+  });
   it('approve で、まだ反映の条件を満たさなければ、そう示す', async () => {
     const { outcome } = await load();
     expect(outcome('approve', ar())).toBe('approve を付けました。反映の条件をまだ満たしていないので、反映していません。');
