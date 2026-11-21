@@ -153,11 +153,11 @@ func TestReviewSnapshotPendingWritesNothing(t *testing.T) {
 	// worker が取り込んでいない、新しい先頭のコミットを push する。
 	f.r.git("checkout", "--quiet", "b")
 	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("足した\n"))
-	head := f.r.commit("版 2\n\nLogiforge-Session-Id: s2")
+	head := f.r.commit("版 2")
 	f.forge.ar("apr_2").HeadRevision = head
 	before := len(f.forge.reviews["apr_2"].Items)
 	for _, kind := range []string{"comment", "approve"} {
-		_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: kind, Commit: head, Session: "s9", PromptRevision: "p"})
+		_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: kind, Commit: head, PromptRevision: "p"})
 		if code(err) != CodeSnapshotPending {
 			t.Fatalf("%s：%v", kind, err)
 		}
@@ -177,10 +177,10 @@ func TestReadAfterStackedApplyRequest(t *testing.T) {
 	// 下：develop（main から）。上：b2（develop から）。どちらも H2 の背景情報を書く。
 	f.r.git("checkout", "--quiet", "-b", "develop", "main")
 	f.r.write(bg, []byte("下の背景\n"))
-	dev := f.r.commit("下\n\nLogiforge-Session-Id: s3")
+	dev := f.r.commit("下")
 	f.r.git("checkout", "--quiet", "-b", "b2")
 	f.r.write(bg, []byte("上の背景\n"))
-	top := f.r.commit("上\n\nLogiforge-Session-Id: s4")
+	top := f.r.commit("上")
 	f.r.git("checkout", "--quiet", "main")
 	syncFixture(t, f)
 	f.forge.ars = append(f.forge.ars, ports.ApplyRequest{ID: "apr_3", Number: 3, Branch: "b2", Target: "develop", State: ports.StateOpen, HeadRevision: top})
@@ -210,7 +210,7 @@ func TestReadAfterStackedApplyRequest(t *testing.T) {
 	// 上の apply request を作ったあとに、向き先が進んでも、上の apply request が変えていないファイルの変更は残る。
 	f.r.git("checkout", "--quiet", "develop")
 	f.r.write(dH1+"/background.md", []byte("develop が進んだ\n"))
-	dev2 := f.r.commit("下の続き\n\nLogiforge-Session-Id: s5")
+	dev2 := f.r.commit("下の続き")
 	f.r.git("checkout", "--quiet", "main")
 	syncFixture(t, f)
 	nodes, err = b.ListNodes(ctx, c, "q", at, "", -1)

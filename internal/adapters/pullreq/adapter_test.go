@@ -287,11 +287,11 @@ func TestApplyRequestLifecycle(t *testing.T) {
 		t.Fatalf("反映の失敗のコメント：%+v", cs)
 	}
 
-	if err := a.Close(ctx, "o/r", "1", "取り\n下げる", "s1"); err != nil {
+	if err := a.Close(ctx, "o/r", "1", "取り\n下げる"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = a.GetApplyRequest(ctx, "o/r", "1")
-	if got.State != ports.StateClosed || got.CloseReason != "取り 下げる" || got.CloseSession != "s1" || len(f.pulls[1].Labels) != 0 {
+	if cs := f.comments[1]; got.State != ports.StateClosed || cs[len(cs)-1].Body != "閉じた理由：取り 下げる" || len(f.pulls[1].Labels) != 0 {
 		t.Fatalf("close：%+v %v", got, f.pulls[1].Labels)
 	}
 	if _, err := a.GetApplyRequest(ctx, "o/r", "apr_1"); !errors.Is(err, ports.ErrNotFound) {
@@ -317,23 +317,22 @@ func TestReviewsCounted(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.actor = "bob"
-	r, err := a.AddReview(ctx, "o/r", "1", ports.Review{Kind: ports.ReviewApprove, Body: "良い", Revision: "h-b", Session: "s9", PromptRevision: "p1"})
-	if err != nil || r.Session != "s9" || r.PromptRevision != "p1" || r.Body != "良い" || r.Reviewer != "bob" || r.ID == "" {
+	r, err := a.AddReview(ctx, "o/r", "1", ports.Review{Kind: ports.ReviewApprove, Body: "良い", Revision: "h-b", PromptRevision: "p1"})
+	if err != nil || r.Body != "良い\n\nプロンプトの版：p1" || r.Reviewer != "bob" || r.ID == "" {
 		t.Fatalf("review：%+v %v", r, err)
 	}
 	f.reviews[1] = append(f.reviews[1],
-		PullReview{ID: 10, Kind: ports.ReviewApprove, Body: "行なし", Author: "bob", CommitID: "h-b"},
-		PullReview{ID: 11, Kind: ports.ReviewRequestChanges, Body: "x\n\nSession-Id: s8", Author: "mallory", CommitID: "h-b"},
-		PullReview{ID: 12, Kind: ports.ReviewRequestChanges, Body: "y\n\nSession-Id: s8", Author: "bob", CommitID: "h-b", Dismissed: true},
-		PullReview{ID: 13, Kind: ports.ReviewApprove, Body: "z\n\nSession-Id: s7", Author: "mallory", CommitID: "h-b"},
-		PullReview{ID: 14, Kind: ports.ReviewApprove, Body: "w\n\nSession-Id: s9", Author: "bob", CommitID: "h-b"},
-		PullReview{ID: 15, Kind: ports.ReviewApprove, Body: "v\n\nSession-Id: s6", Author: "unknown", CommitID: "h-b"},
+		PullReview{ID: 11, Kind: ports.ReviewRequestChanges, Body: "x", Author: "mallory", CommitID: "h-b"},
+		PullReview{ID: 12, Kind: ports.ReviewRequestChanges, Body: "y", Author: "bob", CommitID: "h-b", Dismissed: true},
+		PullReview{ID: 13, Kind: ports.ReviewApprove, Body: "z", Author: "mallory", CommitID: "h-b"},
+		PullReview{ID: 14, Kind: ports.ReviewApprove, Body: "w", Author: "bob", CommitID: "h-b"},
+		PullReview{ID: 15, Kind: ports.ReviewApprove, Body: "v", Author: "unknown", CommitID: "h-b"},
 	)
 	// 数える：bob の approve 2 つ。
 	// 数えない：セッションの行のない approve、dismiss された review、書く権限のない mallory の request changes と approve
 	// （public の repository で、書く権限のない人が反映を止めたり、させたりできないように）、書く権限を確かめられない人の approve。
 	rs, err := a.ListReviews(ctx, "o/r", "1")
-	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 4 {
+	if err != nil || len(rs.Items) != 2 || rs.Items[0].ID != "1" || rs.Items[1].ID != "14" || len(rs.Warnings) != 3 {
 		t.Fatalf("数える review：%+v %v", rs, err)
 	}
 	if !strings.Contains(strings.Join(rs.Warnings, "\n"), "確かめられない") {
@@ -387,7 +386,7 @@ func TestListCallCount(t *testing.T) {
 			if _, err := a.CreateApplyRequest(ctx, "o/r", ports.NewApplyRequest{Branch: "b" + strconv.Itoa(i), Opener: "alice"}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := a.CreateHumanRequest(ctx, "o/r", ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-1", Body: "b", Requester: "alice"}); err != nil {
+			if _, err := a.CreateHumanRequest(ctx, "o/r", ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-1", Body: "b" + strconv.Itoa(i), Requester: "alice"}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -415,15 +414,19 @@ func TestHumanRequestAndAnswer(t *testing.T) {
 	ctx := context.Background()
 	f := newFake()
 	a := adapter(f)
-	hr, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "決めて", Requester: "alice", Session: "s1"})
-	if err != nil || hr.ID != "1" || hr.Kind != ports.HumanRequestDecision || hr.TargetNode != "h-1" || hr.Body != "決めて" || hr.Session != "s1" || hr.Requester != "alice" {
+	hr, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "決めて", Requester: "alice"})
+	if err != nil || hr.ID != "1" || hr.Kind != ports.HumanRequestDecision || hr.TargetNode != "h-1" || hr.Body != "決めて" || hr.Requester != "alice" || f.issues[1].Title != "h-1 について：決めて" {
 		t.Fatalf("起票：%+v %v", hr, err)
 	}
 	if !slices.Contains(f.issues[1].Labels, "logiforge/logiforge/x") {
 		t.Fatalf("ディレクトリのラベル：%v", f.issues[1].Labels)
 	}
-	if again, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "違う", Requester: "alice"}); err != nil || again.ID != "1" {
+	// 送り直し：同じ主体が、同じタイトルと本文で、少し前に作った open の issue があれば、それを返す。本文が違えば、別の依頼である。
+	if again, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "決めて", Requester: "alice"}); err != nil || again.ID != "1" {
 		t.Fatalf("送り直し：%+v %v", again, err)
+	}
+	if other, err := a.CreateHumanRequest(ctx, "o/r:logiforge/x", ports.NewHumanRequest{Kind: ports.HumanRequestDecision, TargetNode: "h-1", Body: "違う", Requester: "alice"}); err != nil || other.ID == "1" {
+		t.Fatalf("違う本文の依頼：%+v %v", other, err)
 	}
 	// ほかのディレクトリの repository からは見えない。
 	if hrs, _ := a.ListHumanRequests(ctx, "o/r:logiforge/y"); len(hrs) != 0 {
@@ -450,7 +453,7 @@ func TestHumanRequestAndAnswer(t *testing.T) {
 		t.Fatalf("添付：%q %v", data, err)
 	}
 	list, _ := a.ListHumanRequests(ctx, "o/r:logiforge/x")
-	if len(list) != 1 || list[0].Answer == nil || list[0].Answer.CreatedAt.IsZero() {
+	if len(list) != 2 || list[0].Answer == nil || list[0].Answer.CreatedAt.IsZero() || list[1].Answer != nil {
 		t.Fatalf("一覧の回答済み：%+v", list)
 	}
 	// 一覧は、issue のコメントと添付を読まない。依頼の本文も書き換えない。
@@ -492,17 +495,11 @@ func TestAnswerAttachmentsUnsupported(t *testing.T) {
 	}
 }
 
-func TestLines(t *testing.T) {
-	body := withLines("本文\n", line{lineSession, "s1"}, line{linePrompt, ""}, line{lineTargetNode, "h-1"})
-	if body != "本文\n\nSession-Id: s1\nTarget-Node: h-1" {
-		t.Fatalf("書く：%q", body)
+func TestNodeTitle(t *testing.T) {
+	if got := nodeOfTitle(nodeTitle("h-abc12", "要約")); got != "h-abc12" {
+		t.Fatalf("タイトルの対象ノード：%q", got)
 	}
-	rest, ls := splitLines(body + "\n")
-	if rest != "本文" || lineValue(ls, lineSession) != "s1" || lineValue(ls, lineTargetNode) != "h-1" {
-		t.Fatalf("読む：%q %+v", rest, ls)
-	}
-	// 知らない名前の行は、本文として残す。
-	if rest, ls := splitLines("a\n\nFoo: bar"); rest != "a\n\nFoo: bar" || len(ls) != 0 {
-		t.Fatalf("知らない行：%q %+v", rest, ls)
+	if got := nodeOfTitle("ただのタイトル"); got != "" {
+		t.Fatalf("対象ノードのないタイトル：%q", got)
 	}
 }

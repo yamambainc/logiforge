@@ -20,9 +20,7 @@ var statuses = map[backend.Code]int{
 	backend.CodeValidationFailed:        http.StatusUnprocessableEntity,
 	backend.CodeUnauthenticated:         http.StatusUnauthorized,
 	backend.CodeForbidden:               http.StatusForbidden,
-	backend.CodeSessionRequired:         http.StatusBadRequest,
 	backend.CodeNotFound:                http.StatusNotFound,
-	backend.CodeSameSession:             http.StatusForbidden,
 	backend.CodeNotOpen:                 http.StatusConflict,
 	backend.CodeCommitConflict:          http.StatusConflict,
 	backend.CodeOverlayConflict:         http.StatusConflict,
@@ -347,8 +345,6 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 
-func session(r *http.Request) string { return r.Header.Get("Logiforge-Session-Id") }
-
 func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
 		Name       string `json:"name"`
@@ -387,7 +383,7 @@ func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Kind: in.Kind, Branch: in.Branch, Commit: in.Commit,
-		Description: in.Description, Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+		Description: in.Description})
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +400,7 @@ func (s *server) updateApplyRequest(ctx context.Context, c backend.Caller, r *ht
 	if in.Description == nil {
 		return nil, &backend.Error{Code: backend.CodeValidationFailed, Detail: "description がない"}
 	}
-	return s.b.UpdateApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), *in.Description)
+	return s.b.UpdateApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), *in.Description)
 }
 
 func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -418,7 +414,7 @@ func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	out, err := s.b.ReviewApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), backend.NewReview{Kind: in.Kind,
-		Commit: in.Commit, Body: in.Body, PromptRevision: in.PromptRevision, Session: session(r)})
+		Commit: in.Commit, Body: in.Body, PromptRevision: in.PromptRevision})
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +428,7 @@ func (s *server) closeApplyRequest(ctx context.Context, c backend.Caller, r *htt
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), session(r), in.Reason)
+	return s.b.CloseApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"), in.Reason)
 }
 
 func (s *server) markApplyRequestFixed(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
@@ -448,8 +444,7 @@ func (s *server) createHumanRequest(ctx context.Context, c backend.Caller, r *ht
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	hr, err := s.b.CreateHumanRequest(ctx, c, r.PathValue("repository"), backend.NewHumanRequest{NodeID: in.NodeID, Kind: in.Kind, Body: in.Body,
-		Session: session(r), IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	hr, err := s.b.CreateHumanRequest(ctx, c, r.PathValue("repository"), backend.NewHumanRequest{NodeID: in.NodeID, Kind: in.Kind, Body: in.Body})
 	if err != nil {
 		return nil, err
 	}

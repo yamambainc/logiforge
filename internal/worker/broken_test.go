@@ -98,7 +98,7 @@ func TestBrokenAndRevert(t *testing.T) {
 	r.git("checkout", "--quiet", good, "--", ".")
 	r.git("rm", "--quiet", "--cached", "-r", "--ignore-unmatch", h2+"/background.md")
 	r.git("clean", "-fdq")
-	r.commit("戻す\n\nLogiforge-Session-Id: s")
+	r.commit("戻す")
 	r.git("checkout", "--quiet", "main")
 	r.git("merge", "--quiet", "--squash", "fix")
 	fixed := r.commit("反映\n\nLogiforge-Apply-Request: apr_fix\nLogiforge-Version: 1 " + r.git("rev-parse", "fix") + "\nLogiforge-Repair: revert")

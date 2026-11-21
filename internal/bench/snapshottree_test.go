@@ -118,11 +118,11 @@ func makeRepo(t *testing.T, targetNodes, commits int) (*gitx.Repo, string, []str
 			g.bg[h] += fmt.Sprintf("足した文章 %d\n", i)
 			files = map[string]string{h + "/background.md": g.bg[h]}
 		}
-		g.commit("refs/heads/main", fmt.Sprintf("反映 %d\n\nLogiforge-Apply-Request: apr_gen%d\nLogiforge-Session-Id: s-gen", i, i), files, "")
+		g.commit("refs/heads/main", fmt.Sprintf("反映 %d", i), files, "")
 	}
 	tip := fmt.Sprintf(":%d", g.mark)
 	// AR のブランチ：先頭の main から、ストーリー 1 つと仮説 3 つを足す（4 ノード）。
-	g.commit("refs/heads/ar-edit", "提案\n\nLogiforge-Session-Id: s-gen", g.grow(commits), tip)
+	g.commit("refs/heads/ar-edit", "提案", g.grow(commits), tip)
 	cmd := exec.Command("git", "--git-dir", dir, "fast-import", "--quiet")
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 	cmd.Stdin = &g.buf

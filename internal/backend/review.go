@@ -21,7 +21,6 @@ type NewReview struct {
 	Commit         string
 	Body           string
 	PromptRevision string
-	Session        string
 }
 
 // ReviewResult は、レビューの応答である。
@@ -36,15 +35,12 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	var out Written[ReviewResult]
 	// client と、その repository に Write がある user が使える（design/settings/users.md の「WebUI からのレビュー」）。
 	if c.Principal.Kind == ports.PrincipalUser {
-		if err := requireSession(n.Session); err != nil {
-			return out, err
-		}
 		if err := b.requireUserOn(ctx, c, repo); err != nil {
 			return out, err
 		}
 		// user（WebUI）のレビューには、プロンプトのリビジョンがない。記録には - を書く。
 		n.PromptRevision = UserPromptRevision
-	} else if err := requireClient(c, n.Session); err != nil {
+	} else if err := requireClient(c); err != nil {
 		return out, err
 	}
 	kind := ports.ReviewKind(n.Kind)
@@ -68,7 +64,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	d, err := b.openApplyRequest(ctx, repo, ref, id)
 	if e := AsError(err); e != nil && e.Code == CodeNotOpen && kind == ports.ReviewApprove {
 		// approve の送り直し：反映済みで、最後の決めるレビューが、同じセッションの approve なら、成功として今の状態を返す。
-		if res, ok, err := b.approveResent(ctx, c, repo, ref, id, n.Session); err != nil || ok {
+		if res, ok, err := b.approveResent(ctx, c, repo, ref, id); err != nil || ok {
 			out.Value = res
 			return out, err
 		}
@@ -88,17 +84,8 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if d.branch == nil {
 		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", d.current.Commit)
 	}
-	// 差分を書いたどのセッションとも、別のセッションでレビューする。
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && *v.AuthorSessionID == n.Session {
-			return out, fail(CodeSameSession, "コミット %s を書いたセッションと同じセッションで、レビューした", v.Commit)
-		}
-	}
-	if kind == ports.ReviewApprove && d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
-		return out, fail(CodeValidationFailed, "先頭のコミットに Logiforge-Session-Id: がないので、approve できない（design/files/revisions.md の「セッション」）")
-	}
 	r, err := b.Forge.AddReview(ctx, ref, id, ports.Review{Kind: kind, Body: n.Body, Revision: rev,
-		Reviewer: c.Principal.Login, Session: n.Session, PromptRevision: n.PromptRevision})
+		Reviewer: c.Principal.Login, PromptRevision: n.PromptRevision})
 	if err != nil {
 		return out, err
 	}
@@ -130,7 +117,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 }
 
 // approveResent は、反映済みの apply request への approve が、送り直しかを確かめる。送り直しなら、今の状態を返す。
-func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, session string) (ReviewResult, bool, error) {
+func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id string) (ReviewResult, bool, error) {
 	ar, err := b.Forge.GetApplyRequest(ctx, ref, id)
 	if err != nil || ar.State != ports.StateMerged {
 		return ReviewResult{}, false, nil
@@ -140,7 +127,7 @@ func (b *Backend) approveResent(ctx context.Context, c Caller, repo, ref, id, se
 		return ReviewResult{}, false, err
 	}
 	last := lastDecisive(reviews.Items, "")
-	if last == nil || last.Kind != ports.ReviewApprove || last.Session != session {
+	if last == nil || last.Kind != ports.ReviewApprove || !strings.EqualFold(last.Reviewer, c.Principal.Login) {
 		return ReviewResult{}, false, nil
 	}
 	model, err := b.GetApplyRequest(ctx, c, repo, id)
@@ -239,19 +226,10 @@ func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.Mer
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
 //   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
 //     （design/backend/verify/README.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
-//   - 先頭のコミットに、書いたセッションの trailer がある。reviewer のセッションが、どの先頭のコミットを書いたセッションとも違う。
 func approvalProblem(d *arDetail) string {
 	last := lastDecisive(d.reviews.Items, "")
 	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
 		return "最後の決めるレビューが、先頭のコミット " + d.current.Commit + " への approve でない"
-	}
-	if len(d.model.HeadCommits) == 0 || d.model.HeadCommits[len(d.model.HeadCommits)-1].AuthorSessionID == nil {
-		return "先頭のコミットに、書いたセッションの trailer がない"
-	}
-	for _, v := range d.model.HeadCommits {
-		if v.AuthorSessionID != nil && *v.AuthorSessionID == last.Session {
-			return "reviewer のセッション " + last.Session + " が、先頭のコミットを書いたセッションと同じ"
-		}
 	}
 	return ""
 }

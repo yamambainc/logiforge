@@ -79,9 +79,6 @@ type ApplyRequest struct {
 	ReviewWaitingAt time.Time
 	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
 	Kind string
-	// CloseReason と CloseSession は、close のコメントの値である。1 件を読むときだけ入る。
-	CloseReason  string
-	CloseSession string
 	// MergeFailures は、head のコミットの、反映の失敗の commit status である（古い順）。1 件を読むときだけ入る。
 	MergeFailures []MergeFailure
 	CreatedAt     time.Time
@@ -133,12 +130,13 @@ const (
 
 // Review は、レビュー（pull request の review）である。ID は、GitForge の review の識別子である。
 type Review struct {
-	ID             string
-	Kind           ReviewKind
-	Body           string
-	Revision       string
-	Reviewer       string
-	Session        string
+	ID       string
+	Kind     ReviewKind
+	Body     string
+	Revision string
+	Reviewer string
+	// PromptRevision は、review を出すときに、本文の最後に人が読む文で書くプロンプトの版である。読むときは入らない
+	// （design/adapters/texts.md の「review の本文」）。
 	PromptRevision string
 	CreatedAt      time.Time
 }
@@ -166,7 +164,6 @@ type HumanRequest struct {
 	TargetNode string
 	Body       string
 	Requester  string
-	Session    string
 	CreatedAt  time.Time
 	// Answer は、回答。まだなければ nil。一覧では、本文と添付は空で、時刻（issue を閉じた時刻）だけが入る。
 	Answer   *Answer
@@ -175,13 +172,10 @@ type HumanRequest struct {
 
 // NewHumanRequest は、人への依頼を起票するときに渡すものである。識別子は、GitForge が issue の番号で決める。
 type NewHumanRequest struct {
-	// IdempotencyKey は、送り直しを見分けるキー（design/api/writes.md の「同じ要求の繰り返し」）。なければ空。
-	IdempotencyKey string
-	Kind           HumanRequestKind
-	TargetNode     string
-	Body           string
-	Requester      string
-	Session        string
+	Kind       HumanRequestKind
+	TargetNode string
+	Body       string
+	Requester  string
 }
 
 // Answer は、人への依頼の回答である。
@@ -229,7 +223,8 @@ type GitForge interface {
 	// Merge は、head の SHA を指定して squash merge する。ErrHeadMoved か ErrConflict を返しうる。
 	// 戻り値は、反映のコミットの SHA である。
 	Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error)
-	Close(ctx context.Context, repo, id, reason, session string) error
+	// Close は、理由を書いた pull request のコメントのあとに、pull request を close する。
+	Close(ctx context.Context, repo, id, reason string) error
 	// RecordMergeFailure は、head のコミットに反映の失敗の commit status を立て、理由を pull request のコメントに書く。
 	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure) error
 	// SetWaiting は、レビュー待ちか修正待ちかのラベルを付け替える。WaitingNone なら、両方を外す。

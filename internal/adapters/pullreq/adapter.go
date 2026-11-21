@@ -67,69 +67,36 @@ var repairKinds = []string{"repair.revert", "repair.accept"}
 // mergeStatusContext は、反映の失敗の commit status の context である。
 const mergeStatusContext = "logiforge/merge"
 
-// 本文の行の名前（design/adapters/texts.md）。
+// 本文に書く、人が読む文の頭（design/adapters/texts.md）。バックエンドは、これを読まない。
 const (
-	lineSession        = "Session-Id"
-	linePrompt         = "Prompt-Revision"
-	lineCloseReason    = "Close-Reason"
-	lineTargetNode     = "Target-Node"
-	lineIdempotencyKey = "Idempotency-Key"
+	promptPrefix = "プロンプトの版："
+	closePrefix  = "閉じた理由："
 )
 
-var knownLines = []string{lineSession, linePrompt, lineCloseReason, lineTargetNode, lineIdempotencyKey}
-
-type line struct{ key, value string }
-
-// withLines は、本文の最後に、`<名前>: <値>` の行を足す。値が空の行は書かない。
-func withLines(body string, ls ...line) string {
-	var b strings.Builder
-	b.WriteString(strings.TrimRight(body, "\n"))
-	first := true
-	for _, l := range ls {
-		if l.value == "" {
-			continue
-		}
-		if first {
-			if b.Len() > 0 {
-				b.WriteString("\n\n")
-			}
-			first = false
-		} else {
-			b.WriteString("\n")
-		}
-		b.WriteString(l.key + ": " + l.value)
+// withSentence は、本文の最後に、人が読む文を 1 つ足す。文が空なら、本文をそのまま返す。
+func withSentence(body, sentence string) string {
+	body = strings.TrimRight(body, "\n")
+	if sentence == "" {
+		return body
 	}
-	return b.String()
+	if body == "" {
+		return sentence
+	}
+	return body + "\n\n" + sentence
 }
 
-// splitLines は、本文の最後の `<名前>: <値>` の行（knownLines のもの）を読み、残りの本文と分ける。
-func splitLines(body string) (string, []line) {
-	rows := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
-	var ls []line
-	i := len(rows)
-	for i > 0 {
-		r := strings.TrimSpace(rows[i-1])
-		if r == "" && len(ls) == 0 {
-			i--
-			continue
-		}
-		k, v, ok := strings.Cut(r, ": ")
-		if !ok || !slices.Contains(knownLines, k) {
-			break
-		}
-		ls = append([]line{{k, strings.TrimSpace(v)}}, ls...)
-		i--
-	}
-	return strings.TrimRight(strings.Join(rows[:i], "\n"), "\n"), ls
-}
+// nodeTitle は、人への依頼の issue のタイトルである。対象ノードの識別子で始め、そのあとに要約を書く（design/adapters/texts.md の
+// 「人への依頼の issue」）。nodeOfTitle は、タイトルの頭から、対象ノードの識別子を読む。
+func nodeTitle(node, summary string) string { return node + titleSeparator + summary }
 
-func lineValue(ls []line, key string) string {
-	for _, l := range ls {
-		if l.key == key {
-			return l.value
-		}
+const titleSeparator = " について："
+
+func nodeOfTitle(title string) string {
+	node, _, ok := strings.Cut(title, titleSeparator)
+	if !ok || strings.ContainsAny(node, " \t") {
+		return ""
 	}
-	return ""
+	return node
 }
 
 func number(id string) (int, error) {
@@ -224,18 +191,6 @@ func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.A
 		return ports.ApplyRequest{}, err
 	}
 	ar := toApplyRequest(p)
-	if ar.State == ports.StateClosed {
-		comments, err := a.API.ListComments(ctx, repo, num)
-		if err != nil {
-			return ports.ApplyRequest{}, err
-		}
-		for _, c := range comments {
-			_, ls := splitLines(c.Body)
-			if r := lineValue(ls, lineCloseReason); r != "" {
-				ar.CloseReason, ar.CloseSession = r, lineValue(ls, lineSession)
-			}
-		}
-	}
 	if p.HeadSHA != "" {
 		sts, err := a.API.ListStatuses(ctx, repo, p.HeadSHA)
 		if err != nil {
@@ -298,7 +253,7 @@ func (a *Adapter) Merge(ctx context.Context, repo, id, headSHA, title, message s
 	return sha, nil
 }
 
-func (a *Adapter) Close(ctx context.Context, repo, id, reason, session string) error {
+func (a *Adapter) Close(ctx context.Context, repo, id, reason string) error {
 	num, err := number(id)
 	if err != nil {
 		return err
@@ -310,7 +265,7 @@ func (a *Adapter) Close(ctx context.Context, repo, id, reason, session string) e
 	if p.State != "open" {
 		return nil
 	}
-	if _, err := a.API.CreateComment(ctx, repo, num, withLines("", line{lineCloseReason, oneLine(reason)}, line{lineSession, session})); err != nil {
+	if _, err := a.API.CreateComment(ctx, repo, num, closePrefix+oneLine(reason)); err != nil {
 		return err
 	}
 	if err := a.API.ClosePull(ctx, repo, num); err != nil {
@@ -384,13 +339,17 @@ func (a *Adapter) addLabel(ctx context.Context, repo string, num int, l Label) e
 
 // ---- レビュー ----
 
-// AddReview は、pull request に review を出す。本文の最後に、セッションとプロンプトの版の行を書く（design/adapters/texts.md の「review の本文」）。
+// AddReview は、pull request に review を出す。プロンプトの版があれば、本文の最後に、人が読む文で書く（design/adapters/texts.md の「review の本文」）。
 func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r ports.Review) (ports.Review, error) {
 	num, err := number(applyRequestID)
 	if err != nil {
 		return ports.Review{}, err
 	}
-	body := withLines(r.Body, line{lineSession, r.Session}, line{linePrompt, r.PromptRevision})
+	prompt := ""
+	if r.PromptRevision != "" && r.PromptRevision != "-" {
+		prompt = promptPrefix + oneLine(r.PromptRevision)
+	}
+	body := withSentence(r.Body, prompt)
 	got, err := a.API.CreateReview(ctx, repo, num, r.Kind, body, r.Revision)
 	if err != nil {
 		return ports.Review{}, err
@@ -399,9 +358,7 @@ func (a *Adapter) AddReview(ctx context.Context, repo, applyRequestID string, r 
 }
 
 func toReview(pr PullReview) ports.Review {
-	body, ls := splitLines(pr.Body)
-	return ports.Review{ID: strconv.FormatInt(pr.ID, 10), Kind: pr.Kind, Body: body, Revision: pr.CommitID, Reviewer: pr.Author,
-		Session: lineValue(ls, lineSession), PromptRevision: lineValue(ls, linePrompt), CreatedAt: pr.SubmittedAt}
+	return ports.Review{ID: strconv.FormatInt(pr.ID, 10), Kind: pr.Kind, Body: pr.Body, Revision: pr.CommitID, Reviewer: pr.Author, CreatedAt: pr.SubmittedAt}
 }
 
 // ListReviews は、数える review だけを、出した順に返す（design/adapters/pull-requests.md の「数える review」）。
@@ -425,10 +382,6 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 		// なぜ request changes も：public の repository では、書く権限のない人も review を出せ、反映を止められてしまうから。
 		// approve は、本文にセッションの行があるものだけを数える。comment は、反映の条件に効かないので、だれのものでも数える。
 		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
-			if r.Kind == ports.ReviewApprove && r.Session == "" {
-				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：本文に %s: の行のない approve は、数えない", pr.ID, lineSession))
-				continue
-			}
 			// 書く権限を持つかを読めなければ、数えない（閉じる側に倒す）。
 			if pr.CanPush == nil {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s に書く権限があるかを確かめられないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
@@ -501,11 +454,10 @@ func humanKindOf(is Issue, ref string) (ports.HumanRequestKind, bool) {
 
 // toHumanRequest は、issue の一覧に入っているものだけから、人への依頼を作る。回答は、閉じた時刻だけを入れる。
 func toHumanRequest(is Issue, kind ports.HumanRequestKind) ports.HumanRequest {
-	body, ls := splitLines(is.Body)
-	hr := ports.HumanRequest{ID: strconv.Itoa(is.Number), Number: is.Number, Kind: kind, TargetNode: lineValue(ls, lineTargetNode), Body: body,
-		Requester: is.Author, Session: lineValue(ls, lineSession), CreatedAt: is.CreatedAt}
+	hr := ports.HumanRequest{ID: strconv.Itoa(is.Number), Number: is.Number, Kind: kind, TargetNode: nodeOfTitle(is.Title), Body: is.Body,
+		Requester: is.Author, CreatedAt: is.CreatedAt}
 	if hr.TargetNode == "" {
-		hr.Warnings = append(hr.Warnings, fmt.Sprintf("issue #%d の本文に %s: の行がない", is.Number, lineTargetNode))
+		hr.Warnings = append(hr.Warnings, fmt.Sprintf("issue #%d のタイトルが、対象ノードの識別子と「%s」で始まらない", is.Number, strings.TrimSpace(titleSeparator)))
 	}
 	if is.State == "closed" {
 		hr.Answer = &ports.Answer{CreatedAt: is.ClosedAt}
@@ -513,24 +465,27 @@ func toHumanRequest(is Issue, kind ports.HumanRequestKind) ports.HumanRequest {
 	return hr
 }
 
+// resendWindow は、人への依頼の起票の送り直しとみなす時間である（design/api/writes.md の「同じ要求の繰り返し」）。
+const resendWindow = 10 * time.Minute
+
 func (a *Adapter) CreateHumanRequest(ctx context.Context, repo string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
-	if n.IdempotencyKey != "" {
-		issues, err := a.API.ListIssues(ctx, repo)
-		if err != nil {
-			return ports.HumanRequest{}, err
-		}
-		for _, is := range issues {
-			_, ls := splitLines(is.Body)
-			if _, ok := humanKindOf(is, repo); ok && strings.EqualFold(is.Author, n.Requester) && lineValue(ls, lineIdempotencyKey) == n.IdempotencyKey {
-				return a.GetHumanRequest(ctx, repo, strconv.Itoa(is.Number))
-			}
-		}
-	}
-	title := titlePrefix + "人への依頼"
+	summary := "人への依頼"
 	if first, _, _ := strings.Cut(strings.TrimSpace(n.Body), "\n"); first != "" {
-		title = titlePrefix + truncate(first, 60)
+		summary = truncate(first, 60)
 	}
-	body := withLines(n.Body, line{lineTargetNode, n.TargetNode}, line{lineSession, n.Session}, line{lineIdempotencyKey, n.IdempotencyKey})
+	title := nodeTitle(n.TargetNode, summary)
+	body := strings.TrimRight(n.Body, "\n")
+	// 送り直し：同じ主体が、同じタイトルと本文で、少し前に作った open の issue があれば、それを返す。
+	issues, err := a.API.ListIssues(ctx, repo)
+	if err != nil {
+		return ports.HumanRequest{}, err
+	}
+	for _, is := range issues {
+		if _, ok := humanKindOf(is, repo); ok && is.State == "open" && strings.EqualFold(is.Author, n.Requester) && is.Title == title &&
+			strings.TrimRight(is.Body, "\n") == body && a.now().Sub(is.CreatedAt) < resendWindow {
+			return a.GetHumanRequest(ctx, repo, strconv.Itoa(is.Number))
+		}
+	}
 	labels := []string{labelPrefix + string(n.Kind)}
 	if d := dirLabel(repo); d != "" {
 		labels = append(labels, d)

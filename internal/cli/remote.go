@@ -2,9 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -346,13 +343,11 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 // ---- apply request ----
 
 // arCreate は、push したブランチから apply request を作る。手元の先頭と remote の先頭が同じかを確かめてから、revision に入れて送る。
-// Idempotency-Key は、呼び出しごとに乱数で作り、その呼び出しの中で送り直すときだけ、同じキーを使う（--idempotency-key で外から渡せる）。
-// 同じブランチの二重の作成は、バックエンドが拒む。
+// 送り直しは、ブランチで見分ける（同じブランチの、同じ主体の open の apply request を返す。design/api/writes.md の「同じ要求の繰り返し」）。
 func (a *App) arCreate(ctx context.Context, args []string) error {
 	f := newFlags("ar create")
-	repo, branch, desc, sess := repoFlag(f), f.String("branch", "", ""), f.String("description", "", ""), f.String("session", "", "")
+	repo, branch, desc := repoFlag(f), f.String("branch", "", ""), f.String("description", "", "")
 	kind := f.String("kind", "change", "change、repair.revert、repair.accept のどれか")
-	key := f.String("idempotency-key", "", "送り直しを見分けるキー。なければ乱数で作る")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -360,10 +355,6 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 		return usagef("ar create には --branch が要る")
 	}
 	name, err := a.repo(*repo)
-	if err != nil {
-		return err
-	}
-	session, err := a.session(*sess)
 	if err != nil {
 		return err
 	}
@@ -381,30 +372,10 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	if *kind == "change" {
 		a.checkBroken(ctx)
 	}
-	k := *key
-	if k == "" {
-		var b [16]byte
-		if _, err := rand.Read(b[:]); err != nil {
-			return err
-		}
-		k = "cli-" + hex.EncodeToString(b[:])
-	}
-	// 送り直しまで失敗しても、使ったキーが残るように、API を呼ぶ前に書く。エラーの --json の出力にも入れる。
-	fmt.Fprintf(a.Stderr, "Idempotency-Key：%s（送り直すときは --idempotency-key に渡す）\n", k)
-	a.errorExtra = map[string]any{"idempotency_key": k}
-	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", session: session, idempotency: k, retry: true,
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", retry: true,
 		body: map[string]string{"kind": *kind, "branch": *branch, "commit": local, "description": *desc}})
 	if err != nil {
 		return err
-	}
-	if a.json {
-		// 応答に、使ったキーを足して書く。送り直すときは、--idempotency-key にこのキーを渡す。
-		var v map[string]any
-		if err := json.Unmarshal(res.body, &v); err != nil {
-			return err
-		}
-		v["idempotency_key"] = k
-		return a.writeJSON(v)
 	}
 	return a.show(res, a.printAR)
 }
@@ -456,7 +427,7 @@ func (a *App) printAR(v map[string]any) {
 
 func (a *App) arEdit(ctx context.Context, args []string) error {
 	f := newFlags("ar edit")
-	repo, desc, sess := repoFlag(f), f.String("description", "", ""), f.String("session", "", "")
+	repo, desc := repoFlag(f), f.String("description", "", "")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -467,11 +438,7 @@ func (a *App) arEdit(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	session, err := a.session(*sess)
-	if err != nil {
-		return err
-	}
-	res, err := a.call(ctx, request{method: http.MethodPatch, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]), session: session,
+	res, err := a.call(ctx, request{method: http.MethodPatch, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]),
 		body: map[string]string{"description": *desc}})
 	if err != nil {
 		return err
@@ -543,7 +510,7 @@ func (a *App) arMaterial(ctx context.Context, args []string) error {
 // arReview は、レビューを付ける。レビューしたコミットは、--commit の SHA で指す。
 func (a *App) arReview(ctx context.Context, args []string) error {
 	f := newFlags("ar review")
-	repo, sess := repoFlag(f), f.String("session", "", "")
+	repo := repoFlag(f)
 	approve, changes, comment := f.Bool("approve", false, ""), f.Bool("request-changes", false, ""), f.Bool("comment", false, "")
 	commit := f.String("commit", "", "")
 	body, prompt := f.String("body", "", ""), f.String("prompt-revision", "", "")
@@ -574,12 +541,8 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	session, err := a.session(*sess)
-	if err != nil {
-		return err
-	}
 	id := f.positional[0]
-	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(id) + "/reviews", session: session,
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(id) + "/reviews",
 		body: map[string]string{"kind": kinds[true], "commit": *commit, "body": *body, "prompt_revision": *prompt}})
 	if err != nil {
 		return err
@@ -593,7 +556,7 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 
 func (a *App) arClose(ctx context.Context, args []string) error {
 	f := newFlags("ar close")
-	repo, reason, sess := repoFlag(f), f.String("reason", "", ""), f.String("session", "", "")
+	repo, reason := repoFlag(f), f.String("reason", "", "")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -607,11 +570,7 @@ func (a *App) arClose(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	session, err := a.session(*sess)
-	if err != nil {
-		return err
-	}
-	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]) + "/close", session: session,
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests/" + url.PathEscape(f.positional[0]) + "/close",
 		body: map[string]string{"reason": *reason}})
 	if err != nil {
 		return err
@@ -733,8 +692,7 @@ func (a *App) workList(ctx context.Context, args []string) error {
 
 func (a *App) hrCreate(ctx context.Context, args []string) error {
 	f := newFlags("human-request create")
-	repo, node, kind, bodyFile, sess := repoFlag(f), f.String("node", "", ""), f.String("kind", "", ""), f.String("body", "", "本文のファイル"), f.String("session", "", "")
-	key := f.String("idempotency-key", "", "")
+	repo, node, kind, bodyFile := repoFlag(f), f.String("node", "", ""), f.String("kind", "", ""), f.String("body", "", "本文のファイル")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -749,11 +707,7 @@ func (a *App) hrCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	session, err := a.session(*sess)
-	if err != nil {
-		return err
-	}
-	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/human-requests", session: session, idempotency: *key,
+	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/human-requests", retry: true,
 		body: map[string]string{"node_id": *node, "kind": *kind, "body": string(body)}})
 	if err != nil {
 		return err

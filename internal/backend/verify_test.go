@@ -41,7 +41,7 @@ func TestVerifyMerge(t *testing.T) {
 	}
 	review := func(id, session string, kind ports.ReviewKind) {
 		rs := f.forge.reviews[id]
-		rs.Items = append(rs.Items, ports.Review{ID: "rev_" + session, Kind: kind, Revision: f.forge.ar(id).HeadRevision, Session: session})
+		rs.Items = append(rs.Items, ports.Review{ID: "rev_" + session, Kind: kind, Revision: f.forge.ar(id).HeadRevision})
 		f.forge.reviews[id] = rs
 	}
 
@@ -82,17 +82,6 @@ func TestVerifyMerge(t *testing.T) {
 	}
 	if v := verify(sha); v.Authorized || !strings.Contains(v.Detail, "approve でない") {
 		t.Fatalf("request_changes のあとの merge：%+v", v)
-	}
-
-	// reviewer のセッションが、先頭のコミットを書いたセッションと同じ。
-	d := create(t, f, "vd", "s6", bg("6"))
-	review(d, "s6", ports.ReviewApprove)
-	sha, err = f.forge.Merge(ctx, "o/q", d, f.forge.ar(d).HeadRevision, "画面から", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v := verify(sha); v.Authorized || !strings.Contains(v.Detail, "セッション") {
-		t.Fatalf("同じセッション：%+v", v)
 	}
 
 	// merge のコミットに、apply request の差分のほかの変更を足したもの。

@@ -146,16 +146,16 @@ func TestApplyRequestFlow(t *testing.T) {
 		t.Fatalf("送り直し：%+v %v", again, err)
 	}
 	// 作者自身の approve は、GitHub が拒む。
-	if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewApprove, Revision: "h1", Session: "s", PromptRevision: "p"}); err == nil {
+	if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewApprove, Revision: "h1", PromptRevision: "p"}); err == nil {
 		t.Fatal("作者自身の approve が通った")
 	}
 	for i := range 3 {
-		if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewComment, Body: "c" + strconv.Itoa(i), Revision: "h1", Session: "s", PromptRevision: "p"}); err != nil {
+		if _, err := a.AddReview(ctx, fakeRepo, "1", ports.Review{Kind: ports.ReviewComment, Body: "c" + strconv.Itoa(i), Revision: "h1", PromptRevision: "p"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	rvs, err := a.ListReviews(ctx, fakeRepo, "1")
-	if err != nil || len(rvs.Items) != 3 || rvs.Items[0].Session != "s" || rvs.Items[0].Body != "c0" || rvs.Items[0].Reviewer != fakeAgentLogin {
+	if err != nil || len(rvs.Items) != 3 || rvs.Items[0].Body != "c0\n\nプロンプトの版：p" || rvs.Items[0].Reviewer != fakeAgentLogin {
 		t.Fatalf("reviews：%+v %v", rvs, err)
 	}
 	if err := a.SetWaiting(ctx, fakeRepo, "1", ports.WaitingFix); err != nil || !slices.Equal(f.pulls[1].labels, []string{"logiforge/fix-waiting"}) {
@@ -195,10 +195,10 @@ func TestApplyRequestFlow(t *testing.T) {
 	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); len(got.MergeFailures) != 1 || got.MergeFailures[0].Reason != "conflict" {
 		t.Fatalf("反映の失敗：%+v", got.MergeFailures)
 	}
-	if err := a.Close(ctx, fakeRepo, id, "やめる", "s"); err != nil {
+	if err := a.Close(ctx, fakeRepo, id, "やめる"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); got.State != ports.StateClosed || got.CloseReason != "やめる" || got.CloseSession != "s" {
+	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); got.State != ports.StateClosed {
 		t.Fatalf("%+v", got)
 	}
 	all, err := a.ListApplyRequests(ctx, fakeRepo, "all")
@@ -217,7 +217,7 @@ func TestHumanRequest(t *testing.T) {
 	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil {
 		t.Fatal(err)
 	}
-	hr, err := a.CreateHumanRequest(ctx, fakeRepo, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-aaaaaaaaaa", Body: "見て", Requester: "agent", Session: "s"})
+	hr, err := a.CreateHumanRequest(ctx, fakeRepo, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-aaaaaaaaaa", Body: "見て", Requester: "agent"})
 	if err != nil {
 		t.Fatal(err)
 	}

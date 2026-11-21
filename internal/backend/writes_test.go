@@ -55,37 +55,34 @@ func TestCreateApplyRequest(t *testing.T) {
 	b, c := f.b, f.caller
 	head := f.branch("c", "s3", verdictFile(dH2, "v-9999999999", false))
 
-	if _, err := b.CreateApplyRequest(ctx, Caller{Token: "u", Principal: ports.Principal{Kind: ports.PrincipalUser}}, "q", NewApplyRequest{Branch: "c", Session: "s"}); code(err) != CodeForbidden {
+	if _, err := b.CreateApplyRequest(ctx, Caller{Token: "u", Principal: ports.Principal{Kind: ports.PrincipalUser}}, "q", NewApplyRequest{Branch: "c"}); code(err) != CodeForbidden {
 		t.Fatalf("user：%v", err)
 	}
 	c.Principal = ports.Principal{Login: "agent", Kind: ports.PrincipalClient}
-	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c"}); code(err) != CodeSessionRequired {
-		t.Fatalf("セッションなし：%v", err)
-	}
-	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Session: "s", Commit: strings.Repeat("0", 40)}); code(err) != CodeValidationFailed {
+	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Commit: strings.Repeat("0", 40)}); code(err) != CodeValidationFailed {
 		t.Fatalf("revision 違い：%v", err)
 	}
-	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "nothing", Session: "s"}); code(err) != CodeValidationFailed {
+	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "nothing"}); code(err) != CodeValidationFailed {
 		t.Fatalf("ないブランチ：%v", err)
 	}
-	out, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Session: "s", Commit: head, IdempotencyKey: "k1"})
+	out, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Commit: head})
 	if err != nil || out.Value.State != "open" || len(out.Value.Operations) != 1 || out.Value.Operations[0].Kind != "verdict.submit" {
 		t.Fatalf("create: %+v %v", out.Value, err)
 	}
-	again, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c", Session: "s", IdempotencyKey: "k1"})
+	again, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "c"})
 	if err != nil || again.Value.ID != out.Value.ID {
 		t.Fatalf("送り直し：%+v %v", again.Value, err)
 	}
 	// 同じブランチに、ほかの主体の open の apply request があれば、受け付けない。
 	other := c
 	other.Principal.Login = "other"
-	if _, err := b.CreateApplyRequest(ctx, other, "q", NewApplyRequest{Branch: "c", Session: "s"}); code(err) != CodeValidationFailed {
+	if _, err := b.CreateApplyRequest(ctx, other, "q", NewApplyRequest{Branch: "c"}); code(err) != CodeValidationFailed {
 		t.Fatalf("同じブランチの、ほかの主体の 2 つ目：%v", err)
 	}
 
 	// 4 種類の操作として読めない差分は、受け付けない。
 	f.branch("bad", "s3", map[string][]byte{dH1 + "/hypothesis.md": tree.MarshalHypothesis(tree.HypothesisContent{ID: H1, Statement: "書き換え"})})
-	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "bad", Session: "s"}); code(err) != CodeValidationFailed || !strings.Contains(err.Error(), "change_not_allowed") {
+	if _, err := b.CreateApplyRequest(ctx, c, "q", NewApplyRequest{Branch: "bad"}); code(err) != CodeValidationFailed || !strings.Contains(err.Error(), "change_not_allowed") {
 		t.Fatalf("読めない差分：%v", err)
 	}
 }
@@ -97,29 +94,26 @@ func TestReviewAndMerge(t *testing.T) {
 	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
 	reviewer := Caller{Token: "rev", Principal: ports.Principal{Login: "reviewer", Kind: ports.PrincipalClient}}
 	f.branch("c", "s3", verdictFile(dH2, "v-9999999999", false))
-	created, err := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "c", Session: "s3"})
+	created, err := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.waitVersion(t, created)
 	id := created.Value.ID
 
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, Session: "s9"}); code(err) != CodeValidationFailed {
+	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit}); code(err) != CodeValidationFailed {
 		t.Fatalf("prompt_revision なし：%v", err)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, Session: "s3", PromptRevision: "p"}); code(err) != CodeSameSession {
-		t.Fatalf("同じセッション：%v", err)
-	}
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: strings.Repeat("1", 40), Session: "s9", PromptRevision: "p"}); code(err) != CodeCommitConflict {
+	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: strings.Repeat("1", 40), PromptRevision: "p"}); code(err) != CodeCommitConflict {
 		t.Fatalf("違う版：%v", err)
 	}
-	rc, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "request_changes", Commit: created.Value.HeadCommit, Session: "s9"})
+	rc, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "request_changes", Commit: created.Value.HeadCommit})
 	if err != nil || rc.Value.ApplyRequest.Awaiting == nil || *rc.Value.ApplyRequest.Awaiting != "fix" {
 		t.Fatalf("request_changes: %+v %v", rc.Value.ApplyRequest, err)
 	}
 
 	// approve すると、この要求の中で反映し、読む側に出るまで待つ。
-	ok, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, Session: "s9", PromptRevision: "p"})
+	ok, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, PromptRevision: "p"})
 	if err != nil || ok.Pending != "" || ok.Value.ApplyRequest.State != "merged" || ok.Value.ApplyRequest.MergedCommit == nil {
 		t.Fatalf("approve: %+v pending=%q %v", ok.Value.ApplyRequest, ok.Pending, err)
 	}
@@ -131,18 +125,18 @@ func TestReviewAndMerge(t *testing.T) {
 	if v, _ := b.GetNode(ctx, agent, "q", H2, At{}); v.Verdict == nil || v.Verdict.ID != "v-9999999999" {
 		t.Fatalf("反映した検証結果が読めない：%+v", v.Verdict)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Session: "s9"}); code(err) != CodeNotOpen {
+	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeNotOpen {
 		t.Fatalf("merged へのレビュー：%v", err)
 	}
 
 	// apply request を作ったアカウントでは approve できない（GitForge が拒む。design/adapters/pull-requests.md の「数える review」）。
 	f.branch("d", "s4", map[string][]byte{dH1 + "/background.md": []byte("背景\n")})
-	d, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "d", Session: "s4"})
+	d, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "d"})
 	f.waitVersion(t, d)
-	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "approve", Commit: d.Value.HeadCommit, Session: "s5", PromptRevision: "p"}); code(err) != CodeValidationFailed {
+	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "approve", Commit: d.Value.HeadCommit, PromptRevision: "p"}); code(err) != CodeValidationFailed {
 		t.Fatalf("同じアカウントの approve：%v", err)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit, Session: "s5"}); err != nil {
+	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit}); err != nil {
 		t.Fatalf("同じアカウントの comment：%v", err)
 	}
 }
@@ -156,14 +150,14 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	// 2 つの apply request が、どちらも H1 を対象にする。
 	f.branch("x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
 	f.branch("y", "s4", map[string][]byte{dH1 + "/background.md": []byte("二\n")})
-	x, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "x", Session: "s3"})
-	y, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "y", Session: "s4"})
+	x, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "x"})
+	y, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "y"})
 	f.waitVersion(t, x)
 	f.waitVersion(t, y)
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", x.Value.ID, NewReview{Kind: "approve", Commit: x.Value.HeadCommit, Session: "s9", PromptRevision: "p"}); err != nil {
+	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", x.Value.ID, NewReview{Kind: "approve", Commit: x.Value.HeadCommit, PromptRevision: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	res, err := b.ReviewApplyRequest(ctx, reviewer, "q", y.Value.ID, NewReview{Kind: "approve", Commit: y.Value.HeadCommit, Session: "s9", PromptRevision: "p"})
+	res, err := b.ReviewApplyRequest(ctx, reviewer, "q", y.Value.ID, NewReview{Kind: "approve", Commit: y.Value.HeadCommit, PromptRevision: "p"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,11 +172,11 @@ func TestClose(t *testing.T) {
 	f := live(t)
 	b := f.b
 	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
-	closed, err := b.CloseApplyRequest(ctx, agent, "q", "apr_2", "s9", "作り直す")
-	if err != nil || closed.State != "closed" || closed.ClosedReason == nil || *closed.ClosedReason != "作り直す" {
+	closed, err := b.CloseApplyRequest(ctx, agent, "q", "apr_2", "作り直す")
+	if err != nil || closed.State != "closed" {
 		t.Fatalf("close: %+v %v", closed, err)
 	}
-	if again, err := b.CloseApplyRequest(ctx, agent, "q", "apr_2", "s9", "もう一度"); err != nil || *again.ClosedReason != "作り直す" {
+	if again, err := b.CloseApplyRequest(ctx, agent, "q", "apr_2", "もう一度"); err != nil || again.State != "closed" {
 		t.Fatalf("2 回目の close: %+v %v", again, err)
 	}
 }
@@ -193,14 +187,14 @@ func TestHumanRequestWrites(t *testing.T) {
 	b := f.b
 	agent := Caller{Token: "agent", Principal: ports.Principal{Login: "agent", Kind: ports.PrincipalClient}}
 	user := Caller{Token: "alice", Principal: ports.Principal{Login: "alice", Kind: ports.PrincipalUser}}
-	if _, err := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: "h-zzzzzzzzzz", Kind: "pvr", Body: "b", Session: "s"}); code(err) != CodeValidationFailed {
+	if _, err := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: "h-zzzzzzzzzz", Kind: "pvr", Body: "b"}); code(err) != CodeValidationFailed {
 		t.Fatalf("ないノード：%v", err)
 	}
-	hr, err := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: H1, Kind: "decision", Body: "決めて", Session: "s", IdempotencyKey: "k"})
+	hr, err := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: H1, Kind: "decision", Body: "決めて"})
 	if err != nil || hr.State != "open" {
 		t.Fatalf("create: %+v %v", hr, err)
 	}
-	if again, _ := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: H1, Kind: "decision", Body: "別", Session: "s", IdempotencyKey: "k"}); again.ID != hr.ID || again.Body != "決めて" {
+	if again, _ := b.CreateHumanRequest(ctx, agent, "q", NewHumanRequest{NodeID: H1, Kind: "decision", Body: "決めて"}); again.ID != hr.ID || again.Body != "決めて" {
 		t.Fatalf("送り直し：%+v", again)
 	}
 	if _, err := b.AnswerHumanRequest(ctx, agent, "q", hr.ID, "答え", nil); code(err) != CodeForbidden {
@@ -258,13 +252,13 @@ var (
 
 func approve(t *testing.T, f *fixture, id string) (Written[ReviewResult], error) {
 	t.Helper()
-	return f.b.ReviewApplyRequest(context.Background(), reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, Session: "s9", PromptRevision: "p"})
+	return f.b.ReviewApplyRequest(context.Background(), reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"})
 }
 
 func create(t *testing.T, f *fixture, branch, session string, files map[string][]byte) string {
 	t.Helper()
 	f.branch(branch, session, files)
-	out, err := f.b.CreateApplyRequest(context.Background(), agentC, "q", NewApplyRequest{Branch: branch, Session: session})
+	out, err := f.b.CreateApplyRequest(context.Background(), agentC, "q", NewApplyRequest{Branch: branch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +410,7 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 	// 2 つ目の版を、別のセッションで push する。
 	f.r.git("checkout", "--quiet", "x")
 	f.r.write(dH1+"/background.md", []byte("一\n二\n"))
-	head := f.r.commit("版 2\n\nLogiforge-Session-Id: s4")
+	head := f.r.commit("版 2")
 	f.r.git("checkout", "--quiet", "main")
 	f.forge.ar(id).HeadRevision = head
 	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
@@ -437,16 +431,13 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 	if err != nil || again.Value.ApplyRequest.State != "merged" {
 		t.Fatalf("送り直し：%+v %v", again.Value.ApplyRequest, err)
 	}
-	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: head, Session: "other", PromptRevision: "p"}); code(err) != CodeNotOpen {
-		t.Fatalf("別のセッションの approve：%v", err)
-	}
 }
 
 func TestHumanRequestTarget(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
 	for _, node := range []string{H0, S1, H1} { // H0 は葉でない、S1 はストーリー、H1 は値の決まった葉（要再検討でない葉は可。H1 は葉）
-		_, err := f.b.CreateHumanRequest(ctx, agentC, "q", NewHumanRequest{NodeID: node, Kind: "pvr", Body: "b", Session: "s"})
+		_, err := f.b.CreateHumanRequest(ctx, agentC, "q", NewHumanRequest{NodeID: node, Kind: "pvr", Body: "b"})
 		if node == H1 {
 			if err != nil {
 				t.Fatalf("葉の H1：%v", err)
@@ -465,7 +456,7 @@ func TestReviewBeforeSnapshot(t *testing.T) {
 	f := live(t)
 	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
 	f.forge.ar(id).HeadRevision = strings.Repeat("a", 40) // GitForge にはあるが、worker はまだ見ていない版
-	_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: strings.Repeat("a", 40), Session: "s9", PromptRevision: "p"})
+	_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: strings.Repeat("a", 40), PromptRevision: "p"})
 	if code(err) != CodeSnapshotPending {
 		t.Fatalf("got %v", err)
 	}
@@ -481,7 +472,7 @@ func TestUserReview(t *testing.T) {
 	alice := Caller{Token: "alice", Principal: ports.Principal{Login: "alice", Kind: ports.PrincipalUser, WebUI: true}}
 	reader := Caller{Token: "reader", Principal: ports.Principal{Login: "reader", Kind: ports.PrincipalUser, WebUI: true}}
 	f.branch("u", "s3", verdictFile(dH2, "v-8888888888", false))
-	created, err := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "u", Session: "s3"})
+	created, err := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "u"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,17 +484,14 @@ func TestUserReview(t *testing.T) {
 	if got, _ := b.GetApplyRequest(ctx, alice, "q", id); got.OpenedByCaller {
 		t.Fatal("ほかの人に opened_by_caller がある")
 	}
-	if _, err := b.ReviewApplyRequest(ctx, reader, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Session: "w1"}); code(err) != CodeForbidden {
+	if _, err := b.ReviewApplyRequest(ctx, reader, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeForbidden {
 		t.Fatalf("Write のない user：%v", err)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeSessionRequired {
-		t.Fatalf("セッションなし：%v", err)
-	}
-	ok, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, Session: "w1"})
+	ok, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit})
 	if err != nil || ok.Value.ApplyRequest.State != "merged" {
 		t.Fatalf("user の approve：%+v %v", ok.Value.ApplyRequest, err)
 	}
-	if ok.Value.Review.PromptRevision != UserPromptRevision || ok.Value.Review.Reviewer != "alice" {
+	if ok.Value.Review.Reviewer != "alice" {
 		t.Fatalf("user のレビューの記録：%+v", ok.Value.Review)
 	}
 }

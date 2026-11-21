@@ -31,15 +31,11 @@ func (a *App) repairAccept(ctx context.Context, args []string) error {
 
 func (a *App) repair(ctx context.Context, args []string, kind string) error {
 	f := newFlags(strings.ReplaceAll(kind, ".", " "))
-	repo, branch, sess := repoFlag(f), f.String("branch", "", "作るブランチの名前"), f.String("session", "", "")
+	repo, branch := repoFlag(f), f.String("branch", "", "作るブランチの名前")
 	if err := f.parse(args); err != nil {
 		return err
 	}
 	name, err := a.repo(*repo)
-	if err != nil {
-		return err
-	}
-	session, err := a.session(*sess)
 	if err != nil {
 		return err
 	}
@@ -75,15 +71,15 @@ func (a *App) repair(ctx context.Context, args []string, kind string) error {
 		if err != nil {
 			return err
 		}
-		record := fmt.Sprintf("Logiforge：反映によらない変更を認めた記録\nrepository: %s\nfirst: %s\nlast_good: %s\nmain: %s\nsession: %s\n",
-			name, r.Broken.FirstCommit, r.Broken.LastGoodCommit, mainHead, session)
+		record := fmt.Sprintf("Logiforge：反映によらない変更を認めた\nrepository: %s\nfirst: %s\nlast_good: %s\nmain: %s\n",
+			name, r.Broken.FirstCommit, r.Broken.LastGoodCommit, mainHead)
 		if err := a.addArtifact([]byte(record)); err != nil {
 			return err
 		}
 	} else if err := a.restoreFiles(ctx, name); err != nil {
 		return err
 	}
-	commitArgs := []string{"commit", "--quiet", "-m", msg, "--trailer", "Logiforge-Session-Id: " + session}
+	commitArgs := []string{"commit", "--quiet", "-m", msg}
 	a.broken = ""
 	if _, err := a.git(commitArgs...); err != nil {
 		return err

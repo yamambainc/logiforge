@@ -61,9 +61,9 @@ func (c *countingForge) Merge(ctx context.Context, repo, id, headSHA, title, mes
 	c.n("Merge")
 	return c.inner.Merge(ctx, repo, id, headSHA, title, message)
 }
-func (c *countingForge) Close(ctx context.Context, repo, id, reason, session string) error {
+func (c *countingForge) Close(ctx context.Context, repo, id, reason string) error {
 	c.n("Close")
-	return c.inner.Close(ctx, repo, id, reason, session)
+	return c.inner.Close(ctx, repo, id, reason)
 }
 func (c *countingForge) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
 	c.n("RecordMergeFailure")

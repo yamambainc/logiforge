@@ -46,19 +46,9 @@ func (b *Backend) requireUserOn(ctx context.Context, c Caller, repo string) erro
 	return nil
 }
 
-func requireClient(c Caller, session string) error {
+func requireClient(c Caller) error {
 	if c.Principal.Kind != ports.PrincipalClient {
 		return fail(CodeForbidden, "この操作は、client だけが使える")
-	}
-	return requireSession(session)
-}
-
-func requireSession(session string) error {
-	if session == "" {
-		return fail(CodeSessionRequired, "Logiforge-Session-Id がない")
-	}
-	if len(session) > 128 {
-		return fail(CodeValidationFailed, "Logiforge-Session-Id は 128 文字まで")
 	}
 	return nil
 }
@@ -192,12 +182,10 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 // NewApplyRequest は、apply request の作成の要求である。
 type NewApplyRequest struct {
 	// Kind は、change（ふつう）、repair.revert、repair.accept のどれか。空は change（design/backend/broken.md）。
-	Kind           string
-	Branch         string
-	Commit         string
-	Description    string
-	Session        string
-	IdempotencyKey string
+	Kind        string
+	Branch      string
+	Commit      string
+	Description string
 }
 
 // checkContext は、差分の検査に要る、ファイルの外の問い合わせを、latest の main のスナップショットで作る。
@@ -262,7 +250,7 @@ func violations(vs []tree.Violation) string {
 // CreateApplyRequest は、push したブランチから apply request を作る（design/backend/apply-request/create.md の「作成」）。client だけが使える。
 func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string, n NewApplyRequest) (Written[ApplyRequest], error) {
 	var out Written[ApplyRequest]
-	if err := requireClient(c, n.Session); err != nil {
+	if err := requireClient(c); err != nil {
 		return out, err
 	}
 	if n.Branch == "" || n.Branch == "main" {
@@ -389,9 +377,9 @@ func (b *Backend) baseFiles(ctx context.Context, repo, ref, base string) (tree.F
 	return b.Git.ReadFiles(ctx, repo, ref, base)
 }
 
-// UpdateApplyRequest は、説明欄を書き換える。client なら、どのセッションからでもよい。
-func (b *Backend) UpdateApplyRequest(ctx context.Context, c Caller, repo, id, session, description string) (ApplyRequest, error) {
-	if err := requireClient(c, session); err != nil {
+// UpdateApplyRequest は、説明欄を書き換える。client だけが使える。
+func (b *Backend) UpdateApplyRequest(ctx context.Context, c Caller, repo, id, description string) (ApplyRequest, error) {
+	if err := requireClient(c); err != nil {
 		return ApplyRequest{}, err
 	}
 	ref, err := b.access(ctx, c, repo)
@@ -425,8 +413,8 @@ func (b *Backend) openApplyRequest(ctx context.Context, repo, ref, id string) (*
 }
 
 // CloseApplyRequest は、apply request を close する。すでに閉じていれば、今の状態を返す。
-func (b *Backend) CloseApplyRequest(ctx context.Context, c Caller, repo, id, session, reason string) (ApplyRequest, error) {
-	if err := requireClient(c, session); err != nil {
+func (b *Backend) CloseApplyRequest(ctx context.Context, c Caller, repo, id, reason string) (ApplyRequest, error) {
+	if err := requireClient(c); err != nil {
 		return ApplyRequest{}, err
 	}
 	if strings.TrimSpace(reason) == "" {
@@ -442,7 +430,7 @@ func (b *Backend) CloseApplyRequest(ctx context.Context, c Caller, repo, id, ses
 		}
 		return ApplyRequest{}, err
 	}
-	if err := b.Forge.Close(ctx, ref, id, reason, session); err != nil {
+	if err := b.Forge.Close(ctx, ref, id, reason); err != nil {
 		return ApplyRequest{}, err
 	}
 	return b.GetApplyRequest(ctx, c, repo, id)
@@ -477,16 +465,14 @@ func (b *Backend) MarkApplyRequestFixed(ctx context.Context, c Caller, repo, id 
 
 // NewHumanRequest は、人への依頼の起票の要求である。
 type NewHumanRequest struct {
-	NodeID         string
-	Kind           string
-	Body           string
-	Session        string
-	IdempotencyKey string
+	NodeID string
+	Kind   string
+	Body   string
 }
 
 // CreateHumanRequest は、人への依頼を起票する。client だけが使える。対象ノードは、今の main の木にあるものに限る。
 func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string, n NewHumanRequest) (HumanRequest, error) {
-	if err := requireClient(c, n.Session); err != nil {
+	if err := requireClient(c); err != nil {
 		return HumanRequest{}, err
 	}
 	if n.Kind != string(ports.HumanRequestPVR) && n.Kind != string(ports.HumanRequestDecision) {
@@ -504,9 +490,6 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 		return HumanRequest{}, err
 	}
 
-	if len(n.IdempotencyKey) > 128 {
-		return HumanRequest{}, fail(CodeValidationFailed, "Idempotency-Key は 128 文字まで")
-	}
 	latest, err := b.currentMain(ctx, repo)
 	if err != nil {
 		return HumanRequest{}, err
@@ -523,8 +506,8 @@ func (b *Backend) CreateHumanRequest(ctx context.Context, c Caller, repo string,
 	case !node.Leaf && !node.NeedsReconsideration:
 		return HumanRequest{}, fail(CodeValidationFailed, "仮説 %s は、葉でも要再検討でもない", n.NodeID)
 	}
-	hr, err := b.Forge.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{IdempotencyKey: n.IdempotencyKey, Kind: ports.HumanRequestKind(n.Kind),
-		TargetNode: n.NodeID, Body: n.Body, Requester: c.Principal.Login, Session: n.Session})
+	hr, err := b.Forge.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{Kind: ports.HumanRequestKind(n.Kind),
+		TargetNode: n.NodeID, Body: n.Body, Requester: c.Principal.Login})
 	if err != nil {
 		return HumanRequest{}, err
 	}

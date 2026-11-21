@@ -160,7 +160,7 @@ func (e *env) commitPush(dir, branch, path, content string) string {
 		e.t.Fatal(err)
 	}
 	mustGit(e.t, dir, "add", "-A")
-	mustGit(e.t, dir, "commit", "-q", "-m", "版\n\nLogiforge-Session-Id: s1")
+	mustGit(e.t, dir, "commit", "-q", "-m", "版")
 	mustGit(e.t, dir, "push", "-q", "-f", "origin", branch)
 	return mustGit(e.t, dir, "rev-parse", "HEAD")
 }
@@ -245,10 +245,10 @@ func TestForgejo(t *testing.T) {
 	t.Log("確かめた：refs/pull/<index>/head を、git の fetch で読める")
 
 	// ---- レビュー（opener と別のアカウント。Forgejo は、作者自身の approve を拒む） ----
-	if _, err := gf.AddReview(ctx, ref, ar.ID, ports.Review{Kind: ports.ReviewApprove, Body: "自分", Revision: head1, Session: "s2", PromptRevision: "p1"}); err == nil {
+	if _, err := gf.AddReview(ctx, ref, ar.ID, ports.Review{Kind: ports.ReviewApprove, Body: "自分", Revision: head1, PromptRevision: "p1"}); err == nil {
 		t.Fatal("作者自身の approve が通った")
 	}
-	if _, err := gf.AddReview(asAlice, ref, ar.ID, ports.Review{Kind: ports.ReviewRequestChanges, Body: "直して", Revision: head1, Session: "s2", PromptRevision: "p1"}); err != nil {
+	if _, err := gf.AddReview(asAlice, ref, ar.ID, ports.Review{Kind: ports.ReviewRequestChanges, Body: "直して", Revision: head1, PromptRevision: "p1"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := gf.SetWaiting(asAlice, ref, ar.ID, ports.WaitingFix); err != nil {
@@ -260,8 +260,8 @@ func TestForgejo(t *testing.T) {
 	if err := gf.SetWaiting(ctx, ref, ar.ID, ports.WaitingReview); err != nil {
 		t.Fatal(err)
 	}
-	rv, err := gf.AddReview(asAlice, ref, ar.ID, ports.Review{Kind: ports.ReviewApprove, Body: "よい", Revision: head1, Session: "s2", PromptRevision: "p1"})
-	if err != nil || rv.Kind != ports.ReviewApprove || rv.Session != "s2" || rv.Body != "よい" {
+	rv, err := gf.AddReview(asAlice, ref, ar.ID, ports.Review{Kind: ports.ReviewApprove, Body: "よい", Revision: head1, PromptRevision: "p1"})
+	if err != nil || rv.Kind != ports.ReviewApprove || rv.Body != "よい\n\nプロンプトの版：p1" {
 		t.Fatalf("approve: %+v %v", rv, err)
 	}
 	reviews, err := gf.ListReviews(ctx, ref, ar.ID)
@@ -339,10 +339,10 @@ func TestForgejo(t *testing.T) {
 	t.Log("確かめた：書く権限の主体が commit status を立て、head の commit status を読める")
 
 	// ---- close と reopen（GitForge の状態に従う） ----
-	if err := gf.Close(ctx, ref, ids["b"], "やめる", "s3"); err != nil {
+	if err := gf.Close(ctx, ref, ids["b"], "やめる"); err != nil {
 		t.Fatal(err)
 	}
-	if b := mustGet(ctx, t, gf, ref, ids["b"]); b.State != ports.StateClosed || b.CloseReason != "やめる" || b.CloseSession != "s3" {
+	if b := mustGet(ctx, t, gf, ref, ids["b"]); b.State != ports.StateClosed {
 		t.Fatalf("close のあと：%+v", b)
 	}
 	e.call(e.admin, "PATCH", fmt.Sprintf("/repos/%s/pulls/%s", ref, ids["b"]), map[string]string{"state": "open"}, nil, 201)
@@ -370,11 +370,11 @@ func TestForgejo(t *testing.T) {
 	t.Log("確かめた：head のブランチを消すと、pull request は閉じる")
 
 	// ---- 人への依頼と回答 ----
-	hr, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "測ってください\n詳しく", Requester: e.login("agent"), Session: "s4"})
+	hr, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "測ってください\n詳しく", Requester: e.login("agent")})
 	if err != nil || hr.Kind != ports.HumanRequestPVR || hr.TargetNode != "h-0000000000" {
 		t.Fatalf("起票：%+v %v", hr, err)
 	}
-	if again, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{IdempotencyKey: "k1", Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "x", Requester: e.login("agent")}); err != nil || again.ID != hr.ID {
+	if again, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "x", Requester: e.login("agent")}); err != nil || again.ID != hr.ID {
 		t.Fatalf("起票の送り直し：%+v %v", again, err)
 	}
 	photo := bytes.Repeat([]byte{0xff, 0xd8, 0x00}, 1000)

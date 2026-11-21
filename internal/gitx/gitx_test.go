@@ -70,7 +70,7 @@ func TestReadAndDiff(t *testing.T) {
 	if err := os.Symlink("hypothesis.md", filepath.Join(w.dir, "tree/h-0000000000/link")); err != nil {
 		t.Fatal(err)
 	}
-	second := w.commit("二つ目\n\nLogiforge-Apply-Request: apr_1\nLogiforge-Session-Id: s1\n")
+	second := w.commit("二つ目\n\nLogiforge-Apply-Request: apr_1\n")
 
 	r := &Repo{Dir: w.dir}
 	files, err := r.ReadFiles(ctx, second, 50)
@@ -94,7 +94,7 @@ func TestReadAndDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Parents) != 1 || c.Parents[0] != first || len(c.Trailers) != 2 || c.Trailers[0] != (Trailer{"Logiforge-Apply-Request", "apr_1"}) {
+	if len(c.Parents) != 1 || c.Parents[0] != first || len(c.Trailers) != 1 || c.Trailers[0] != (Trailer{"Logiforge-Apply-Request", "apr_1"}) {
 		t.Fatalf("commit: %+v", c)
 	}
 

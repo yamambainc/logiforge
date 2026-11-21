@@ -39,9 +39,6 @@ func TestE2EEdges(t *testing.T) {
 		if code, _ := w.call("reader", "GET", "/repositories/q", nil); code != 401 {
 			t.Fatalf("worker のユーザー：%d", code)
 		}
-		if code, _ := w.call("agent", "POST", "/repositories/q/apply-requests", map[string]string{"branch": "x"}); code != 400 {
-			t.Fatalf("セッションなし：%d", code)
-		}
 		w.tokens["nobody"] = "not-a-token"
 		if code, _ := w.call("nobody", "GET", "/repositories", nil); code != 401 {
 			t.Fatalf("正しくないトークン：%d", code)
@@ -242,7 +239,7 @@ func TestE2EEdges(t *testing.T) {
 		bg := "tree/" + repo.Root + "/background.md"
 		agent.write(bg, agent.git("show", "origin/main:"+bg)+"\n壊れているあいだ\n")
 		agent.git("add", "-A")
-		agent.git("commit", "--quiet", "-m", "壊れているあいだ", "--trailer", "Logiforge-Session-Id: "+agent.session)
+		agent.git("commit", "--quiet", "-m", "壊れているあいだ")
 		agent.git("push", "--quiet", "origin", "while-broken")
 		code, out = agent.cli("", "ar", "create", "--branch", "while-broken", "--json")
 		var waiting applyRequest

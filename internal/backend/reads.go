@@ -334,14 +334,9 @@ func (b *Backend) GetNodeHistory(ctx context.Context, c Caller, repo, id, cursor
 			out.NextCursor = &next
 			return false
 		}
-		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt, SessionIDs: []string{}}
+		e := NodeHistoryEntry{Commit: r.Revision, CommittedAt: cm.CommittedAt}
 		if ar := snapshot.ApplyRequestOf(cm); ar != "" {
 			e.ApplyRequestID, e.Reflected = &ar, true
-		}
-		for _, t := range cm.Trailers {
-			if t.Key == trailerSession {
-				e.SessionIDs = append(e.SessionIDs, t.Value)
-			}
 		}
 		out.Items = append(out.Items, e)
 		return true

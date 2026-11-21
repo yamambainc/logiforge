@@ -74,7 +74,7 @@ func clone(t *testing.T) string {
 
 func TestScaffoldAndCheck(t *testing.T) {
 	dir := clone(t)
-	e := env{"LOGIFORGE_SESSION_ID": "s1"}
+	e := env{}
 	git(t, dir, "checkout", "--quiet", "-b", "work")
 
 	code, out, errs := run(t, dir, e, "", "story", "new", "--parent", H1, "--title", "新しいストーリー", "--summary", "概要", "--hypothesis", "孫1", "--hypothesis", "孫2", "--json")
@@ -96,24 +96,12 @@ func TestScaffoldAndCheck(t *testing.T) {
 		t.Fatalf("node edit: %s %s", out, errs)
 	}
 
-	// trailer のないコミットは、警告する。
 	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "--quiet", "-m", "trailer なし")
+	git(t, dir, "commit", "--quiet", "-m", "背景を足す")
 	code, out, _ = run(t, dir, e, "", "check", "--json")
 	var r checkResult
-	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || !r.OK || len(r.Operations) != 2 || len(r.Warnings) != 1 {
+	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || !r.OK || len(r.Operations) != 2 || len(r.Warnings) != 0 {
 		t.Fatalf("check: %d %s", code, out)
-	}
-	// logiforge commit は、セッションの trailer を付ける。
-	if code, out, errs := run(t, dir, e, "", "commit", "--amend", "--no-edit"); code != 0 {
-		t.Fatalf("commit: %s %s", out, errs)
-	}
-	if got := git(t, dir, "log", "-1", "--format=%(trailers:key=Logiforge-Session-Id,valueonly)"); got != "s1" {
-		t.Fatalf("trailer: %q", got)
-	}
-	code, out, _ = run(t, dir, e, "", "check", "--json")
-	if json.Unmarshal([]byte(out), &r) != nil || code != 0 || len(r.Warnings) != 0 {
-		t.Fatalf("check 2: %d %s", code, out)
 	}
 
 	// 読めない変化（すでにある仮説の書き換え）は、誤りにする。終了コードは 1。
@@ -170,7 +158,7 @@ func TestApplyRequestCommands(t *testing.T) {
 		}
 		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + head + `"}`
 	})
-	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok", "LOGIFORGE_SESSION_ID": "s1"}
+	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok"}
 	posts := func() []*http.Request {
 		var out []*http.Request
 		for _, r := range st.reqs {
@@ -189,39 +177,17 @@ func TestApplyRequestCommands(t *testing.T) {
 	code, out, _ := run(t, dir, e, "", "ar", "create", "--branch", "work", "--json")
 	req := posts()[0]
 	var created map[string]any
-	if code != 0 || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "apr_1" || created["idempotency_key"] != req.Header.Get("Idempotency-Key") ||
-		req.Header.Get("Logiforge-Session-Id") != "s1" || req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"commit":"`+head+`"`) {
+	if code != 0 || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "apr_1" ||
+		req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"commit":"`+head+`"`) {
 		t.Fatalf("ar create: %d %s %v", code, out, req.Header)
 	}
-	// 呼び出しごとに、キーは変わる（close して作り直すときに、閉じた apply request が返らないように）。
-	run(t, dir, e, "", "ar", "create", "--branch", "work")
-	if p := posts(); p[1].Header.Get("Idempotency-Key") == p[0].Header.Get("Idempotency-Key") {
-		t.Fatal("2 回目の呼び出しで、同じキーを使った")
-	}
-	// 呼び出しの中の送り直し（503）は、同じキーで送る。
+	// 呼び出しの中の送り直し（503）は、同じ要求を送る。送り直しは、バックエンドがブランチで見分ける。
 	fail503 = true
 	if code, _, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != 0 {
 		t.Fatalf("送り直し：%s", errs)
 	}
-	if p := posts(); len(p) != 4 || p[2].Header.Get("Idempotency-Key") != p[3].Header.Get("Idempotency-Key") {
-		t.Fatalf("送り直しのキー：%d", len(p))
-	}
-	// 送り直しまで失敗しても、使ったキーが、標準エラーとエラーの --json の出力に残る。
-	failN = 2
-	var stderr bytes.Buffer
-	a := &App{Stdout: new(bytes.Buffer), Stderr: &stderr, Getenv: e.get, Dir: dir}
-	if code := a.Run(context.Background(), []string{"ar", "create", "--branch", "work", "--json"}); code != ExitError {
-		t.Fatalf("2 回とも失敗：%d", code)
-	}
-	var prob map[string]any
-	if json.Unmarshal(a.Stdout.(*bytes.Buffer).Bytes(), &prob) != nil || prob["code"] != "unavailable" || prob["idempotency_key"] == nil ||
-		!strings.Contains(stderr.String(), prob["idempotency_key"].(string)) {
-		t.Fatalf("キーが残らない：%v %s", prob, stderr.String())
-	}
-	// 外からキーを渡せる。
-	run(t, dir, e, "", "ar", "create", "--branch", "work", "--idempotency-key", "k1")
-	if p := posts(); p[len(p)-1].Header.Get("Idempotency-Key") != "k1" {
-		t.Fatal("--idempotency-key を使っていない")
+	if p := posts(); len(p) != 3 {
+		t.Fatalf("送り直しの数：%d", len(p))
 	}
 
 	// レビューしたコミットは、--commit の SHA で送る。
@@ -239,11 +205,6 @@ func TestApplyRequestCommands(t *testing.T) {
 	code, out, _ = run(t, dir, e, "", "ar", "view", "apr_9", "--json")
 	if code != ExitError || !strings.Contains(out, `"code":"not_found"`) {
 		t.Fatalf("problem: %d %s", code, out)
-	}
-	// セッションがなければ、書き込みは失敗する。
-	delete(e, "LOGIFORGE_SESSION_ID")
-	if code, _, errs := run(t, dir, e, "", "ar", "close", "apr_1", "--reason", "r"); code != ExitError || !strings.Contains(errs, "セッション") {
-		t.Fatalf("セッションなし：%d %s", code, errs)
 	}
 }
 
@@ -276,15 +237,13 @@ func TestAuth(t *testing.T) {
 // origin/main の木とぶつかる識別子は、誤りにする。
 func TestCheckAfterMainAdvanced(t *testing.T) {
 	dir := clone(t)
-	e := env{"LOGIFORGE_SESSION_ID": "s1"}
+	e := env{}
 	origin := git(t, dir, "remote", "get-url", "origin")
 	git(t, dir, "checkout", "--quiet", "-b", "work")
 	bg := filepath.Join(dir, "tree", H0, S1, H1, "background.md")
 	_ = os.WriteFile(bg, []byte("手元\n"), 0o644)
 	git(t, dir, "add", "-A")
-	if code, _, errs := run(t, dir, e, "", "commit", "-m", "背景"); code != 0 {
-		t.Fatal(errs)
-	}
+	git(t, dir, "commit", "--quiet", "-m", "背景")
 
 	// origin/main を進める：関係のない背景情報と、同じ背景情報。
 	other := filepath.Join(t.TempDir(), "o")

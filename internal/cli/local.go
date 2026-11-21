@@ -157,30 +157,6 @@ func (a *App) authGitCredential(_ context.Context, args []string) error {
 	return nil
 }
 
-// ---- commit ----
-
-// commit は、git commit に、セッションの trailer を付けて呼ぶ。
-func (a *App) commit(_ context.Context, args []string) error {
-	var sess string
-	var rest []string
-	for i := 0; i < len(args); i++ {
-		switch {
-		case args[i] == "--session" && i+1 < len(args):
-			sess = args[i+1]
-			i++
-		case strings.HasPrefix(args[i], "--session="):
-			sess = strings.TrimPrefix(args[i], "--session=")
-		default:
-			rest = append(rest, args[i])
-		}
-	}
-	session, err := a.session(sess)
-	if err != nil {
-		return err
-	}
-	return a.gitPassthrough(append([]string{"commit", "--trailer", "Logiforge-Session-Id: " + session}, rest...)...)
-}
-
 // ---- 手元の木 ----
 
 // worktree は、手元の clone の作業ツリーである。
@@ -595,9 +571,6 @@ func (a *App) check(_ context.Context, args []string) error {
 	}
 	if status, _ := a.git("-C", w.root, "status", "--porcelain"); status != "" {
 		out.Warnings = append(out.Warnings, "コミットしていない変更がある。check は作業ツリーを見るが、push するのは HEAD である")
-	}
-	if trailer, _ := a.git("-C", w.root, "log", "-1", "--format=%(trailers:key=Logiforge-Session-Id,valueonly)"); strings.TrimSpace(trailer) == "" {
-		out.Warnings = append(out.Warnings, `先頭のコミットに Logiforge-Session-Id: がない。approve できないので、git commit --amend --trailer "Logiforge-Session-Id: <ID>" で付ける`)
 	}
 	if a.json {
 		if err := a.writeJSON(out); err != nil {

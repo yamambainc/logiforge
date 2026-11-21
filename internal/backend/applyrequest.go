@@ -13,7 +13,6 @@ import (
 )
 
 // trailer の名前（design/files/revisions.md）。
-const trailerSession = "Logiforge-Session-Id"
 
 // arState は、apply request の状態を決める。head のブランチが消えた open の apply request は、closed として扱う（design/adapters/pull-requests.md の「apply request の状態」）。
 func arState(ar ports.ApplyRequest, h store.BranchHistory) ports.State {
@@ -127,20 +126,6 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
 		m.HeadCommit = d.current.Commit
-	}
-	for i := range m.HeadCommits {
-		c, err := b.Snap.Commit(ctx, repo, m.HeadCommits[i].Commit)
-		if err == nil {
-			if s := trailerValue(c.Trailers, trailerSession); s != "" {
-				m.HeadCommits[i].AuthorSessionID = &s
-			}
-		} else if !errors.Is(err, ports.ErrNotFound) {
-			return nil, err
-		}
-	}
-	if ar.CloseReason != "" || ar.CloseSession != "" {
-		r, s := ar.CloseReason, ar.CloseSession
-		m.ClosedReason, m.ClosedBySessionID = &r, &s
 	}
 	for _, f := range ar.MergeFailures {
 		m.MergeFailures = append(m.MergeFailures, MergeFailure{Commit: f.Revision, Reason: f.Reason, Detail: f.Detail})

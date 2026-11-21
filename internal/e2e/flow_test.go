@@ -52,12 +52,10 @@ func (u *user) branch(name string) {
 	u.git("checkout", "--quiet", "-B", name, "origin/main")
 }
 
-// commitPush は、ファイルをコミットし（logiforge commit でセッションの trailer を付ける）、push する。
+// commitPush は、ファイルをコミットし、push する。
 func (u *user) commitPush(branch, msg string) {
 	u.git("add", "-A")
-	if code, _ := u.cli("", "commit", "-m", msg); code != 0 {
-		u.w.t.Fatal("logiforge commit")
-	}
+	u.git("commit", "--quiet", "-m", msg)
 	u.git("push", "--quiet", "--force", "origin", branch)
 }
 

@@ -45,10 +45,10 @@ func TestBenchOverlayBranch(t *testing.T) {
 	leafID := leaf[strings.LastIndex(leaf, "/")+1:]
 	f.r.git("checkout", "--quiet", "-b", "develop", "main")
 	f.r.write(leaf+"/verdicts/v-0000000001.md", tree.MarshalVerdict(tree.VerdictContent{ID: "v-0000000001", Value: true, Report: "r\n"}))
-	f.r.commit("下\n\nLogiforge-Session-Id: s3")
+	f.r.commit("下")
 	f.r.git("checkout", "--quiet", "-b", "b2")
 	f.r.write(leaf+"/background.md", []byte("上\n"))
-	top := f.r.commit("上\n\nLogiforge-Session-Id: s4")
+	top := f.r.commit("上")
 	f.r.git("checkout", "--quiet", "main")
 	syncFixture(t, f)
 	f.forge.ars = append(f.forge.ars, ports.ApplyRequest{ID: "apr_3", Number: 3, Branch: "b2", Target: "develop", State: ports.StateOpen, HeadRevision: top})

@@ -130,7 +130,6 @@ type NodeHistoryEntry struct {
 	Commit         string    `json:"commit"`
 	CommittedAt    time.Time `json:"committed_at"`
 	ApplyRequestID *string   `json:"apply_request_id"`
-	SessionIDs     []string  `json:"session_ids"`
 	Reflected      bool      `json:"reflected"`
 }
 
@@ -184,19 +183,16 @@ type HeadCommit struct {
 	// BaseCommit は、そのコミットと main の分かれた点。worker がまだ取り込んでいなければ空。
 	BaseCommit string `json:"base_commit"`
 	// SeenAt は、worker がそのコミットを先頭として見つけた時刻（push のおおよその時刻）。worker がまだ取り込んでいなければ nil。
-	SeenAt          *time.Time `json:"seen_at"`
-	AuthorSessionID *string    `json:"author_session_id"`
+	SeenAt *time.Time `json:"seen_at"`
 }
 
 // Review は、レビューである。
 type Review struct {
-	ID                string `json:"id"`
-	Kind              string `json:"kind"`
-	Commit            string `json:"commit"`
-	Body              string `json:"body,omitempty"`
-	ReviewerSessionID string `json:"reviewer_session_id"`
-	PromptRevision    string `json:"prompt_revision,omitempty"`
-	Valid             bool   `json:"valid"`
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Commit string `json:"commit"`
+	Body   string `json:"body,omitempty"`
+	Valid  bool   `json:"valid"`
 	// Reviewer は、レビューを書いた主体（GitForge の利用者の名前）。CreatedAt は、書いた時刻。GitForge から読めなければ空と null
 	Reviewer  string     `json:"reviewer"`
 	CreatedAt *time.Time `json:"created_at"`
@@ -204,8 +200,7 @@ type Review struct {
 
 // reviewOf は、GitForge のレビューを、API の応答の形にする。
 func reviewOf(r ports.Review, valid bool) Review {
-	out := Review{ID: r.ID, Kind: string(r.Kind), Commit: r.Revision, Body: r.Body, ReviewerSessionID: r.Session,
-		PromptRevision: r.PromptRevision, Valid: valid, Reviewer: r.Reviewer}
+	out := Review{ID: r.ID, Kind: string(r.Kind), Commit: r.Revision, Body: r.Body, Valid: valid, Reviewer: r.Reviewer}
 	if !r.CreatedAt.IsZero() {
 		t := r.CreatedAt.UTC()
 		out.CreatedAt = &t
@@ -230,18 +225,16 @@ type ApplyRequest struct {
 	Target string `json:"target"`
 	State  string `json:"state"`
 	// OpenedByCaller は、要求を送った主体が、この apply request を作った主体と同じかである。WebUI は、approve の前に示す。
-	OpenedByCaller    bool           `json:"opened_by_caller"`
-	HeadCommit        string         `json:"head_commit"`
-	HeadCommits       []HeadCommit   `json:"head_commits"`
-	Description       string         `json:"description,omitempty"`
-	Operations        []Operation    `json:"operations"`
-	Reviews           []Review       `json:"reviews"`
-	MergeFailures     []MergeFailure `json:"merge_failures"`
-	Awaiting          *string        `json:"awaiting"`
-	ClosedReason      *string        `json:"closed_reason"`
-	ClosedBySessionID *string        `json:"closed_by_session_id"`
-	Warnings          []string       `json:"warnings"`
-	MergedCommit      *string        `json:"merged_commit"`
+	OpenedByCaller bool           `json:"opened_by_caller"`
+	HeadCommit     string         `json:"head_commit"`
+	HeadCommits    []HeadCommit   `json:"head_commits"`
+	Description    string         `json:"description,omitempty"`
+	Operations     []Operation    `json:"operations"`
+	Reviews        []Review       `json:"reviews"`
+	MergeFailures  []MergeFailure `json:"merge_failures"`
+	Awaiting       *string        `json:"awaiting"`
+	Warnings       []string       `json:"warnings"`
+	MergedCommit   *string        `json:"merged_commit"`
 }
 
 // ReviewMaterial は、レビューの材料である。

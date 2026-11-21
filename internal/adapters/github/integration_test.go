@@ -193,7 +193,7 @@ func (l *live) review(ar ports.ApplyRequest, kind ports.ReviewKind, session stri
 	l.t.Helper()
 	// GitHub は、作者自身の approve を拒む。approve には、opener と別のアカウントのトークンが要る（GITHUB_TEST_REVIEWER_TOKEN）。
 	if _, err := l.a.AddReview(l.asReviewer, l.repo, ar.ID, ports.Review{Kind: kind, Revision: ar.HeadRevision,
-		Reviewer: "reviewer", Session: session, PromptRevision: "p1"}); err != nil {
+		Reviewer: "reviewer", PromptRevision: "p1"}); err != nil {
 		l.t.Fatal(err)
 	}
 }

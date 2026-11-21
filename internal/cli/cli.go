@@ -142,7 +142,6 @@ func commands() []command {
 		{"repo list", "", "repository の一覧", (*App).repoList},
 		{"repo view", "<repository>", "repository", (*App).repoView},
 		{"repo clone", "<repository> [<ディレクトリ>]", "repository を git で clone する", (*App).repoClone},
-		{"commit", "[git commit の引数]", "セッションの trailer を付けて git commit する", (*App).commit},
 		{"story new", "--parent <仮説> --title <タイトル> --summary <概要> --hypothesis <主文>...", "ストーリーと子仮説のひな形を作る", (*App).storyNew},
 		{"story inactivate", "<ストーリー> --reason <理由>", "inactivated.md を作る", (*App).storyInactivate},
 		{"verdict new", "--hypothesis <仮説> --value true|false --report <ファイル> [--artifact <ファイル>]... [--link <名前>=<URL>]... [--cite subtree:<ノード>|artifact:<sha256>|answer:<人への依頼>]... [--supersedes <検証結果>]...", "検証結果のひな形を作る", (*App).verdictNew},
@@ -156,7 +155,7 @@ func commands() []command {
 		{"tree completion", "", "作業の終わりの判定", (*App).treeCompletion},
 		{"tree export", "--format json|markdown [--commit <SHA>]", "木を書き出す", (*App).treeExport},
 		{"artifact get", "<sha256> [--commit <SHA>] [-o <ファイル>]", "artifact の中身を読む", (*App).artifactGet},
-		{"ar create", "--branch <ブランチ> [--kind change|repair.revert|repair.accept] [--description <説明>] [--idempotency-key <キー>]", "push したブランチから apply request を作る", (*App).arCreate},
+		{"ar create", "--branch <ブランチ> [--kind change|repair.revert|repair.accept] [--description <説明>]", "push したブランチから apply request を作る", (*App).arCreate},
 		{"ar edit", "<apply request> --description <説明>", "説明欄を書き換える", (*App).arEdit},
 		{"ar view", "<apply request>", "apply request の詳細", (*App).arView},
 		{"ar list", "[--state open|merged|closed]", "apply request の一覧", (*App).arList},
@@ -202,7 +201,7 @@ func (a *App) help() {
 		fmt.Fprintf(a.Stdout, "  %s %s\n      %s\n", c.name, c.args, c.help)
 	}
 	fmt.Fprintln(a.Stdout, "")
-	fmt.Fprintln(a.Stdout, "環境変数：LOGIFORGE_TOKEN、LOGIFORGE_HOST、LOGIFORGE_SESSION_ID、LOGIFORGE_REPO")
+	fmt.Fprintln(a.Stdout, "環境変数：LOGIFORGE_TOKEN、LOGIFORGE_HOST、LOGIFORGE_REPO")
 }
 
 // ---- フラグ ----
@@ -309,17 +308,6 @@ func (a *App) host() (string, error) {
 	return strings.TrimRight(c.Host, "/"), nil
 }
 
-// session は、セッション ID を、フラグ --session、環境変数 LOGIFORGE_SESSION_ID の順に探す。CLI は作らない。
-func (a *App) session(flag string) (string, error) {
-	if flag != "" {
-		return flag, nil
-	}
-	if s := a.Getenv("LOGIFORGE_SESSION_ID"); s != "" {
-		return s, nil
-	}
-	return "", errors.New("セッション ID がない。--session か LOGIFORGE_SESSION_ID で渡す（CLI は作らない）")
-}
-
 // repo は、repository の名前を、フラグ --repo、環境変数 LOGIFORGE_REPO、clone の git の設定（logiforge.repository）の順に探す。
 func (a *App) repo(flag string) (string, error) {
 	if flag != "" {
@@ -340,9 +328,7 @@ type request struct {
 	method, path string
 	query        url.Values
 	body         any
-	session      string
-	idempotency  string
-	// retry なら、通信の誤りか、502、503、504 のときに、同じ要求（同じ Idempotency-Key）を 1 度だけ送り直す。
+	// retry なら、通信の誤りか、502、503、504 のときに、同じ要求を 1 度だけ送り直す（バックエンドが送り直しを見分ける）。
 	retry bool
 }
 
@@ -414,12 +400,6 @@ func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if r.body != nil {
 		req.Header.Set("Content-Type", "application/json")
-	}
-	if r.session != "" {
-		req.Header.Set("Logiforge-Session-Id", r.session)
-	}
-	if r.idempotency != "" {
-		req.Header.Set("Idempotency-Key", r.idempotency)
 	}
 	res, err := a.HTTP.Do(req)
 	if err != nil {

@@ -168,7 +168,7 @@ func (f *fakeForge) ListApplyRequests(_ context.Context, _, state string) ([]por
 			continue
 		}
 		x := ar
-		x.CloseReason, x.CloseSession, x.MergeFailures = "", "", nil
+		x.MergeFailures = nil
 		out = append(out, x)
 	}
 	return out, nil
@@ -213,9 +213,9 @@ func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string)
 	ar.State, ar.MergedRevision = ports.StateMerged, sha
 	return sha, nil
 }
-func (f *fakeForge) Close(_ context.Context, _, id, reason, session string) error {
+func (f *fakeForge) Close(_ context.Context, _, id, reason string) error {
 	ar := f.ar(id)
-	ar.State, ar.CloseReason, ar.CloseSession = ports.StateClosed, reason, session
+	ar.State = ports.StateClosed
 	return nil
 }
 func (f *fakeForge) RecordMergeFailure(_ context.Context, _, id string, mf ports.MergeFailure) error {
@@ -236,19 +236,16 @@ func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews,
 	return f.reviews[id], nil
 }
 func (f *fakeForge) CreateHumanRequest(_ context.Context, _ string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
-	if n.IdempotencyKey != "" {
-		if hr, ok := f.keys[n.Requester+"\n"+n.IdempotencyKey]; ok {
-			return hr, nil
-		}
+	key := n.Requester + "\n" + n.TargetNode + "\n" + n.Body
+	if hr, ok := f.keys[key]; ok {
+		return hr, nil
 	}
 	num := f.number()
-	hr := ports.HumanRequest{ID: strconv.Itoa(num), Number: num, Kind: n.Kind, TargetNode: n.TargetNode, Body: n.Body, Requester: n.Requester, Session: n.Session}
-	if n.IdempotencyKey != "" {
-		if f.keys == nil {
-			f.keys = map[string]ports.HumanRequest{}
-		}
-		f.keys[n.Requester+"\n"+n.IdempotencyKey] = hr
+	hr := ports.HumanRequest{ID: strconv.Itoa(num), Number: num, Kind: n.Kind, TargetNode: n.TargetNode, Body: n.Body, Requester: n.Requester}
+	if f.keys == nil {
+		f.keys = map[string]ports.HumanRequest{}
 	}
+	f.keys[key] = hr
 	f.hrs = append(f.hrs, hr)
 	return hr, nil
 }
@@ -371,11 +368,11 @@ func setup(t *testing.T) *fixture {
 	r.write(tree.ArtifactPath(sha), art)
 	r.write(dH1+"/verdicts/"+V1+".md", tree.MarshalVerdict(tree.VerdictContent{ID: V1, Value: true, Report: "# 結果\n\n本文\n",
 		Artifacts: []tree.ArtifactRef{{Kind: "file", Name: "d.txt", SHA256: sha}}}))
-	c2 := r.commit("反映\n\nTest-Apply-Request: apr_1\nLogiforge-Session-Id: s1")
+	c2 := r.commit("反映\n\nTest-Apply-Request: apr_1")
 	r.git("checkout", "--quiet", "-b", "b")
 	r.write(dH2+"/"+S2+"/story.md", tree.MarshalStory(tree.StoryContent{ID: S2, Title: "新しいストーリー", Summary: "s"}))
 	r.write(dH2+"/"+S2+"/"+H3+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H3, Statement: "孫"}))
-	head := r.commit("版\n\nLogiforge-Session-Id: s2")
+	head := r.commit("版")
 	r.git("checkout", "--quiet", "main")
 
 	st := &store.Dir{Root: t.TempDir()}
@@ -477,9 +474,6 @@ func TestReads(t *testing.T) {
 	ar, err := b.GetApplyRequest(ctx, c, "q", "apr_2")
 	if err != nil || ar.HeadCommit != f.head || len(ar.HeadCommits) != 1 || ar.HeadCommits[0].BaseCommit != f.c2 || ar.HeadCommits[0].SeenAt == nil || ar.Awaiting == nil || *ar.Awaiting != "review" {
 		t.Fatalf("ar: %+v %v", ar, err)
-	}
-	if ar.HeadCommits[0].AuthorSessionID == nil || *ar.HeadCommits[0].AuthorSessionID != "s2" {
-		t.Fatalf("session: %+v", ar.HeadCommits[0])
 	}
 	if len(ar.Operations) != 1 || ar.Operations[0].Kind != "story.create" || ar.Operations[0].ParentHypothesisID != H2 || ar.Operations[0].Hypotheses[0].ID != H3 {
 		t.Fatalf("ops: %+v", ar.Operations)
