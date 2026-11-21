@@ -287,11 +287,10 @@ func (b *Backend) staleProblem(ctx context.Context, onto *view, base string, ops
 		if c.last.Number <= baseNum {
 			continue
 		}
-		by := "main のコミット " + shortSHA(c.last.Revision)
+		// どの apply request の反映かは、説明を補うだけなので、読めなければ書かない。
+		by := "main のコミット " + shortSHA(c.last.Revision) + " "
 		if m, err := b.Snap.Commit(ctx, onto.repo, c.last.Revision); err == nil && m.ApplyRequest != "" {
-			by += "（apply request #" + m.ApplyRequest + " の反映）"
-		} else if err != nil && !errors.Is(err, ports.ErrNotFound) {
-			return "", "", err
+			by = "main のコミット " + shortSHA(c.last.Revision) + "（apply request #" + m.ApplyRequest + " の反映）"
 		}
 		return "stale_target", fmt.Sprintf("%s は、このブランチが main から分かれたコミット %s のあとに、%sで変わった。"+
 			"ブランチを今の main に合わせて（rebase か merge で）push し、レビューを受け直す", c.label, shortSHA(base), by), nil
