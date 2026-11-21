@@ -29,7 +29,7 @@ describe('引用元が変化（作業）の絞り込み', () => {
 describe('レビュー（議論）の並び', () => {
   it('書いた時刻の順。時刻のないものは、もとの順のまま最後', async () => {
     const { byTime } = await import('./ar');
-    const r = (id: string, at: string | null) => ({ id, kind: 'comment' as const, commit: 'c', reviewer_session_id: 's', valid: true, reviewer: 'x', created_at: at });
+    const r = (id: string, at: string | null) => ({ id, kind: 'comment' as const, commit: 'c', valid: true, reviewer: 'x', created_at: at });
     expect(byTime([r('c', '2026-11-16T10:02:00Z'), r('n1', null), r('a', '2026-11-16T10:00:00Z'), r('n2', null), r('b', '2026-11-16T10:01:00Z')]).map((x) => x.id))
       .toEqual(['a', 'b', 'c', 'n1', 'n2']);
   });

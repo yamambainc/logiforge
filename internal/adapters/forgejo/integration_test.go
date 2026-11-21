@@ -266,7 +266,7 @@ func TestForgejo(t *testing.T) {
 	}
 	reviews, err := gf.ListReviews(ctx, ref, ar.ID)
 	// Forgejo は、同じ人があとで approve すると、前の request changes を dismissed にする。
-	if err != nil || len(reviews.Items) != 1 || reviews.Items[0].Kind != ports.ReviewApprove || reviews.Items[0].Revision != head1 || reviews.Items[0].Reviewer != e.login("alice") || reviews.Items[0].PromptRevision != "p1" {
+	if err != nil || len(reviews.Items) != 1 || reviews.Items[0].Kind != ports.ReviewApprove || reviews.Items[0].Revision != head1 || reviews.Items[0].Reviewer != e.login("alice") || reviews.Items[0].Body != "よい\n\nプロンプトの版：p1" {
 		t.Fatalf("reviews: %+v %v", reviews, err)
 	}
 	t.Log("確かめた：pull request の review を出し、一覧で読める。書く権限のある人の approve は official で、同じ人の前の request changes は dismissed になる")
@@ -374,7 +374,7 @@ func TestForgejo(t *testing.T) {
 	if err != nil || hr.Kind != ports.HumanRequestPVR || hr.TargetNode != "h-0000000000" {
 		t.Fatalf("起票：%+v %v", hr, err)
 	}
-	if again, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "x", Requester: e.login("agent")}); err != nil || again.ID != hr.ID {
+	if again, err := gf.CreateHumanRequest(ctx, ref, ports.NewHumanRequest{Kind: ports.HumanRequestPVR, TargetNode: "h-0000000000", Body: "測ってください\n詳しく", Requester: e.login("agent")}); err != nil || again.ID != hr.ID {
 		t.Fatalf("起票の送り直し：%+v %v", again, err)
 	}
 	photo := bytes.Repeat([]byte{0xff, 0xd8, 0x00}, 1000)

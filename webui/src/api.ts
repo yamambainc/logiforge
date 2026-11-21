@@ -72,7 +72,7 @@ export interface Verdict {
   supersedes?: string[]; apply_request_id?: string; submitted_commit: string; superseded_commit?: string | null;
 }
 export interface NodeDetail { commit: string; node: Node; children: Node[]; verdict?: Verdict | null; cited_by: string[] }
-export interface HistoryEntry { commit: string; committed_at: string; apply_request_id: string | null; session_ids: string[]; reflected: boolean }
+export interface HistoryEntry { commit: string; committed_at: string; apply_request_id: string | null; reflected: boolean }
 
 const enc = encodeURIComponent;
 /** 木を読む時点。どちらもなければ今の main。commit は main かブランチのコミット、apply_request は反映したあとの姿。 */
@@ -132,14 +132,14 @@ export type Operation =
   | { kind: 'story.inactivate'; position: number; story_id: string; reason: string }
   | { kind: 'verdict.submit'; position: number; verdict_id: string; hypothesis_id: string; value: boolean; report_body: string }
   | { kind: 'node.edit'; position: number; hypothesis_id: string; append_background: string };
-export interface Review { id: string; kind: 'approve' | 'request_changes' | 'comment'; commit: string; body?: string; reviewer_session_id: string; valid: boolean; reviewer?: string; created_at?: string | null }
+export interface Review { id: string; kind: 'approve' | 'request_changes' | 'comment'; commit: string; body?: string; valid: boolean; reviewer?: string; created_at?: string | null }
 export interface ApplyRequest {
   id: string; state: 'open' | 'merged' | 'closed'; branch: string; target: string; description?: string; head_commit: string;
-  head_commits?: { commit: string; base_commit: string; seen_at: string | null; author_session_id: string | null }[];
+  head_commits?: { commit: string; base_commit: string; seen_at: string | null }[];
   operations?: Operation[];
   reviews?: Review[];
   merge_failures?: { commit: string; reason: string; detail: string }[];
-  awaiting?: 'review' | 'fix' | null; closed_reason?: string | null; warnings?: string[]; merged_commit?: string | null;
+  awaiting?: 'review' | 'fix' | null; warnings?: string[]; merged_commit?: string | null;
   /** 要求を送った主体が、この apply request を作った主体と同じか。approve の前に示す（design/settings/users.md の「WebUI からのレビュー」） */
   opened_by_caller?: boolean;
 }
@@ -162,10 +162,10 @@ export const getReviewMaterial = (repo: string, id: string) => call<ReviewMateri
 
 export type ReviewKind = Review['kind'];
 /** レビューを付ける。commit は、画面で示した先頭のコミット。user（WebUI）は prompt_revision を送らない */
-export const reviewApplyRequest = (repo: string, id: string, sessionId: string, r: { kind: ReviewKind; commit: string; body: string }) =>
+export const reviewApplyRequest = (repo: string, id: string, r: { kind: ReviewKind; commit: string; body: string }) =>
   call<{ review: Review; apply_request: ApplyRequest }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Logiforge-Session-Id': sessionId },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(r.body ? { kind: r.kind, commit: r.commit, body: r.body } : { kind: r.kind, commit: r.commit }),
   });
 

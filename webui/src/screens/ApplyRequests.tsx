@@ -137,7 +137,6 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         {a.state === 'merged' && a.merged_commit && <a className="btn" href={tree(`commit=${a.merged_commit}`)} onClick={open(tree(`commit=${a.merged_commit}`))}>反映した時点を見る</a>}
       </div>
       {a.target !== 'main' && <p className="note">main 向きではないので、Logiforge は検査も反映もしません。</p>}
-      {a.closed_reason && <p className="note">閉じた理由：{a.closed_reason}</p>}
       {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
 
       <h3 className="sec">差分</h3>
@@ -160,7 +159,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
       <h3 className="sec">先頭のコミット</h3>
       <ol className="commits">
         {(a.head_commits ?? []).map((c) => (
-          <li key={c.commit}><span className="mono">{c.commit.slice(0, 7)}</span><span className="dim">{c.seen_at ? fmt(c.seen_at) : '取り込み中'}</span>{c.author_session_id && <span className="dim mono">{c.author_session_id}</span>}</li>
+          <li key={c.commit}><span className="mono">{c.commit.slice(0, 7)}</span><span className="dim">{c.seen_at ? fmt(c.seen_at) : '取り込み中'}</span></li>
         ))}
       </ol>
 
@@ -169,7 +168,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         <ol className="reviews">
           {byTime(a.reviews!).map((r) => (
             <li key={r.id} className={r.valid ? '' : 'stale'}>
-              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.reviewer_session_id}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
+              <div className="r-head"><span className={`kind r-${r.kind}`}>{REVIEW[r.kind]}</span>{r.reviewer && <b className="r-who">{r.reviewer}</b>}<span className="dim">{fmt(r.created_at)}</span><span className="mono dim">{r.commit.slice(0, 7)}</span>{!r.valid && <span className="dim">（前の先頭へのレビュー）</span>}</div>
               {/* 本文は Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
               {r.body && <Markdown className="report" text={r.body} />}
             </li>

@@ -30,37 +30,16 @@ async function load() {
 beforeEach(() => { vi.stubGlobal('sessionStorage', new MemStorage()); stubFetch(() => ok({})); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-describe('セッション ID', () => {
-  it('タブごとに 1 度だけ作り、sessionStorage に置いて使い回す', async () => {
-    const { sessionId } = await load();
-    const a = sessionId();
-    expect(a).toMatch(/^webui-[0-9a-f]{32}$/);
-    expect(sessionStorage.getItem('lf-session-id')).toBe(a);
-    expect(sessionId()).toBe(a);
-  });
-  it('別のタブ（sessionStorage が別）では、別の ID になる', async () => {
-    const { sessionId } = await load();
-    const a = sessionId();
-    vi.stubGlobal('sessionStorage', new MemStorage());
-    expect(sessionId()).not.toBe(a);
-  });
-  it('置いてあれば、それを使う', async () => {
-    sessionStorage.setItem('lf-session-id', 'webui-kept');
-    const { sessionId } = await load();
-    expect(sessionId()).toBe('webui-kept');
-  });
-});
-
 describe('レビューを送る', () => {
-  it('Logiforge-Session-Id を付け、kind と commit と body を送る。prompt_revision は送らない', async () => {
+  it('kind と commit と body を送る。prompt_revision は送らない', async () => {
     stubFetch(() => ok({ review: { id: 'rev_1' }, apply_request: ar() }, 201));
-    const { submitReview, sessionId } = await load();
+    const { submitReview } = await load();
     const r = await submitReview('demo', 'apr_1', 'comment', 'c1', '  見ました  ');
     expect(r).toEqual({ kind: 'sent', ar: ar(), message: 'コメントを付けました。' });
     const c = callOf();
     expect(c.url).toBe('/v1/repositories/demo/apply-requests/apr_1/reviews');
     expect(c.init.method).toBe('POST');
-    expect((c.init.headers as Record<string, string>)['Logiforge-Session-Id']).toBe(sessionId());
+    expect(c.init.headers as Record<string, string>).not.toHaveProperty('Logiforge-Session-Id');
     expect(c.body).toEqual({ kind: 'comment', commit: 'c1', body: '見ました' });
     expect(c.body).not.toHaveProperty('prompt_revision');
   });
