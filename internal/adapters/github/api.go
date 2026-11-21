@@ -327,8 +327,9 @@ type reviewsResult struct {
 
 // ListReviews は、1 件の pull request の review を、GraphQL で読む。pending は除き、dismiss されたものは Dismissed にする。
 func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
+	// ディレクトリの repository の参照（owner/name:パス）では、REST（repoPath）と同じく、git リポジトリの参照だけを使う。
+	owner, name, ok := strings.Cut(gitRef(repo), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return nil, fmt.Errorf("github: gitforge_ref の形が正しくない: %q", repo)
 	}
 	var out []pullreq.PullReview

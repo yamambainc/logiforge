@@ -541,6 +541,12 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case p == "/graphql" && r.Method == http.MethodPost:
 		// 1 件の pull request の review を、書いた人が push できるかと一緒に返す（api.go の reviewsQuery）。
 		vars, _ := in["variables"].(map[string]any)
+		// GitHub と同じく、ない repository は errors で返す（ディレクトリの参照の :パス を付けたまま渡すと、ここに当たる）。
+		if owner, name := vars["owner"], vars["name"]; owner != "acme" || name != "study" {
+			write(w, http.StatusOK, map[string]any{"data": map[string]any{"repository": nil},
+				"errors": []map[string]any{{"type": "NOT_FOUND", "message": fmt.Sprintf("Could not resolve to a Repository with the name '%v/%v'.", owner, name)}}})
+			return
+		}
 		n := int(vars["number"].(float64))
 		var nodes []map[string]any
 		for _, rv := range f.reviews[n] {
