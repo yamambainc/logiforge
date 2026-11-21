@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: fix-conflict-after-merge-failure
 expected_outcome: |
-  ブランチを今の origin/main に合わせて直し、logiforge check、logiforge commit（または trailer を保つ）、同じブランチへの push をする。新しい先頭のコミットになるのでレビューからやり直しになると説明する。新しい apply request は作らない。
+  ブランチを今の origin/main に合わせて直し、logiforge check、git commit、同じブランチへの push をし、直し終えたら logiforge ar fixed で申告する。新しい先頭のコミットになるのでレビューからやり直しになると説明する。新しい apply request は作らない。

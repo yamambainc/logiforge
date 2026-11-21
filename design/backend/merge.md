@@ -14,8 +14,8 @@ apply request を `main` に反映するとき、バックエンドが何を確�
    - pull request の今の head のスナップショットがある。なければ、反映の失敗の理由を `snapshot_pending` にする（手順 6）。
    - すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、先頭のコミット（head のコミット）への `approve` である。
      - なぜ先頭のコミットに限らないか：worker の判定（[反映かの判定](verify/README.md)）と同じ条件にするため。ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさない。
-   - 先頭のコミットに、書いたセッションの trailer がある（[セッション](../files/revisions.md#セッション)）。
-   - その reviewer のセッション（review の本文の `Session-Id:`。[review の本文](../adapters/texts.md#review-の本文)）が、どの先頭のコミットを書いたセッションとも違う。
+   - reviewer は、pull request の作者と別の GitForge のアカウントである。GitForge が、作者自身の `approve` を拒む（[数える review](../adapters/pull-requests.md#数える-review)）。
+     - なぜセッションを確かめないか：書いた人と確かめる人を分ける保証は、アカウントで GitForge が行うから。セッション ID は自己申告で、偽れるので、確かめても保証にならない。
 2. `latest` を読み、今の `main` のスナップショットを得る。
    - GitForge の `main` が `latest` より進んでいれば、worker が追いつくのを待つ。待つ時間の上限を過ぎたら、反映の失敗の理由を `snapshot_pending` にする（手順 6）。
    - GitForge の `main` は、GitForge のポートの「`main` の先頭を読む」で読む（[GitForge のポート](ports/gitforge.md)）。

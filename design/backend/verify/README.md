@@ -41,7 +41,6 @@ worker が、`main` の新しいコミットごとに、そのコミットが反
 3. その pull request の review で、反映の手順の手順 1 の条件を満たす（[反映の手順](../merge.md)）。
    - その apply request の、すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、H への `approve` である。
      - なぜ H に限らないか：H1 への `approve` のあと H2 に `request_changes` が付いても、ブランチを H1 に戻せば、H1 への最後の決めるレビューは `approve` のままだから。
-   - H に、書いたセッションの trailer がある。reviewer のセッション（review の本文の `Session-Id:`）が、どの先頭のコミットを書いたセッションとも違う。
 4. P の木に、H の差分（ブランチのスナップショット）を重ねられ、重ねた木の全体が、C の木と同じである。
    - H のスナップショットがなければ、`refs/pull/<number>/head` を fetch して作る。
 5. 重ねた木が、反映の手順の手順 3 の検査（対象ノードの変化、差分の検査）を、P を今の `main` として満たす。

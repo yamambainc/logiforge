@@ -16,8 +16,8 @@ review と issue の本文に書くことは、[review と issue の本文](text
 | レビュー | pull request の review（approve、request changes、comment）。reviewer のトークンで出す |
 | 反映する | pull request の merge。`approve` をした reviewer のトークンで、squash を選び、head の SHA とメッセージを渡す |
 | 反映の失敗 | head のコミットへの commit status（context は `logiforge/merge`、state は `failure`、description は失敗の理由）と、理由を書いた pull request のコメント |
-| close | pull request の close。理由とセッション ID は、close した主体のトークンで書く pull request のコメント |
-| 人への依頼 | issue。起票した主体のトークンで作る。識別子は issue の番号 |
+| close | pull request の close。理由は、close した主体のトークンで書く pull request のコメント（人が読む文） |
+| 人への依頼 | issue。起票した主体のトークンで作る。識別子は issue の番号。タイトルは対象ノードの識別子で始める |
 | 回答 | 回答した利用者のトークンで書く issue のコメントと、その issue の close |
 | 一覧のカーソル | pull request と issue の番号。時刻は使わない |
 
@@ -54,7 +54,6 @@ review と issue の本文に書くことは、[review と issue の本文](text
       - なぜ `official` か：ほかの人の権限を読む API は、repository の admin しか使えないから。Forgejo は、書く権限を持つ人の、いちばん新しい `approve` と `request changes` を `official` にする。
     - 書く権限を持つかを読めない review（値がない、読み失敗）は、数えずに、警告する。詳細では「確かめられない」と示す。なぜ：読めないものを書く権限ありとすると、書く権限のない人の review で反映できてしまうから。
     - `comment` は、反映の条件に効かないので、権限を見ない。
-  - `approve` は、本文に、書いたセッションの行がある（[review の本文](texts.md#review-の本文)）。行のない `approve` は数えず、警告する。
 - review は、それを出した head のコミット（review の `commit_id`）への review である。
 - GitForge は、pull request の作者が自分の pull request を `approve` することを拒む（GitHub と Forgejo）。そのため、opener と reviewer は、別の GitForge のアカウントにする。
 
@@ -127,8 +126,8 @@ review と issue の本文に書くことは、[review と issue の本文](text
 - Write を持つ主体ができることと、その扱いは、次のとおりである。
   - 他人のブランチを消す。他人の open の apply request が closed になる。反映済みの apply request は壊れない（[ブランチの掃除](../backend/apply-request/README.md)）。
   - pull request と issue を、GitForge の画面から close し、reopen する。GitForge の状態に従う。
-  - 本文、ラベル、他人のコメントを書き換え、消す。そのため、本文に書いたセッション ID、プロンプトの版、対象ノード、close の理由は、偽れる。
-  - GitForge の画面や API から、直接 review を出す。本文にセッションの行があれば、バックエンドを通した review と同じに数える。
+  - 本文、タイトル、ラベル、他人のコメントを書き換え、消す。そのため、人への依頼の対象ノード（issue のタイトルの頭）は、偽れる。プロンプトの版と close の理由（人が読む文）も書き換えられる。
+  - GitForge の画面や API から、直接 review を出す。バックエンドを通した review と同じに数える。
   - commit status を立てる。`logiforge/merge` の status を偽っても、変わるのはレビュー待ちか修正待ちかの表示だけである。
 - Write を持つ主体でも、次のものは書き換えられない。バックエンドと worker が信じるのは、これらである。
   - pull request、issue、review、コメントの作者

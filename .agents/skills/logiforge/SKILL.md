@@ -57,8 +57,8 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - `story.inactivate`：ストーリーを inactive にする。
   - `verdict.submit`：葉に検証結果を出す。
   - `node.edit`：仮説の背景情報に、文章を加える。
-- 差分を書いたのとは別のセッションの reviewer が `approve` すると、反映される。
-  - 別のセッションにするのは、書いた本人の推論に引きずられずに、論理を審査するためである。
+- 差分を書いたのとは別の GitForge のアカウントの reviewer が `approve` すると、反映される。
+  - 別のアカウントにするのは、書いた本人の推論に引きずられずに、論理を審査するためである。作者自身の `approve` は、GitForge が拒む。
   - 差分が更新されたら、`approve` はやり直しになる。
 
 ### 役割
@@ -84,9 +84,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - トークンの種類とスコープは、[CLI の認証](https://github.com/yamambainc/logiforge/blob/main/design/cli/auth.md) に従う。
 - git にトークンを渡す：`logiforge auth setup-git`
 - スナップショットツリーの git リポジトリを clone する：`logiforge repo clone <repository>`。以降のコマンドは、clone の中で動かす。
-- セッション ID を、環境変数 `LOGIFORGE_SESSION_ID` に置く。
-  - CLI は作らない。自分で一意な値を決める。
-  - 同じ apply request をレビューする reviewer とは、別の値にする（[保証の範囲](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#保証の範囲)）。
+- 同じ apply request をレビューする reviewer とは、別の GitForge のアカウントのトークンを使う（[保証の範囲](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#保証の範囲)）。
 - 出力を機械的に読むときは、どのコマンドにも `--json` を付ける。
 
 ## 今の状態を読む
@@ -132,8 +130,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
    - `node.edit`：`logiforge node edit <仮説> --append-background <ファイル>`
 3. 要るなら、できたファイルを手で直す。
 4. `logiforge check` で検査する。誤りが無くなるまで直す。
-5. `logiforge commit -m <メッセージ>` でコミットする。
-   - `git commit` ではなく、これを使う。セッションの trailer を付けるため。trailer の無い先頭のコミットは `approve` できない。
+5. `git commit -m <メッセージ>` でコミットする。
 6. `git push -u origin <ブランチ>`
 7. `logiforge ar create --branch <ブランチ> [--description <説明>]`
 
@@ -154,12 +151,11 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 直したら、同じブランチに push する。push すると新しい先頭のコミットになり、どの理由で直した場合も、レビューからやり直しになる。
 修正待ち（`fix_waiting`）の apply request は、push しただけではレビュー待ちに戻らない。直し終えたら、`logiforge ar fixed <apply request>` で申告する。
 
-- `request_changes`、`invariant_violation`：同じブランチでファイルを直し、`logiforge commit` して push する。
+- `request_changes`、`invariant_violation`：同じブランチでファイルを直し、`git commit` して push する。
 - `stale_target`、`conflict`：ブランチを今の `origin/main` に合わせて直す。
   - `stale_target` は、ブランチを分けたあとに、操作の対象ノードが `main` で変わったことを示す。今のノードを読み直し、差分がまだ正しいかを確かめる。
   1. `git fetch origin` し、`git rebase origin/main` で衝突を解く。
-     - merge ではなく rebase にする。merge のコミットには、セッションの trailer が付かないから。rebase なら、先頭のコミットの trailer が残る。
-     - rebase は、ブランチを書いたセッションで行う。trailer は元のセッションのままなので、別のセッションが衝突を解くと、そのセッションの書いた分が記録されない。別のセッションで行うときは、最後に `logiforge commit --allow-empty -m <メッセージ>` でコミットを 1 つ重ね、先頭のコミットにそのセッションを載せる。
+     - merge のコミットではなく rebase にする。なぜ：差分が `main` からの変化だけになり、レビューしやすいから。
   2. `logiforge check`
   3. `git push --force-with-lease`（rebase で履歴が変わるため）
 - `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
@@ -189,5 +185,5 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 ## してはいけないこと
 
 - `main` に直接 push しない。反映によらない変更は、repository を壊し、直すまでほかの apply request が反映されなくなる（[壊れた repository](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/repair.md#壊れた-repository)）。
-- 自分の書いた apply request を、同じセッションでレビューしない。`same_session` で拒まれるうえ、別の文脈で論理を確かめる意味がなくなる。
+- 自分の書いた apply request を、自分のアカウントでレビューしない。`approve` は GitForge が拒むうえ、別の文脈で論理を確かめる意味がなくなる。
 - `node.edit` で、主文、タイトル、概要を変えない。意味が変わると、それまでの審査と検証が成り立たなくなる。

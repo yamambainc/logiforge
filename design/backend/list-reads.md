@@ -23,7 +23,7 @@
   - なぜ：review は、GitHub の REST でも Forgejo でも、pull request ごとにしか読めないから。review の状態で絞れる一覧もない。
 - pull request の一覧の各項目には、番号、作者、状態、merge のコミット、head の SHA とブランチ、向き先、ラベルが入っている（GitHub と Forgejo）。一覧に要るのは、これだけである。
 - open の一覧は、`state=open` で読む。ブランチが消えた open の apply request は `closed` に数える（[apply request の状態](../adapters/pull-requests.md#apply-request-の状態)）。そのため、`closed` の一覧では、GitForge で open のものも読む。
-- 人への依頼の種類はラベル、回答済みかは issue の状態、対象ノードは本文で決める（[人への依頼の issue](../adapters/texts.md#人への依頼の-issue)）。どれも issue の一覧に入っている。
+- 人への依頼の種類はラベル、回答済みかは issue の状態、対象ノードは issue のタイトルの頭で決める（[人への依頼の issue](../adapters/texts.md#人への依頼の-issue)）。どれも issue の一覧に入っている。
 
 ## 1 件の読みと書き込み
 

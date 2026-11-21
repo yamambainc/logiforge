@@ -40,16 +40,9 @@
 - ディレクトリの repository では、[版](../directory/history.md#版)はディレクトリを変えたコミットだけである。
   - 反映かの判定も、そのコミットにだけ行う。
 
-## セッション
-
-- apply request の先頭のコミットを書いたセッションは、利用者の自己申告である。
-  - 先頭のコミットのメッセージの trailer `Logiforge-Session-Id:` に、CLI が書く（[CLI](../cli/README.md)）。
-  - trailer のない先頭のコミットは、書いたセッションがわからないので、`approve` できない（[反映の条件](../backend/merge.md)）。
-- 自己申告であることと、その限りでの保証は、[保証の範囲](../../docs/apply-request/review.md) に書く。
-
 ## 誰が、いつ、どの apply request で
 
-- 誰が：反映のコミットの `Logiforge-Session-Id:` と、pull request の作者
+- 誰が：pull request の作者（書いた人）と、approve した review の作者（確かめた人）
 - いつ：コミットの時刻
 - どの apply request で：worker の反映かの判定の結果
 

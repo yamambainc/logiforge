@@ -10,7 +10,6 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | `auth login --with-token \| --token <トークン> [--host <URL>]` | なし | なし |
 | `auth setup-git [--url <GitForge の URL>] [--insecure]` | `listRepositories`（URL を求めるときだけ） | GitForge の URL にだけ、credential helper を設定する |
 | `auth git-credential get` | なし | credential helper の本体。git が呼ぶ |
-| `commit [git commit の引数]` | なし | `git commit` に、セッションの trailer を付けて呼ぶ |
 | `repo list` | `listRepositories` | なし |
 | `repo view <repository>` | `getRepository` | なし |
 | `repo clone <repository> [<ディレクトリ>]` | `getRepository`（`git_url` を得る） | `git clone`。clone の git の設定に `logiforge.repository` を書く |
@@ -62,7 +61,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
   - なぜ：材料を読んだあとに新しいコミットが push されると、読んでいないコミットをレビューしたことになるから。そのときは、`commit_conflict` で受け付けない。
 - `ar cleanup` は、ほかの人のブランチを消さない。手元にあるブランチだけを対象にする。
 - `ar create` の送り直しは、同じブランチの open の pull request で見分ける。キーは使わない（[apply request の作成](../backend/apply-request/create.md#作成)）。
-- `human-request create` は、`--idempotency-key` で `Idempotency-Key` を渡せる。
+- `human-request create` の送り直しは、同じタイトルと本文の、少し前の open の issue で見分ける。キーは使わない（[同じ要求の繰り返し](../api/writes.md#同じ要求の繰り返し)）。
 - どのコマンドも、`snapshot_pending` が返ったら、1 秒待って、3 回まで送り直す。
   - それでも `snapshot_pending` なら、そのまま返す。
   - なぜ：worker は見回りの間隔ごとに取り込むので、数秒待てば、多くは読む側に出ているから（[書いた直後の読み](../api/writes.md#書いた直後の読み)）。

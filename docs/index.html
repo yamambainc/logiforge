@@ -69,7 +69,7 @@ ol.points li{margin:6px 0}
   <li>Logiforge は、木、レポートと artifact、履歴を持つ。</li>
   <li>真偽は、ストーリーは子仮説の AND、仮説は子ストーリーの OR で、自動で計算する。</li>
   <li>opener は、木の分解と葉の検証を行い、apply request を出す。どのエージェントでも、人でもよい。</li>
-  <li>reviewer は、差分を書いたのとは別のセッションで、論理と根拠を審査する。承認されると反映される。</li>
+  <li>reviewer は、差分を書いたのとは別のアカウントで、論理と根拠を審査する。承認されると反映される。</li>
   <li>利用者は、repository を作って根の主文を書き、人への依頼に回答する。</li>
   <li>エージェントや人は CLI で、利用者は WebUI で、同じ Logiforge を使う。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/architecture/README.md">全体構成</a></li>
 </ul>
@@ -80,7 +80,7 @@ ol.points li{margin:6px 0}
 <ol class="points">
   <li>究極の問いを根にして、仮説とストーリーが交互に並ぶ木を作る。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md">仮説とストーリーの木</a></li>
   <li>値を入れるのは、葉の仮説の検証結果だけ。上位の値は、すべて自動で計算する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/propagation.md">真偽値の伝播</a></li>
-  <li>木への変更は、すべて apply request を通す。差分を書いたのとは別のセッションの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
+  <li>木への変更は、すべて apply request を通す。差分を書いたのとは別のアカウントの reviewer が承認する。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md">apply request</a></li>
   <li>偽が出ても、親の仮説は自動では棄却しない。別のストーリーを探す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/tree/falsification.md">仮説が偽になったとき</a></li>
   <li>作業は「着手できる作業」の問い合わせで見つけ、ループは外の仕組みで回す。→ <a href="https://github.com/yamambainc/logiforge/blob/main/docs/work/README.md">着手できる作業</a></li>
 </ol>

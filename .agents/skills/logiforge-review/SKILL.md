@@ -35,7 +35,7 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
 ### 別のコンテキストでレビューする理由
 
 - opener と同じ文脈で読むと、opener の推論をそのまま受け入れてしまい、審査にならない。
-- そのため、差分を書いたのとは別のセッションで、レビューの材料だけを読んで審査する。
+- そのため、差分を書いたのとは別のアカウントで、レビューの材料だけを読んで審査する。
   - 材料には、apply request の説明欄を含めない。opener の推論が入るから。
 - 1 つの apply request ごとに新しいコンテキストで始めると、前のレビューに引きずられず、同じ材料なら同じ判断になりやすい。
 
@@ -47,9 +47,8 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
 
 ## 始める前に
 
-- 差分を書いたどのセッションとも別のセッション ID を、`LOGIFORGE_SESSION_ID` に置く。
-  - 差分を書いたセッションからのレビューは、種類によらず、`same_session` で拒まれる（[反映の条件](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#反映の条件)）。
-- 自分が書いた差分や、自分が指示した差分はレビューしない。セッションを変えても、文脈は分かれないから。
+- 差分を書いたアカウントとは別の GitForge のアカウントのトークンを使う。作者自身の `approve` は、GitForge が拒む（[反映の条件](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#反映の条件)）。
+- 自分が書いた差分や、自分が指示した差分はレビューしない。別のアカウントでも、同じ文脈でレビューすると、確かめる意味がなくなるから。
 - 1 つの apply request ごとに、新しいコンテキストで始める（[想定する使い方](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#想定する使い方)）。
   - 前のレビューの文脈に、引きずられないため。
 
@@ -100,7 +99,7 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - リビジョンは、logiforge のリポジトリでの、このファイルのコミットの SHA である。スナップショットツリーの git リポジトリのコミットではない。
   - 求め方：`git -C <logiforge のリポジトリ> log -1 --format=%H -- .agents/skills/logiforge-review/SKILL.md`
 - 直しても通らない apply request（前提の主張そのものが誤っているなど）は、却下する：`logiforge ar close <apply request> --reason <理由>`
-  - 却下できるのは、差分を書いたどのセッションとも別のセッションだけである（[状態](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#状態)）。差分を書いたセッションからの close は、取り下げになる。
+  - 却下は、apply request を作った人とは別の人が行う（[状態](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#状態)）。作った人からの close は、取り下げになる。
 
 ## 付けたあと
 
@@ -112,11 +111,9 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
   - `merge_forbidden`：この reviewer の主体に merge の権限が無い。権限のある reviewer に任せる。
   - `repository_broken`：repository が壊れていて、直すための apply request でないので反映されない。直すのは別の作業なので、reviewer がすることは無い。
   - `stale_target`、`invariant_violation`、`conflict`：opener が直す。reviewer がすることは無い。
-- `warnings` に、reviewer と作成者が同じ主体だという警告があれば、頼んだ人に伝える。
 
 `ar review` が誤りを返したとき：
 
-- `same_session`：差分を書いたセッションと同じセッション ID を使っている。レビューをやめ、別のセッションでやり直す。
 - `commit_conflict`：材料を読んだあとに push された。手順 2 から、やり直す。
 - `snapshot_pending`：少し待って、送り直す。
 - `not_open`：もう open でない。レビューをやめる。

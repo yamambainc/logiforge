@@ -45,7 +45,7 @@
 - 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
 - その repository に Write がなければ、`forbidden` を返す。
 - WebUI は、approve の前に、CLI の reviewer と同じレビューの材料（`getReviewMaterial`）を示す。自分が作った apply request なら、そのことも示す（[apply request と履歴](../../docs/webui/history.md)）。
-- 人については、セッションの分離は、文脈の分離を保証しない（[保証の範囲](../../docs/apply-request/review.md#保証の範囲)）。
+- 書いた人と確かめる人の分離は、GitForge のアカウントで分ける（[保証の範囲](../../docs/apply-request/review.md#保証の範囲)）。
 
 ## トークンの出どころ
 
