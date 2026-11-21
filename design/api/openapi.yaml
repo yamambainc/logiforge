@@ -783,7 +783,9 @@ paths:
                 commit:
                   $ref: '#/components/schemas/Commit'
                   description: レビューした先頭のコミットの SHA（../../design/backend/apply-request/README.md）。ブランチの今の先頭のコミットと違えば commit_conflict で受け付けない
-                body: { type: string }
+                body:
+                  type: string
+                  description: review の本文。comment と request_changes では必須（GitForge が本文のない review を拒む）。空なら validation_failed で受け付けない。approve ではなくてよい
                 prompt_revision:
                   type: string
                   description: 使ったプロンプトのリビジョン。client の approve では必須。user（WebUI）では送らない。review の本文の最後に、人が読む文で書く。読むときは返さない

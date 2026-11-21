@@ -157,7 +157,7 @@ func TestReviewSnapshotPendingWritesNothing(t *testing.T) {
 	f.forge.ar("apr_2").HeadRevision = head
 	before := len(f.forge.reviews["apr_2"].Items)
 	for _, kind := range []string{"comment", "approve"} {
-		_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: kind, Commit: head, PromptRevision: "p"})
+		_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: kind, Commit: head, PromptRevision: "p", Body: "見た"})
 		if code(err) != CodeSnapshotPending {
 			t.Fatalf("%s：%v", kind, err)
 		}

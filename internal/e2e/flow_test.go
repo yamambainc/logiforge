@@ -122,6 +122,8 @@ func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 	args := []string{"ar", "review", id, "--" + kind, "--commit", hs[n-1].Commit, "--repo", u.repoName(), "--json"}
 	if kind == "approve" {
 		args = append(args, "--prompt-revision", "prompt-1")
+	} else {
+		args = append(args, "--body", "見ました")
 	}
 	code, out := u.cli("", args...)
 	var res struct {

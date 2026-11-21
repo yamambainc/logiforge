@@ -107,7 +107,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: strings.Repeat("1", 40), PromptRevision: "p"}); code(err) != CodeCommitConflict {
 		t.Fatalf("違う版：%v", err)
 	}
-	rc, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "request_changes", Commit: created.Value.HeadCommit})
+	rc, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "request_changes", Commit: created.Value.HeadCommit, Body: "直して"})
 	if err != nil || rc.Value.ApplyRequest.Awaiting == nil || *rc.Value.ApplyRequest.Awaiting != "fix" {
 		t.Fatalf("request_changes: %+v %v", rc.Value.ApplyRequest, err)
 	}
@@ -125,7 +125,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if v, _ := b.GetNode(ctx, agent, "q", H2, At{}); v.Verdict == nil || v.Verdict.ID != "v-9999999999" {
 		t.Fatalf("反映した検証結果が読めない：%+v", v.Verdict)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeNotOpen {
+	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Body: "見た"}); code(err) != CodeNotOpen {
 		t.Fatalf("merged へのレビュー：%v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "approve", Commit: d.Value.HeadCommit, PromptRevision: "p"}); code(err) != CodeValidationFailed {
 		t.Fatalf("同じアカウントの approve：%v", err)
 	}
-	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit}); err != nil {
+	if _, err := b.ReviewApplyRequest(ctx, agent, "q", d.Value.ID, NewReview{Kind: "comment", Commit: d.Value.HeadCommit, Body: "見た"}); err != nil {
 		t.Fatalf("同じアカウントの comment：%v", err)
 	}
 }
@@ -484,7 +484,7 @@ func TestUserReview(t *testing.T) {
 	if got, _ := b.GetApplyRequest(ctx, alice, "q", id); got.OpenedByCaller {
 		t.Fatal("ほかの人に opened_by_caller がある")
 	}
-	if _, err := b.ReviewApplyRequest(ctx, reader, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit}); code(err) != CodeForbidden {
+	if _, err := b.ReviewApplyRequest(ctx, reader, "q", id, NewReview{Kind: "comment", Commit: created.Value.HeadCommit, Body: "見た"}); code(err) != CodeForbidden {
 		t.Fatalf("Write のない user：%v", err)
 	}
 	ok, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit})

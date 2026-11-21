@@ -163,13 +163,13 @@ func TestE2EEdges(t *testing.T) {
 		}
 		// 版のスナップショットは worker が作るので、それまで、レビューは snapshot_pending になる。
 		reviewer.session = "s-r4"
-		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
+		code, out = reviewer.cli("", "ar", "review", ar.ID, "--comment", "--body", "見ました", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 		if code != 1 || !strings.Contains(out, "snapshot_pending") {
 			t.Fatalf("worker が止まっているときのレビュー：%d %s", code, out)
 		}
 		w.restartWorker()
 		w.eventually("worker が戻り、レビューできる", 30*time.Second, func() bool {
-			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--commit", ar.HeadCommit, "--repo", "q", "--json")
+			code, _ := reviewer.cli("", "ar", "review", ar.ID, "--comment", "--body", "見ました", "--commit", ar.HeadCommit, "--repo", "q", "--json")
 			return code == 0
 		})
 		agent.must(nil, "ar", "close", ar.ID, "--reason", "確かめ終えた")

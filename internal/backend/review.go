@@ -47,6 +47,10 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if kind != ports.ReviewApprove && kind != ports.ReviewRequestChanges && kind != ports.ReviewComment {
 		return out, fail(CodeValidationFailed, "kind は approve、request_changes、comment のどれか")
 	}
+	// GitForge は、本文のない comment と request changes の review を拒む（GitHub と Forgejo）。
+	if (kind == ports.ReviewComment || kind == ports.ReviewRequestChanges) && strings.TrimSpace(n.Body) == "" {
+		return out, fail(CodeValidationFailed, "comment と request_changes には body（本文）が要る")
+	}
 	if kind == ports.ReviewApprove && n.PromptRevision == "" {
 		return out, fail(CodeValidationFailed, "approve では prompt_revision が必須")
 	}
