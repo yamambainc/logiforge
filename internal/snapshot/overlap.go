@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 

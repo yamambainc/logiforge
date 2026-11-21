@@ -30,7 +30,6 @@ func normalizeKind(k string) (string, error) {
 	return "", fail(CodeValidationFailed, "kind は change、repair.revert、repair.accept のどれか")
 }
 
-
 // repairProblem は、直すための apply request の先頭のコミットが、反映の条件を満たすかを確かめ、満たさなければ理由を返す。
 // current は今の main（壊れていても戻さない）、br は先頭のコミットのブランチのスナップショットである。
 //   - revert：差分を今の main に重ねた木の全体が、最後に正しかった時点の木と同じである。
