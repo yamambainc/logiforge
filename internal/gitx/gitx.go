@@ -115,6 +115,15 @@ func Init(ctx context.Context, dir string) (*Repo, error) {
 	return &Repo{Dir: dir}, nil
 }
 
+// IsRepo は、dir が git の bare repository として読めるかを返す。
+// 読めないのは、ディレクトリがないか、中身が壊れているか消えているときである。
+func IsRepo(ctx context.Context, dir string) bool {
+	cmd := exec.CommandContext(ctx, "git", "--git-dir="+dir, "rev-parse", "--is-bare-repository")
+	cmd.Env = append(cmd.Environ(), isolatedEnv...)
+	out, err := cmd.Output()
+	return err == nil && strings.TrimSpace(string(out)) == "true"
+}
+
 // LsRemote は、リモートのブランチの先頭を、ブランチの名前から引く。
 func (r *Repo) LsRemote(ctx context.Context, remote string) (map[string]string, error) {
 	out, err := r.run(ctx, nil, "ls-remote", "--heads", "--", remote)

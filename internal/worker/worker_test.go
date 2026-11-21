@@ -622,3 +622,25 @@ func TestCitationOverlap(t *testing.T) {
 		t.Fatalf("重なりの警告：%v", c.Warnings)
 	}
 }
+
+// 手元の複製が git の repository として読めなくなったら、消して作り直し、取り込みを続ける。
+func TestBrokenCloneIsRecreated(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	dir := filepath.Join(w.cfg.Dir, "q.git")
+	// 中身が消えて、ディレクトリだけが残った。
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.write(h2+"/background.md", []byte("あと\n"))
+	head := r.commit("after")
+	syncRepo(t, w)
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != head {
+		t.Fatalf("作り直したあとに取り込んでいない：latest %s、want %s", latest, head)
+	}
+}

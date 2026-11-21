@@ -293,10 +293,26 @@ func (w *Worker) writeRepositories(ctx context.Context, repos []ports.Repository
 
 func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 	dir := filepath.Join(w.cfg.Dir, name+".git")
-	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-		if _, err := gitx.Init(ctx, dir); err != nil {
+	_, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return nil, err
+	case gitx.IsRepo(ctx, dir):
+		return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
+	default:
+		// 手元の複製が git の repository として読めなければ、消して作り直す。次の fetch で取り直す。
+		// なぜ：壊れたままだと、見回りのたびに同じ失敗をくり返し、取り込みが止まるから。
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		w.cfg.Log.Warn("手元の複製が git の repository でないので、作り直す", "repository", name, "dir", dir)
+		if err := os.RemoveAll(dir); err != nil {
 			return nil, err
 		}
+	}
+	if _, err := gitx.Init(ctx, dir); err != nil {
+		return nil, err
 	}
 	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
 }
