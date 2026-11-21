@@ -112,12 +112,25 @@ func TestReviewAndMerge(t *testing.T) {
 		t.Fatalf("request_changes: %+v %v", rc.Value.ApplyRequest, err)
 	}
 
-	// approve すると、この要求の中で反映し、読む側に出るまで待つ。
-	ok, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, PromptRevision: "p"})
-	if err != nil || ok.Pending != "" || ok.Value.ApplyRequest.State != "merged" || ok.Value.ApplyRequest.MergedCommit == nil {
-		t.Fatalf("approve: %+v pending=%q %v", ok.Value.ApplyRequest, ok.Pending, err)
+	// 数える approve がなければ、merge できない。
+	if _, err := b.MergeApplyRequest(ctx, reviewer, "q", id); code(err) != CodeNotApproved {
+		t.Fatalf("approve の前の merge：%v", err)
 	}
-	m, err := b.GetCommitForTest(ctx, "q", *ok.Value.ApplyRequest.MergedCommit)
+	// approve は、検査に通れば GitForge に approve を出すだけで、merge しない。
+	ap, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, PromptRevision: "p"})
+	if err != nil || ap.Value.ApplyRequest.State != "open" || ap.Value.Review.Kind != "approve" {
+		t.Fatalf("approve: %+v %v", ap.Value, err)
+	}
+	// merge は、別の操作である。opener も呼べる。merge し、読む側に出るまで待つ。
+	ok, err := b.MergeApplyRequest(ctx, agent, "q", id)
+	if err != nil || ok.Pending != "" || ok.Value.State != "merged" || ok.Value.MergedCommit == nil {
+		t.Fatalf("merge: %+v pending=%q %v", ok.Value, ok.Pending, err)
+	}
+	// 送り直し：もう反映されていれば、成功として今の状態を返す。
+	if again, err := b.MergeApplyRequest(ctx, reviewer, "q", id); err != nil || again.Value.State != "merged" {
+		t.Fatalf("merge の送り直し：%+v %v", again.Value, err)
+	}
+	m, err := b.GetCommitForTest(ctx, "q", *ok.Value.MergedCommit)
 	// 反映のコミットのメッセージには、機械が読む trailer を書かない（design/files/revisions.md）。
 	if err != nil || trailerValue(m, "Logiforge-Apply-Request") != "" || trailerValue(m, "Logiforge-Version") != "" || trailerValue(m, "Logiforge-Session-Id") != "" {
 		t.Fatalf("反映のコミットの trailer: %+v %v", m, err)
@@ -154,19 +167,24 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	y, _ := b.CreateApplyRequest(ctx, agent, "q", NewApplyRequest{Branch: "y"})
 	f.waitVersion(t, x)
 	f.waitVersion(t, y)
-	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", x.Value.ID, NewReview{Kind: "approve", Commit: x.Value.HeadCommit, PromptRevision: "p"}); err != nil {
-		t.Fatal(err)
+	if res, err := approve(t, f, x.Value.ID); err != nil || res.Value.ApplyRequest.State != "merged" {
+		t.Fatalf("x：%+v %v", res.Value, err)
 	}
-	res, err := b.ReviewApplyRequest(ctx, reviewer, "q", y.Value.ID, NewReview{Kind: "approve", Commit: y.Value.HeadCommit, PromptRevision: "p"})
-	if err != nil {
-		t.Fatal(err)
+	// y の approve は、検査に通らないので、GitForge に出さない。
+	_, err := b.ReviewApplyRequest(ctx, reviewer, "q", y.Value.ID, NewReview{Kind: "approve", Commit: y.Value.HeadCommit, PromptRevision: "p"})
+	e := AsError(err)
+	if e == nil || e.Code != CodeStaleTarget {
+		t.Fatalf("stale_target でない：%v", err)
 	}
-	ar := res.Value.ApplyRequest
-	if mf := res.Value.MergeFailure; ar.State != "open" || mf == nil || mf.Reason != "stale_target" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
-		t.Fatalf("stale_target: %+v %+v", ar, mf)
+	if rs := f.forge.reviews[y.Value.ID].Items; len(rs) != 0 {
+		t.Fatalf("検査に通らない approve を出した：%+v", rs)
+	}
+	ar, err := b.GetApplyRequest(ctx, reviewer, "q", y.Value.ID)
+	if err != nil || ar.State != "open" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
+		t.Fatalf("修正待ちでない：%+v %v", ar, err)
 	}
 	// 説明は、どのコミット・どの apply request で変わったかと、何をすればよいかを書く。利用者に「base」の語を見せない。
-	if d := res.Value.MergeFailure.Detail; !strings.Contains(d, "対象ノード "+H1) || !strings.Contains(d, "apply request #"+x.Value.ID) ||
+	if d := e.Detail; !strings.Contains(d, "対象ノード "+H1) || !strings.Contains(d, "apply request #"+x.Value.ID) ||
 		!strings.Contains(d, "今の main に合わせて") || mentionsBase(d) {
 		t.Fatalf("stale_target の説明：%s", d)
 	}
@@ -362,9 +380,39 @@ var (
 	reviewerC = Caller{Token: "rev", Principal: ports.Principal{Login: "reviewer", Kind: ports.PrincipalClient}}
 )
 
-func approve(t *testing.T, f *fixture, id string) (Written[ReviewResult], error) {
+// merged は、approve と merge を続けて行った結果である。断られたら、MergeFailure に理由（エラーの code）が入る。
+type merged struct {
+	ApplyRequest ApplyRequest
+	MergeFailure *refusal
+}
+
+type refusal struct{ Reason, Detail string }
+
+// refusals は、検査や GitForge に断られた approve と merge の code である（design/backend/merge.md）。
+var refusals = map[Code]bool{CodeStaleTarget: true, CodeConflict: true, CodeInvariantViolation: true, CodeSnapshotPending: true,
+	CodeNotApproved: true, CodeMergeForbidden: true}
+
+// approve は、reviewer で approve し、通ったら同じ reviewer で merge する。
+func approve(t *testing.T, f *fixture, id string) (Written[merged], error) {
 	t.Helper()
-	return f.b.ReviewApplyRequest(context.Background(), reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"})
+	ctx := context.Background()
+	refused := func(err error) (Written[merged], error, bool) {
+		e := AsError(err)
+		if e == nil || !refusals[e.Code] {
+			return Written[merged]{}, err, err != nil
+		}
+		ar, gerr := f.b.GetApplyRequest(ctx, reviewerC, "q", id)
+		return Written[merged]{Value: merged{ApplyRequest: ar, MergeFailure: &refusal{Reason: string(e.Code), Detail: e.Detail}}}, gerr, true
+	}
+	_, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"})
+	if out, err, done := refused(err); done {
+		return out, err
+	}
+	m, err := f.b.MergeApplyRequest(ctx, reviewerC, "q", id)
+	if out, err, done := refused(err); done {
+		return out, err
+	}
+	return Written[merged]{Value: merged{ApplyRequest: m.Value}, Pending: m.Pending}, nil
 }
 
 func create(t *testing.T, f *fixture, branch, session string, files map[string][]byte) string {
@@ -398,7 +446,7 @@ func (f *fixture) waitVersion(t *testing.T, out Written[ApplyRequest]) {
 	}
 }
 
-func lastFailure(t *testing.T, res Written[ReviewResult], err error) string {
+func lastFailure(t *testing.T, res Written[merged], err error) string {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
@@ -538,10 +586,10 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 			t.Fatalf("反映のコミットに、セッションの trailer を書いた：%v", c)
 		}
 	}
-	// approve の送り直しは、成功として今の状態を返す。
-	again, err := approve(t, f, id)
-	if err != nil || again.Value.ApplyRequest.State != "merged" {
-		t.Fatalf("送り直し：%+v %v", again.Value.ApplyRequest, err)
+	// merge の送り直しは、成功として今の状態を返す。
+	again, err := f.b.MergeApplyRequest(ctx, reviewerC, "q", id)
+	if err != nil || again.Value.State != "merged" {
+		t.Fatalf("送り直し：%+v %v", again.Value, err)
 	}
 }
 
@@ -600,10 +648,17 @@ func TestUserReview(t *testing.T) {
 		t.Fatalf("Write のない user：%v", err)
 	}
 	ok, err := b.ReviewApplyRequest(ctx, alice, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit})
-	if err != nil || ok.Value.ApplyRequest.State != "merged" {
+	if err != nil || ok.Value.ApplyRequest.State != "open" {
 		t.Fatalf("user の approve：%+v %v", ok.Value.ApplyRequest, err)
 	}
 	if ok.Value.Review.Reviewer != "alice" {
 		t.Fatalf("user のレビューの記録：%+v", ok.Value.Review)
+	}
+	// merge も、Write がある user だけが呼べる。
+	if _, err := b.MergeApplyRequest(ctx, reader, "q", id); code(err) != CodeForbidden {
+		t.Fatalf("Write のない user の merge：%v", err)
+	}
+	if m, err := b.MergeApplyRequest(ctx, alice, "q", id); err != nil || m.Value.State != "merged" {
+		t.Fatalf("user の merge：%+v %v", m.Value, err)
 	}
 }
