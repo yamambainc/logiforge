@@ -181,6 +181,10 @@ func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting)
 	if ar == nil {
 		return ports.ErrNotFound
 	}
+	// GitForge と同じに、既に付いているラベルは付け直さない（付けた出来事は増えない）。
+	if ar.Waiting == w {
+		return nil
+	}
 	ar.Waiting = w
 	switch w {
 	case ports.WaitingReview:
@@ -226,10 +230,12 @@ func (f *fakeForge) Close(_ context.Context, _, id, reason string) error {
 	ar.State = ports.StateClosed
 	return nil
 }
-func (f *fakeForge) RecordMergeFailure(_ context.Context, _, id string, mf ports.MergeFailure) error {
+// RecordMergeFailure は、コメントを足し、ラベルを付け直す（既に付いていても、付けた出来事を足す）。
+func (f *fakeForge) RecordMergeFailure(ctx context.Context, repo, id string, mf ports.MergeFailure, w ports.Waiting) error {
 	ar := f.ar(id)
 	ar.Comments = append(ar.Comments, ports.Comment{Author: "bob", Body: "反映できなかった（" + mf.Reason + "）\n\n" + mf.Detail, CreatedAt: time.Now().UTC()})
-	return nil
+	ar.Waiting = ports.WaitingNone
+	return f.SetWaiting(ctx, repo, id, w)
 }
 func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) (ports.Review, error) {
 	rs := f.reviews[id]

@@ -242,8 +242,9 @@ type GitForge interface {
 	Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error)
 	// Close は、理由を書いた pull request のコメントのあとに、pull request を close する。
 	Close(ctx context.Context, repo, id, reason string) error
-	// RecordMergeFailure は、反映の失敗の理由を、pull request のふつうのコメントに書く。
-	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure) error
+	// RecordMergeFailure は、反映の失敗の理由を、pull request のふつうのコメントに書き、ラベルを w にする。
+	// ラベルが既に w でも、外して付け直す。失敗を書いた主体がラベルを付けた出来事を残し、ずれ直しで失敗の出来事として読むためである。
+	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure, w Waiting) error
 	// SetWaiting は、レビュー待ちか修正待ちかのラベルを付け替える。WaitingNone なら、両方を外す。
 	SetWaiting(ctx context.Context, repo, id string, w Waiting) error
 

@@ -225,13 +225,11 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, *por
 // opener が直すべき理由なら修正待ちに、ほかの理由ならレビュー待ちに、ラベルを付け替える
 // （design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
 func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.MergeFailure) error {
-	if err := b.Forge.RecordMergeFailure(ctx, ref, id, f); err != nil {
-		return err
-	}
+	w := ports.WaitingReview
 	if openerFixes[f.Reason] {
-		return b.Forge.SetWaiting(ctx, ref, id, ports.WaitingFix)
+		w = ports.WaitingFix
 	}
-	return b.Forge.SetWaiting(ctx, ref, id, ports.WaitingReview)
+	return b.Forge.RecordMergeFailure(ctx, ref, id, f, w)
 }
 
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。

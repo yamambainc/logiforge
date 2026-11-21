@@ -65,9 +65,9 @@ func (c *countingForge) Close(ctx context.Context, repo, id, reason string) erro
 	c.n("Close")
 	return c.inner.Close(ctx, repo, id, reason)
 }
-func (c *countingForge) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
+func (c *countingForge) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure, w ports.Waiting) error {
 	c.n("RecordMergeFailure")
-	return c.inner.RecordMergeFailure(ctx, repo, id, f)
+	return c.inner.RecordMergeFailure(ctx, repo, id, f, w)
 }
 func (c *countingForge) SetWaiting(ctx context.Context, repo, id string, w ports.Waiting) error {
 	c.n("SetWaiting")

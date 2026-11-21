@@ -189,7 +189,7 @@ func TestApplyRequestFlow(t *testing.T) {
 	if _, err := a.Merge(ctx, fakeRepo, id, "h1", "t", "m"); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("衝突：%v", err)
 	}
-	if err := a.RecordMergeFailure(ctx, fakeRepo, id, ports.MergeFailure{Revision: "h1", Reason: "conflict", Detail: "衝突した"}); err != nil {
+	if err := a.RecordMergeFailure(ctx, fakeRepo, id, ports.MergeFailure{Revision: "h1", Reason: "conflict", Detail: "衝突した"}, ports.WaitingFix); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := a.GetApplyRequest(ctx, fakeRepo, id); len(got.Comments) == 0 || !strings.Contains(got.Comments[len(got.Comments)-1].Body, "衝突した") {

@@ -330,7 +330,7 @@ func TestForgejo(t *testing.T) {
 	if _, err := gf.Merge(asAlice, ref, ids["b"], hB, "b", "Logiforge-Apply-Request: "+ids["b"]); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("衝突：%v", err)
 	}
-	if err := gf.RecordMergeFailure(asAlice, ref, ids["b"], ports.MergeFailure{Revision: hB, Reason: "conflict", Detail: "衝突"}); err != nil {
+	if err := gf.RecordMergeFailure(asAlice, ref, ids["b"], ports.MergeFailure{Revision: hB, Reason: "conflict", Detail: "衝突"}, ports.WaitingFix); err != nil {
 		t.Fatal(err)
 	}
 	if b := mustGet(ctx, t, gf, ref, ids["b"]); len(b.Comments) == 0 || !strings.Contains(b.Comments[len(b.Comments)-1].Body, "conflict") || b.Comments[len(b.Comments)-1].CreatedAt.IsZero() {

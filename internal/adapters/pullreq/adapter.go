@@ -279,7 +279,7 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
+func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure, w ports.Waiting) error {
 	num, err := number(id)
 	if err != nil {
 		return err
@@ -288,8 +288,26 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f por
 	if strings.TrimSpace(f.Detail) != "" {
 		text += "\n\n" + f.Detail
 	}
-	_, err = a.API.CreateComment(ctx, repo, num, text)
-	return err
+	if _, err := a.API.CreateComment(ctx, repo, num, text); err != nil {
+		return err
+	}
+	p, err := a.API.GetPull(ctx, repo, num)
+	if err != nil {
+		return err
+	}
+	// 既に付いていても、外して付け直す。付けた出来事が、失敗を書いた主体のものとして残るようにするため
+	// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+	labels := p.Labels
+	if want := waitingName[w]; want != "" && slices.Contains(labels, want) {
+		if err := a.API.RemoveLabel(ctx, repo, num, want); err != nil {
+			return err
+		}
+		labels = slices.DeleteFunc(slices.Clone(labels), func(l string) bool { return l == want })
+	}
+	if labels == nil {
+		labels = []string{}
+	}
+	return a.setWaiting(ctx, repo, num, labels, w)
 }
 
 func (a *Adapter) SetWaiting(ctx context.Context, repo, id string, w ports.Waiting) error {
@@ -309,7 +327,7 @@ func (a *Adapter) setWaiting(ctx context.Context, repo string, num int, labels [
 		}
 		labels = p.Labels
 	}
-	want := map[ports.Waiting]string{ports.WaitingReview: LabelReviewWaiting, ports.WaitingFix: LabelFixWaiting}[w]
+	want := waitingName[w]
 	if want != "" && !slices.Contains(labels, want) {
 		if err := a.addLabel(ctx, repo, num, waitingLabels[want]); err != nil {
 			return err
@@ -324,6 +342,9 @@ func (a *Adapter) setWaiting(ctx context.Context, repo string, num int, labels [
 	}
 	return nil
 }
+
+// waitingName は、レビュー待ちか修正待ちかの、ラベルの名前である。
+var waitingName = map[ports.Waiting]string{ports.WaitingReview: LabelReviewWaiting, ports.WaitingFix: LabelFixWaiting}
 
 // addLabel は、ラベルがなければ作ってから付ける。GitHub は、ない名前を付けると既定の色で作るからである。
 func (a *Adapter) addLabel(ctx context.Context, repo string, num int, l Label) error {

@@ -171,6 +171,37 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	}
 }
 
+// request changes（T1）→ push だけ → approve と stale_target（T3）のあと、1 件読んでも修正待ちのままである。
+// 反映の失敗で、既に付いている修正待ちのラベルを付け直し、approve した人が付けた出来事を残すからである（design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+func TestMergeFailureAfterRequestChangesStaysFix(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	x := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	y := create(t, f, "y", "s4", map[string][]byte{dH1 + "/background.md": []byte("二\n")})
+	if _, err := approve(t, f, x); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", y, NewReview{Kind: "request_changes", Commit: f.forge.ar(y).HeadRevision, Body: "直して"}); err != nil {
+		t.Fatal(err)
+	}
+	// push だけ（直し終えたと申告しない）。ラベルは修正待ちのまま。
+	f.r.git("checkout", "--quiet", "y")
+	f.r.write(dH1+"/background.md", []byte("二\n三\n"))
+	head := f.r.commit("版 2")
+	f.r.git("checkout", "--quiet", "main")
+	f.forge.ar(y).HeadRevision = head
+	f.waitVersion(t, Written[ApplyRequest]{Value: ApplyRequest{HeadCommit: head}})
+	time.Sleep(1100 * time.Millisecond) // GitForge の時刻は秒の単位なので、request changes と別の秒にする
+	res, err := approve(t, f, y)
+	if mf := res.Value.MergeFailure; err != nil || mf == nil || mf.Reason != "stale_target" {
+		t.Fatalf("stale_target：%+v %v", res.Value, err)
+	}
+	got, err := f.b.GetApplyRequest(ctx, reviewerC, "q", y)
+	if err != nil || got.Awaiting == nil || *got.Awaiting != "fix" || f.forge.ar(y).Waiting != ports.WaitingFix {
+		t.Fatalf("1 件読んだら、修正待ちでなくなった：%+v %v", got.Awaiting, err)
+	}
+}
+
 func TestClose(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)

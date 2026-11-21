@@ -262,14 +262,19 @@ func TestApplyRequestLifecycle(t *testing.T) {
 	}
 
 	// 修正待ちに付け替えると、ラベルは 1 つだけになる。
+	prev := f.actor
+	f.actor = "bob"
 	if err := a.SetWaiting(ctx, "o/r", "1", ports.WaitingFix); err != nil || !slices.Equal(f.pulls[1].Labels, []string{LabelFixWaiting}) {
 		t.Fatalf("修正待ち：%v %v", f.pulls[1].Labels, err)
 	}
-	if err := a.RecordMergeFailure(ctx, "o/r", "1", ports.MergeFailure{Revision: "h-b", Reason: "conflict", Detail: "衝突"}); err != nil {
+	// 既に修正待ちでも、反映の失敗では付け直す。失敗を書いた carol が付けた出来事が残る（ずれ直しで失敗の出来事として読む）。
+	f.actor = "carol"
+	if err := a.RecordMergeFailure(ctx, "o/r", "1", ports.MergeFailure{Revision: "h-b", Reason: "conflict", Detail: "衝突"}, ports.WaitingFix); err != nil {
 		t.Fatal(err)
 	}
+	f.actor = prev
 	got, err := a.GetApplyRequest(ctx, "o/r", "1")
-	if err != nil || got.Waiting != ports.WaitingFix || len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "conflict") || len(got.FixWaitingLabeled) == 0 {
+	if err != nil || got.Waiting != ports.WaitingFix || len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "conflict") || len(got.FixWaitingLabeled) != 2 || got.FixWaitingLabeled[1].Actor != "carol" || !slices.Equal(f.pulls[1].Labels, []string{LabelFixWaiting}) {
 		t.Fatalf("反映の失敗：%+v %v", got, err)
 	}
 	if cs := f.comments[1]; len(cs) != 1 || !strings.Contains(cs[0].Body, "衝突") {
