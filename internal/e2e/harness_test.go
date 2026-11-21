@@ -290,6 +290,13 @@ func (w *world) eventually(what string, limit time.Duration, ok func() bool) {
 // call は、Logiforge の API を、主体のトークンで呼ぶ。
 func (w *world) call(who, method, path string, in any, headers ...string) (int, []byte) {
 	w.t.Helper()
+	st, b, _ := w.callHeader(who, method, path, in, headers...)
+	return st, b
+}
+
+// callHeader は、call と同じく API を呼び、応答のヘッダーも返す。
+func (w *world) callHeader(who, method, path string, in any, headers ...string) (int, []byte, http.Header) {
+	w.t.Helper()
 	var body io.Reader
 	if in != nil {
 		b, _ := json.Marshal(in)
@@ -307,7 +314,7 @@ func (w *world) call(who, method, path string, in any, headers ...string) (int, 
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
-	return res.StatusCode, b
+	return res.StatusCode, b, res.Header
 }
 
 // user は、CLI を使う主体（エージェント）の環境である。
@@ -345,6 +352,13 @@ func (u *user) env() []string {
 // cli は、CLI を動かし、終了コードと標準出力を返す。
 func (u *user) cli(stdin string, args ...string) (int, string) {
 	u.w.t.Helper()
+	code, out, _ := u.cliErr(stdin, args...)
+	return code, out
+}
+
+// cliErr は、cli と同じく CLI を動かし、標準エラーも返す。
+func (u *user) cliErr(stdin string, args ...string) (int, string, string) {
+	u.w.t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = u.env()
 	cmd.Dir = u.dir
@@ -364,7 +378,7 @@ func (u *user) cli(stdin string, args ...string) (int, string) {
 	if code != 0 {
 		u.w.t.Logf("logiforge %s：終了コード %d：%s%s", strings.Join(args, " "), code, out.String(), errb.String())
 	}
-	return code, out.String()
+	return code, out.String(), errb.String()
 }
 
 // must は、CLI を動かし、成功しなければ止める。--json の出力を v に読む。

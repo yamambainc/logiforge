@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-// 反映かは、だれがどこから merge したかでなく、中身で決める（design/backend/verify/README.md）。
-//   - 承認された apply request を、人が Forgejo の画面から merge しても、正しい反映になる。
-//   - approve のあとに request_changes が付いた apply request を、人が merge すると、壊れた状態になる。
-//   - merge の権限のない reviewer の approve は、反映の失敗 merge_forbidden になり、権限のある reviewer の approve し直しで反映される。
+// main は、だれがどこから merge しても、そのまま受け入れる（design/backend/invalid-main.md の「main はいつも正しい」）。
+//   - apply request を、人が Forgejo の画面から merge しても、木に入り、コミットの一覧に、その apply request の反映と示す。
+//   - approve のあとに request_changes が付いた apply request を、人が merge しても、受け入れる。review は見ない。
+//   - コードを書く権限のない reviewer の approve は数えず、権限のある reviewer の approve し直しで反映される。
 //
 // approve したときに Logiforge が反映しないよう、向き先を main でないブランチにしてからレビューし、
 // あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。
@@ -72,10 +72,8 @@ func TestE2EHumanMerge(t *testing.T) {
 		w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/branches/main", nil, &b, 200)
 		return b.Commit.ID
 	}
-	type brokenInfo struct {
-		Broken *struct {
-			FirstCommit string `json:"first_commit"`
-		} `json:"broken"`
+	type validity struct {
+		InvalidSince *string `json:"invalid_since"`
 	}
 	// mainCommit は、worker が取り込んだ main のコミット sha の、反映した apply request を返す。まだ取り込んでいなければ false。
 	mainCommit := func(sha string) (*string, bool) {
@@ -106,9 +104,9 @@ func TestE2EHumanMerge(t *testing.T) {
 	}
 	sha := humanMerge(ok, "merge")
 	w.eventually("worker が人の merge を取り込む", 90*time.Second, func() bool { return ingested(sha) })
-	var info brokenInfo
-	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.Broken != nil {
-		t.Fatalf("承認された apply request の人の merge で、壊れた：%d %s", code, out)
+	var info validity
+	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.InvalidSince != nil {
+		t.Fatalf("人の merge で、valid でなくなった：%d %s", code, out)
 	}
 	var node struct {
 		Node struct {
@@ -184,16 +182,13 @@ func TestE2EHumanMerge(t *testing.T) {
 		t.Fatalf("request_changes：%d %s", code, out)
 	}
 	sha = humanMerge(ng, "squash")
-	w.eventually("request_changes のあとの人の merge で壊れる", 120*time.Second, func() bool {
-		code, out := agent.cli("", "repo", "view", "q", "--json")
-		info = brokenInfo{}
-		return code == 1 && json.Unmarshal([]byte(out), &info) == nil && info.Broken != nil
-	})
-	if info.Broken.FirstCommit != sha {
-		t.Fatalf("壊れた最初のコミット：%s（merge したのは %s）", info.Broken.FirstCommit, sha)
+	w.eventually("worker が request_changes のあとの人の merge を取り込む", 90*time.Second, func() bool { return ingested(sha) })
+	info = validity{}
+	if code, out := agent.cli("", "repo", "view", "q", "--json"); code != 0 || json.Unmarshal([]byte(out), &info) != nil || info.InvalidSince != nil {
+		t.Fatalf("request_changes のあとの人の merge で、valid でなくなった：%d %s", code, out)
 	}
-	if id, _ := mainCommit(sha); id != nil {
-		t.Fatalf("request_changes のあとの merge が、%s の反映になった", *id)
+	if id, _ := mainCommit(sha); id == nil || *id != ng.ID {
+		t.Fatalf("request_changes のあとの merge が、%s の反映と示されない：%v", ng.ID, id)
 	}
 }
 

@@ -12,10 +12,10 @@ import (
 )
 
 // ディレクトリ方式（design/directory/）：プロジェクトのリポジトリの中の 2 つのディレクトリを、別々の repository として運用する。
-//   - 用意は、利用者のトークンで、ディレクトリに用意のコミット（init-directory の署名）を置く。
-//   - apply request の反映は、そのディレクトリの版になる。コードの merge は、版にならず、壊れた状態にもしない。
+//   - 用意は、利用者のトークンで、ディレクトリに用意のコミットを置く。
+//   - apply request の反映は、そのディレクトリの版になる。コードの merge は、版にならない。
 //   - ディレクトリの外も変える apply request は、作れない（outside_directory）。
-//   - 人が、apply request でない PR でディレクトリを変えて merge すると、そのディレクトリの repository だけが壊れる。
+//   - 人が、PR でディレクトリの木を不変条件に反する形にすると、そのディレクトリの repository だけが valid でなくなる。直す PR で戻る。
 func TestE2EDirectory(t *testing.T) {
 	const project = "proj"
 	w := setupFull(t, func(w *world, c *settings.Config) {
@@ -78,12 +78,8 @@ func TestE2EDirectory(t *testing.T) {
 		t.Fatalf("反映が木にない：%+v", node)
 	}
 
-	// ---- コードの merge は版にならず、壊さない ----
+	// ---- コードの merge は版にならない ----
 	w.humanPull(ref, "code-change", map[string]string{"src/main.go": "package main\n"})
-	w.eventually("コードの merge のあと、壊れていない", 30*time.Second, func() bool {
-		code, _ := agent.cli("", "repo", "view", "cache", "--json")
-		return code == 0
-	})
 	var commits struct {
 		Items []struct {
 			Number int `json:"number"`
@@ -103,52 +99,50 @@ func TestE2EDirectory(t *testing.T) {
 		t.Fatalf("外も変える apply request が作れた：%d %s", code, out)
 	}
 
-	// 壊れたあとは clone できない（git を読むコマンドは repository_broken）ので、直す人の clone を先に作っておく。
-	fixer := w.user("agent", "s-agent-fix")
-	fixer.repo = "index"
-	fixer.loginAndClone("index")
-
-	// ---- 人が、apply request でない PR で index を変えて merge すると、index だけが壊れる ----
-	w.humanPull(ref, "edit-index", map[string]string{"logiforge/index/tree/note.md": "x\n"})
-	w.eventually("index が壊れる", 120*time.Second, func() bool {
-		code, _ := agent.cli("", "repo", "view", "index", "--json")
-		return code == 1
-	})
-	if code, out := agent.cli("", "repo", "view", "cache", "--json"); code != 0 {
-		t.Fatalf("cache まで壊れた：%s", out)
+	// ---- 人が、apply request でない PR で index の木を不変条件に反する形にすると、index だけが valid でなくなる ----
+	type validity struct {
+		ValidCommit  *string `json:"valid_commit"`
+		InvalidSince *string `json:"invalid_since"`
+	}
+	view := func(name string) validity {
+		var v validity
+		if st, b := w.call("alice", "GET", "/repositories/"+name, nil); st != 200 || json.Unmarshal(b, &v) != nil {
+			t.Fatalf("%s：%d %s", name, st, b)
+		}
+		return v
+	}
+	before := view("index")
+	bad := w.humanPull(ref, "edit-index", map[string]string{"logiforge/index/README.md": "木の外\n"})
+	w.eventually("index が valid でなくなる", 120*time.Second, func() bool { return view("index").InvalidSince != nil })
+	if v := view("index"); *v.InvalidSince != bad || v.ValidCommit == nil || before.ValidCommit == nil || *v.ValidCommit != *before.ValidCommit {
+		t.Fatalf("index：%+v（前は %+v、valid でないのは %s）", v, before, bad)
+	}
+	if v := view("cache"); v.InvalidSince != nil {
+		t.Fatalf("cache まで valid でなくなった：%+v", v)
 	}
 
-	// ---- index を、repair revert で直す（ディレクトリの中だけを戻す） ----
-	var rv struct {
-		Branch string `json:"branch"`
-	}
-	fixer.must(&rv, "repair", "revert")
-	if st := fixer.git("show", "--stat", "--format=", "HEAD"); !strings.Contains(st, "logiforge/index/tree/note.md") || strings.Contains(st, "README") || strings.Contains(st, "src/") {
-		t.Fatalf("repair revert が、ディレクトリの中だけを戻していない：%s", st)
-	}
-	fixer.git("push", "--quiet", "origin", rv.Branch)
-	var fix applyRequest
-	fixer.must(&fix, "ar", "create", "--branch", rv.Branch, "--kind", "repair.revert")
-	w.eventually("worker が直すブランチを取り込む", 30*time.Second, func() bool { return fixer.headReady(fix.ID, 1) })
-	idxReviewer := w.user("reviewer", "s-rev-idx")
-	idxReviewer.repo = "index"
-	if code, _ := idxReviewer.cli(w.tokens["reviewer"]+"\n", "auth", "login", "--with-token"); code != 0 {
-		t.Fatal("reviewer の login")
-	}
-	if got, code, out := idxReviewer.review(fix.ID, "approve", 1); code != 0 || got.State != "merged" {
-		t.Fatalf("戻す apply request の approve：%d %s", code, out)
-	}
-	w.eventually("index が直る", 60*time.Second, func() bool {
-		code, _ := agent.cli("", "repo", "view", "index", "--json")
-		return code == 0
+	// ---- 直す PR（木の外のファイルを消す）で、index が valid に戻る ----
+	fixed := w.humanPull(ref, "fix-index", map[string]string{"logiforge/index/README.md": ""})
+	w.eventually("index が valid に戻る", 120*time.Second, func() bool {
+		v := view("index")
+		return v.InvalidSince == nil && v.ValidCommit != nil && *v.ValidCommit == fixed
 	})
 }
 
-// humanPull は、管理者として、main からブランチを作ってファイルを置き、pull request を作って merge する（人が GitForge で行うのと同じ）。
+// humanPull は、管理者として、main からブランチを作ってファイルを置き（中身が空なら消し）、pull request を作って merge する
+// （人が GitForge で行うのと同じ）。
 func (w *world) humanPull(ref, branch string, files map[string]string) string {
 	w.t.Helper()
 	var ops []map[string]string
 	for p, c := range files {
+		if c == "" {
+			var cur struct {
+				SHA string `json:"sha"`
+			}
+			w.forgejoCall(w.admin, "GET", "/repos/"+ref+"/contents/"+p+"?ref=main", nil, &cur, 200)
+			ops = append(ops, map[string]string{"operation": "delete", "path": p, "sha": cur.SHA})
+			continue
+		}
 		ops = append(ops, map[string]string{"operation": "create", "path": p, "content": base64.StdEncoding.EncodeToString([]byte(c))})
 	}
 	w.forgejoCall(w.admin, "POST", "/repos/"+ref+"/contents", map[string]any{"branch": "main", "new_branch": branch, "message": branch, "files": ops}, nil, 201)
