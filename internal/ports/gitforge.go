@@ -79,8 +79,8 @@ type ApplyRequest struct {
 	ReviewWaitingAt time.Time
 	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
 	Kind string
-	// FixWaitingAt は、修正待ちのラベルを最後に付けた時刻である。1 件を読むときだけ入る（ずれを直すのに使う）。
-	FixWaitingAt time.Time
+	// FixWaitingLabeled は、修正待ちのラベルを付けた出来事（だれが、いつ）である（古い順）。1 件を読むときだけ入る（ずれを直すのに使う）。
+	FixWaitingLabeled []LabelEvent
 	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、ここに人が読む文で入る。
 	Comments  []Comment
 	CreatedAt time.Time
@@ -101,6 +101,12 @@ const (
 	// WaitingBoth は、2 つとも付いていること。一覧では、修正待ちとみなす。
 	WaitingBoth Waiting = "both"
 )
+
+// LabelEvent は、ラベルを付けた出来事である。
+type LabelEvent struct {
+	Actor string
+	At    time.Time
+}
 
 // Comment は、pull request のコメントである。
 type Comment struct {

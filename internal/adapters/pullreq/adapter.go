@@ -199,8 +199,8 @@ func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.A
 		switch {
 		case e.Label == LabelReviewWaiting && e.CreatedAt.After(ar.ReviewWaitingAt):
 			ar.ReviewWaitingAt = e.CreatedAt
-		case e.Label == LabelFixWaiting && e.CreatedAt.After(ar.FixWaitingAt):
-			ar.FixWaitingAt = e.CreatedAt
+		case e.Label == LabelFixWaiting:
+			ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{Actor: e.Actor, At: e.CreatedAt})
 		}
 	}
 	cs, err := a.API.ListComments(ctx, repo, num)

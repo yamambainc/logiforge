@@ -186,7 +186,12 @@ func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting)
 	case ports.WaitingReview:
 		ar.ReviewWaitingAt = time.Now().UTC()
 	case ports.WaitingFix:
-		ar.FixWaitingAt = time.Now().UTC()
+		// テストの context にはトークンがないので、最後に review を出した人が付けたものとする。
+		actor := ""
+		if rs := f.reviews[id]; len(rs.Items) > 0 {
+			actor = rs.Items[len(rs.Items)-1].Reviewer
+		}
+		ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{Actor: actor, At: time.Now().UTC()})
 	}
 	return nil
 }
@@ -600,13 +605,18 @@ func TestDesiredWaiting(t *testing.T) {
 		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
 		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
-		{"修正待ちのラベルを付けた（conflict で失敗）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingFix},
+		{"approve した人が、同じ秒に修正待ちのラベルを付けた（conflict で失敗）", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "Bob", At: t0.Add(time.Minute)}}},
+			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(time.Minute)}}, ports.WaitingFix},
+		{"approve した人が、次の秒に修正待ちのラベルを付けた", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(61 * time.Second)}}},
+			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(time.Minute)}}, ports.WaitingFix},
+		{"approve していない人が修正待ちのラベルを付けた（画面での付け替え）", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "admin", At: t0.Add(time.Minute)}}},
+			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(30 * time.Second)}}, ports.WaitingReview},
 		{"同じ秒なら今の修正待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix}, []ports.Review{rc(t0.Add(300 * time.Millisecond))}, ports.WaitingFix},
 		{"同じ秒なら今のレビュー待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0.Add(500 * time.Millisecond), Waiting: ports.WaitingReview}, []ports.Review{rc(t0)}, ports.WaitingReview},
-		{"push だけのあと approve して merge_forbidden で失敗した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(3 * time.Minute), FixWaitingAt: t0.Add(time.Minute), Waiting: ports.WaitingFix},
+		{"push だけのあと approve して merge_forbidden で失敗した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(3 * time.Minute), FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}, Waiting: ports.WaitingFix},
 			[]ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(3 * time.Minute)}}, ports.WaitingReview},
 		{"request changes のあとの approve", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(2 * time.Minute)}}, ports.WaitingReview},
-		{"修正待ちのラベルのあとのレビュー待ちのラベル（snapshot_pending で失敗）", ports.ApplyRequest{FixWaitingAt: t0, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
+		{"修正待ちのラベルのあとのレビュー待ちのラベル（snapshot_pending で失敗）", ports.ApplyRequest{FixWaitingLabeled: []ports.LabelEvent{{At: t0}}, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {
 		if got := desiredWaiting(c.ar, c.reviews); got != c.want {

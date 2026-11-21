@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/ports"
@@ -184,13 +185,21 @@ func awaiting(w ports.Waiting) *string {
 
 // desiredWaiting は、その pull request の出来事のうち、いちばん新しいもので、正しいラベルを決める
 // （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
-//   - 修正待ちのラベルを付けたこと（request changes と、opener が直すべき理由の反映の失敗）、数える request changes の review：修正待ち
+//   - 数える request changes の review：修正待ち
+//   - 修正待ちのラベルを付けたこと（opener が直すべき理由の反映の失敗）のうち、付けた人が、それまでに数える approve を出していたもの：修正待ち。
+//     反映の失敗は、approve した reviewer のトークンで、approve の直後に書くからである。ほかの人が付けたものは、ずれとみなす
 //   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告、opener が直すべき理由でない反映の失敗）、
 //     数える approve の review：レビュー待ち
 //
 // reviews は、数える review だけである。
 func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
-	fixAt, reviewAt := ar.FixWaitingAt, ar.ReviewWaitingAt
+	var fixAt time.Time
+	reviewAt := ar.ReviewWaitingAt
+	for _, e := range ar.FixWaitingLabeled {
+		if e.At.After(fixAt) && approvedBy(reviews, e.Actor, e.At) {
+			fixAt = e.At
+		}
+	}
 	for _, r := range reviews {
 		switch {
 		case r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt):
@@ -208,6 +217,16 @@ func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting
 		return ports.WaitingFix
 	}
 	return ports.WaitingReview
+}
+
+// approvedBy は、actor が、at まで（同じ秒を含む）に、数える approve を出していたかを返す。
+func approvedBy(reviews []ports.Review, actor string, at time.Time) bool {
+	for _, r := range reviews {
+		if r.Kind == ports.ReviewApprove && strings.EqualFold(r.Reviewer, actor) && !r.CreatedAt.Truncate(time.Second).After(at.Truncate(time.Second)) {
+			return true
+		}
+	}
+	return false
 }
 
 // repairWaiting は、1 件の apply request を読んだときに、ラベルがずれていれば、要求を送った主体のトークンで直す

@@ -269,7 +269,7 @@ func TestApplyRequestLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := a.GetApplyRequest(ctx, "o/r", "1")
-	if err != nil || got.Waiting != ports.WaitingFix || len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "conflict") || got.FixWaitingAt.IsZero() {
+	if err != nil || got.Waiting != ports.WaitingFix || len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "conflict") || len(got.FixWaitingLabeled) == 0 {
 		t.Fatalf("反映の失敗：%+v %v", got, err)
 	}
 	if cs := f.comments[1]; len(cs) != 1 || !strings.Contains(cs[0].Body, "衝突") {
