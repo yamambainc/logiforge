@@ -157,7 +157,7 @@ func (r repos) MainHead(ctx context.Context, gitForgeRef string) (string, error)
 // 呼ぶのは、repository を作る利用者のトークンである。
 //   - 根のコミット：contents API（PUT /contents）で、根の仮説のファイルを置く。空のリポジトリでは、ほかの方法がないから。
 //   - 2 つ目のコミット：残りのファイル（背景情報）を、Git Data API で 1 つのコミットにまとめて置く。メッセージは、根と同じく
-//     trailer Logiforge-Init: を持つ（design/backend/verify/init.md の「repository の用意のコミット」）。
+//     trailer Logiforge-Init: を持つ（送り直しを見分けるため。design/adapters/github.md の「repository を用意する」）。
 //
 // main が呼ぶ前からあれば、用意の続き（2 つ目のコミット）だけを行い、ErrMainExists を返す。repository がなければ ErrNotFound を返す。
 func (r repos) SetupRepository(ctx context.Context, gitForgeRef string, files []ports.File, message string) error {

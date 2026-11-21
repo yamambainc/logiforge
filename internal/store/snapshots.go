@@ -290,50 +290,6 @@ func PutRepositories(ctx context.Context, w Writer, names []string) error {
 	return w.Put(ctx, RepositoriesKey, b)
 }
 
-// Broken は、repository が壊れていることの記録である（design/backend/broken.md）。壊れていなければ、置き場にない（か、空）。
-type Broken struct {
-	// LastGood は、最後に正しかった時点のコミットの SHA。今の main の並びにないことがある（main の書き換えのあと）。
-	LastGood string `json:"last_good"`
-	// First は、壊れた最初のコミットの SHA（反映によらないコミットか、書き換えのあとの main の先頭）。
-	First string `json:"first"`
-	// Reason は、no_apply_request か main_rewritten。
-	Reason string `json:"reason"`
-}
-
-// BrokenKey は、壊れていることの記録のキーである。git だけからは作り直せない（書き換えの前の latest を失う）ので、keep/ の下に置く。
-func BrokenKey(repo string) string { return KeepPrefix + repo + "/broken" }
-
-// GetBroken は、壊れていることの記録を読む。壊れていなければ nil。
-func GetBroken(ctx context.Context, r Reader, repo string) (*Broken, error) {
-	b, err := r.Get(ctx, BrokenKey(repo))
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var x Broken
-	if err := json.Unmarshal(b, &x); err != nil {
-		return nil, err
-	}
-	if x.LastGood == "" {
-		return nil, nil
-	}
-	return &x, nil
-}
-
-// PutBroken は、壊れていることの記録を書く。nil なら、壊れていない（空の記録）にする。
-func PutBroken(ctx context.Context, w Writer, repo string, x *Broken) error {
-	if x == nil {
-		x = &Broken{}
-	}
-	b, err := json.Marshal(x)
-	if err != nil {
-		return err
-	}
-	return w.Put(ctx, BrokenKey(repo), b)
-}
-
 // GetScanned は、ディレクトリの repository の scanned を読む。なければ空。
 func GetScanned(ctx context.Context, r Reader, repo string) (string, error) {
 	b, err := r.Get(ctx, ScannedKey(repo))

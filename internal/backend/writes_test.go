@@ -21,7 +21,7 @@ func live(t *testing.T) *fixture {
 	f := setup(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
-	w := worker.New(worker.Config{Dir: t.TempDir(), Interval: 20 * time.Millisecond, Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Interval: 20 * time.Millisecond, Lookup: trailerLookup{f.r.dir}}, source{f.r.dir}, st)
 	done := make(chan struct{})
 	go func() { _ = w.Run(ctx); close(done) }()
 	// 一時ディレクトリを消す前に、worker を止めて、終わるのを待つ（Cleanup は、登録と逆の順に動く）。
@@ -448,7 +448,7 @@ func TestMergeRecordsAllSessionsAndResend(t *testing.T) {
 	head := f.r.commit("版 2")
 	f.r.git("checkout", "--quiet", "main")
 	f.forge.ar(id).HeadRevision = head
-	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(ctx)
 
 	res, err := approve(t, f, id)

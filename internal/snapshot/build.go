@@ -9,27 +9,19 @@ import (
 	"github.com/yamambainc/logiforge/internal/tree"
 )
 
-// RuleNoApplyRequest は、反映によるものでない main のコミット（worker の反映かの判定で決める）の警告である。
-const RuleNoApplyRequest tree.Rule = "no_apply_request"
+// RuleUnreadable は、main のコミットの木のファイルを、worker が読めなかったことである。そのコミットは valid でない
+// （design/backend/invalid-main.md の「valid」）。
+const RuleUnreadable tree.Rule = "unreadable"
 
-// TrailerInit は、repository の用意で置いた最初のコミットの trailer である（design/adapters/github.md）。
+// TrailerInit は、repository の用意で置いたコミットの trailer である（design/adapters/github.md）。
+// repository の用意の送り直しを見分けるのに使う。そのコミットが valid かには使わない。
 const TrailerInit = "Logiforge-Init"
+
+// MaxInitCommits は、用意のコミットの数の上限である（根の仮説と、背景情報）。
+const MaxInitCommits = 2
 
 // TrailerMigratedFrom は、別リポジトリ方式から移したときの、用意のコミットの trailer である（design/directory/migrate.md）。
 const TrailerMigratedFrom = "Logiforge-Migrated-From"
-
-// TrailerRepair は、直すための apply request の反映のコミットの trailer である。値は RepairRevert か RepairAccept（design/backend/broken.md）。
-const TrailerRepair = "Logiforge-Repair"
-
-// 直すための apply request の種類。
-const (
-	RepairRevert = "revert"
-	RepairAccept = "accept"
-)
-
-// MaxInitCommits は、用意のコミットの数の上限である（根の仮説と、背景情報）。根のコミットから続く、この数までのコミットだけを、
-// 用意のコミットとして扱う。それより後の Logiforge-Init: は、用意のコミットとして扱わず、警告する。
-const MaxInitCommits = 2
 
 // BuildMain は、main のコミットの記録とスナップショットツリーを、一度に作る。parent は、first-parent のスナップショット（最初のコミットでは nil）。
 // files は、そのコミットのファイルである。artifact は中身か SHA256 を持つ。
@@ -38,18 +30,18 @@ const MaxInitCommits = 2
 func BuildMain(files tree.Files, info CommitInfo, parent *Main) (*Main, error) {
 	x := NewIndex()
 	var parentFiles tree.Files
-	var parentBroken []tree.Violation
+	var parentViolations []tree.Violation
 	if parent != nil {
 		x = IndexFromSnapshotTree(parent.Commit, &parent.SnapshotTree)
 		var err error
 		if parentFiles, err = parent.SnapshotTree.Files(); err != nil {
 			return nil, err
 		}
-		parentBroken = parent.SnapshotTree.Broken
+		parentViolations = parent.SnapshotTree.Violations
 	}
 	c := x.Record(info, tree.ChangedPaths(parentFiles, files))
 	t := BuildSnapshotTree(files, x)
-	newly, _ := tree.NewlyBroken(parentBroken, t.Broken)
+	newly, _ := tree.NewlyBroken(parentViolations, t.Violations)
 	x.AddNewlyBroken(&c, newly...)
 	t.Warned = x.Warned()
 	return &Main{FormatVersion: FormatVersion, Commit: c, SnapshotTree: *t}, nil
@@ -218,15 +210,6 @@ func fileKind(n *Node, p string) FileKind {
 		return FileStory
 	case n.Kind == NodeStory && dir == n.Dir && base == tree.InactivatedFile:
 		return FileInactivated
-	}
-	return ""
-}
-
-func trailer(ts []Trailer, key string) string {
-	for _, t := range ts {
-		if t.Key == key {
-			return t.Value
-		}
 	}
 	return ""
 }

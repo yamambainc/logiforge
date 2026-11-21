@@ -44,9 +44,9 @@ type App struct {
 	PendingWait time.Duration
 
 	json bool
-	// broken は、応答のヘッダー Logiforge-Repository-Broken の値（最後に正しかった時点のコミット）。
-	// 空でなければ、コマンドは結果を書いたうえで、repository_broken の誤りで終わる（design/backend/broken.md）。
-	broken string
+	// invalid は、最新のコミットが valid でないとき、API が示している木のコミット（ヘッダー Logiforge-Latest-Invalid の値）。
+	// 空でなければ、コマンドは結果を書いたうえで、標準エラーに警告を書く。終了コードは変えない（design/backend/invalid-main.md の「CLI」）。
+	invalid string
 	// errorExtra は、エラーの --json の出力（Problem）に足す項目である（例：ar create の idempotency_key）。
 	errorExtra map[string]any
 }
@@ -92,9 +92,8 @@ func (a *App) Run(ctx context.Context, args []string) int {
 		rest = append(rest, arg)
 	}
 	err := a.dispatch(ctx, rest)
-	if err == nil && a.broken != "" {
-		a.writeBroken()
-		return ExitError
+	if a.invalid != "" {
+		a.writeInvalid()
 	}
 	if err == nil {
 		return ExitOK
@@ -155,7 +154,7 @@ func commands() []command {
 		{"tree completion", "", "作業の終わりの判定", (*App).treeCompletion},
 		{"tree export", "--format json|markdown [--commit <SHA>]", "木を書き出す", (*App).treeExport},
 		{"artifact get", "<sha256> [--commit <SHA>] [-o <ファイル>]", "artifact の中身を読む", (*App).artifactGet},
-		{"ar create", "--branch <ブランチ> [--kind change|repair.revert|repair.accept] [--description <説明>]", "push したブランチから apply request を作る", (*App).arCreate},
+		{"ar create", "--branch <ブランチ> [--description <説明>]", "push したブランチから apply request を作る", (*App).arCreate},
 		{"ar edit", "<apply request> --description <説明>", "説明欄を書き換える", (*App).arEdit},
 		{"ar view", "<apply request>", "apply request の詳細", (*App).arView},
 		{"ar list", "[--state open|merged|closed]", "apply request の一覧", (*App).arList},
@@ -168,8 +167,6 @@ func commands() []command {
 		{"human-request create", "--node <ノード> --kind pvr|decision --body <ファイル>", "人への依頼を起票する", (*App).hrCreate},
 		{"human-request list", "[--kind] [--state] [--node]", "人への依頼の一覧", (*App).hrList},
 		{"human-request view", "<人への依頼>", "人への依頼と回答", (*App).hrView},
-		{"repair revert", "[--branch <ブランチ>]", "壊れた repository を、最後に正しかった時点に戻すコミットを、新しいブランチに作る", (*App).repairRevert},
-		{"repair accept", "[--branch <ブランチ>]", "壊れた repository の、反映によらない変更を認める空のコミットを、新しいブランチに作る", (*App).repairAccept},
 		{"version", "", "このバイナリの版、コミット、ビルドした日付", (*App).version},
 	}
 }
@@ -186,7 +183,7 @@ func (a *App) dispatch(ctx context.Context, args []string) error {
 		words := strings.Fields(c.name)
 		if len(args) >= len(words) && strings.Join(args[:len(words)], " ") == c.name {
 			if gitCommands[c.name] {
-				a.checkBroken(ctx)
+				a.checkInvalid(ctx)
 			}
 			return c.run(a, ctx, args[len(words):])
 		}
@@ -418,8 +415,8 @@ func (a *App) callOnce(ctx context.Context, r request) (response, error) {
 		}
 		return response{}, p
 	}
-	if b := res.Header.Get("Logiforge-Repository-Broken"); b != "" {
-		a.broken = b
+	if v := res.Header.Get("Logiforge-Latest-Invalid"); v != "" {
+		a.invalid = v
 	}
 	return response{body: data, pending: res.Header.Get("Logiforge-Pending-Commit"), status: res.StatusCode}, nil
 }
@@ -577,33 +574,35 @@ func (a *App) version(_ context.Context, args []string) error {
 	return nil
 }
 
-// gitCommands は、git で clone した木を扱うコマンドである。repository が壊れていれば、clone した木（壊れた木）と、
-// API が返す木（最後に正しかった時点）が違うので、壊れていることを誤りとして返す（design/backend/broken.md）。
+// gitCommands は、git で clone した木を扱うコマンドである。最新のコミットが valid でなければ、clone した木と、
+// API が示す木（前の valid なコミット）が違うので、警告を書く。止めない（design/backend/invalid-main.md の「CLI」）。
+// repo clone と、木を読むコマンドは、応答のヘッダー Logiforge-Latest-Invalid で警告する。
 var gitCommands = map[string]bool{"check": true, "story new": true, "story inactivate": true, "verdict new": true, "node edit": true}
 
-// checkBroken は、clone の repository が壊れていれば、a.broken に記録する。バックエンドに届かないとき（手元だけで check するとき）は、何もしない。
-func (a *App) checkBroken(ctx context.Context) {
+// checkInvalid は、repository の最新のコミットが valid でなければ、a.invalid に、API が示している木のコミットを入れる。
+// バックエンドに届かないとき（手元だけで check するとき）は、何もしない。
+func (a *App) checkInvalid(ctx context.Context) {
 	name, err := a.repo("")
 	if err != nil {
 		return
 	}
+	a.checkInvalidOf(ctx, name)
+}
+
+func (a *App) checkInvalidOf(ctx context.Context, name string) {
 	var r struct {
-		Broken *struct {
-			LastGoodCommit string `json:"last_good_commit"`
-		} `json:"broken"`
+		ValidCommit  *string `json:"valid_commit"`
+		InvalidSince *string `json:"invalid_since"`
 	}
-	if err := a.getJSON(ctx, repoPath(name), nil, &r); err == nil && r.Broken != nil {
-		a.broken = r.Broken.LastGoodCommit
+	if err := a.getJSON(ctx, repoPath(name), nil, &r); err == nil && r.InvalidSince != nil {
+		a.invalid = *r.InvalidSince
+		if r.ValidCommit != nil {
+			a.invalid = *r.ValidCommit
+		}
 	}
 }
 
-// writeBroken は、repository_broken の誤りを、標準エラーに書く。--json なら Problem の形で書く。
-// 結果は標準出力に書いてあるので、混ぜないために標準エラーにする。
-func (a *App) writeBroken() {
-	detail := "repository が壊れている。木は、最後に正しかった時点 " + a.broken + " のものである。直すには logiforge repair revert か repair accept"
-	if a.json {
-		_ = json.NewEncoder(a.Stderr).Encode(problem{Type: "about:blank", Title: "repository is broken", Code: "repository_broken", Detail: detail})
-		return
-	}
-	fmt.Fprintln(a.Stderr, "logiforge:", detail)
+// writeInvalid は、最新のコミットが valid でないことの警告を、標準エラーに書く。結果は標準出力に書いてあるので、混ぜない。
+func (a *App) writeInvalid() {
+	fmt.Fprintf(a.Stderr, "logiforge: 警告：最新のコミットは valid でない。API は、コミット %s の木を示している（直すまで、木を読むコマンドはこの木を返す）\n", a.invalid)
 }

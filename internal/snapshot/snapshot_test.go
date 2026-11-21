@@ -61,10 +61,7 @@ func baseFiles() fs {
 
 func info(rev string, ar string) CommitInfo {
 	ci := CommitInfo{Revision: rev, CommittedAt: time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)}
-	if ar != "" {
-		yes := true
-		ci.Authorized, ci.ApplyRequest = &yes, ar
-	}
+	ci.ApplyRequest = ar
 	return ci
 }
 
@@ -131,48 +128,44 @@ func TestBuildMainChangesAndWarned(t *testing.T) {
 		t.Fatalf("S1: %+v", m3.SnapshotTree.Nodes[S1])
 	}
 
-	// 反映によらないコミットは警告にする。
+	if !m3.SnapshotTree.Valid || m3.SnapshotTree.ValidCommit != rev(3) || m3.SnapshotTree.InvalidSince != "" {
+		t.Fatalf("valid な 3：%+v", m3.SnapshotTree)
+	}
+
+	// 不変条件を破ったコミットは、警告にし、valid でない。示す木は、その前の valid なコミットである。
 	f4 := f3.clone()
 	f4.put("README.md", []byte("x"))
 	m4 := mustMain(t, f4, info(rev(4), ""), m3)
 	w := m4.SnapshotTree.Warned
-	if !hasRule(m4.Commit.Warnings, RuleNoApplyRequest) || !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) ||
-		len(w) != 1 || w[0].Number != 4 || !w[0].NoApplyRequest || !w[0].NewlyBroken {
+	if !hasRule(m4.Commit.Warnings, tree.RuleOutsideTree) || len(w) != 1 || w[0].Number != 4 || !w[0].NewlyBroken {
 		t.Fatalf("warnings: %v %+v", m4.Commit.Warnings, w)
 	}
+	if st := m4.SnapshotTree; st.Valid || st.ValidCommit != rev(3) || st.InvalidSince != rev(4) {
+		t.Fatalf("valid でない 4：%v %s %s", st.Valid, st.ValidCommit, st.InvalidSince)
+	}
 
-	// 前から破れている条件は、次のコミットの警告にしない。SnapshotTree.Broken に残る。inactivated_at は引き継ぐ。
+	// 前から破れている条件は、次のコミットの警告にしない。SnapshotTree.Violations に残る。inactivated_at は引き継ぐ。
 	f5 := f4.clone()
 	f5.put(dH2+"/background.md", []byte("背景\n"))
 	m5 := mustMain(t, f5, info(rev(5), "apr_5"), m4)
-	if len(m5.Commit.Warnings) != 0 || !hasRule(m5.SnapshotTree.Broken, tree.RuleOutsideTree) || len(m5.SnapshotTree.Warned) != 1 {
-		t.Fatalf("warnings: %v broken: %v", m5.Commit.Warnings, m5.SnapshotTree.Broken)
+	if len(m5.Commit.Warnings) != 0 || !hasRule(m5.SnapshotTree.Violations, tree.RuleOutsideTree) || len(m5.SnapshotTree.Warned) != 1 {
+		t.Fatalf("warnings: %v violations: %v", m5.Commit.Warnings, m5.SnapshotTree.Violations)
+	}
+	// valid でないまま続く。valid_commit と invalid_since は引き継ぐ。
+	if st := m5.SnapshotTree; st.Valid || st.ValidCommit != rev(3) || st.InvalidSince != rev(4) {
+		t.Fatalf("valid でない 5：%v %s %s", st.Valid, st.ValidCommit, st.InvalidSince)
+	}
+	// 直したコミットで、valid に戻る。
+	f6 := f5.clone()
+	delete(f6, "README.md")
+	if st := mustMain(t, f6, info(rev(6), ""), m5).SnapshotTree; !st.Valid || st.ValidCommit != rev(6) || st.InvalidSince != "" {
+		t.Fatalf("直した 6：%v %s %s", st.Valid, st.ValidCommit, st.InvalidSince)
 	}
 	if m5.SnapshotTree.Nodes[S1].InactivatedAt != 3 {
 		t.Fatalf("S1: %+v", m5.SnapshotTree.Nodes[S1])
 	}
 	if p := m5.Commit.Changes[0].Previous; m5.Commit.Changes[0].Node != H2 || p == nil || p.Number != 3 {
 		t.Fatalf("H2 の previous: %+v", m5.Commit.Changes)
-	}
-}
-
-func TestInitTrailerIsNotWarned(t *testing.T) {
-	m1 := mustMain(t, baseFiles(), info(rev(1), ""), nil)
-	f2 := baseFiles()
-	f2.put(dH2+"/background.md", []byte("x\n"))
-	ci := info(rev(2), "")
-	ci.Trailers = []Trailer{{Key: TrailerInit, Value: "1"}}
-	m2 := mustMain(t, f2, ci, m1)
-	if len(m2.Commit.Warnings) != 0 {
-		t.Fatalf("warnings: %v", m2.Commit.Warnings)
-	}
-	// 用意の並びのあと（3 番目より後）の Logiforge-Init: は、用意のコミットとして扱わず、警告する。
-	f3 := f2.clone()
-	f3.put(dH2+"/background.md", []byte("y\n"))
-	ci3 := info(rev(3), "")
-	ci3.Trailers = []Trailer{{Key: TrailerInit, Value: "1"}}
-	if m3 := mustMain(t, f3, ci3, m2); !hasRule(m3.Commit.Warnings, RuleNoApplyRequest) {
-		t.Fatalf("3 番目の Logiforge-Init: を警告しない: %v", m3.Commit.Warnings)
 	}
 }
 

@@ -132,7 +132,7 @@ func (f *fakeForge) CreateApplyRequest(_ context.Context, _ string, n ports.NewA
 	if f.remote != nil {
 		head = f.remote.git("rev-parse", n.Branch)
 	}
-	ar := ports.ApplyRequest{ID: strconv.Itoa(num), Number: num, Branch: n.Branch, Description: n.Description, Kind: n.Kind,
+	ar := ports.ApplyRequest{ID: strconv.Itoa(num), Number: num, Branch: n.Branch, Description: n.Description,
 		HeadRevision: head, State: ports.StateOpen, Opener: n.Opener, Waiting: ports.WaitingReview, CreatedAt: time.Now().UTC()}
 	f.ars = append(f.ars, ar)
 	return ar, nil
@@ -220,7 +220,7 @@ func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string)
 		f.remote.git("reset", "--quiet", "--hard", "HEAD")
 		return "", fmt.Errorf("%w: %s", ports.ErrConflict, out)
 	}
-	// テストの反映かの判定（trailerVerifier）が、merge した pull request を引けるように、テストだけの印を書く。
+	// テストの merge の pull request の探し方（trailerLookup）が、merge した pull request を引けるように、テストだけの印を書く。
 	sha := f.remote.commit(title + "\n\n" + message + "\nTest-Apply-Request: " + id + "\nTest-Merged-Head: " + head)
 	ar.State, ar.MergedRevision = ports.StateMerged, sha
 	return sha, nil
@@ -323,14 +323,14 @@ func (a fakeAuth) CanCreate(ctx context.Context, token, repo string) (bool, erro
 
 type source struct{ dir string }
 
-// trailerVerifier は、テストのための反映かの判定である。テストのリポジトリのコミットのメッセージの、テストだけの印
-// （Test-Apply-Request: と Test-Merged-Head:）で決める。本物の判定は verify.go にある。
-type trailerVerifier struct{ dir string }
+// trailerLookup は、テストのための、merge の pull request を探す GitForge の代わりである。テストのリポジトリのコミットのメッセージの、
+// テストだけの印（Test-Apply-Request: と Test-Merged-Head:）で探す。印がなければ、pull request はない。
+type trailerLookup struct{ dir string }
 
-func (v trailerVerifier) VerifyMerge(_ context.Context, _ ports.Repository, sha string, _ []string, _ string, _ time.Time, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+func (v trailerLookup) MergedApplyRequest(_ context.Context, _ ports.Repository, sha string, _ time.Time) (string, string, error) {
 	out, err := exec.Command("git", "-C", v.dir, "log", "-1", "--format=%B", sha).Output()
 	if err != nil {
-		return ports.MergeVerdict{}, err
+		return "", "", err
 	}
 	var ar, head string
 	for _, l := range strings.Split(string(out), "\n") {
@@ -341,10 +341,7 @@ func (v trailerVerifier) VerifyMerge(_ context.Context, _ ports.Repository, sha 
 			head = strings.TrimSpace(x)
 		}
 	}
-	if ar == "" {
-		return ports.MergeVerdict{Detail: "テストの反映の印がない"}, nil
-	}
-	return ports.MergeVerdict{Authorized: true, ApplyRequest: ar, MergedHead: head}, nil
+	return ar, head, nil
 }
 
 func (s source) ListRepositories(context.Context) ([]ports.Repository, error) {
@@ -390,7 +387,7 @@ func setup(t *testing.T) *fixture {
 	r.git("checkout", "--quiet", "main")
 
 	st := &store.Dir{Root: t.TempDir()}
-	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{r.dir}}, source{r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{r.dir}}, source{r.dir}, st)
 	w.SyncAll(ctx)
 
 	now := time.Now().UTC()
@@ -652,7 +649,7 @@ func TestAnsweredRequestLeavesWork(t *testing.T) {
 	f.r.write(dH2+"/"+S2+"/"+H3+"/background.md", []byte("3 の回答を見た\n"))
 	head := f.r.commit("版 2")
 	f.forge.ars[1].HeadRevision = head
-	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(ctx)
 	if !answered() {
 		t.Fatal("背景情報の識別子で、作業から外れた")

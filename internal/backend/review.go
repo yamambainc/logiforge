@@ -192,25 +192,6 @@ func (b *Backend) merge(ctx context.Context, repo, ref, id string) (string, *por
 		}
 		return "", nil, err
 	}
-	// 壊れた repository には、直すための apply request しか反映しない（design/backend/broken.md）。
-	broken, err := b.Snap.Broken(ctx, repo)
-	if err != nil {
-		return "", nil, err
-	}
-	kind := d.port.Kind
-	if kind != "" {
-		problem, err := b.repairProblem(ctx, repo, kind, d.branch, latest, broken)
-		if err != nil {
-			return "", nil, err
-		}
-		if problem != "" {
-			return failure("repository_broken", problem)
-		}
-		return b.squash(ctx, repo, ref, id, d)
-	}
-	if broken != nil {
-		return failure("repository_broken", fmt.Sprintf("repository が壊れている（%s から）。直すための apply request を先に反映する", broken.First))
-	}
 	// 3. 対象ノードの変化、重ねられるか、差分の検査。
 	if reason, detail, err := b.changeProblem(ctx, latest, d.branch, d.model.Operations); err != nil || reason != "" {
 		if err != nil {
@@ -234,7 +215,7 @@ func (b *Backend) recordFailure(ctx context.Context, ref, id string, f ports.Mer
 
 // approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
 //   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
-//     （design/backend/verify/README.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
+//     （design/backend/merge.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
 func approvalProblem(d *arDetail) string {
 	last := lastDecisive(d.reviews.Items, "")
 	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
@@ -285,7 +266,7 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 }
 
 // squash は、反映の手順の 4 と 5 である。メッセージに、機械が読む trailer は書かない。どのコミットがどの apply request の反映かは、
-// worker の反映かの判定の結果が正本である（design/files/revisions.md）。
+// worker が、merge の pull request を探して、コミットに置く（design/backend/invalid-main.md の「どの apply request の反映か」）。
 func (b *Backend) squash(ctx context.Context, repo, ref, id string, d *arDetail) (string, *ports.MergeFailure, error) {
 	failure := func(reason, detail string) (string, *ports.MergeFailure, error) {
 		f := ports.MergeFailure{Revision: d.current.Commit, Reason: reason, Detail: detail}

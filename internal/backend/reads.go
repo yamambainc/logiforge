@@ -91,6 +91,27 @@ func (b *Backend) ListRepositories(ctx context.Context, c Caller, cursor string,
 	return page(out, limit, func(Repository) bool { return true }, func(r Repository) string { return r.Name }), nil
 }
 
+// LatestInvalid は、最新のコミットが valid でなければ、木を読む API が返す木のコミット（valid_commit、なければ最新のコミット）を返す。
+// valid なら空（design/backend/invalid-main.md の「木を読む API」）。応答のヘッダー Logiforge-Latest-Invalid に使う。
+func (b *Backend) LatestInvalid(ctx context.Context, repo string) (string, error) {
+	latest, err := b.Snap.Latest(ctx, repo)
+	if err != nil {
+		return "", err
+	}
+	m, err := b.Snap.Main(ctx, repo, latest)
+	if err != nil {
+		return "", err
+	}
+	switch t := m.SnapshotTree; {
+	case t.Valid:
+		return "", nil
+	case t.ValidCommit != "":
+		return t.ValidCommit, nil
+	default:
+		return latest, nil
+	}
+}
+
 // GetRepository は、repository を返す。
 func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Repository, error) {
 	ref, err := b.access(ctx, c, repo)
@@ -103,11 +124,7 @@ func (b *Backend) GetRepository(ctx context.Context, c Caller, repo string) (Rep
 	}
 	_, dir := ports.SplitRef(ref)
 	r := Repository{Name: repo, GitURL: b.Forge.GitURL(ref), Directory: dir}
-	if br, err := b.Snap.Broken(ctx, repo); err != nil {
-		return Repository{}, err
-	} else if br != nil {
-		r.Broken = &BrokenState{FirstCommit: br.First, LastGoodCommit: br.LastGood, Reason: br.Reason}
-	}
+	r.Validity = v.validity()
 	if r.MigratedFrom, err = b.migratedFrom(ctx, repo); err != nil {
 		return Repository{}, err
 	}
@@ -139,7 +156,7 @@ func (b *Backend) GetTree(ctx context.Context, c Caller, repo string, at At) (Tr
 	if root == nil {
 		return Tree{}, fail(CodeNotFound, "根の仮説がない")
 	}
-	return Tree{RootHypothesisID: root.ID, RootValue: v.main.SnapshotTree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings()}, nil
+	return Tree{RootHypothesisID: root.ID, RootValue: v.main.SnapshotTree.Nodes[root.ID].Value, Commit: v.revision(), Warnings: v.warnings(), Validity: v.validity()}, nil
 }
 
 // ListNodes は、木か部分木のノードを返す。depth が負なら、すべての段。

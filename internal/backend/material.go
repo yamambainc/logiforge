@@ -43,11 +43,6 @@ func (b *Backend) GetReviewMaterial(ctx context.Context, c Caller, repo, id stri
 	}
 	m := ReviewMaterial{ApplyRequestID: id, Commit: d.current.Commit, Operations: d.model.Operations,
 		Targets: []Node{}, Ancestors: []*Hypothesis{}, Siblings: []*Story{}, Citations: []MaterialCitation{}}
-	if ar.Kind != "" {
-		if m.Repair, err = b.repairMaterial(ctx, repo, ar.Kind, v); err != nil {
-			return ReviewMaterial{}, err
-		}
-	}
 	var head *view // 先頭のコミットの木。部分木の引用があるときだけ作る
 	seenT, seenA, seenS := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	addAncestors := func(h *tree.Hypothesis) {

@@ -13,7 +13,7 @@ import (
 
 // FormatVersion は、スナップショットのフォーマットバージョンである。項目を足すときも上げる。
 // 形を変えるときは、置き場の接頭辞ごと新しくする。JSON の format_version に入れ、読むときに確かめる。
-const FormatVersion = 6
+const FormatVersion = 7
 
 // Kind は、コミットの種類である。
 type Kind string
@@ -34,14 +34,10 @@ type CommitInfo struct {
 	Revision    string
 	CommittedAt time.Time
 	Trailers    []Trailer
-	// Authorized は、反映によるコミットか（design/backend/broken.md の「反映かの判定」）。worker が GitForge の API で決める。
-	// nil なら、決めていない。
-	Authorized *bool
-	// ApplyRequest と MergedHead は、反映かの判定で見つけた、反映した apply request の識別子と、その先頭のコミットである。
+	// ApplyRequest と MergedHead は、そのコミットを merge のコミットに持つ pull request の識別子と、その先頭のコミットである。
+	// worker が、反映した pull request の一覧で探す（design/backend/invalid-main.md の「どの apply request の反映か」）。表示と重なりの警告だけに使う。
 	ApplyRequest string
 	MergedHead   string
-	// AuthorizationDetail は、反映によるものでないときの、満たさなかった条件である。警告に書く。
-	AuthorizationDetail string
 }
 
 // Commit は、コミットの記録である（数 KB）。
@@ -54,12 +50,12 @@ type Commit struct {
 	Kind        Kind      `json:"kind"`
 	CommittedAt time.Time `json:"committed_at"`
 	Trailers    []Trailer `json:"trailers"`
-	// ApplyRequest と MergedHead は、main のコミットだけ。worker が反映かの判定で見つけた、反映した apply request の識別子と、
-	// その先頭のコミットである（design/backend/verify/README.md）。どのコミットがどの apply request の反映かは、これが正本である。
+	// ApplyRequest と MergedHead は、main のコミットだけ。そのコミットを merge のコミットに持つ pull request の識別子と、
+	// その先頭のコミットである（design/backend/invalid-main.md の「どの apply request の反映か」）。表示と重なりの警告だけに使う。
 	ApplyRequest string `json:"apply_request,omitempty"`
 	MergedHead   string `json:"merged_head,omitempty"`
-	// Warnings は、main のコミットだけ。反映によらないことと、このコミットで新しく破れた不変条件。
-	// 前から破れている不変条件は、SnapshotTree.Broken に持つ。
+	// Warnings は、main のコミットだけ。このコミットで新しく破れた不変条件と、worker が見つけた警告。
+	// 前から破れている不変条件は、SnapshotTree.Violations に持つ。
 	Warnings []tree.Violation `json:"warnings,omitempty"`
 	// Changes は、main のコミットだけ。このコミットで変わったノードごとの、変わったファイルと、そのノードを前に変えたコミット
 	// （design/backend/snapshot/main.md の「ノードを変えたコミット」）。ノードの識別子の順。
@@ -162,8 +158,14 @@ type SnapshotTree struct {
 	// Warned は、最初のコミットからこのコミットまでのうち、警告のある main のコミットである（番号の順）。
 	// history は持たない。コミットの数とともに伸びるからである（design/backend/snapshot/README.md の「中身」）。
 	Warned []WarnedEntry `json:"warned,omitempty"`
-	// Broken は、このスナップショットツリーで破れている不変条件のすべてである（前のコミットから破れているものを含む）。
-	Broken []tree.Violation `json:"broken,omitempty"`
+	// Violations は、このスナップショットツリーで破れている不変条件と、読めないファイルのすべてである（前のコミットから破れているものを含む）。
+	Violations []tree.Violation `json:"violations,omitempty"`
+	// Valid は、Violations がないことである（design/backend/invalid-main.md の「valid」）。
+	Valid bool `json:"valid"`
+	// ValidCommit は、このコミットか、それより前の、いちばん新しい valid なコミットである。どれも valid でなければ空。
+	ValidCommit string `json:"valid_commit,omitempty"`
+	// InvalidSince は、このコミットが valid でないとき、ValidCommit のあとの、最初の valid でないコミットである。valid なら空。
+	InvalidSince string `json:"invalid_since,omitempty"`
 }
 
 // NodeKind は、ノードの種類である。
@@ -205,11 +207,9 @@ type Rev struct {
 type WarnedEntry struct {
 	Number   int    `json:"number"`
 	Revision string `json:"revision"`
-	// NoApplyRequest は、worker の判定で、apply request の反映によらない変更とされたことである。
-	NoApplyRequest bool `json:"no_apply_request,omitempty"`
 	// NewlyBroken は、このコミットで、新しく破れた不変条件があることである。
 	NewlyBroken bool `json:"newly_broken,omitempty"`
-	// WorkerWarned は、対象ノードの重なりや main の書き換えなど、コミットを読んだ worker が見つけた警告があることである。
+	// WorkerWarned は、対象ノードの重なりや読めないファイルなど、コミットを読んだ worker が見つけた警告があることである。
 	WorkerWarned bool `json:"worker_warned,omitempty"`
 }
 

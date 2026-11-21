@@ -71,10 +71,6 @@ func (a *Adapter) Artifact(ctx context.Context, repo, sha256 string) ([]byte, er
 	return b, notFound(err)
 }
 
-func (a *Adapter) Broken(ctx context.Context, repo string) (*store.Broken, error) {
-	return store.GetBroken(ctx, a.Store, repo)
-}
-
 func (a *Adapter) Scanned(ctx context.Context, repo string) (string, error) {
 	return store.GetScanned(ctx, a.Store, repo)
 }

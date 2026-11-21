@@ -17,7 +17,7 @@ import (
 )
 
 // 作業の種類（docs/work/README.md）。並びは、この順である。
-var workKinds = []string{"repair_repository", "undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
+var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
 
 // WorkQuery は、着手できる作業の問い合わせである。
 type WorkQuery struct {
@@ -66,13 +66,6 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 				break
 			}
 		}
-	}
-
-	// 壊れた repository を直すこと（design/backend/broken.md）。直すための apply request が open なら、返さない。
-	if broken, err := b.Snap.Broken(ctx, repo); err != nil {
-		return nil, nil, err
-	} else if broken != nil && !slices.ContainsFunc(open.ars, func(ar ports.ApplyRequest) bool { return ar.Kind != "" }) {
-		items = append(items, WorkItem{Kind: "repair_repository", SubjectID: broken.First})
 	}
 
 	// レビュー待ちと修正待ちの apply request。
@@ -180,7 +173,7 @@ func (b *Backend) usedAnswers(ctx context.Context, repo string, v *view, open *o
 // answerUsed は、回答済みの人への依頼が、作業から外れるかを返す（docs/work/README.md、design/backend/compute.md）。
 //   - その回答を引用した検証結果が、反映されたか、open の apply request の差分にある。
 //   - 対象ノードを最後に変えた反映のコミットが、回答より後である。反映のコミットは、対象ノードを変えたコミットを新しい順にたどり、
-//     worker の反映かの判定で apply request の反映によるものとした、最初のコミットである。
+//     worker が、merge の pull request を見つけた、最初のコミットである。
 func (b *Backend) answerUsed(ctx context.Context, repo string, v *view, refs answerRefs, hr ports.HumanRequest) (bool, error) {
 	if refs.cites(hr) {
 		return true, nil

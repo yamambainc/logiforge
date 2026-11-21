@@ -50,10 +50,11 @@ type Config struct {
 	ListInterval time.Duration
 	// MaxFileSize は、中身を読むファイルの大きさの上限。0 なら artifact の上限（10 MiB）。
 	MaxFileSize int64
-	// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify/README.md）。nil なら決めない（trailer で決める）。
-	Verifier Verifier
-	Now      func() time.Time
-	Log      *slog.Logger
+	// Lookup は、main のコミットを merge のコミットに持つ pull request を、GitForge で探す（design/backend/invalid-main.md の「どの apply request の反映か」）。
+	// nil なら探さない（どのコミットも、反映の apply request を持たない）。
+	Lookup MergeLookup
+	Now    func() time.Time
+	Log    *slog.Logger
 }
 
 // DefaultInterval は、見回りの間隔の既定である。
@@ -83,7 +84,7 @@ type Worker struct {
 	hasLatest map[string]bool
 	// written は、最後に書いた repositories である。変わったときだけ書く。書いていなければ nil。
 	written *string
-	// firstSeen は、merge した pull request がまだ見つからないコミットを、worker が初めて見た時刻である。
+	// firstSeen は、merge の pull request がまだ見つからないコミットを、worker が初めて見た時刻である。
 	// コミットの時刻は push する人が決められるので、待つ時間は、これから数える。プロセスごとに持つ（止まれば、待ち直すだけである）。
 	firstSeen map[string]time.Time
 	// repos は、最後に読めた repository の一覧である。見回りは、これを使う。
@@ -422,16 +423,13 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			return nil
 		}
 	}
-	br, err := store.GetBroken(ctx, w.store, repo)
-	if err != nil {
-		return err
-	}
 	chain, err := g.FirstParents(ctx, mainSHA)
 	if err != nil {
 		return err
 	}
-	// 続きから取り込む位置。latest が並びにあれば、その次から。なければ main が書き換えられているので、
+	// 続きから取り込む位置。latest が並びにあれば、その次から。なければ main が書き換えられているので（force push）、
 	// 並びのうち、スナップショットツリーのあるいちばん新しいコミットの次から（design/backend/snapshot/main.md の「latest」）。
+	// 書き換えは、そのまま受け入れる。警告にしない（design/backend/invalid-main.md の「main はいつも正しい」）。
 	// prevVersion は、続きの最初の版の、1 つ前の版である（そのスナップショットツリーに重ねる）。
 	start, rewritten, prevVersion := 0, false, ""
 	if latest != "" {
@@ -455,18 +453,9 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			}
 		}
 	}
-	// main の書き換えは、壊れた状態にする（design/backend/broken.md の「壊れている状態」）。最後に正しかった時点は、書き換えの前の latest。
-	// すでに壊れていれば、引き継ぐ。
-	if rewritten && br == nil {
-		first := mainSHA
-		if start < len(chain) {
-			first = chain[start]
-		}
-		br = &store.Broken{LastGood: latest, First: first, Reason: string(RuleMainRewritten)}
-	}
 	x := snapshot.NewIndex()
 	var files tree.Files
-	var broken []tree.Violation
+	var violations []tree.Violation
 	var prevTree *snapshot.SnapshotTree // 1 つ前のコミットのスナップショットツリー
 	if prevVersion != "" {
 		m, err := store.GetMain(ctx, w.store, repo, prevVersion)
@@ -477,7 +466,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if files, err = m.SnapshotTree.Files(); err != nil {
 			return err
 		}
-		broken = m.SnapshotTree.Broken
+		violations = m.SnapshotTree.Violations
 		prevTree = &m.SnapshotTree
 	}
 	for i := start; i < len(chain); i++ {
@@ -497,32 +486,31 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if dir != "" && len(changes) == 0 {
 			continue
 		}
-		version, before := x.Head().Number, x.Head().Revision
+		version := x.Head().Number
 		paths := make([]string, len(changes))
 		for j, ch := range changes {
 			paths[j] = ch.Path
 		}
 		info := workcopy.CommitInfo(c)
-		if files, err = g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize); err != nil {
-			return fmt.Errorf("%s: %w", sha, err)
-		}
-		v, err := w.authorized(ctx, g, r, sha, c.Parents, before, version, info, changes, outside, files, br)
+		// 木のファイルを読めなくても、取り込みを止めない。そのコミットを valid でないスナップショットにする（design/backend/invalid-main.md の「valid」）。
+		var unreadable error
+		next, err := g.ApplyChanges(ctx, files, changes, w.cfg.MaxFileSize)
 		if err != nil {
-			// 判定できないコミットは、取り込まずに、次の見回りでやり直す。
-			return fmt.Errorf("%s が反映によるものかを確かめられない: %w", sha, err)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			unreadable, next = err, withoutContent(files, changes)
 		}
-		// 根のコミットが用意のコミットでなければ、最後に正しかった時点がないので、取り込まない。repository は作り直す
-		// （design/backend/verify/init.md の「repository の用意のコミット」）。
-		if v != nil && version == 0 && !v.Authorized {
-			return fmt.Errorf("根のコミット %s が、Logiforge の用意のコミットでない（%s）。repository を作り直す", sha, v.Detail)
-		}
-		if v != nil {
-			info.Authorized, info.ApplyRequest, info.MergedHead, info.AuthorizationDetail = &v.Authorized, v.ApplyRequest, v.MergedHead, v.Detail
+		files = next
+		if version > 0 {
+			if info.ApplyRequest, info.MergedHead, err = w.mergedApplyRequest(ctx, r, sha, info.CommittedAt); err != nil {
+				return fmt.Errorf("%s を merge した pull request を探せない: %w", sha, err)
+			}
 		}
 		// 別リポジトリ方式から移した用意のコミットなら、元の repository の置き場に、移した先の名前を書く（design/directory/migrate.md）。
-		// trailer は、用意のコミットを置ける人ならだれでも書けるので、置き場で確かめてから書く：移したコミットが元の latest で、
-		// 用意のコミットの tree/ と artifacts/ が、元のそのスナップショットと同じであること。
-		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && v != nil && v.Authorized && from != "" {
+		// trailer は、用意のコミットを置ける人ならだれでも書けるので、確かめてから書く：移したコミットが元の latest で、
+		// 用意のコミットの tree/ と artifacts/ が、元のそのスナップショットと同じで、元の git リポジトリが archive されていること。
+		if from := trailerOf(info, snapshot.TrailerMigratedFrom); version == 0 && from != "" && unreadable == nil {
 			if src, commit, _ := strings.Cut(from, " "); src != "" && src != repo && w.migratedFromMatches(ctx, src, commit, files) {
 				// 1 つの元は、1 つの先にだけ移す。すでにほかの先があれば、上書きせずに警告する。
 				switch prev, err := store.GetMigratedTo(ctx, w.store, src); {
@@ -538,28 +526,23 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 			}
 		}
 		rec := x.Record(info, paths)
-		if br == nil && info.Authorized != nil && !*info.Authorized {
-			br = &store.Broken{LastGood: before, First: sha, Reason: string(snapshot.RuleNoApplyRequest)}
-		} else if br != nil && v != nil && v.Authorized && v.Kind != "" {
-			// 直すための apply request の反映で、直す条件は、反映かの判定で確かめた（design/backend/broken.md の「直すための apply request」）。
-			br = nil
+		if unreadable != nil {
+			w.cfg.Log.Warn("main のコミットのファイルを読めない。valid でないスナップショットにする", "repository", repo, "commit", sha, "err", unreadable)
+			x.MarkUnreadable(&rec, tree.Violation{Rule: snapshot.RuleUnreadable, Node: sha, Detail: "ファイルを読めない：" + unreadable.Error()})
 		}
 		if err := w.putArtifacts(ctx, repo, files, paths); err != nil {
 			return err
 		}
 		t := snapshot.BuildSnapshotTree(files, x)
-		newly, _ := tree.NewlyBroken(broken, t.Broken)
+		newly, _ := tree.NewlyBroken(violations, t.Violations)
 		x.AddNewlyBroken(&rec, newly...)
-		broken = t.Broken
+		violations = t.Violations
 		if version > 0 {
 			x.AddWorkerWarnings(&rec, w.overlap(ctx, g, repo, rec, files, prevTree)...)
 		}
-		// 反映のコミットが、ディレクトリの外も変えていたら、警告にする（判定には使わない。design/directory/history.md の「反映かの判定」）。
-		if len(outside) > 0 && v != nil && v.Authorized {
+		// 反映のコミットが、ディレクトリの外も変えていたら、警告にする（design/directory/history.md）。
+		if len(outside) > 0 && info.ApplyRequest != "" {
 			x.AddWorkerWarnings(&rec, tree.Violation{Rule: tree.RuleOutsideDirectory, Node: sha, Detail: "ディレクトリの外も変えている：" + strings.Join(outside, "、")})
-		}
-		if rewritten && i == start {
-			x.AddWorkerWarnings(&rec, tree.Violation{Rule: RuleMainRewritten, Node: sha, Detail: "latest " + latest + " が、main の並びにない。main が書き換えられた"})
 		}
 		t.Warned = x.Warned()
 		prevTree = t
@@ -573,10 +556,6 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 		if err := store.PutSnapshotTree(ctx, w.store, repo, sha, t); err != nil {
 			return err
 		}
-		// 壊れていることの記録は、latest を進める前に書く。読む側が、壊れたスナップショットツリーを正しいものとして読まないようにするため。
-		if err := w.putBroken(ctx, repo, br); err != nil {
-			return err
-		}
 		err = store.SetLatest(ctx, w.store, repo, sha, latest)
 		if errors.Is(err, store.ErrPrecondition) {
 			return fmt.Errorf("latest が、読んだあとに書き換えられた（worker が 2 つ動いている？）")
@@ -588,10 +567,7 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	}
 	// main が、取り込み終えたコミットまで短く書き換えられたときは、取り込むコミットがない。latest だけを戻す。
 	if rewritten && latest != prevVersion && prevVersion != "" && (start == len(chain) || dir != "") {
-		w.cfg.Log.Warn("main が、取り込み終えたコミットまで書き換えられた", "repository", repo, "latest", latest, "main", mainSHA)
-		if err := w.putBroken(ctx, repo, br); err != nil {
-			return err
-		}
+		w.cfg.Log.Info("main が、取り込み終えたコミットまで書き換えられた。latest を戻す", "repository", repo, "latest", latest, "main", mainSHA)
 		if err := store.SetLatest(ctx, w.store, repo, prevVersion, latest); err != nil {
 			return err
 		}
@@ -602,112 +578,65 @@ func (w *Worker) syncMain(ctx context.Context, g *gitx.Repo, r ports.Repository,
 	return nil
 }
 
-// Verifier は、main のコミットが反映によるものかを、中身で決める（design/backend/verify/README.md）。
-// parents はコミットの親（最初の親が 1 つ前の main のコミット）、files はそのコミットの木、broken は 1 つ前の main までの壊れていることの記録である。
-//
-// prevVersion は、1 つ前の版の SHA である。判定は、その版の木に重ねて行う。
-type Verifier interface {
-	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
+// MergeLookup は、main のコミットを merge のコミットに持つ pull request を、GitForge で、worker のトークンで探す。
+// 見つからなければ ports.ErrNotFound を返す。review は読まない（design/backend/invalid-main.md の「どの apply request の反映か」）。
+type MergeLookup interface {
+	MergedApplyRequest(ctx context.Context, r ports.Repository, sha string, committed time.Time) (id, head string, err error)
 }
 
 // ArchiveChecker は、GitForge で、git リポジトリが archive されているかを、worker のトークンで読む。
-// Verifier がこれも持てば、移した元の主張で、元の repository が archive されていることも確かめる（design/directory/migrate.md）。
+// Lookup がこれも持てば、移した元の主張で、元の repository が archive されていることも確かめる（design/directory/migrate.md）。
 type ArchiveChecker interface {
 	Archived(ctx context.Context, gitForgeRef string) (bool, error)
 }
 
-// authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
-// 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、位置と trailer Logiforge-Init: と、
-// 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。署名は使わない。
-//
-// version は、このコミットの前の版の数（最初の版なら 0）、prevVersion は 1 つ前の版の SHA である。git リポジトリ全体の repository では、
-// どのコミットも版なので、git の first-parent と同じである。ディレクトリの repository では、1 つ前の版は、git の親とは限らない。
-// outside は、ディレクトリの repository で、このコミットがディレクトリの外で変えたパスである。
-func (w *Worker) authorized(ctx context.Context, g *gitx.Repo, r ports.Repository, sha string, parents []string, prevVersion string, version int, info snapshot.CommitInfo, changes []gitx.Change, outside []string, files tree.Files, br *store.Broken) (*ports.MergeVerdict, error) {
-	if w.cfg.Verifier == nil {
-		return nil, nil
+// mergedApplyRequest は、sha を merge のコミットに持つ pull request の識別子と、その先頭のコミットを返す。なければ空。
+// GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがある（Forgejo で確かめた）。
+// そのため、見つからなければ、worker が初めて見てから mergeLookupGrace のあいだは、誤りを返して、次の見回りでやり直す。
+// コミットの時刻は使わない。push する人が、未来の時刻にして、待ちを終わらせないようにできるから。
+func (w *Worker) mergedApplyRequest(ctx context.Context, r ports.Repository, sha string, committed time.Time) (string, string, error) {
+	if w.cfg.Lookup == nil {
+		return "", "", nil
 	}
-	if version == 0 {
-		// 根のコミットか、ディレクトリの repository の版の 1 番（design/directory/history.md の「用意のコミット」）。
-		if !hasTrailer(info, snapshot.TrailerInit) {
-			return &ports.MergeVerdict{Detail: "最初の版に、Logiforge-Init: がない"}, nil
-		}
-		return initVerdict(changes, outside), nil
-	}
-	// GitHub で背景情報を置く、根の次のコミット。1 つ前の版（根）は、用意のコミットとして取り込み済みである。
-	if r.Directory() == "" && version == 1 && hasTrailer(info, snapshot.TrailerInit) && len(parents) == 1 {
-		return initVerdict(changes, outside), nil
-	}
-	v, err := w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, info.CommittedAt, files, br)
-	if err != nil {
-		return nil, err
-	}
-	// 先頭のコミットのスナップショットがなければ（ブランチを取り込む前に merge された）、作ってから決め直す。
-	// 先頭のコミットは、fetch した refs/pull/*/head にある。
-	if v.MissingHead != "" {
-		ok, err := g.HasCommit(ctx, v.MissingHead)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			v = ports.MergeVerdict{Pending: true, Detail: "pull request の先頭のコミット " + v.MissingHead + " が手元にない"}
-		} else {
-			base, err := g.MergeBase(ctx, parents[0], v.MissingHead)
-			if err != nil {
-				return nil, err
-			}
-			if err := w.buildBranch(ctx, g, r.Name, base, v.MissingHead); err != nil {
-				return nil, err
-			}
-			if v, err = w.cfg.Verifier.VerifyMerge(ctx, r, sha, parents, prevVersion, info.CommittedAt, files, br); err != nil {
-				return nil, err
-			}
-			if v.MissingHead != "" {
-				return nil, fmt.Errorf("先頭のコミット %s のスナップショットを作ったのに、読めない", v.MissingHead)
-			}
-		}
-	}
-	// GitForge は、merge のすぐあと、merge のコミットから pull request を引けないことがある（Forgejo で確かめた）。
-	// worker が初めて見てから待つ時間のあいだは、反映によらないと決めずに、やり直す。
-	// コミットの時刻は使わない。push する人が、未来の時刻にして、待ちを終わらせないようにできるから。
-	if v.Pending {
-		now := w.cfg.Now()
-		w.mu.Lock()
-		if w.firstSeen == nil {
-			w.firstSeen = map[string]time.Time{}
-		}
-		seen, ok := w.firstSeen[sha]
-		if !ok {
-			seen = now
-			w.firstSeen[sha] = now
-		}
-		waiting := now.Sub(seen) < mergeLookupGrace
-		if !waiting {
-			delete(w.firstSeen, sha)
-		}
-		w.mu.Unlock()
-		if waiting {
-			return nil, fmt.Errorf("%s。次の見回りでやり直す", v.Detail)
-		}
-		v = ports.MergeVerdict{Detail: v.Detail}
+	id, head, err := w.cfg.Lookup.MergedApplyRequest(ctx, r, sha, committed)
+	if err != nil && !errors.Is(err, ports.ErrNotFound) {
+		return "", "", err
 	}
 	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err == nil {
+		delete(w.firstSeen, sha)
+		return id, head, nil
+	}
+	if w.firstSeen == nil {
+		w.firstSeen = map[string]time.Time{}
+	}
+	now := w.cfg.Now()
+	seen, ok := w.firstSeen[sha]
+	if !ok {
+		seen = now
+		w.firstSeen[sha] = now
+	}
+	if now.Sub(seen) < mergeLookupGrace {
+		return "", "", fmt.Errorf("merge した pull request が、まだ見つからない。次の見回りでやり直す")
+	}
 	delete(w.firstSeen, sha)
-	w.mu.Unlock()
-	return &v, nil
+	return "", "", nil
 }
 
-// initVerdict は、用意のコミットを確かめる。差分は、ファイルを加えることだけである。
-func initVerdict(changes []gitx.Change, outside []string) *ports.MergeVerdict {
-	if len(outside) > 0 {
-		return &ports.MergeVerdict{Detail: "用意のコミットが、ディレクトリの外も変えている（" + strings.Join(outside, "、") + "）"}
+// withoutContent は、parent に changes を、中身を読まずに重ねる。読めないファイルは、中身のないファイルになる。
+func withoutContent(parent tree.Files, changes []gitx.Change) tree.Files {
+	next := tree.Files{}
+	for p, f := range parent {
+		next[p] = f
 	}
-	for _, ch := range changes {
-		if ch.Status != "A" {
-			return &ports.MergeVerdict{Detail: "用意のコミットが、ファイルを加えること以外の変更（" + ch.Path + "）を含む"}
+	for _, c := range changes {
+		delete(next, c.Path)
+		if c.Status != "D" {
+			next[c.Path] = tree.File{Path: c.Path, Mode: c.NewMode, SHA: c.NewSHA}
 		}
 	}
-	return &ports.MergeVerdict{Authorized: true}
+	return next
 }
 
 func trailerOf(info snapshot.CommitInfo, key string) string {
@@ -719,42 +648,12 @@ func trailerOf(info snapshot.CommitInfo, key string) string {
 	return ""
 }
 
-func hasTrailer(info snapshot.CommitInfo, key string) bool {
-	for _, t := range info.Trailers {
-		if t.Key == key {
-			return true
-		}
-	}
-	return false
-}
-
-// mergeLookupGrace は、merge した pull request の見つからないコミットを、反映によらないと決めるまで待つ時間である。
-// なぜ 60 秒か：GitForge が merge のコミットと pull request を結びつけるまでの遅れ（数秒）より十分長く、
-// 反映によらないコミットで、壊れた状態になるのを、長くは遅らせないため。
+// mergeLookupGrace は、merge した pull request の見つからないコミットを、反映の apply request のないコミットとして置くまで待つ時間である。
+// なぜ 60 秒か：GitForge が merge のコミットと pull request を結びつけるまでの遅れ（数秒）より十分長く、取り込みを長くは遅らせないため。
 const mergeLookupGrace = 60 * time.Second
 
-// putBroken は、壊れていることの記録を、変わったときだけ書く。
-func (w *Worker) putBroken(ctx context.Context, repo string, br *store.Broken) error {
-	old, err := store.GetBroken(ctx, w.store, repo)
-	if err != nil {
-		return err
-	}
-	if (old == nil && br == nil) || (old != nil && br != nil && *old == *br) {
-		return nil
-	}
-	if br != nil {
-		w.cfg.Log.Warn("repository が壊れた", "repository", repo, "reason", br.Reason, "first", br.First, "last_good", br.LastGood)
-	} else {
-		w.cfg.Log.Info("repository が直った", "repository", repo)
-	}
-	return store.PutBroken(ctx, w.store, repo, br)
-}
-
-// RuleMainRewritten は、latest が新しい main の並びになく、main が書き換えられたことの警告である。
-const RuleMainRewritten = snapshot.RuleMainRewritten
-
 // overlap は、反映のコミットについて、対象ノードと、加わった検証結果が引用した部分木が、その base のあとに別の反映で変わっていないかを確かめる。
-// base は、反映した先頭のコミット（反映かの判定で見つけたもの）と、反映の直前の main の分かれた点である。
+// base は、反映した先頭のコミット（merge の pull request の先頭のコミット）と、反映の直前の main の分かれた点である。
 // c は、記録を作ったばかりの反映のコミットで、その親までは、コミットの記録と main の並びの索引が置いてある。
 // files は c の木、prev は 1 つ前のコミットのスナップショットツリーである。
 func (w *Worker) overlap(ctx context.Context, g *gitx.Repo, repo string, c snapshot.Commit, files tree.Files, prev *snapshot.SnapshotTree) []tree.Violation {
@@ -916,7 +815,7 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 // （design/directory/migrate.md の「移した元」）。移したコミットが元の latest で、files の tree/ と artifacts/ が、元のそのスナップショットと
 // 同じで、元の git リポジトリが GitForge で archive されているときだけ true。読めないときは false にして、migrated_to を書かない。
 func (w *Worker) migratedFromMatches(ctx context.Context, src, commit string, files tree.Files) bool {
-	if ac, ok := w.cfg.Verifier.(ArchiveChecker); ok {
+	if ac, ok := w.cfg.Lookup.(ArchiveChecker); ok {
 		ref, err := w.src.GitForgeRef(ctx, src)
 		if err != nil {
 			w.cfg.Log.Warn("移した元の repository の gitforge_ref を求められない。移した先を書かない", "from", src, "err", err)

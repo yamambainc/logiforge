@@ -181,8 +181,6 @@ func (b *Backend) CreateRepository(ctx context.Context, c Caller, name, statemen
 
 // NewApplyRequest は、apply request の作成の要求である。
 type NewApplyRequest struct {
-	// Kind は、change（ふつう）、repair.revert、repair.accept のどれか。空は change（design/backend/broken.md）。
-	Kind        string
 	Branch      string
 	Commit      string
 	Description string
@@ -256,10 +254,6 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if n.Branch == "" || n.Branch == "main" {
 		return out, fail(CodeValidationFailed, "branch がないか、main である")
 	}
-	kind, err := normalizeKind(n.Kind)
-	if err != nil {
-		return out, err
-	}
 	ref, err := b.access(ctx, c, repo)
 	if err != nil {
 		return out, err
@@ -306,21 +300,6 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if err != nil {
 		return out, err
 	}
-	if kind != "" {
-		// 直すための apply request は、差分の検査のかわりに、直す条件を確かめる（design/backend/broken.md）。
-		broken, err := b.Snap.Broken(ctx, repo)
-		if err != nil {
-			return out, err
-		}
-		problem, err := b.repairProblem(ctx, repo, kind, br, latest, broken)
-		if err != nil {
-			return out, err
-		}
-		if problem != "" {
-			return out, fail(CodeValidationFailed, "%s", problem)
-		}
-		return b.createForge(ctx, c, repo, ref, kind, n, nil)
-	}
 	baseFiles, err := b.baseFiles(ctx, repo, ref, br.Diff.Base)
 	if err != nil {
 		return out, err
@@ -338,13 +317,13 @@ func (b *Backend) CreateApplyRequest(ctx context.Context, c Caller, repo string,
 	if len(res.Operations) == 0 {
 		return out, fail(CodeValidationFailed, "差分がない")
 	}
-	return b.createForge(ctx, c, repo, ref, "", n, res.Operations)
+	return b.createForge(ctx, c, repo, ref, n, res.Operations)
 }
 
 // createForge は、検査を通った apply request を、GitForge に作る。ops は、いま検査した操作（worker の取り込みの前に返すため）。
-func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref, kind string, n NewApplyRequest, ops []tree.Operation) (Written[ApplyRequest], error) {
+func (b *Backend) createForge(ctx context.Context, c Caller, repo, ref string, n NewApplyRequest, ops []tree.Operation) (Written[ApplyRequest], error) {
 	var out Written[ApplyRequest]
-	created, err := b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{Kind: kind, Branch: n.Branch, Description: n.Description, Opener: c.Principal.Login})
+	created, err := b.Forge.CreateApplyRequest(ctx, ref, ports.NewApplyRequest{Branch: n.Branch, Description: n.Description, Opener: c.Principal.Login})
 	if errors.Is(err, ports.ErrBranchHasOpen) {
 		return out, fail(CodeValidationFailed, "ブランチ %s に、open の apply request がすでにある", n.Branch)
 	}

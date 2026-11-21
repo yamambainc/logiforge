@@ -427,7 +427,7 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 	interval := settings.Duration(c.Intervals.Patrol, worker.DefaultInterval)
 	gitTimeout := settings.Duration(c.Intervals.GitTimeout, worker.DefaultGitTimeout)
 	listInterval := settings.Duration(c.Intervals.List, worker.DefaultListInterval)
-	// 反映かの判定は、バックエンドと同じ規則で、読むだけのトークンで行う。
+	// どの apply request の反映かは、読むだけのトークンで、merge の pull request を探して置く（design/backend/invalid-main.md）。
 	var tokens github.TokenSource
 	if c.GitForge == gitforgeGitHub && c.GitHub.AppID != "" {
 		tokens = dbTokens{db: db, keys: keys}
@@ -442,9 +442,9 @@ func buildWorker(ctx context.Context, db *settings.DB, keys settings.Keys, dir s
 		return nil, 0, fmt.Errorf("git の操作の時間の上限（%v）は、GitHub を使う構成では %v より短くする", gitTimeout, github.RefreshBefore)
 	}
 	src := fs.reader
-	v := verifier{b: &backend.Backend{Forge: fs.forge, Snap: &snapstore.Adapter{Store: st}}, src: src}
+	v := lookup{forge: fs.forge, src: src}
 	w := worker.New(worker.Config{Dir: dir, GitEnv: gitEnv, GitCredentials: src.GitEnv, Interval: interval, GitTimeout: gitTimeout, ListInterval: listInterval,
-		Verifier: v}, src, st)
+		Lookup: v}, src, st)
 	slog.Info("worker の設定を読んだ", "interval", interval, "git_timeout", gitTimeout)
 	return w, listInterval, nil
 }

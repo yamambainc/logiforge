@@ -19,11 +19,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/cli"
 	"github.com/yamambainc/logiforge/internal/ports"
-	"github.com/yamambainc/logiforge/internal/store"
-	"github.com/yamambainc/logiforge/internal/tree"
 )
 
 func main() {
@@ -82,27 +79,32 @@ func env(name string) (string, error) {
 	return v, nil
 }
 
-// verifier は、worker の反映かの判定を、バックエンドの規則で、worker のトークンで行う。
-type verifier struct {
-	b   *backend.Backend
-	src readSource
+// lookup は、worker が、main のコミットを merge のコミットに持つ pull request を、worker のトークンで探す
+// （design/backend/invalid-main.md の「どの apply request の反映か」）。
+type lookup struct {
+	forge ports.GitForge
+	src   readSource
 }
 
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+func (v lookup) MergedApplyRequest(ctx context.Context, r ports.Repository, sha string, committed time.Time) (string, string, error) {
 	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
 	if err != nil {
-		return ports.MergeVerdict{}, err
+		return "", "", err
 	}
-	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, committed, files, broken)
+	ar, err := v.forge.MergedApplyRequest(ports.WithToken(ctx, tok), r.GitForgeRef, sha, committed)
+	if err != nil {
+		return "", "", err
+	}
+	return ar.ID, ar.HeadRevision, nil
 }
 
 // Archived は、git リポジトリが archive されているかを、worker のトークンで読む（移した元の主張を確かめる。design/directory/migrate.md）。
-func (v verifier) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
+func (v lookup) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
 	tok, err := v.src.ReadToken(ctx, gitForgeRef)
 	if err != nil {
 		return false, err
 	}
-	return v.b.Forge.Archived(ports.WithToken(ctx, tok), gitForgeRef)
+	return v.forge.Archived(ports.WithToken(ctx, tok), gitForgeRef)
 }
 
 // allowProtocol は、LOGIFORGE_GIT_ALLOW_PROTOCOL（git で使える転送の方式）を読み、git の環境変数に足す。

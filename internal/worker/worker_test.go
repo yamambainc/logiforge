@@ -97,15 +97,14 @@ func setupRemote(t *testing.T) *remote {
 	return r
 }
 
-// trailerVerifier は、テストのための反映かの判定である。テストのリポジトリのコミットのメッセージの、テストだけの印
-// （Test-Apply-Request: <識別子> と Test-Merged-Head: <先頭のコミット>）で、反映によるコミットと決める。
-// 本物の判定（GitForge の閉じた pull request と review を読む）は、internal/backend の verify.go にある。
-type trailerVerifier struct{ dir string }
+// trailerLookup は、テストのための、merge の pull request を探す GitForge の代わりである。テストのリポジトリのコミットのメッセージの、
+// テストだけの印（Test-Apply-Request: <識別子> と Test-Merged-Head: <先頭のコミット>）で探す。印がなければ、pull request はない。
+type trailerLookup struct{ dir string }
 
-func (v trailerVerifier) VerifyMerge(_ context.Context, _ ports.Repository, sha string, _ []string, _ string, _ time.Time, _ tree.Files, _ *store.Broken) (ports.MergeVerdict, error) {
+func (v trailerLookup) MergedApplyRequest(_ context.Context, _ ports.Repository, sha string, _ time.Time) (string, string, error) {
 	out, err := exec.Command("git", "-C", v.dir, "log", "-1", "--format=%B", sha).Output()
 	if err != nil {
-		return ports.MergeVerdict{}, err
+		return "", "", err
 	}
 	var ar, head string
 	for _, l := range strings.Split(string(out), "\n") {
@@ -116,15 +115,12 @@ func (v trailerVerifier) VerifyMerge(_ context.Context, _ ports.Repository, sha 
 			head = strings.TrimSpace(x)
 		}
 	}
-	if ar == "" {
-		return ports.MergeVerdict{Detail: "テストの反映の印がない"}, nil
-	}
-	return ports.MergeVerdict{Authorized: true, ApplyRequest: ar, MergedHead: head}, nil
+	return ar, head, nil
 }
 
 func newWorker(t *testing.T, r *remote) (*Worker, *store.Dir) {
 	st := &store.Dir{Root: t.TempDir()}
-	w := New(Config{Dir: t.TempDir(), Verifier: trailerVerifier{r.dir}, Now: func() time.Time { return time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC) }}, source{r.dir}, st)
+	w := New(Config{Dir: t.TempDir(), Lookup: trailerLookup{r.dir}, Now: func() time.Time { return time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC) }}, source{r.dir}, st)
 	return w, st
 }
 
@@ -222,7 +218,7 @@ func TestSyncMainAndOverlap(t *testing.T) {
 		t.Fatalf("消えたブランチ：%+v", h)
 	}
 
-	// main が書き換えられたら、latest を上書きし、警告する。
+	// main が書き換えられたら（force push）、latest を上書きする。書き換えは警告にしない（design/backend/invalid-main.md）。
 	r.git("checkout", "--quiet", "main")
 	r.git("reset", "--quiet", "--hard", base)
 	r.write("README.md", []byte("x"))
@@ -232,8 +228,9 @@ func TestSyncMainAndOverlap(t *testing.T) {
 		t.Fatalf("latest: %s", latest)
 	}
 	s3m, _ := store.GetMain(ctx, st, "q", m3)
-	if got := rules(s3m.Commit.Warnings); !contains(got, RuleMainRewritten) || !contains(got, snapshot.RuleNoApplyRequest) {
-		t.Fatalf("書き換えの警告：%v", got)
+	// README.md は木の外のファイルなので、不変条件が破れ、valid でない。示す木は、書き換えのあとの並びの、前の valid なコミット（base）である。
+	if got := rules(s3m.Commit.Warnings); !contains(got, tree.RuleOutsideTree) || s3m.SnapshotTree.Valid || s3m.SnapshotTree.ValidCommit != base {
+		t.Fatalf("書き換えのあと：%v %v %s", got, s3m.SnapshotTree.Valid, s3m.SnapshotTree.ValidCommit)
 	}
 	// 書き換えのあとの新しいコミットで、main の並びの索引が上書きされる。
 	if s3m.Commit.Number != 2 {
@@ -424,8 +421,8 @@ func TestInitialImportMatchesIncremental(t *testing.T) {
 		}
 	}
 	m, _ := store.GetMain(ctx, allSt, "q", latest)
-	// 3 は重なり、4 と 5 は反映した先頭のコミットがわからないので overlap_unchecked、6 は反映によらず、新しく破った。
-	if w := m.SnapshotTree.Warned; len(w) != 4 || w[0].Number != 3 || !w[0].WorkerWarned || w[3].Number != 6 || !w[3].NewlyBroken || !w[3].NoApplyRequest {
+	// 3 は重なり、4 と 5 は反映した先頭のコミットがわからないので overlap_unchecked、6 は新しく破った。
+	if w := m.SnapshotTree.Warned; len(w) != 4 || w[0].Number != 3 || !w[0].WorkerWarned || w[3].Number != 6 || !w[3].NewlyBroken {
 		t.Fatalf("warned: %+v", w)
 	}
 	// 重なりと inactive 化の子孫。
@@ -509,7 +506,7 @@ func TestRunHeartbeatAndSkipBusy(t *testing.T) {
 	r := setupRemote(t)
 	st := &store.Dir{Root: t.TempDir()}
 	dir := t.TempDir()
-	w := New(Config{Dir: dir, Interval: 10 * time.Millisecond, Verifier: trailerVerifier{r.dir}}, source{r.dir}, st)
+	w := New(Config{Dir: dir, Interval: 10 * time.Millisecond, Lookup: trailerLookup{r.dir}}, source{r.dir}, st)
 	// repository の処理を、ロックを持ったまま止めておく（長い取り込みの代わり）。
 	unlock := w.tryLock("q")
 	if unlock == nil {

@@ -27,6 +27,10 @@ type Index struct {
 	nodeDirs map[string]string
 	// warned は、警告のあるコミットの一覧である（番号の順）。
 	warned []WarnedEntry
+	// validCommit と invalidSince は、最後に足したコミットのスナップショットツリーの ValidCommit と InvalidSince である。
+	validCommit, invalidSince string
+	// unreadable は、次に作るスナップショットツリーに足す、読めないファイルの違反である（MarkUnreadable）。
+	unreadable []tree.Violation
 }
 
 // NewIndex は、空の Index を返す。最初のコミットから取り込むときに使う。
@@ -39,6 +43,7 @@ func IndexFromSnapshotTree(head Commit, t *SnapshotTree) *Index {
 	x := NewIndex()
 	x.head = Rev{Number: head.Number, Revision: head.Revision}
 	x.warned = append([]WarnedEntry(nil), t.Warned...)
+	x.validCommit, x.invalidSince = t.ValidCommit, t.InvalidSince
 	for id, n := range t.Nodes {
 		x.nodeDirs[n.Dir] = id
 		x.last[id] = n.LastChanged
@@ -58,7 +63,7 @@ func IndexFromSnapshotTree(head Commit, t *SnapshotTree) *Index {
 func (x *Index) Head() Rev { return x.head }
 
 // Record は、main のコミットの記録を、親から変わったパス（git の diff-tree の結果）だけで作り、Index に足す。
-// 警告は、反映によらないことだけを付ける。新しく破れた不変条件と、worker の警告は、AddNewlyBroken と AddWorkerWarnings で足す。
+// 警告は付けない。新しく破れた不変条件と、worker の警告は、AddNewlyBroken と AddWorkerWarnings で足す。
 func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 	c := Commit{Revision: info.Revision, Number: x.head.Number + 1, Kind: KindMain, CommittedAt: info.CommittedAt.UTC(), Trailers: info.Trailers}
 	if x.head.Number > 0 {
@@ -99,18 +104,6 @@ func (x *Index) Record(info CommitInfo, changedPaths []string) Commit {
 		}
 	}
 	x.head = rev
-	unauthorized := ar == "" && c.Parent != nil && !(c.Number <= MaxInitCommits && trailer(info.Trailers, TrailerInit) != "")
-	if info.Authorized != nil {
-		unauthorized = !*info.Authorized
-	}
-	if unauthorized {
-		detail := "反映によるものでないコミット"
-		if info.AuthorizationDetail != "" {
-			detail = "反映によるものでない：" + info.AuthorizationDetail
-		}
-		x.warn(&c, func(e *WarnedEntry) { e.NoApplyRequest = true },
-			tree.Violation{Rule: RuleNoApplyRequest, Node: info.Revision, Detail: detail})
-	}
 	return c
 }
 
@@ -159,7 +152,13 @@ func (x *Index) AddNewlyBroken(c *Commit, vs ...tree.Violation) {
 	x.warn(c, func(e *WarnedEntry) { e.NewlyBroken = true }, vs...)
 }
 
-// AddWorkerWarnings は、対象ノードの重なりや main の書き換えなど、worker が見つけた警告を、最後に足したコミットの警告にする。
+// MarkUnreadable は、最後に足したコミットの木に読めないファイルがあることを、警告にし、次に作るスナップショットツリーの違反に足す。
+func (x *Index) MarkUnreadable(c *Commit, v tree.Violation) {
+	x.unreadable = append(x.unreadable, v)
+	x.AddWorkerWarnings(c, v)
+}
+
+// AddWorkerWarnings は、対象ノードの重なりや読めないファイルなど、worker が見つけた警告を、最後に足したコミットの警告にする。
 func (x *Index) AddWorkerWarnings(c *Commit, vs ...tree.Violation) {
 	x.warn(c, func(e *WarnedEntry) { e.WorkerWarned = true }, vs...)
 }
@@ -350,6 +349,15 @@ func BuildSnapshotTreeOf(t *tree.Tree, files tree.Files, x *Index) *SnapshotTree
 	for id, n := range out.Nodes {
 		n.LastChanged = x.last[id]
 	}
-	out.Broken = tree.Check(t)
+	out.Violations = append(tree.Check(t), x.unreadable...)
+	x.unreadable = nil
+	// valid と、どの木を示すか（design/backend/invalid-main.md の「valid」）。
+	out.Valid = len(out.Violations) == 0
+	if out.Valid {
+		x.validCommit, x.invalidSince = x.head.Revision, ""
+	} else if x.invalidSince == "" {
+		x.invalidSince = x.head.Revision
+	}
+	out.ValidCommit, out.InvalidSince = x.validCommit, x.invalidSince
 	return out
 }

@@ -363,6 +363,22 @@ func TestRetryOnSnapshotPending(t *testing.T) {
 	}
 }
 
+// 最新のコミットが valid でなければ、木を読むコマンドは、結果を書いたうえで、標準エラーに警告を書く。終了コードは変えない
+// （design/backend/invalid-main.md の「CLI」）。
+func TestLatestInvalidWarns(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Logiforge-Latest-Invalid", "c1")
+		_, _ = io.WriteString(w, `{"root_hypothesis_id":"h-0000000000","root_value":null,"commit":"c1","warnings":[],"valid_commit":"c1","invalid_since":"c2"}`)
+	}))
+	t.Cleanup(srv.Close)
+	e := env{"LOGIFORGE_HOST": srv.URL, "LOGIFORGE_TOKEN": "tok"}
+	code, out, errOut := run(t, t.TempDir(), e, "", "tree", "view", "--repo", "q", "--json")
+	if code != 0 || !strings.Contains(out, `"commit":"c1"`) || !strings.Contains(errOut, "valid でない") || !strings.Contains(errOut, "c1") {
+		t.Fatalf("警告：%d %s %s", code, out, errOut)
+	}
+}
+
 // logiforge version と --version は、版を示す。--json なら JSON。
 func TestVersion(t *testing.T) {
 	dir := t.TempDir()

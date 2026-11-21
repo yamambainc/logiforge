@@ -64,7 +64,6 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("GET /v1/repositories", s.listRepositories)
 	route("GET "+repo, s.getRepository)
 	route("GET "+repo+"/tree", s.getTree)
-	route("GET "+repo+"/repair-files", s.getRepairFiles)
 	route("GET "+repo+"/tree/nodes", s.listNodes)
 	route("GET "+repo+"/tree/completion", s.getCompletion)
 	route("GET "+repo+"/tree/export", s.exportTree)
@@ -124,10 +123,10 @@ func (s *server) handle(h func(ctx context.Context, c backend.Caller, r *http.Re
 			// GitForge には、要求を送った主体のトークンで読み書きする（design/adapters/pull-requests.md）。
 			out, err = h(ports.WithToken(r.Context(), strings.TrimSpace(token)), c, r)
 			if err == nil {
-				// 壊れた repository の木を読む応答には、最後に正しかった時点のコミットを付ける（design/backend/broken.md）。
+				// 最新のコミットが valid でなければ、木を読む応答に、返した木のコミットを付ける（design/backend/invalid-main.md の「木を読む API」）。
 				if name := r.PathValue("repository"); name != "" && r.Method == http.MethodGet && readsTree(r.Pattern) {
-					if last, berr := s.b.BrokenLastGood(r.Context(), name); berr == nil && last != "" {
-						w.Header().Set("Logiforge-Repository-Broken", last)
+					if shown, verr := s.b.LatestInvalid(r.Context(), name); verr == nil && shown != "" {
+						w.Header().Set("Logiforge-Latest-Invalid", shown)
 					}
 				}
 				if rw, ok := out.(raw); ok {
@@ -374,7 +373,6 @@ func (s *server) createRepository(ctx context.Context, c backend.Caller, r *http
 
 func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
 	var in struct {
-		Kind        string `json:"kind"`
 		Branch      string `json:"branch"`
 		Commit      string `json:"commit"`
 		Description string `json:"description"`
@@ -382,7 +380,7 @@ func (s *server) createApplyRequest(ctx context.Context, c backend.Caller, r *ht
 	if err := decodeBody(nil, r, &in); err != nil {
 		return nil, err
 	}
-	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Kind: in.Kind, Branch: in.Branch, Commit: in.Commit,
+	out, err := s.b.CreateApplyRequest(ctx, c, r.PathValue("repository"), backend.NewApplyRequest{Branch: in.Branch, Commit: in.Commit,
 		Description: in.Description})
 	if err != nil {
 		return nil, err
@@ -481,10 +479,6 @@ func (s *server) answerHumanRequest(ctx context.Context, c backend.Caller, r *ht
 func healthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte("ok\n"))
-}
-
-func (s *server) getRepairFiles(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
-	return s.b.GetRepairFiles(ctx, c, r.PathValue("repository"))
 }
 
 // readsTree は、route が repository の木を読むものか（壊れていれば、最後に正しかった時点の木を返すもの）を返す。

@@ -61,9 +61,6 @@ var waitingLabels = map[string]Label{
 	LabelFixWaiting:    {Name: LabelFixWaiting, Color: "#d93f0b", Description: "Logiforge：修正待ち"},
 }
 
-// repairKinds は、直すための apply request の種類である。ラベルは logiforge/<種類>。
-var repairKinds = []string{"repair.revert", "repair.accept"}
-
 // 本文に書く、人が読む文の頭（design/adapters/texts.md）。バックエンドは、これを読まない。
 const (
 	promptPrefix = "プロンプトの版："
@@ -119,19 +116,10 @@ func waitingOf(labels []string) ports.Waiting {
 	return ports.WaitingNone
 }
 
-func kindOf(labels []string) string {
-	for _, k := range repairKinds {
-		if slices.Contains(labels, labelPrefix+k) {
-			return k
-		}
-	}
-	return ""
-}
-
 // toApplyRequest は、pull request の一覧に入っているものだけから apply request を作る。
 func toApplyRequest(p Pull) ports.ApplyRequest {
 	ar := ports.ApplyRequest{ID: strconv.Itoa(p.Number), Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body,
-		HeadRevision: p.HeadSHA, Opener: p.Author, Kind: kindOf(p.Labels), Waiting: waitingOf(p.Labels), CreatedAt: p.CreatedAt}
+		HeadRevision: p.HeadSHA, Opener: p.Author, Waiting: waitingOf(p.Labels), CreatedAt: p.CreatedAt}
 	switch {
 	case p.Merged:
 		ar.State, ar.MergedRevision = ports.StateMerged, p.MergeCommit
@@ -163,12 +151,6 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 		return ports.ApplyRequest{}, err
 	}
 	var warnings []string
-	if n.Kind != "" {
-		l := Label{Name: labelPrefix + n.Kind, Color: "#5319e7", Description: "Logiforge：直すための apply request"}
-		if err := a.addLabel(ctx, repo, p.Number, l); err != nil {
-			return ports.ApplyRequest{}, err
-		}
-	}
 	if err := a.setWaiting(ctx, repo, p.Number, nil, ports.WaitingReview); err != nil {
 		warnings = append(warnings, fmt.Sprintf("レビュー待ちのラベルを付けられない：%v", err))
 	}
@@ -402,7 +384,6 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 			// 書く権限を持つかを読めなければ、数えない（閉じる側に倒す）。
 			if pr.CanPush == nil {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("review %d：%s に書く権限があるかを確かめられないので、この %s は数えない", pr.ID, pr.Author, r.Kind))
-				out.Unverified++
 				continue
 			}
 			if !*pr.CanPush {

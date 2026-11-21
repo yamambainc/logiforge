@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/ports"
-	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/store"
 	"github.com/yamambainc/logiforge/internal/tree"
 )
@@ -90,22 +89,19 @@ func TestGitHubLiveDirectory(t *testing.T) {
 	shaHuman := l.humanMerge(human, "squash")
 
 	l.must(dir, "fetch", "--quiet", "origin")
-	w, st, v := l.worker()
+	w, st := l.worker()
 	l.sync(w)
-	if got := l.verdict(v, st, dir, shaAR); !got.Authorized || got.ApplyRequest != ar.ID {
-		t.Errorf("apply request の反映：%+v", got)
+	if got, err := store.GetCommit(context.Background(), st, "q", shaAR); err != nil || got.ApplyRequest != ar.ID {
+		t.Errorf("apply request の反映：%+v %v", got, err)
 	}
 	if _, err := store.GetCommit(context.Background(), st, "q", shaCode); err == nil {
 		t.Error("コードの merge が、版になった")
 	}
-	if got := l.verdict(v, st, dir, shaHuman); got.Authorized {
-		t.Errorf("apply request でない PR の merge が、反映になった：%+v", got)
+	// apply request でない PR の merge も、pull request の番号を持つ。表示だけに使う（design/backend/invalid-main.md）。
+	if got, err := store.GetCommit(context.Background(), st, "q", shaHuman); err != nil || got.ApplyRequest != human.ID {
+		t.Errorf("PR の merge：%+v %v", got, err)
 	}
-	c, _ := store.GetCommit(context.Background(), st, "q", shaHuman)
-	if !hasWarning(c, snapshot.RuleNoApplyRequest) {
-		t.Errorf("apply request でない PR の merge に、警告がない：%+v", c.Warnings)
-	}
-	t.Log("確かめた：ディレクトリの用意は init-directory の署名で、反映は中身で決まる。コードの merge は版にならず、apply request でない PR の merge は反映でない")
+	t.Log("確かめた：コードの merge は版にならず、ディレクトリを変える merge は、その pull request の番号を持つ")
 	for _, b := range []string{"lf-dir-ar-" + stamp, "lf-dir-code-" + stamp, "lf-dir-human-" + stamp} {
 		_, _ = l.git(dir, "push", "--quiet", "origin", "--delete", b)
 	}

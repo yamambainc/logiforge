@@ -21,10 +21,7 @@ import (
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
-	"github.com/yamambainc/logiforge/internal/adapters/snapstore"
-	"github.com/yamambainc/logiforge/internal/backend"
 	"github.com/yamambainc/logiforge/internal/ports"
-	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/store"
 	"github.com/yamambainc/logiforge/internal/tree"
 	"github.com/yamambainc/logiforge/internal/worker"
@@ -92,22 +89,26 @@ func (l *live) must(dir string, args ...string) string {
 	return out
 }
 
-// verifier は、cmd/logiforge の verifier と同じく、worker の判定をバックエンドの規則で、読むだけのトークンで行う。
-type verifier struct {
-	b   *backend.Backend
-	src *WorkerSource
+// mergeLookup は、cmd/logiforge の lookup と同じく、merge の pull request を、読むだけのトークンで探す。
+type mergeLookup struct {
+	forge ports.GitForge
+	src   *WorkerSource
 }
 
-func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error) {
+func (v mergeLookup) MergedApplyRequest(ctx context.Context, r ports.Repository, sha string, committed time.Time) (string, string, error) {
 	tok, err := v.src.ReadToken(ctx, r.GitForgeRef)
 	if err != nil {
-		return ports.MergeVerdict{}, err
+		return "", "", err
 	}
-	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, committed, files, broken)
+	ar, err := v.forge.MergedApplyRequest(ports.WithToken(ctx, tok), r.GitForgeRef, sha, committed)
+	if err != nil {
+		return "", "", err
+	}
+	return ar.ID, ar.HeadRevision, nil
 }
 
 // worker は、読むだけのトークン（なければトークンなし）で、repository を取り込む worker と、その置き場を作る。
-func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
+func (l *live) worker() (*worker.Worker, *store.Dir) {
 	src, err := NewWorkerSource(l.cfg, l.app)
 	if err != nil {
 		l.t.Fatal(err)
@@ -117,9 +118,8 @@ func (l *live) worker() (*worker.Worker, *store.Dir, verifier) {
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	v := verifier{b: &backend.Backend{Forge: forge, Snap: &snapstore.Adapter{Store: st}}, src: src}
-	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Verifier: v}, src, st)
-	return w, st, v
+	w := worker.New(worker.Config{Dir: l.t.TempDir(), GitCredentials: src.GitEnv, Lookup: mergeLookup{forge: forge, src: src}}, src, st)
+	return w, st
 }
 
 // sync は、worker で取り込む。merge のすぐあとは、GitHub が merge のコミットから pull request を引けないことがあるので、やり直す。
@@ -219,31 +219,6 @@ func (l *live) humanMerge(ar ports.ApplyRequest, method string) string {
 	}
 }
 
-// verdict は、取り込んだ main のコミットについて、壊れていない前提で、反映かを判定し直す。
-// 試験の repository は、前の回の「反映によらないコミット」を含んで壊れているので、壊れていることの記録は渡さない。
-func (l *live) verdict(v verifier, st *store.Dir, dir, sha string) ports.MergeVerdict {
-	l.t.Helper()
-	m, err := store.GetMain(context.Background(), st, "q", sha)
-	if err != nil {
-		l.t.Fatalf("%s を取り込んでいない：%v", sha, err)
-	}
-	files, err := m.SnapshotTree.Files()
-	if err != nil {
-		l.t.Fatal(err)
-	}
-	parents := strings.Fields(l.must(dir, "rev-list", "--parents", "-n", "1", sha))[1:]
-	// 1 つ前の版は、コミットの記録の parent である（ディレクトリの repository では、git の親とは限らない）。
-	c, err := store.GetCommit(context.Background(), st, "q", sha)
-	if err != nil || c.Parent == nil {
-		l.t.Fatalf("%s のコミットの記録：%v", sha, err)
-	}
-	got, err := v.VerifyMerge(context.Background(), ports.Repository{Name: "q", GitForgeRef: l.repo}, sha, parents, *c.Parent, time.Now(), files, nil)
-	if err != nil {
-		l.t.Fatal(err)
-	}
-	return got
-}
-
 // 用意から、reviewer の merge、人の merge（承認済みと、approve のあとに request_changes が付いたもの）までを、実際の GitHub で確かめる。
 func TestGitHubLive(t *testing.T) {
 	l := liveEnv(t)
@@ -252,17 +227,15 @@ func TestGitHubLive(t *testing.T) {
 	l.must(dir, "clone", "--quiet", "https://github.com/"+l.repo+".git", ".")
 	stamp := fmt.Sprint(time.Now().Unix())
 
-	// 用意のコミット：根に Logiforge-Init:、2 つ目に署名。worker は、どちらも反映によるものとする。
-	w, st, _ := l.worker()
+	// 用意のコミット：worker は、そのまま取り込む。
+	w, st := l.worker()
 	l.sync(w)
 	all := strings.Fields(l.must(dir, "rev-list", "--first-parent", "--reverse", "origin/main"))
 	for i, sha := range all[:min(2, len(all))] {
-		c, err := store.GetCommit(context.Background(), st, "q", sha)
-		if err != nil || len(c.Warnings) != 0 {
-			t.Fatalf("用意の %d 番目のコミット %s に警告：%+v %v", i+1, sha, c.Warnings, err)
+		if _, err := store.GetCommit(context.Background(), st, "q", sha); err != nil {
+			t.Fatalf("用意の %d 番目のコミット %s を取り込まない：%v", i+1, sha, err)
 		}
 	}
-	t.Log("確かめた：worker は、根のコミットと、署名の合う 2 つ目のコミットを、用意のコミットとする")
 
 	// 1. reviewer のトークンでの反映（バックエンドの反映の手順 4 と同じ呼び方）。
 	a := l.branch(dir, "lf-reviewer-"+stamp, "reviewer の反映 "+stamp)
@@ -282,25 +255,16 @@ func TestGitHubLive(t *testing.T) {
 	shaC := l.humanMerge(c, "squash")
 
 	l.must(dir, "fetch", "--quiet", "origin")
-	w, st, v := l.worker()
+	w, st = l.worker()
 	l.sync(w)
-	if got := l.verdict(v, st, dir, shaA); !got.Authorized || got.ApplyRequest != a.ID {
-		t.Errorf("reviewer の merge：%+v", got)
+	// どの apply request の反映かは、merge の pull request で決まる。review は見ない（design/backend/invalid-main.md の「どの apply request の反映か」）。
+	for sha, ar := range map[string]ports.ApplyRequest{shaA: a, shaB: b, shaC: c} {
+		got, err := store.GetCommit(context.Background(), st, "q", sha)
+		if err != nil || got.ApplyRequest != ar.ID || got.MergedHead != ar.HeadRevision {
+			t.Errorf("%s の反映の apply request：%+v %v（%s）", sha, got, err, ar.ID)
+		}
 	}
-	if got := l.verdict(v, st, dir, shaB); !got.Authorized || got.ApplyRequest != b.ID {
-		t.Errorf("人の merge のコミット（承認済み）：%+v", got)
-	}
-	if got := l.verdict(v, st, dir, shaC); got.Authorized || !strings.Contains(got.Detail, "approve でない") {
-		t.Errorf("request_changes のあとの人の merge：%+v", got)
-	}
-	t.Log("確かめた：GET /commits/{sha}/pulls で merge した pull request を引ける。reviewer の merge と、承認済みの人の merge（merge のコミット）は反映、request_changes のあとの人の squash merge は反映でない")
-	c3, _ := store.GetCommit(context.Background(), st, "q", shaC)
-	if !hasWarning(c3, snapshot.RuleNoApplyRequest) {
-		t.Errorf("request_changes のあとの merge に、警告がない：%+v", c3.Warnings)
-	}
-	if br, _ := store.GetBroken(context.Background(), st, "q"); br == nil {
-		t.Error("壊れた状態にならない")
-	}
+	t.Log("確かめた：閉じた pull request の一覧の merge_commit_sha で、reviewer の merge と、人の merge（merge のコミット、squash）の pull request を引ける")
 
 	// 認証：GitHub の OAuth App のトークンでないので client。読める repository を読める。
 	p, err := l.auth.Authenticate(context.Background(), l.token)
@@ -313,15 +277,6 @@ func TestGitHubLive(t *testing.T) {
 	for _, br := range []string{a.Branch, b.Branch, c.Branch} {
 		_, _ = l.git(dir, "push", "--quiet", "origin", "--delete", br)
 	}
-}
-
-func hasWarning(c snapshot.Commit, rule tree.Rule) bool {
-	for _, w := range c.Warnings {
-		if w.Rule == rule {
-			return true
-		}
-	}
-	return false
 }
 
 // TestGitHubLiveApp は、読むだけの GitHub App の installation token を確かめる。GITHUB_TEST_APP_ID がなければ飛ばす。

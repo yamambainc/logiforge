@@ -215,9 +215,9 @@ func measure(t *testing.T, targetNodes, commits int) result {
 		// worker と同じく、木の組み立ては BuildSnapshotTree の中の 1 回だけである。新しく破れた不変条件も、その結果から求める。
 		t0 = time.Now()
 		tr := snapshot.BuildSnapshotTree(files, x)
-		newly, _ := tree.NewlyBroken(broken, tr.Broken)
+		newly, _ := tree.NewlyBroken(broken, tr.Violations)
 		x.AddNewlyBroken(&rec, newly...)
-		broken = tr.Broken
+		broken = tr.Violations
 		tr.Warned = x.Warned()
 		p.build = time.Since(t0)
 

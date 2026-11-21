@@ -106,10 +106,9 @@ func (b *Backend) MigrateRepository(ctx context.Context, c Caller, name, from st
 		return out, fail(CodeSnapshotPending, "元の repository の main %s を、worker がまだ取り込んでいない。少し待って送り直す", head)
 	}
 	var problems []string
-	if broken, err := b.Snap.Broken(ctx, from); err != nil {
-		return out, err
-	} else if broken != nil {
-		problems = append(problems, "元の repository が壊れている")
+	// 移した先の最初の版が valid であるように、元の最新のコミットが valid なときだけ移す（design/backend/invalid-main.md）。
+	if !src.main.SnapshotTree.Valid {
+		problems = append(problems, "元の repository の最新のコミット "+src.revision()+" が valid でない")
 	}
 	ars, err := b.Forge.ListApplyRequests(ctx, srcRef, "open")
 	if err != nil {

@@ -87,14 +87,13 @@ type arDetail struct {
 // arRead は、apply request を読むときに、何を読むかである。
 type arRead struct {
 	// ops は、操作の一覧を作るか。reviews は、その pull request の review を GitForge から読むか。
-	// 一覧では、どちらも読まない（design/backend/list-reads.md）。review は、1 件の読みと、反映と、反映かの判定でだけ読む。
+	// 一覧では、どちらも読まない（design/backend/list-reads.md）。review は、1 件の読みと、反映でだけ読む。
 	ops, reviews bool
 }
 
 var (
 	readList   = arRead{}
 	readDetail = arRead{ops: true, reviews: true}
-	readVerify = arRead{reviews: true}
 )
 
 // applyRequest は、apply request を読み、応答を作る。
@@ -118,11 +117,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	if target == "" {
 		target = mainTarget
 	}
-	kind := ar.Kind
-	if kind == "" {
-		kind = KindChange
-	}
-	*m = ApplyRequest{ID: ar.ID, Kind: kind, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
+	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
 		Operations: []Operation{}, Reviews: []Review{}, Comments: []Comment{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]

@@ -27,7 +27,7 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	c3 := r.commit("反映\n\nTest-Apply-Request: apr_2")
 
 	st := &store.Dir{Root: t.TempDir()}
-	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{r.dir}}, source{r.dir}, st)
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{r.dir}}, source{r.dir}, st)
 	w.SyncAll(ctx)
 	b := &Backend{Snap: &snapstore.Adapter{Store: st}}
 	v, err := b.mainAt(ctx, "q", "")
@@ -49,11 +49,8 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 	if v, err = b.currentMain(ctx, "q"); err != nil || v.revision() != c2 {
 		t.Fatalf("latest: %v", err)
 	}
-	// 短い書き換えも、壊れた状態にする。木を読む今の main は、書き換えの前の latest（c3）である（design/backend/broken.md）。
-	if br, _ := store.GetBroken(ctx, st, "q"); br == nil || br.LastGood != c3 || br.Reason != "main_rewritten" {
-		t.Fatalf("壊れた状態：%+v", br)
-	}
-	if rv, err := b.mainAt(ctx, "q", ""); err != nil || rv.revision() != c3 {
+	// 短い書き換えも、そのまま受け入れる。木を読む今の main も、c2 である（design/backend/invalid-main.md の「main はいつも正しい」）。
+	if rv, err := b.mainAt(ctx, "q", ""); err != nil || rv.revision() != c2 {
 		t.Fatalf("読む今の main：%v", err)
 	}
 	if n, _ := b.mainNumber(ctx, v, c3); n != 0 {
@@ -67,7 +64,7 @@ func TestMainNumberAfterShortRewrite(t *testing.T) {
 // syncMain は、テストの worker で、remote を取り込む。
 func syncFixture(t *testing.T, f *fixture) {
 	t.Helper()
-	w := worker.New(worker.Config{Dir: t.TempDir(), Verifier: trailerVerifier{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
+	w := worker.New(worker.Config{Dir: t.TempDir(), Lookup: trailerLookup{f.r.dir}}, source{f.r.dir}, f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir))
 	w.SyncAll(context.Background())
 }
 
@@ -159,5 +156,52 @@ func TestListCommits(t *testing.T) {
 	}
 	if _, err := f.b.ListCommits(ctx, f.caller, "q", "", 10); code(err) != CodeSnapshotPending {
 		t.Fatalf("索引の抜け：%v", err)
+	}
+}
+
+// 最新のコミットが valid でなければ、木を読む今の main は、その前の、いちばん新しい valid なコミットである。
+// 書く操作の検査（currentMain）は、最新のコミットを読む。直したコミットで、最新のコミットに戻る（design/backend/invalid-main.md）。
+func TestInvalidLatestShowsValidTree(t *testing.T) {
+	ctx := context.Background()
+	r := &remote{t: t, dir: t.TempDir()}
+	r.git("init", "--quiet", "--initial-branch=main")
+	r.write(dH0+"/hypothesis.md", tree.MarshalHypothesis(tree.HypothesisContent{ID: H0, Statement: "根"}))
+	c1 := r.commit("用意")
+	r.write("README.md", []byte("木の外\n"))
+	c2 := r.commit("直接の push")
+	r.write(dH0+"/background.md", []byte("背景\n"))
+	c3 := r.commit("もう 1 つ")
+	st := &store.Dir{Root: t.TempDir()}
+	w := worker.New(worker.Config{Dir: t.TempDir()}, source{r.dir}, st)
+	w.SyncAll(ctx)
+	b := &Backend{Snap: &snapstore.Adapter{Store: st}}
+	v, err := b.mainAt(ctx, "q", "")
+	if err != nil || v.revision() != c1 {
+		t.Fatalf("木を読む今の main：%v", err)
+	}
+	if got := v.validity(); got.ValidCommit == nil || *got.ValidCommit != c1 || got.InvalidSince == nil || *got.InvalidSince != c2 {
+		t.Fatalf("validity：%+v", got)
+	}
+	if shown, err := b.LatestInvalid(ctx, "q"); err != nil || shown != c1 {
+		t.Fatalf("ヘッダーの値：%s %v", shown, err)
+	}
+	if cur, err := b.currentMain(ctx, "q"); err != nil || cur.revision() != c3 {
+		t.Fatalf("最新のコミット：%v", err)
+	}
+	// 直す。
+	if err := os.Remove(r.dir + "/README.md"); err != nil {
+		t.Fatal(err)
+	}
+	c4 := r.commit("直した")
+	w.SyncAll(ctx)
+	v, err = b.mainAt(ctx, "q", "")
+	if err != nil || v.revision() != c4 {
+		t.Fatalf("直したあと：%v", err)
+	}
+	if got := v.validity(); got.ValidCommit == nil || *got.ValidCommit != c4 || got.InvalidSince != nil {
+		t.Fatalf("直したあとの validity：%+v", got)
+	}
+	if shown, _ := b.LatestInvalid(ctx, "q"); shown != "" {
+		t.Fatalf("直したあとのヘッダー：%s", shown)
 	}
 }

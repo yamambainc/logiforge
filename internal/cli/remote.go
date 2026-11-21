@@ -347,7 +347,6 @@ func (a *App) artifactGet(ctx context.Context, args []string) error {
 func (a *App) arCreate(ctx context.Context, args []string) error {
 	f := newFlags("ar create")
 	repo, branch, desc := repoFlag(f), f.String("branch", "", ""), f.String("description", "", "")
-	kind := f.String("kind", "change", "change、repair.revert、repair.accept のどれか")
 	if err := f.parse(args); err != nil {
 		return err
 	}
@@ -369,11 +368,9 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 	if fields := strings.Fields(remote); len(fields) == 0 || fields[0] != local {
 		return fmt.Errorf("ブランチ %s の手元の先頭 %s が、remote の先頭と違う。先に git push する", *branch, local)
 	}
-	if *kind == "change" {
-		a.checkBroken(ctx)
-	}
+	a.checkInvalidOf(ctx, name)
 	res, err := a.call(ctx, request{method: http.MethodPost, path: repoPath(name) + "/apply-requests", retry: true,
-		body: map[string]string{"kind": *kind, "branch": *branch, "commit": local, "description": *desc}})
+		body: map[string]string{"branch": *branch, "commit": local, "description": *desc}})
 	if err != nil {
 		return err
 	}

@@ -83,26 +83,52 @@ type view struct {
 	main  *snapshot.Main
 	tree  *tree.Tree
 	files tree.Files
+	// latestInvalid は、木を読む API の今の main として読んだ view で、最新のコミットが valid でないときの、
+	// 最新のコミットのスナップショットツリーである（design/backend/invalid-main.md の「木を読む API」）。ほかは nil。
+	latestInvalid *snapshot.SnapshotTree
+}
+
+// validity は、木を読む応答の valid_commit と invalid_since である（design/backend/invalid-main.md の「木を読む API」）。
+func (v *view) validity() Validity {
+	t := &v.main.SnapshotTree
+	if v.latestInvalid != nil {
+		t = v.latestInvalid
+	}
+	var out Validity
+	if t.ValidCommit != "" {
+		c := t.ValidCommit
+		out.ValidCommit = &c
+	}
+	if t.InvalidSince != "" {
+		c := t.InvalidSince
+		out.InvalidSince = &c
+	}
+	return out
 }
 
 // mainAt は、revision の main のスナップショットを読む。revision が空なら、latest を読む。
 // スナップショットがなければ snapshot_pending にする。まだ作られていないのか、git にもないのかは、区別しない。
-// revision が空なら、木を読む API の今の main である。repository が壊れていれば、最後に正しかった時点のコミットである
-// （design/backend/broken.md の「バックエンド」）。書く操作の検査は、currentMain で、本当の今の main を読む。
+// revision が空なら、木を読む API の今の main である。最新のコミットが valid でなければ、その前の、いちばん新しい valid なコミットである
+// （design/backend/invalid-main.md の「木を読む API」）。書く操作の検査は、currentMain で、最新のコミットを読む。
 func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, error) {
 	if revision == "" {
 		latest, err := b.Snap.Latest(ctx, repo)
 		if err != nil {
 			return nil, err
 		}
-		revision = latest
-		br, err := b.Snap.Broken(ctx, repo)
+		v, err := b.mainAt(ctx, repo, latest)
+		if err != nil || v.main.SnapshotTree.Valid || v.main.SnapshotTree.ValidCommit == "" {
+			if err == nil && !v.main.SnapshotTree.Valid {
+				v.latestInvalid = &v.main.SnapshotTree
+			}
+			return v, err
+		}
+		valid, err := b.mainAt(ctx, repo, v.main.SnapshotTree.ValidCommit)
 		if err != nil {
 			return nil, err
 		}
-		if br != nil {
-			revision = br.LastGood
-		}
+		valid.latestInvalid = &v.main.SnapshotTree
+		return valid, nil
 	}
 	m, err := b.Snap.Main(ctx, repo, revision)
 	// main のすべてのコミットにスナップショットツリーを作るので、ないのは worker が追いついていないか、git にもないときである。
@@ -119,7 +145,7 @@ func (b *Backend) mainAt(ctx context.Context, repo, revision string) (*view, err
 	return &view{repo: repo, main: m, tree: tree.Build(files), files: files}, nil
 }
 
-// currentMain は、本当の今の main（latest）の view を返す。壊れていても、最後に正しかった時点に戻さない。
+// currentMain は、最新のコミット（latest）の view を返す。valid でなくても、前の valid なコミットに戻さない。
 // 反映の検査と、apply request の作成の検査と、レビューの材料に使う。
 func (b *Backend) currentMain(ctx context.Context, repo string) (*view, error) {
 	latest, err := b.Snap.Latest(ctx, repo)
@@ -245,18 +271,15 @@ func (v *view) inSubtree(root, id string) bool {
 	return false
 }
 
-// warnings は、反映の手順によらない変更や、worker が見つけた警告を、木の警告にする。
+// warnings は、コミットで新しく破れた不変条件や、worker が見つけた警告を、木の警告にする。
 func (v *view) warnings() []string {
 	out := []string{}
 	for _, h := range v.main.SnapshotTree.Warned {
-		if h.NoApplyRequest {
-			out = append(out, h.Revision+"：apply request の反映によらないコミット（反映の手順によらない変更）")
-		}
 		if h.NewlyBroken {
 			out = append(out, h.Revision+"：このコミットで、木の不変条件が破れた")
 		}
 		if h.WorkerWarned {
-			out = append(out, h.Revision+"：反映の対象ノードの重なり、または main の書き換えの警告がある")
+			out = append(out, h.Revision+"：反映の対象ノードの重なり、または読めないファイルの警告がある")
 		}
 	}
 	return out

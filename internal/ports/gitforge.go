@@ -77,8 +77,6 @@ type ApplyRequest struct {
 	Waiting Waiting
 	// ReviewWaitingAt は、レビュー待ちのラベルを最後に付けた時刻である。1 件を読むときだけ入る（ずれを直すのに使う）。
 	ReviewWaitingAt time.Time
-	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
-	Kind string
 	// FixWaitingLabeled は、修正待ちのラベルを付けた出来事（だれが、いつ）である（古い順）。1 件を読むときだけ入る（ずれを直すのに使う）。
 	FixWaitingLabeled []LabelEvent
 	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、ここに人が読む文で入る。
@@ -126,8 +124,6 @@ type MergeFailure struct {
 
 // NewApplyRequest は、apply request を作るときに渡すものである。識別子は、GitForge が pull request の番号で決める。
 type NewApplyRequest struct {
-	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
-	Kind        string
 	Branch      string
 	Description string
 	Opener      string
@@ -160,9 +156,6 @@ type Reviews struct {
 	// Items は、数えたレビュー（design/adapters/pull-requests.md の「数える review」）を、出した順に並べたもの。
 	Items    []Review
 	Warnings []string
-	// Unverified は、書く権限を持つかを読めなかったので数えなかった、approve と request changes の数である。
-	// worker の反映かの判定は、これが 1 つでもあれば、決めずに次の見回りでやり直す（design/backend/verify/README.md）。
-	Unverified int
 }
 
 // HumanRequestKind は、人への依頼の種類である。
@@ -251,7 +244,8 @@ type GitForge interface {
 	// AddReview は、pull request に review を出し、出した review を返す。
 	AddReview(ctx context.Context, repo, applyRequestID string, r Review) (Review, error)
 	ListReviews(ctx context.Context, repo, applyRequestID string) (Reviews, error)
-	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の apply request を返す（design/backend/verify/README.md）。
+	// MergedApplyRequest は、sha を merge のコミットにした、向き先が main の pull request の apply request を返す。
+	// worker が、どの apply request の反映かを、コミットに置くのに使う（design/backend/invalid-main.md の「どの apply request の反映か」）。
 	// committed は、sha の committer date で、反映した pull request の一覧を読むのをやめる位置に使う（design/backend/list-reads.md）。
 	// そういう pull request がなければ ErrNotFound。
 	MergedApplyRequest(ctx context.Context, repo, sha string, committed time.Time) (ApplyRequest, error)
@@ -318,23 +312,6 @@ func WithToken(ctx context.Context, token string) context.Context {
 func TokenFrom(ctx context.Context) string {
 	t, _ := ctx.Value(tokenKey{}).(string)
 	return t
-}
-
-// MergeVerdict は、main のコミットが反映によるものかの判定である（design/backend/verify/README.md）。
-type MergeVerdict struct {
-	// Pending は、まだ決められないこと（C を merge した pull request が見つからない、など）。次の見回りでやり直す。
-	Pending bool
-	// MissingHead は、pull request の先頭のコミットのスナップショットがないとき、その SHA である。作ってから、やり直す。
-	MissingHead string
-	// Authorized は、反映によるものか。
-	Authorized bool
-	// ApplyRequest は、反映した apply request の識別子、Kind はその種類（直すための apply request なら repair.revert か repair.accept）。
-	ApplyRequest string
-	Kind         string
-	// MergedHead は、反映した apply request の先頭のコミットである。
-	MergedHead string
-	// Detail は、反映によるものでないときの、満たさなかった条件である。
-	Detail string
 }
 
 // CheckDirectories は、ディレクトリの repository の登録を確かめる（design/directory/README.md の「登録」）。
