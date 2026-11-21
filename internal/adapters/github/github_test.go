@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
+	"github.com/yamambainc/logiforge/internal/adapters/pullreq/apitest"
 	"github.com/yamambainc/logiforge/internal/ports"
 )
 
@@ -565,5 +566,46 @@ func TestCanReadCallCount(t *testing.T) {
 		if got := f.requests() - before; got != 1 {
 			t.Fatalf("%d 個：GitHub への要求は 1 回のはず：%d", n, got)
 		}
+	}
+}
+
+// REST と GraphQL の呼び方（pullreq.API）のすべてのメソッドを、ディレクトリの repository の参照で呼ぶ。
+// 偽の GitHub は、acme/study の REST のパスと GraphQL の owner と name にだけ答えるので、:パス を外し忘れたメソッドは落ちる。
+func TestAPIDirectoryRef(t *testing.T) {
+	f, a, _ := newTestAdapter(t)
+	f.branchHead["m"], f.branchHead["c"] = "hm", "hc"
+	apitest.Run(t, a.API, apitest.Env{Ref: fakeRepo + ":paper", Merge: "m", Close: "c", Ctx: agentCtx()})
+}
+
+// GitHub の誤りの応答は、ポートの誤りに当たる（design/adapters/github.md の「GitHub の誤りの応答」）。
+// バックエンドは、それで 500 でなく、403、404、503 を返す。
+func TestErrorsUnwrap(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want error
+	}{
+		{&apiError{Status: http.StatusNotFound}, ports.ErrNotFound},
+		{&apiError{Status: http.StatusForbidden, Message: "Resource not accessible by integration"}, ports.ErrForbidden},
+		{&apiError{Status: http.StatusForbidden, Limited: true}, ports.ErrUnavailable},
+		{&apiError{Status: http.StatusTooManyRequests}, ports.ErrUnavailable},
+		{&apiError{Status: http.StatusBadGateway}, ports.ErrUnavailable},
+		{&apiError{Status: http.StatusServiceUnavailable}, ports.ErrUnavailable},
+		{&apiError{Status: http.StatusUnprocessableEntity}, nil},
+		{&graphQLError{Type: "NOT_FOUND"}, ports.ErrNotFound},
+		{&graphQLError{Type: "FORBIDDEN"}, ports.ErrForbidden},
+		{&graphQLError{Type: "INSUFFICIENT_SCOPES"}, ports.ErrForbidden},
+		{&graphQLError{Type: "RATE_LIMITED"}, ports.ErrUnavailable},
+		{&graphQLError{Type: "SOMETHING_ELSE"}, nil},
+	} {
+		for _, p := range []error{ports.ErrNotFound, ports.ErrForbidden, ports.ErrUnavailable} {
+			if got := errors.Is(c.err, p); got != (p == c.want) {
+				t.Errorf("%#v は %v か：%v", c.err, p, got)
+			}
+		}
+	}
+	// GraphQL の errors は、200 の応答の中にある。ない repository は NOT_FOUND である。
+	_, a, _ := newTestAdapter(t)
+	if _, err := a.API.ListReviews(agentCtx(), "acme/other", 1); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("ない repository の review：%v", err)
 	}
 }

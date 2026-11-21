@@ -693,3 +693,19 @@ func TestReviewAuthorAndTime(t *testing.T) {
 		t.Fatalf("時刻が読めないときは null：%+v", rs[2])
 	}
 }
+
+// GitForge の誤りは、ポートの誤りで包んであれば、内部の誤り（500）にしない。
+func TestAsErrorGitForge(t *testing.T) {
+	for err, want := range map[error]Code{
+		fmt.Errorf("github: 404: %w", ports.ErrNotFound):    CodeNotFound,
+		fmt.Errorf("github: 403: %w", ports.ErrForbidden):   CodeForbidden,
+		fmt.Errorf("github: 502: %w", ports.ErrUnavailable): CodeUnavailable,
+	} {
+		if got := code(err); got != want {
+			t.Errorf("%v：%q", err, got)
+		}
+	}
+	if AsError(errors.New("github: 422")) != nil {
+		t.Error("ポートの誤りで包んでいない誤りは、内部の誤り")
+	}
+}

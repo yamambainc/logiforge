@@ -21,6 +21,8 @@ var (
 	ErrMergeForbidden  = errors.New("この主体には、merge の権限がない")
 	ErrAlreadyAnswered = errors.New("すでに回答がある")
 	ErrUnauthenticated = errors.New("この主体は、Logiforge の主体でない")
+	// ErrForbidden は、GitForge が、この主体の操作を断ったこと（権限が足りない）を表す。
+	ErrForbidden = errors.New("GitForge が、この主体の操作を断った")
 	// ErrNotRegistered は、repository の名前が、サーバの設定に登録されていないことを表す（GitHub を使う構成）。
 	ErrNotRegistered = errors.New("repository の名前が、サーバの設定に登録されていない")
 	// ErrAttachmentsUnsupported は、回答の添付をファイルで受け付けない GitForge であることを表す（添付はリンクだけ）。
