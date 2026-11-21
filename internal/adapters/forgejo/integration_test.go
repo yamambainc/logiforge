@@ -499,3 +499,14 @@ func TestForgejoAPIDirectoryRef(t *testing.T) {
 	gf, _ := New(Config{URL: e.url, Org: e.org, MergeWait: 5 * time.Second})
 	apitest.Run(t, gf.API, apitest.Env{Ref: ref + ":paper", Merge: "m", Close: "c", Ctx: ports.WithToken(context.Background(), e.tokens["agent"])})
 }
+
+// repository の列挙と用意（pullreq.Repos）のすべてのメソッドを、ディレクトリの repository の参照で呼ぶ。
+func TestForgejoReposDirectoryRef(t *testing.T) {
+	e := setup(t)
+	name := "dirs"
+	e.call(e.admin, "POST", "/orgs/"+e.org+"/repos", map[string]any{"name": name, "auto_init": true, "default_branch": "main", "private": true}, nil, 201)
+	ref := e.org + "/" + name + ":paper"
+	gf, _ := New(Config{URL: e.url, Org: e.org, MergeWait: 5 * time.Second, Directories: []ports.Repository{{Name: "paper", GitForgeRef: ref}}})
+	apitest.RunRepos(t, gf.Repos, apitest.ReposEnv{Name: "paper", Ref: ref, Ctx: ports.WithToken(context.Background(), e.tokens["alice"]),
+		Files: []ports.File{{Path: "tree/h-0000000000/hypothesis.md", Content: []byte("---\nid: h-0000000000\nstatement: 根\n---\n")}}})
+}

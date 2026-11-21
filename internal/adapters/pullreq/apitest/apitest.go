@@ -139,16 +139,7 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 		}},
 	}
 
-	var names []string
-	for _, s := range steps {
-		names = append(names, s.name)
-	}
-	it := reflect.TypeFor[pullreq.API]()
-	for i := range it.NumMethod() {
-		if m := it.Method(i).Name; !slices.Contains(names, m) {
-			t.Fatalf("pullreq.API の %s を、apitest で呼んでいない（足す）", m)
-		}
-	}
+	check(t, reflect.TypeFor[pullreq.API](), steps)
 	for _, s := range steps {
 		if err := s.run(); err != nil {
 			t.Fatalf("%s（%s）：%v", s.name, ref, err)

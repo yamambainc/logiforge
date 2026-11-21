@@ -488,33 +488,10 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, http.StatusOK, map[string]string{"type": "file", "content": base64.StdEncoding.EncodeToString([]byte(c)), "encoding": "base64"})
 			return
 		}
-		if c, ok := f.files[path]; ok {
-			write(w, http.StatusOK, map[string]string{"type": "file", "content": base64.StdEncoding.EncodeToString([]byte(c)), "encoding": "base64"})
-			return
-		}
-		fail(w, http.StatusNotFound, "Not Found")
+		// ブランチにないものは、main（偽物は main の木を 1 つしか持たない）から読む。
+		f.mainContent(w, path)
 	case reContents.MatchString(p) && r.Method == http.MethodGet:
-		path := reContents.FindStringSubmatch(p)[1]
-		if c, ok := f.files[path]; ok {
-			write(w, http.StatusOK, map[string]string{"type": "file", "content": base64.StdEncoding.EncodeToString([]byte(c)), "encoding": "base64"})
-			return
-		}
-		seen := map[string]bool{}
-		var entries []map[string]string
-		for k := range f.files {
-			if rest, ok := strings.CutPrefix(k, path+"/"); ok {
-				name, _, _ := strings.Cut(rest, "/")
-				if !seen[name] {
-					seen[name] = true
-					entries = append(entries, map[string]string{"name": name, "type": "dir"})
-				}
-			}
-		}
-		if entries == nil {
-			fail(w, http.StatusNotFound, "Not Found")
-			return
-		}
-		write(w, http.StatusOK, entries)
+		f.mainContent(w, reContents.FindStringSubmatch(p)[1])
 	case reContents.MatchString(p) && r.Method == http.MethodPut:
 		if f.failPutAfter == 0 {
 			f.failPutAfter = -1
@@ -752,6 +729,35 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.t.Errorf("偽の GitHub が知らない要求：%s %s", r.Method, r.URL)
 		fail(w, http.StatusNotFound, "Not Found")
 	}
+}
+
+// mainContent は、main のファイルか、ディレクトリの中身の一覧を返す（GET /repos/{owner}/{repo}/contents/{path}）。
+func (f *fakeGitHub) mainContent(w http.ResponseWriter, path string) {
+	if c, ok := f.files[path]; ok {
+		write(w, http.StatusOK, map[string]string{"type": "file", "content": base64.StdEncoding.EncodeToString([]byte(c)), "encoding": "base64"})
+		return
+	}
+	seen := map[string]bool{}
+	var entries []map[string]string
+	for k := range f.files {
+		if rest, ok := strings.CutPrefix(k, path+"/"); ok {
+			name, _, nested := strings.Cut(rest, "/")
+			if !seen[name] {
+				seen[name] = true
+				// 本物と同じく、ファイルは file、その下にまだあるものは dir。
+				typ := "file"
+				if nested {
+					typ = "dir"
+				}
+				entries = append(entries, map[string]string{"name": name, "type": typ})
+			}
+		}
+	}
+	if entries == nil {
+		fail(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	write(w, http.StatusOK, entries)
 }
 
 // bump は、ブランチの先頭を新しい SHA に進め、その SHA を返す。open の pull request の head も進める。

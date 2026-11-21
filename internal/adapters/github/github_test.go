@@ -609,3 +609,57 @@ func TestErrorsUnwrap(t *testing.T) {
 		t.Fatalf("ない repository の review：%v", err)
 	}
 }
+
+// repository の列挙と用意（pullreq.Repos）のすべてのメソッドを、ディレクトリの repository の参照で呼ぶ。
+func TestReposDirectoryRef(t *testing.T) {
+	ctx := agentCtx()
+	f := newFakeGitHub(t)
+	cfg := f.config()
+	cfg.Repositories = []ports.Repository{{Name: "paper", GitForgeRef: fakeRepo + ":paper"}}
+	a, _, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetupRepository(ctx, fakeRepo, []ports.File{{Path: "README.md", Content: []byte("x")}}, "最初"); err != nil {
+		t.Fatal(err)
+	}
+	apitest.RunRepos(t, a.Repos, apitest.ReposEnv{Name: "paper", Ref: fakeRepo + ":paper", Ctx: ctx,
+		Files: []ports.File{{Path: "tree/h-aaaaaaaaaa/hypothesis.md", Content: []byte("問い")}}})
+}
+
+// worker が読むための App と WorkerSource も、ディレクトリの repository の参照で、git リポジトリのものを使う。
+func TestWorkerSourceDirectoryRef(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeGitHub(t)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.appKey = &key.PublicKey
+	cfg := f.config()
+	ref := fakeRepo + ":paper"
+	cfg.Repositories = []ports.Repository{{Name: "paper", GitForgeRef: ref}}
+	app, err := NewApp(cfg, "42", pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewWorkerSource(cfg, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.GitURL(ref); got != s.GitURL(fakeRepo) {
+		t.Errorf("GitURL：%s", got)
+	}
+	if tok, err := s.ReadToken(ctx, ref); err != nil || tok == "" {
+		t.Errorf("ReadToken：%q %v", tok, err)
+	}
+	if env, err := s.GitEnv(ctx, ref); err != nil || !strings.Contains(strings.Join(env, "\n"), "credential.https://github.example.helper") {
+		t.Errorf("GitEnv：%v %v", env, err)
+	}
+	if err := app.CanReadRepository(ctx, ref); err != nil {
+		t.Errorf("CanReadRepository：%v", err)
+	}
+	if req := f.appRequests[0]; fmt.Sprint(req["repositories"]) != "[study]" {
+		t.Errorf("installation token の要求：%v", req)
+	}
+}
