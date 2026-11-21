@@ -42,6 +42,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 | `ar list [--state]` | `listApplyRequests` | なし |
 | `ar material <apply request>` | `getReviewMaterial` | なし |
 | `ar review <apply request> --approve\|--request-changes\|--comment --commit <SHA> [--body] [--prompt-revision]` | `reviewApplyRequest` | なし |
+| `ar merge <apply request>` | `mergeApplyRequest` | なし |
 | `ar close <apply request> --reason` | `closeApplyRequest` | なし |
 | `ar fixed <apply request>` | `markApplyRequestFixed` | なし（直したコミットを先に push しておく） |
 | `ar cleanup` | `listApplyRequests` | 手元のブランチのうち、反映か close された apply request のものだけを、`git branch -d` と `git push --delete` で消す |

@@ -55,12 +55,18 @@ func TestE2EEdges(t *testing.T) {
 		agent.must(nil, "node", "edit", repo.Root, "--append-background", agent.file("y.md", "y の背景\n"))
 		agent.commitPush("y", "y")
 		y := agent.create("y")
-		if got, code, _ := reviewer.review(x.ID, "approve", 1); code != 0 || got.State != "merged" {
+		if got, code, _ := reviewer.approveMerge(x.ID, 1); code != 0 || got.State != "merged" {
 			t.Fatalf("x：%+v", got)
 		}
-		got, code, out := reviewer.review(y.ID, "approve", 1)
-		if code != 0 || got.State != "open" || got.Awaiting != "fix" || !strings.Contains(out, "stale_target") {
+		// y の approve は、今の main での確かめに通らないので、出さない。修正待ちになる。
+		_, code, out := reviewer.review(y.ID, "approve", 1)
+		if code != 1 || !strings.Contains(out, "stale_target") {
 			t.Fatalf("y：%d %s", code, out)
+		}
+		var got applyRequest
+		reviewer.must(&got, "ar", "view", y.ID, "--repo", reviewer.repoName())
+		if got.State != "open" || got.Awaiting != "fix" {
+			t.Fatalf("y のあと：%+v", got)
 		}
 		t.Log("conflict（重ねられない）は、同じファイルの変化が対象ノードの変化として先に stale_target で見つかるので、この流れでは起きない。git の衝突の道は、internal/backend の単体テストで確かめた")
 	})
@@ -83,8 +89,12 @@ func TestE2EEdges(t *testing.T) {
 			t.Fatalf("alice の comment：%d %s", code, b)
 		}
 		code, b = w.call("alice", "POST", path+"/reviews", map[string]string{"kind": "approve", "commit": z.HeadCommit}, "Logiforge-Session-Id", "webui-1")
-		if code != 201 || !strings.Contains(string(b), `"state":"merged"`) {
+		if code != 201 || !strings.Contains(string(b), `"state":"open"`) {
 			t.Fatalf("alice の approve：%d %s", code, b)
+		}
+		// merge は、approve とは別の操作である。alice のトークンで merge する。
+		if code, b := w.call("alice", "POST", path+"/merge", map[string]string{}); code != 200 || !strings.Contains(string(b), `"state":"merged"`) {
+			t.Fatalf("alice の merge：%d %s", code, b)
 		}
 	})
 
@@ -102,7 +112,7 @@ func TestE2EEdges(t *testing.T) {
 			t.Fatalf("古い版の approve：%d %s", code, out)
 		}
 		w.eventually("2 つ目の先頭のコミットが読む側に出る", 30*time.Second, func() bool { return agent.headReady(ar.ID, 2) })
-		if got, code, out := reviewer.review(ar.ID, "approve", 2); code != 0 || got.State != "merged" {
+		if got, code, out := reviewer.approveMerge(ar.ID, 2); code != 0 || got.State != "merged" {
 			t.Fatalf("新しい版の approve：%d %s", code, out)
 		}
 	})
@@ -286,7 +296,7 @@ func TestE2EEdges(t *testing.T) {
 		merge := func(branch string) applyRequest {
 			t.Helper()
 			ar := agent.create(branch)
-			got, code, out := reviewer.review(ar.ID, "approve", 1)
+			got, code, out := reviewer.approveMerge(ar.ID, 1)
 			if code != 0 || got.State != "merged" {
 				t.Fatalf("%s の approve：%d %s", branch, code, out)
 			}

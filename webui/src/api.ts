@@ -163,15 +163,16 @@ export interface ReviewMaterial {
 export const getReviewMaterial = (repo: string, id: string) => call<ReviewMaterial>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/review-material`);
 
 export type ReviewKind = Review['kind'];
-/** その要求の中で反映しようとして、できなかったときの理由（レビューの応答だけに入る） */
-export interface MergeFailure { commit: string; reason: string; detail: string }
 /** レビューを付ける。commit は、画面で示した先頭のコミット。user（WebUI）は prompt_revision を送らない */
 export const reviewApplyRequest = (repo: string, id: string, r: { kind: ReviewKind; commit: string; body: string }) =>
-  call<{ review: Review; apply_request: ApplyRequest; merge_failure?: MergeFailure }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
+  call<{ review: Review; apply_request: ApplyRequest }>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/reviews`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(r.body ? { kind: r.kind, commit: r.commit, body: r.body } : { kind: r.kind, commit: r.commit }),
   });
+/** approve された apply request を、サインインした人のトークンで merge する。直前に、バックエンドが反映の条件を確かめ直す */
+export const mergeApplyRequest = (repo: string, id: string) =>
+  call<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}/merge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
 
 export interface MainCommit { number: number; commit: string; committed_at: string; apply_request_id: string | null }
 export const listCommits = (repo: string, cursor?: string | null) =>

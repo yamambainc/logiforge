@@ -133,6 +133,19 @@ func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 	return res.ApplyRequest, code, out
 }
 
+// approveMerge は、n 番目の先頭のコミットを approve し、通ったら同じ主体で merge する（ar merge）。
+// approve か merge が断られたら、その終了コードと出力を返す。
+func (u *user) approveMerge(id string, n int) (applyRequest, int, string) {
+	u.w.t.Helper()
+	if got, code, out := u.review(id, "approve", n); code != 0 {
+		return got, code, out
+	}
+	code, out := u.cli("", "ar", "merge", id, "--repo", u.repoName(), "--json")
+	var ar applyRequest
+	_ = json.Unmarshal([]byte(out), &ar)
+	return ar, code, out
+}
+
 func TestE2E(t *testing.T) {
 	w := setup(t)
 
@@ -185,7 +198,7 @@ func TestE2E(t *testing.T) {
 		!strings.Contains(string(body), hA) || !strings.Contains(string(body), hB) {
 		t.Fatalf("反映したあとのスナップショットツリー：%d %s", code, body)
 	}
-	if got, code, out := reviewer.review(ar1.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar1.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("approve：%d %s", code, out)
 	}
 
@@ -216,7 +229,7 @@ func TestE2E(t *testing.T) {
 	if viewed.Awaiting != "review" || !w.hasLabel("q", ar2.ID, "logiforge/review-waiting") || w.hasLabel("q", ar2.ID, "logiforge/fix-waiting") {
 		t.Fatalf("直し終えたという申告のあと：%+v", viewed)
 	}
-	if got, code, out := reviewer.review(ar2.ID, "approve", 2); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar2.ID, 2); code != 0 || got.State != "merged" {
 		t.Fatalf("版 2 の approve：%d %s", code, out)
 	}
 	var node struct {
@@ -261,7 +274,7 @@ func TestE2E(t *testing.T) {
 	if hasWork("human_request_answered", hr.ID) {
 		t.Fatal("回答を引用した apply request があるのに、作業から外れない")
 	}
-	if got, code, out := reviewer.review(ar3.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar3.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("B の approve：%d %s", code, out)
 	}
 	var comp struct {
@@ -282,6 +295,8 @@ func TestE2E(t *testing.T) {
 	if ar4.Awaiting != "review" || !w.hasLabel("q", ar4.ID, "logiforge/review-waiting") {
 		t.Fatalf("作ったときのラベル：%+v", ar4)
 	}
+	// GitForge の画面で付けた修正待ちのラベルは、ずれとみなさない。付けられるのは、書く権限のある人だけだから
+	// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
 	w.setLabels("q", ar4.ID, "logiforge/fix-waiting")
 	var listed struct {
 		Items []applyRequest `json:"items"`
@@ -291,10 +306,22 @@ func TestE2E(t *testing.T) {
 		t.Fatalf("一覧は、ラベルのとおりに見せる：%+v", listed)
 	}
 	reviewer.must(&viewed, "ar", "view", ar4.ID, "--repo", "q")
-	if viewed.Awaiting != "review" || !w.hasLabel("q", ar4.ID, "logiforge/review-waiting") || w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {
+	if viewed.Awaiting != "fix" || !w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {
+		t.Fatalf("画面で付けた修正待ちを、ずれとみなした：%+v", viewed)
+	}
+	// ラベルを両方外すと、1 件読んだときに、出来事から正しいラベル（直近は修正待ちのラベルを付けたこと）に直す。
+	w.setLabels("q", ar4.ID)
+	agent.must(&listed, "ar", "list", "--state", "open")
+	if len(listed.Items) != 1 || listed.Items[0].Awaiting != "review" {
+		t.Fatalf("ラベルのないものは、一覧ではレビュー待ち：%+v", listed)
+	}
+	reviewer.must(&viewed, "ar", "view", ar4.ID, "--repo", "q")
+	if viewed.Awaiting != "fix" || !w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {
 		t.Fatalf("1 件読んだときに、ずれたラベルが直らない：%+v", viewed)
 	}
-	if got, code, out := reviewer.review(ar4.ID, "approve", 1); code != 0 || got.State != "merged" {
+	// 直し終えたと申告して、レビュー待ちに戻す。
+	agent.must(nil, "ar", "fixed", ar4.ID, "--repo", "q")
+	if got, code, out := reviewer.approveMerge(ar4.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("b4 の approve：%d %s", code, out)
 	}
 
@@ -348,5 +375,8 @@ func (w *world) hasLabel(repo, arID, name string) bool {
 // setLabels は、管理者として、GitForge の画面と同じように、pull request のラベルを置き換える。
 func (w *world) setLabels(repo, arID string, names ...string) {
 	w.t.Helper()
+	if names == nil {
+		names = []string{}
+	}
 	w.forgejoCall(w.admin, http.MethodPut, fmt.Sprintf("/repos/%s/%s/issues/%d/labels", w.org, repo, w.pullNumber(repo, arID)), map[string]any{"labels": names}, nil, 200)
 }

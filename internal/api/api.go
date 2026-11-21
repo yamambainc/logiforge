@@ -23,6 +23,11 @@ var statuses = map[backend.Code]int{
 	backend.CodeNotFound:                http.StatusNotFound,
 	backend.CodeNotOpen:                 http.StatusConflict,
 	backend.CodeCommitConflict:          http.StatusConflict,
+	backend.CodeStaleTarget:             http.StatusConflict,
+	backend.CodeConflict:                http.StatusConflict,
+	backend.CodeInvariantViolation:      http.StatusConflict,
+	backend.CodeNotApproved:             http.StatusConflict,
+	backend.CodeMergeForbidden:          http.StatusForbidden,
 	backend.CodeOverlayConflict:         http.StatusConflict,
 	backend.CodeOverlayUnsupported:      http.StatusUnprocessableEntity,
 	backend.CodeTooLarge:                http.StatusRequestEntityTooLarge,
@@ -83,6 +88,7 @@ func NewHandler(b *backend.Backend, log *slog.Logger) http.Handler {
 	route("POST "+repo+"/apply-requests", s.createApplyRequest)
 	route("PATCH "+repo+"/apply-requests/{applyRequestId}", s.updateApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/reviews", s.reviewApplyRequest)
+	route("POST "+repo+"/apply-requests/{applyRequestId}/merge", s.mergeApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/close", s.closeApplyRequest)
 	route("POST "+repo+"/apply-requests/{applyRequestId}/fixed", s.markApplyRequestFixed)
 	route("POST "+repo+"/human-requests", s.createHumanRequest)
@@ -417,6 +423,17 @@ func (s *server) reviewApplyRequest(ctx context.Context, c backend.Caller, r *ht
 		return nil, err
 	}
 	return created{status: http.StatusCreated, pending: out.Pending, body: out.Value}, nil
+}
+
+func (s *server) mergeApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {
+	if err := decodeBody(nil, r, &struct{}{}); err != nil {
+		return nil, err
+	}
+	out, err := s.b.MergeApplyRequest(ctx, c, r.PathValue("repository"), r.PathValue("applyRequestId"))
+	if err != nil {
+		return nil, err
+	}
+	return created{status: http.StatusOK, pending: out.Pending, body: out.Value}, nil
 }
 
 func (s *server) closeApplyRequest(ctx context.Context, c backend.Caller, r *http.Request) (any, error) {

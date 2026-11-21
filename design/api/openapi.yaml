@@ -743,8 +743,8 @@ paths:
       summary: レビューを付ける（client と、その repository に Write がある user。pull request の作者とは別のアカウント）
       description: |
         user（WebUI）は、WebUI のサインインで得たトークンで呼ぶ。その repository に Write がなければ forbidden（../../design/settings/users.md の「WebUI からのレビュー」）。
-        `approve` で反映の条件を満たしたら、この要求の中で反映する。
-        反映に失敗しても、エラーにはしない。応答の `merge_failure` に理由が入る。理由は、pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
+        `approve` は、向き先が main なら、先に今の main で確かめる（../../design/backend/merge.md の「approve」）。通ったときだけ GitForge に approve を出す。merge はしない（mergeApplyRequest）。
+        確かめに通らなければ、approve を出さず、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
         先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
         呼んだ主体が pull request の作者なら、GitForge が approve を拒む（../../design/adapters/pull-requests.md の「数える review」）。
       parameters:
@@ -770,8 +770,6 @@ paths:
       responses:
         '201':
           description: 付けたレビューと、その後の apply request
-          headers:
-            Logiforge-Pending-Commit: { $ref: '#/components/headers/PendingCommit' }
           content:
             application/json:
               schema:
@@ -780,9 +778,38 @@ paths:
                 properties:
                   review: { $ref: '#/components/schemas/Review' }
                   apply_request: { $ref: '#/components/schemas/ApplyRequest' }
-                  merge_failure:
-                    $ref: '#/components/schemas/MergeFailure'
-                    description: この要求の中で反映しようとして、できなかったときだけ入る
+        '4XX': { $ref: '#/components/responses/Problem' }
+
+  /repositories/{repository}/apply-requests/{applyRequestId}/merge:
+    parameters:
+      - $ref: '#/components/parameters/RepositoryName'
+    post:
+      tags: [apply-request]
+      operationId: mergeApplyRequest
+      summary: approve された apply request を、呼んだ主体のトークンで squash merge する（client と、その repository に Write がある user）
+      description: |
+        merge の直前に、反映の条件を、今の main で確かめ直す（../../design/backend/merge.md の「merge」）。
+        - 最後の決めるレビューが、先頭のコミットへの数える approve でなければ、not_approved。
+        - 確かめに通らなければ、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く。
+        - 呼んだ主体に merge の権限がなく、GitForge が断ったら、merge_forbidden。
+        - 向き先が main でなければ、validation_failed。Logiforge では merge しない。GitForge で merge する。
+        opener も呼べる。もう反映された apply request に送り直したら、成功として今の状態を返す。
+        GitForge の画面から直接 merge してもよい。Logiforge は、そのコミットも受け入れる（../../design/backend/invalid-main.md の「main はいつも正しい」）。
+      parameters:
+        - $ref: '#/components/parameters/ApplyRequestId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: merge したあとの apply request
+          headers:
+            Logiforge-Pending-Commit: { $ref: '#/components/headers/PendingCommit' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApplyRequest' }
         '4XX': { $ref: '#/components/responses/Problem' }
 
   /repositories/{repository}/apply-requests/{applyRequestId}/close:
@@ -1375,7 +1402,12 @@ components:
             | not_open | 409 | open でない apply request を変えようとした。回答済みの人への依頼に回答しようとした。または、open でない apply request を apply_request に指定して読もうとした |
             | overlay_unsupported | 422 | apply request の向き先が main でないので、Logiforge は検査しない。レビューの材料を返せない |
             | overlay_conflict | 409 | apply request の差分を、今の main に重ねられない（向き先が main のときだけ）。detail に、衝突したパスを書く |
-            | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、反映の前に新しいコミットが push された |
+            | commit_conflict | 409 | レビューしたコミットが、ブランチの今の先頭のコミットと違う。または、merge の前に新しいコミットが push された |
+            | stale_target | 409 | approve か merge で、対象ノードか引用した部分木が、ブランチが main から分かれたあとに変わっていた。または、分かれたコミットが今の main の履歴にない。detail に、何をすればよいかを書く |
+            | conflict | 409 | approve か merge で、差分を今の main に重ねられない（git の衝突） |
+            | invariant_violation | 409 | approve か merge で、差分を今の main に重ねた木が、不変条件を満たさない |
+            | not_approved | 409 | merge しようとした apply request の、最後の決めるレビューが、先頭のコミットへの approve でない |
+            | merge_forbidden | 403 | 呼んだ主体に merge の権限がなく、GitForge が merge を断った |
             | too_large | 413 | ファイルが上限の大きさを超えた。または、要求の本文が 32 MiB を超えた |
             | repository_exists | 409 | 同じ名前の repository がすでにある |
             | unavailable | 503 | GitForge か、その git を読めない（止まっている、応答がない、制限に当たった）。少し待って送り直す |
@@ -1385,7 +1417,7 @@ components:
             | setup_done | 409 | セットアップが終わったあとに、セットアップの API（getSetup を除く）を呼んだ |
             | setup_in_progress | 409 | セットアップが、ほかのブラウザで進んでいる（セットアップのトークンがないか違う） |
             | internal | 500 | バックエンドの内部の誤り。詳しいことは、バックエンドのログにだけ書く |
-          enum: [validation_failed, unauthenticated, forbidden, not_found, not_open, overlay_unsupported, overlay_conflict, commit_conflict, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, setup_in_progress, internal]
+          enum: [validation_failed, unauthenticated, forbidden, not_found, not_open, overlay_unsupported, overlay_conflict, commit_conflict, stale_target, conflict, invariant_violation, not_approved, merge_forbidden, too_large, repository_exists, unavailable, snapshot_pending, repository_not_registered, setup_required, setup_done, setup_in_progress, internal]
 
     Tree:
       type: object
@@ -1735,19 +1767,6 @@ components:
           type: [string, 'null']
           format: date-time
           description: レビューを書いた時刻（GitForge のコメントの時刻）。読めなければ null。reviews は、この順に並ぶ
-    MergeFailure:
-      type: object
-      description: レビューの応答で返す、その要求の中での反映の失敗
-      required: [commit, reason, detail]
-      properties:
-        commit:
-          $ref: '#/components/schemas/Commit'
-          description: 反映しようとした先頭のコミット
-        reason:
-          type: string
-          enum: [stale_target, invariant_violation, conflict, snapshot_pending, merge_forbidden]
-          description: conflict は git の衝突。snapshot_pending は、今の main のスナップショットがまだなく、確かめられなかったこと。merge_forbidden は、approve した reviewer に、GitForge で merge する権限がなく、GitForge が merge を断ったこと
-        detail: { type: string }
     ReviewMaterial:
       type: object
       description: 材料に含めるものは ../../docs/apply-request/review.md に従う

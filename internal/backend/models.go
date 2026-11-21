@@ -216,13 +216,6 @@ func commentOf(c ports.Comment) Comment {
 	return out
 }
 
-// MergeFailure は、その要求の中での反映の失敗である（レビューの応答だけに入る）。
-type MergeFailure struct {
-	Commit string `json:"commit"`
-	Reason string `json:"reason"`
-	Detail string `json:"detail"`
-}
-
 // ApplyRequest は、apply request である。
 type ApplyRequest struct {
 	ID     string `json:"id"`

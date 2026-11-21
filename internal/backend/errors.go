@@ -30,6 +30,14 @@ const (
 	CodeSetupDone Code = "setup_done"
 	// CodeSetupInProgress は、セットアップが、ほかのブラウザで進んでいることである。
 	CodeSetupInProgress Code = "setup_in_progress"
+	// 確かめに通らない approve と merge の理由（design/backend/merge.md）。
+	CodeStaleTarget        Code = "stale_target"
+	CodeConflict           Code = "conflict"
+	CodeInvariantViolation Code = "invariant_violation"
+	// CodeNotApproved は、merge しようとした apply request の、最後の決めるレビューが、先頭のコミットへの approve でないことである。
+	CodeNotApproved Code = "not_approved"
+	// CodeMergeForbidden は、GitForge が、呼んだ主体の merge を断ったことである。
+	CodeMergeForbidden Code = "merge_forbidden"
 	// CodeInternal は、バックエンドの内部の誤りである。詳しいことは、ログにだけ書く。
 	CodeInternal Code = "internal"
 )

@@ -21,7 +21,7 @@ apply request を出す・直す側の使い方は、[logiforge](https://github.
   - active な子ストーリーを持たない仮説（葉）に、検証結果（値とレポート）を付ける。
 - 値を入れるのは検証結果だけで、上の値は自動で決まる（ストーリーは子仮説の AND、仮説は active な子ストーリーの OR）。
   - そのため、通した誤った `true` は、根の結論まで自動で伝わる。
-- スナップショットツリーへの変更は、すべて apply request で出す。apply request は、reviewer が `approve` すると反映される。
+- スナップショットツリーへの変更は、すべて apply request で出す。reviewer が `approve` した apply request を、merge すると反映される。reviewer は merge しない（[merge](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#merge)）。
 - reviewer が審査するのは、論理と根拠である。
   - ストーリーの子仮説で、親仮説が本当に言えるか。
     - 兄弟ストーリーに頼らず、このストーリーだけで判断する（[ストーリー](https://github.com/yamambainc/logiforge/blob/main/docs/tree/README.md#ストーリー)）。
@@ -102,18 +102,13 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 
 ## 付けたあと
 
-`ar review` の応答で、結果を確かめる。
-
-- `apply_request.state` が `merged`：反映された。
-- `merge_failure` がある：反映できなかった。`reason` が理由である。apply request は open のまま残る。
-  - `snapshot_pending`：少し待って、材料を読み直し、`approve` し直す。
-  - `merge_forbidden`：この reviewer の主体に merge の権限が無い。権限のある reviewer に任せる。
-  - `stale_target`、`invariant_violation`、`conflict`：opener が直す。reviewer がすることは無い。
+`ar review` が成功したら、レビューは GitForge に出ている。`approve` しても、merge はされない。merge は、opener か人が行う。
 
 `ar review` が誤りを返したとき：
 
+- `stale_target`、`invariant_violation`、`conflict`：`approve` が、今の `main` での確かめに通らなかった。`approve` は出ていない。opener が直す。reviewer がすることは無い。
 - `commit_conflict`：材料を読んだあとに push された。手順 2 から、やり直す。
-- `snapshot_pending`：少し待って、送り直す。
+- `snapshot_pending`：少し待って、材料を読み直し、送り直す。
 - `not_open`：もう open でない。レビューをやめる。
 - 自分の GitForge のアカウントが作った apply request は、GitForge が `approve` を拒む。別のアカウントの reviewer に任せる。
 
@@ -124,4 +119,4 @@ logiforge ar review <apply request> --approve|--request-changes|--comment \
 - apply request の識別子
 - 付けた種類と、レビューした `commit`
 - 判断の理由（`--body` の要約）
-- 付けたあとの `state` と、`merge_failure` があればその理由
+- `approve` が確かめに通らなかったときは、その理由（誤りの `code` と `detail`）

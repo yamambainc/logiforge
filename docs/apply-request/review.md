@@ -1,11 +1,11 @@
 # 論理レビュー
 
-apply request が、どういう条件で反映され、論理レビューがどう行われるかを確かめるときに読む。
+apply request が、どういう条件で反映され、論理レビューと merge がどう行われるかを確かめるときに読む。
 論理レビューの仕組みの正本は、このページである。
 
 ## 反映の条件
 
-[apply request](README.md) は、次の条件をすべて満たすと反映される。
+[apply request](README.md) を merge できるのは、次の条件をすべて満たすときである。
 
 - apply request を作った人とは別の GitForge のアカウントによる `approve` がある。
 - `approve` が有効なのは、`approve` した時点の差分に対してだけである。
@@ -15,8 +15,28 @@ apply request が、どういう条件で反映され、論理レビューがど
 この条件は、GitForge の「承認を必須にする」設定（required review）に相当する。
 
 - 論理レビューは、CLI を使う主体か、WebUI の利用者が行う。人も reviewer になれる。
-  - WebUI のレビューは、CLI のレビューと同じ意味である。approve で反映の条件を満たしたら、反映まで行う。
+  - WebUI のレビューは、CLI のレビューと同じ意味である。
   - WebUI でレビューできるのは、その repository に書ける利用者だけである（[役割](../roles/README.md#利用者)）。
+
+## approve
+
+- `approve` の前に、Logiforge は、木が壊れないかを、今の `main` で確かめる。
+  - 確かめること：対象ノードが先に変わっていないか、差分を今の `main` に重ねられるか、重ねた木が不変条件を満たすか。
+  - 通らなければ、`approve` を出さない。理由を返し、opener が直すべき理由なら、pull request にコメントを書いて修正待ちにする。
+  - 向き先が `main` でない apply request は、確かめない（[main への直接の変更](README.md#main-への直接の変更)）。
+- 通ったら、GitForge の pull request に `approve` を出す。merge はしない。
+  - なぜ：`approve` は論理レビューの結果で、`main` に入れるのは別の判断だから。
+
+## merge
+
+- 反映の条件を満たした apply request は、だれが merge してもよい。エージェントでも人でもよい。
+- Logiforge から merge する：CLI、WebUI、API の merge の操作を使う。
+  - merge は、呼んだ主体のトークンで行う。その主体に、GitForge で merge する権限が要る。
+  - merge の直前に、Logiforge は、反映の条件と、`approve` の前と同じ確かめを、今の `main` でやり直す。通らなければ、merge しない。
+    - なぜやり直すか：`approve` のあとに、別の apply request が反映されているかもしれないから。
+  - merge できるのは、`approve` と同じく、その repository に書ける主体である。opener も merge できる。
+- GitForge の画面から直接 merge する：Logiforge は止めない。
+  - `main` のコミットは、どう入ったかによらず受け入れる。ぶつかっていたら、あとの確かめで警告する（[main への直接の変更](README.md#main-への直接の変更)）。
 
 ## 起動
 

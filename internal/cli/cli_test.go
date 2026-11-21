@@ -153,6 +153,10 @@ func TestApplyRequestCommands(t *testing.T) {
 			return 503, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503,"code":"unavailable"}`
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
 			return 200, "application/json", `{"id":"apr_1","state":"open","head_commit":"` + head + `","head_commits":[{"commit":"` + head + `"}]}`
+		case r.Method == "POST" && r.URL.Path == "/v1/repositories/q/apply-requests/apr_2/merge":
+			return 409, "application/problem+json", `{"type":"about:blank","title":"Conflict","status":409,"code":"stale_target","detail":"ブランチを今の main に合わせる"}`
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/merge"):
+			return 200, "application/json", `{"id":"apr_1","state":"merged","branch":"work","head_commit":"` + head + `"}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
 			return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found","detail":"ない"}`
 		}
@@ -199,6 +203,16 @@ func TestApplyRequestCommands(t *testing.T) {
 	}
 	if code, _, _ := run(t, dir, e, "", "ar", "review", "apr_1", "--approve", "--request-changes", "--commit", head); code != ExitUsage {
 		t.Fatalf("種類が 2 つ：%d", code)
+	}
+
+	// merge は、approve とは別の操作である。
+	if code, out, errs := run(t, dir, e, "", "ar", "merge", "apr_1"); code != 0 || !strings.Contains(out, "merged") ||
+		st.reqs[len(st.reqs)-1].URL.Path != "/v1/repositories/q/apply-requests/apr_1/merge" {
+		t.Fatalf("ar merge: %d %s %s", code, out, errs)
+	}
+	// 確かめに通らなければ、理由と説明を書き、終了コードを 1 にする。
+	if code, _, errs := run(t, dir, e, "", "ar", "merge", "apr_2"); code != ExitError || !strings.Contains(errs, "stale_target") || !strings.Contains(errs, "今の main に合わせる") {
+		t.Fatalf("ar merge の失敗: %d %s", code, errs)
 	}
 
 	// API のエラーは、--json では Problem をそのまま書き、終了コードを 1 にする。

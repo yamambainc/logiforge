@@ -18,7 +18,7 @@
 ## repository ごとの権限
 
 - repository ごとの `user` の操作は、主体がその repository に Write 以上の権限を持つときだけ受け付ける。持たなければ `forbidden`（403）を返す。
-  - 操作：人への依頼に回答する、repository を作る、apply request をレビューする（approve なら反映まで。[WebUI からのレビュー](#webui-からのレビュー)）。
+  - 操作：人への依頼に回答する、repository を作る、apply request をレビューする、approve された apply request を merge する（[WebUI からのレビュー](#webui-からのレビュー)）。
   - 設定の API も、`user` であることを求める（[設定の API](../api/endpoints/settings.md)）。
 - 読む操作は、`user` でも `client` でも、主体がその repository を読めれば受け付ける（[認可](../backend/README.md#認可)）。
 - `client` の書き込み（apply request、レビュー、人への依頼の起票）は、GitForge の権限で決まる。Logiforge は、主体のトークンで書くので、GitForge が断れば断る（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
@@ -41,7 +41,8 @@
 ## WebUI からのレビュー
 
 - `user` は、WebUI で、apply request をレビューできる。CLI のレビューと同じ API と、同じ意味である（[apply request をレビューする](../api/endpoints/apply-request/review.md)）。
-  - approve で反映の条件を満たしたら、同じ要求の中で反映する（[反映の手順](../backend/merge.md)）。
+  - approve は、今の `main` で確かめに通ったときだけ出す。merge はしない（[approve](../backend/merge.md#approve)）。
+  - approve された apply request は、WebUI から merge できる（[apply request を merge する](../api/endpoints/apply-request/merge.md)）。
 - 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
 - その repository に Write がなければ、`forbidden` を返す。
 - WebUI は、approve の前に、CLI の reviewer と同じレビューの材料（`getReviewMaterial`）を示す。自分が作った apply request なら、そのことも示す（[apply request と履歴](../../docs/webui/history.md)）。
