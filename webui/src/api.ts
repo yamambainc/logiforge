@@ -34,8 +34,10 @@ export interface Repository {
   root_hypothesis_id: string;
   root_statement: string | null;
   root_value: boolean | null;
-  /** 壊れていれば、壊れた最初のコミットと、最後に正しかった時点のコミット（design/backend/broken.md）。 */
-  broken?: { first_commit: string; last_good_commit: string; reason: string } | null;
+  /** 木を読む API が返す木のコミットと、そのあとの最初の valid でないコミット（design/backend/invalid-main.md の「木を読む API」）。
+   * 最新のコミットが valid なら invalid_since は null */
+  valid_commit?: string | null;
+  invalid_since?: string | null;
   /** ディレクトリの repository のパス（design/directory/README.md）。 */
   directory?: string;
   /** 別リポジトリ方式から移した repository のとき、元の repository と移したコミット（design/directory/migrate.md）。 */
@@ -155,7 +157,6 @@ export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(
 /** レビューの材料（getReviewMaterial）。説明欄は含まない（docs/apply-request/review.md の「レビューの材料」） */
 export interface ReviewMaterial {
   apply_request_id: string; commit: string;
-  repair?: { kind: 'repair.revert' | 'repair.accept'; last_good_commit: string; main_commit: string; changes: { path: string; status: 'added' | 'modified' | 'deleted'; before?: string; after?: string }[] };
   operations: Operation[]; targets: Node[]; ancestors: Hypothesis[]; siblings: Story[];
   citations: { citation: Citation; nodes?: Node[]; artifact?: Artifact }[];
 }

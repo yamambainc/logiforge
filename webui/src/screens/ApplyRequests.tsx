@@ -198,7 +198,6 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
 }
 
 const VALUE = (v: boolean | null) => (v === true ? '真' : v === false ? '偽' : '未決');
-const CHANGE: Record<string, string> = { added: '加わる', modified: '変わる', deleted: '消える' };
 const KINDS: { k: ReviewKind; label: string }[] = [{ k: 'comment', label: 'コメント' }, { k: 'request_changes', label: 'request_changes' }, { k: 'approve', label: 'approve' }];
 
 // レビューの欄（docs/webui/history.md の「apply request の閲覧」）。
@@ -311,12 +310,6 @@ function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
   const line = (n: Node) => <li key={n.id}>{node(n.id)}<span>{textOf(n)}</span><span className="dim">{VALUE(n.value)}{n.inactive ? '・inactive' : ''}</span></li>;
   return (
     <div className="material">
-      {m.repair && (
-        <>
-          <h5>直すための変化（{m.repair.kind}）</h5>
-          <ul className="ops">{m.repair.changes.map((c) => <li key={c.path}><span className="mono">{c.path}</span><span className="dim">{CHANGE[c.status] ?? c.status}</span></li>)}</ul>
-        </>
-      )}
       <h5>差分</h5>
       {m.operations.length === 0 ? <p className="dim">差分の操作はありません。</p> : (
         <ul className="ops">{m.operations.map((op) => { const l = opLabel(op); return <li key={op.position}><span>{l.what}</span>{node(l.target)}</li>; })}</ul>
