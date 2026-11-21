@@ -79,9 +79,11 @@ type ApplyRequest struct {
 	ReviewWaitingAt time.Time
 	// Kind は、直すための apply request の種類（repair.revert か repair.accept）。ふつうの apply request では空。
 	Kind string
-	// MergeFailures は、head のコミットの、反映の失敗の commit status である（古い順）。1 件を読むときだけ入る。
-	MergeFailures []MergeFailure
-	CreatedAt     time.Time
+	// FixWaitingAt は、修正待ちのラベルを最後に付けた時刻である。1 件を読むときだけ入る（ずれを直すのに使う）。
+	FixWaitingAt time.Time
+	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、ここに人が読む文で入る。
+	Comments  []Comment
+	CreatedAt time.Time
 	// MergedRevision は、反映したときの merge のコミットの SHA である。反映していなければ空。
 	MergedRevision string
 	// Warnings は、読むときに見つけたことの警告である。
@@ -100,14 +102,20 @@ const (
 	WaitingBoth Waiting = "both"
 )
 
-// MergeFailure は、反映の失敗（head のコミットの commit status）である。
+// Comment は、pull request のコメントである。
+type Comment struct {
+	Author    string
+	Body      string
+	CreatedAt time.Time
+}
+
+// MergeFailure は、反映の失敗である。GitForge には、pull request のふつうのコメントとして書く（design/adapters/texts.md）。
 type MergeFailure struct {
 	// Revision は、反映しようとした先頭のコミット。
 	Revision string
-	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending のどれか。
+	// Reason は、stale_target、invariant_violation、conflict、snapshot_pending などの理由。
 	Reason string
 	Detail string
-	At     time.Time
 }
 
 // NewApplyRequest は、apply request を作るときに渡すものである。識別子は、GitForge が pull request の番号で決める。
@@ -225,7 +233,7 @@ type GitForge interface {
 	Merge(ctx context.Context, repo, id, headSHA, title, message string) (string, error)
 	// Close は、理由を書いた pull request のコメントのあとに、pull request を close する。
 	Close(ctx context.Context, repo, id, reason string) error
-	// RecordMergeFailure は、head のコミットに反映の失敗の commit status を立て、理由を pull request のコメントに書く。
+	// RecordMergeFailure は、反映の失敗の理由を、pull request のふつうのコメントに書く。
 	RecordMergeFailure(ctx context.Context, repo, id string, f MergeFailure) error
 	// SetWaiting は、レビュー待ちか修正待ちかのラベルを付け替える。WaitingNone なら、両方を外す。
 	SetWaiting(ctx context.Context, repo, id string, w Waiting) error

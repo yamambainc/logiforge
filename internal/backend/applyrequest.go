@@ -122,13 +122,13 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		kind = KindChange
 	}
 	*m = ApplyRequest{ID: ar.ID, Kind: kind, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
-		Operations: []Operation{}, Reviews: []Review{}, MergeFailures: []MergeFailure{}, Warnings: append([]string{}, ar.Warnings...)}
+		Operations: []Operation{}, Reviews: []Review{}, Comments: []Comment{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
 		m.HeadCommit = d.current.Commit
 	}
-	for _, f := range ar.MergeFailures {
-		m.MergeFailures = append(m.MergeFailures, MergeFailure{Commit: f.Revision, Reason: f.Reason, Detail: f.Detail})
+	for _, c := range ar.Comments {
+		m.Comments = append(m.Comments, commentOf(c))
 	}
 	for _, r := range reviews.Items {
 		m.Reviews = append(m.Reviews, reviewOf(r, r.Revision == d.current.Commit))
@@ -184,28 +184,19 @@ func awaiting(w ports.Waiting) *string {
 
 // desiredWaiting は、その pull request の出来事のうち、いちばん新しいもので、正しいラベルを決める
 // （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
-//   - 数える request changes の review と、opener が直すべき理由の反映の失敗：修正待ち
-//   - レビュー待ちのラベルを付けたこと（作成と、直し終えたという申告）、数える approve の review、
-//     opener が直すべき理由でない反映の失敗：レビュー待ち
+//   - 修正待ちのラベルを付けたこと（request changes と、opener が直すべき理由の反映の失敗）、数える request changes の review：修正待ち
+//   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告、opener が直すべき理由でない反映の失敗）、
+//     数える approve の review：レビュー待ち
 //
 // reviews は、数える review だけである。
 func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
-	var fixAt time.Time
-	reviewAt := ar.ReviewWaitingAt
+	fixAt, reviewAt := ar.FixWaitingAt, ar.ReviewWaitingAt
 	for _, r := range reviews {
 		switch {
 		case r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt):
 			fixAt = r.CreatedAt
 		case r.Kind == ports.ReviewApprove && r.CreatedAt.After(reviewAt):
 			reviewAt = r.CreatedAt
-		}
-	}
-	for _, f := range ar.MergeFailures {
-		switch {
-		case openerFixes[f.Reason] && f.At.After(fixAt):
-			fixAt = f.At
-		case !openerFixes[f.Reason] && f.At.After(reviewAt):
-			reviewAt = f.At
 		}
 	}
 	fixAt, reviewAt = fixAt.Truncate(time.Second), reviewAt.Truncate(time.Second)

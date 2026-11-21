@@ -149,13 +149,13 @@ func TestE2EHumanMerge(t *testing.T) {
 	fb := agent.create("forbidden")
 	var forbidden struct {
 		ApplyRequest struct {
-			State         string   `json:"state"`
-			Awaiting      *string  `json:"awaiting"`
-			Warnings      []string `json:"warnings"`
-			MergeFailures []struct {
-				Reason string `json:"reason"`
-			} `json:"merge_failures"`
+			State    string   `json:"state"`
+			Awaiting *string  `json:"awaiting"`
+			Warnings []string `json:"warnings"`
 		} `json:"apply_request"`
+		MergeFailure *struct {
+			Reason string `json:"reason"`
+		} `json:"merge_failure"`
 	}
 	// 書く権限（コード）のない人の approve は、数える review にならない（design/adapters/pull-requests.md の「数える review」）。
 	// そのため、反映を試さず、レビュー待ちのままで、警告を返す。
@@ -163,7 +163,7 @@ func TestE2EHumanMerge(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
 		t.Fatalf("書く権限のない reviewer の approve：%d %s", code, out)
 	}
-	if forbidden.ApplyRequest.State != "open" || len(forbidden.ApplyRequest.MergeFailures) != 0 ||
+	if forbidden.ApplyRequest.State != "open" || forbidden.MergeFailure != nil ||
 		forbidden.ApplyRequest.Awaiting == nil || *forbidden.ApplyRequest.Awaiting != "review" || !strings.Contains(strings.Join(forbidden.ApplyRequest.Warnings, " "), "数えない") {
 		t.Fatalf("書く権限のない reviewer の approve を数えている：%s", out)
 	}

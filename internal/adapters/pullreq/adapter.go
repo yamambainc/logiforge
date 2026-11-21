@@ -64,9 +64,6 @@ var waitingLabels = map[string]Label{
 // repairKinds は、直すための apply request の種類である。ラベルは logiforge/<種類>。
 var repairKinds = []string{"repair.revert", "repair.accept"}
 
-// mergeStatusContext は、反映の失敗の commit status の context である。
-const mergeStatusContext = "logiforge/merge"
-
 // 本文に書く、人が読む文の頭（design/adapters/texts.md）。バックエンドは、これを読まない。
 const (
 	promptPrefix = "プロンプトの版："
@@ -180,7 +177,7 @@ func (a *Adapter) CreateApplyRequest(ctx context.Context, repo string, n ports.N
 	return ar, err
 }
 
-// GetApplyRequest は、pull request を 1 件読む。close のコメント、head の反映の失敗、レビュー待ちのラベルを付けた時刻も読む。
+// GetApplyRequest は、pull request を 1 件読む。コメントと、レビュー待ちと修正待ちのラベルを最後に付けた時刻も読む。
 func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.ApplyRequest, error) {
 	num, err := number(id)
 	if err != nil {
@@ -191,26 +188,28 @@ func (a *Adapter) GetApplyRequest(ctx context.Context, repo, id string) (ports.A
 		return ports.ApplyRequest{}, err
 	}
 	ar := toApplyRequest(p)
-	if p.HeadSHA != "" {
-		sts, err := a.API.ListStatuses(ctx, repo, p.HeadSHA)
-		if err != nil {
-			return ports.ApplyRequest{}, err
-		}
-		for i := len(sts) - 1; i >= 0; i-- {
-			s := sts[i]
-			if s.Context == mergeStatusContext && s.State == "failure" {
-				ar.MergeFailures = append(ar.MergeFailures, ports.MergeFailure{Revision: p.HeadSHA, Reason: s.Description, At: s.CreatedAt})
-			}
-		}
-	}
 	evs, err := a.API.ListEvents(ctx, repo, num)
 	if err != nil {
 		return ports.ApplyRequest{}, err
 	}
 	for _, e := range evs {
-		if e.Kind == "labeled" && e.Label == LabelReviewWaiting && e.CreatedAt.After(ar.ReviewWaitingAt) {
-			ar.ReviewWaitingAt = e.CreatedAt
+		if e.Kind != "labeled" {
+			continue
 		}
+		switch {
+		case e.Label == LabelReviewWaiting && e.CreatedAt.After(ar.ReviewWaitingAt):
+			ar.ReviewWaitingAt = e.CreatedAt
+		case e.Label == LabelFixWaiting && e.CreatedAt.After(ar.FixWaitingAt):
+			ar.FixWaitingAt = e.CreatedAt
+		}
+	}
+	cs, err := a.API.ListComments(ctx, repo, num)
+	if err != nil {
+		return ports.ApplyRequest{}, err
+	}
+	ar.Comments = make([]ports.Comment, 0, len(cs))
+	for _, c := range cs {
+		ar.Comments = append(ar.Comments, ports.Comment{Author: c.Author, Body: c.Body, CreatedAt: c.CreatedAt})
 	}
 	return ar, nil
 }
@@ -283,9 +282,6 @@ func oneLine(s string) string {
 func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f ports.MergeFailure) error {
 	num, err := number(id)
 	if err != nil {
-		return err
-	}
-	if err := a.API.SetStatus(ctx, repo, f.Revision, Status{Context: mergeStatusContext, State: "failure", Description: f.Reason}); err != nil {
 		return err
 	}
 	text := fmt.Sprintf("Logiforge：先頭のコミット %s を反映できなかった（%s）。", f.Revision, f.Reason)

@@ -208,7 +208,24 @@ func reviewOf(r ports.Review, valid bool) Review {
 	return out
 }
 
-// MergeFailure は、反映の失敗である。
+// Comment は、pull request のコメントである。反映の失敗と close の理由も、人が読む文で、ここに入る。
+type Comment struct {
+	Author    string     `json:"author"`
+	Body      string     `json:"body"`
+	CreatedAt *time.Time `json:"created_at"`
+}
+
+// commentOf は、GitForge のコメントを、API の応答の形にする。
+func commentOf(c ports.Comment) Comment {
+	out := Comment{Author: c.Author, Body: c.Body}
+	if !c.CreatedAt.IsZero() {
+		t := c.CreatedAt.UTC()
+		out.CreatedAt = &t
+	}
+	return out
+}
+
+// MergeFailure は、その要求の中での反映の失敗である（レビューの応答だけに入る）。
 type MergeFailure struct {
 	Commit string `json:"commit"`
 	Reason string `json:"reason"`
@@ -225,16 +242,17 @@ type ApplyRequest struct {
 	Target string `json:"target"`
 	State  string `json:"state"`
 	// OpenedByCaller は、要求を送った主体が、この apply request を作った主体と同じかである。WebUI は、approve の前に示す。
-	OpenedByCaller bool           `json:"opened_by_caller"`
-	HeadCommit     string         `json:"head_commit"`
-	HeadCommits    []HeadCommit   `json:"head_commits"`
-	Description    string         `json:"description,omitempty"`
-	Operations     []Operation    `json:"operations"`
-	Reviews        []Review       `json:"reviews"`
-	MergeFailures  []MergeFailure `json:"merge_failures"`
-	Awaiting       *string        `json:"awaiting"`
-	Warnings       []string       `json:"warnings"`
-	MergedCommit   *string        `json:"merged_commit"`
+	OpenedByCaller bool         `json:"opened_by_caller"`
+	HeadCommit     string       `json:"head_commit"`
+	HeadCommits    []HeadCommit `json:"head_commits"`
+	Description    string       `json:"description,omitempty"`
+	Operations     []Operation  `json:"operations"`
+	Reviews        []Review     `json:"reviews"`
+	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入り、一覧では空である。
+	Comments     []Comment `json:"comments"`
+	Awaiting     *string   `json:"awaiting"`
+	Warnings     []string  `json:"warnings"`
+	MergedCommit *string   `json:"merged_commit"`
 }
 
 // ReviewMaterial は、レビューの材料である。

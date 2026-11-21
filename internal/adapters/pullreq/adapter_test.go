@@ -20,7 +20,6 @@ type fake struct {
 	pulls    map[int]*Pull
 	issues   map[int]*Issue
 	reviews  map[int][]PullReview
-	statuses map[string][]Status
 	labels   map[string]Label
 	events   map[int][]Event
 	comments map[int][]Comment
@@ -33,7 +32,7 @@ type fake struct {
 
 func newFake() *fake {
 	return &fake{actor: "alice", now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), next: 1, pulls: map[int]*Pull{}, issues: map[int]*Issue{},
-		reviews: map[int][]PullReview{}, statuses: map[string][]Status{}, labels: map[string]Label{}, events: map[int][]Event{},
+		reviews: map[int][]PullReview{}, labels: map[string]Label{}, events: map[int][]Event{},
 		comments: map[int][]Comment{}, files: map[string][]byte{}, canPush: map[string]bool{"alice": true, "bob": true}, calls: map[string]int{}}
 }
 
@@ -134,16 +133,6 @@ func (f *fake) CreateReview(_ context.Context, _ string, n int, kind ports.Revie
 	r := PullReview{ID: int64(len(f.reviews[n]) + 1), Kind: kind, Body: body, Author: f.actor, CommitID: commit, SubmittedAt: f.tick()}
 	f.reviews[n] = append(f.reviews[n], r)
 	return r, nil
-}
-func (f *fake) SetStatus(_ context.Context, _, sha string, s Status) error {
-	f.call("SetStatus")
-	s.Creator, s.CreatedAt = f.actor, f.tick()
-	f.statuses[sha] = append([]Status{s}, f.statuses[sha]...)
-	return nil
-}
-func (f *fake) ListStatuses(_ context.Context, _, sha string) ([]Status, error) {
-	f.call("ListStatuses")
-	return slices.Clone(f.statuses[sha]), nil
 }
 func (f *fake) EnsureLabel(_ context.Context, _ string, l Label) error {
 	f.call("EnsureLabel")
@@ -280,7 +269,7 @@ func TestApplyRequestLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := a.GetApplyRequest(ctx, "o/r", "1")
-	if err != nil || got.Waiting != ports.WaitingFix || len(got.MergeFailures) != 1 || got.MergeFailures[0].Reason != "conflict" || got.MergeFailures[0].At.IsZero() {
+	if err != nil || got.Waiting != ports.WaitingFix || len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "conflict") || got.FixWaitingAt.IsZero() {
 		t.Fatalf("反映の失敗：%+v %v", got, err)
 	}
 	if cs := f.comments[1]; len(cs) != 1 || !strings.Contains(cs[0].Body, "衝突") {

@@ -1,6 +1,6 @@
 // WebUI からのレビュー（docs/webui/history.md の「apply request の閲覧」、design/webui/screens.md の「apply request と履歴」、
 // design/settings/users.md の「WebUI からのレビュー」）。画面に依らない部分：送り方、エラーの言葉、結果の言葉。
-import { getApplyRequest, Problem, reviewApplyRequest, type ApplyRequest, type ReviewKind } from './api';
+import { getApplyRequest, Problem, reviewApplyRequest, type ApplyRequest, type MergeFailure, type ReviewKind } from './api';
 import { FAILURE } from './ar';
 
 /** approve を送ってよいか。確かめたコミットが、今示している先頭のコミットと同じときだけ。
@@ -43,7 +43,7 @@ export const CONFLICT_MESSAGE = '先頭のコミットが新しくなりまし�
 export async function submitReview(repo: string, id: string, kind: ReviewKind, commit: string, body: string): Promise<SendResult> {
   try {
     const r = await reviewApplyRequest(repo, id, { kind, commit, body: body.trim() });
-    return { kind: 'sent', ar: r.apply_request, message: outcome(kind, r.apply_request, commit) };
+    return { kind: 'sent', ar: r.apply_request, message: outcome(kind, r.apply_request, r.merge_failure) };
   } catch (e) {
     if (e instanceof Problem && e.status === 401) return { kind: 'unauthenticated' };
     if (e instanceof Problem && (e.code === 'commit_conflict' || e.code === 'not_open')) {
@@ -56,14 +56,13 @@ export async function submitReview(repo: string, id: string, kind: ReviewKind, c
   }
 }
 
-/** 送ったあとに示す言葉。approve なら、反映したか、反映できなかった理由（apply_request.merge_failures） */
-export function outcome(kind: ReviewKind, ar: ApplyRequest, commit: string): string {
+/** 送ったあとに示す言葉。approve なら、反映したか、反映できなかった理由（応答の merge_failure） */
+export function outcome(kind: ReviewKind, ar: ApplyRequest, failure?: MergeFailure | null): string {
   if (kind !== 'approve') return kind === 'comment' ? 'コメントを付けました。' : 'request_changes を付けました。';
   if (ar.state === 'merged') return 'approve を付け、反映しました。';
   if (ar.target !== 'main') return 'approve を付けました。main 向きではないので、Logiforge は反映しません。';
-  const fails = (ar.merge_failures ?? []).filter((f) => f.commit === commit);
-  if (fails.length > 0) {
-    const f = fails[fails.length - 1];
+  if (failure) {
+    const f = failure;
     return `approve を付けましたが、反映できませんでした：${FAILURE[f.reason] ?? f.reason}${f.detail ? `（${f.detail}）` : ''}`;
   }
   return 'approve を付けました。反映の条件をまだ満たしていないので、反映していません。';

@@ -162,8 +162,12 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	ar := res.Value.ApplyRequest
-	if ar.State != "open" || len(ar.MergeFailures) != 1 || ar.MergeFailures[0].Reason != "stale_target" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
-		t.Fatalf("stale_target: %+v", ar)
+	if mf := res.Value.MergeFailure; ar.State != "open" || mf == nil || mf.Reason != "stale_target" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
+		t.Fatalf("stale_target: %+v %+v", ar, mf)
+	}
+	// 反映の失敗は、apply request のコメントとして、人が読む文で読める。
+	if len(ar.Comments) != 1 || !strings.Contains(ar.Comments[0].Body, "stale_target") {
+		t.Fatalf("反映の失敗のコメント：%+v", ar.Comments)
 	}
 }
 
@@ -291,11 +295,11 @@ func lastFailure(t *testing.T, res Written[ReviewResult], err error) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fs := res.Value.ApplyRequest.MergeFailures
-	if res.Value.ApplyRequest.State != "open" || len(fs) == 0 {
+	mf := res.Value.MergeFailure
+	if res.Value.ApplyRequest.State != "open" || mf == nil {
 		t.Fatalf("反映に失敗していない：%+v", res.Value.ApplyRequest)
 	}
-	return fs[len(fs)-1].Reason
+	return mf.Reason
 }
 
 func TestMergeFailurePaths(t *testing.T) {

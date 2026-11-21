@@ -1,4 +1,4 @@
-// Package pullreq は、GitForge のポートを、pull request、review、issue、ラベル、commit status で実装する、
+// Package pullreq は、GitForge のポートを、pull request、review、issue、ラベル、コメントで実装する、
 // GitHub と Forgejo に共通の部分である（design/adapters/pull-requests.md）。GitForge ごとの REST の呼び方は、API インターフェースで差し替える。
 package pullreq
 
@@ -28,10 +28,6 @@ type API interface {
 	ListReviews(ctx context.Context, repo string, number int) ([]PullReview, error)
 	// CreateReview は、review を出す。event は approve、request_changes、comment のどれか（ports.ReviewKind）。
 	CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (PullReview, error)
-
-	// SetStatus は、コミットに commit status を立てる。ListStatuses は、そのコミットの commit status を、新しい順に返す。
-	SetStatus(ctx context.Context, repo, sha string, s Status) error
-	ListStatuses(ctx context.Context, repo, sha string) ([]Status, error)
 
 	// EnsureLabel は、ラベルがなければ作る。AddLabel と RemoveLabel は、pull request か issue に付け外しする。
 	EnsureLabel(ctx context.Context, repo string, l Label) error
@@ -91,15 +87,6 @@ type PullReview struct {
 	// CanPush は、書いた人が repository に書く権限を持つか。読めなければ nil（GitHub は authorCanPushToRepository、Forgejo は official）。
 	CanPush     *bool
 	SubmittedAt time.Time
-}
-
-// Status は、commit status である。
-type Status struct {
-	Context     string
-	State       string // success、failure、pending、error
-	Description string
-	Creator     string
-	CreatedAt   time.Time
 }
 
 // Label は、ラベルである。

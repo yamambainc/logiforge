@@ -20,7 +20,7 @@ const problem = (status: number, code: string, detail = '') =>
 const stubFetch = (h: Handler) => vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => h(url, init)));
 const callOf = (i = 0) => { const [url, init] = vi.mocked(fetch).mock.calls[i] as [string, RequestInit | undefined]; return { url, init: init ?? {}, body: init?.body ? JSON.parse(init.body as string) : undefined }; };
 
-const ar = (p: Partial<ApplyRequest> = {}): ApplyRequest => ({ id: 'apr_1', state: 'open', branch: 'b', target: 'main', head_commit: 'c1', merge_failures: [], ...p });
+const ar = (p: Partial<ApplyRequest> = {}): ApplyRequest => ({ id: 'apr_1', state: 'open', branch: 'b', target: 'main', head_commit: 'c1', ...p });
 
 async function load() {
   vi.resetModules();
@@ -51,16 +51,16 @@ describe('レビューを送る', () => {
     expect(r).toMatchObject({ kind: 'sent', message: 'approve を付け、反映しました。' });
   });
   it('approve で反映できなかったら、その先頭のコミットの理由を示す', async () => {
-    stubFetch(() => ok({ review: {}, apply_request: ar({ merge_failures: [{ commit: 'c0', reason: 'conflict', detail: '古い' }, { commit: 'c1', reason: 'merge_forbidden', detail: 'protected' }] }) }, 201));
+    stubFetch(() => ok({ review: {}, apply_request: ar(), merge_failure: { commit: 'c1', reason: 'merge_forbidden', detail: 'protected' } }, 201));
     const { submitReview } = await load();
     const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
     expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けましたが、反映できませんでした：GitForge で merge する権限がなく、GitForge が merge を断った（protected）' });
   });
   it('approve で、まだ反映の条件を満たさなければ、そう示す', async () => {
     const { outcome } = await load();
-    expect(outcome('approve', ar(), 'c1')).toBe('approve を付けました。反映の条件をまだ満たしていないので、反映していません。');
-    expect(outcome('approve', ar({ target: 'feature' }), 'c1')).toContain('main 向きではない');
-    expect(outcome('request_changes', ar(), 'c1')).toBe('request_changes を付けました。');
+    expect(outcome('approve', ar())).toBe('approve を付けました。反映の条件をまだ満たしていないので、反映していません。');
+    expect(outcome('approve', ar({ target: 'feature' }))).toContain('main 向きではない');
+    expect(outcome('request_changes', ar())).toBe('request_changes を付けました。');
   });
 });
 

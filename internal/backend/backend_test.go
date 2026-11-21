@@ -168,7 +168,7 @@ func (f *fakeForge) ListApplyRequests(_ context.Context, _, state string) ([]por
 			continue
 		}
 		x := ar
-		x.MergeFailures = nil
+		x.Comments = nil
 		out = append(out, x)
 	}
 	return out, nil
@@ -182,8 +182,11 @@ func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting)
 		return ports.ErrNotFound
 	}
 	ar.Waiting = w
-	if w == ports.WaitingReview {
+	switch w {
+	case ports.WaitingReview:
 		ar.ReviewWaitingAt = time.Now().UTC()
+	case ports.WaitingFix:
+		ar.FixWaitingAt = time.Now().UTC()
 	}
 	return nil
 }
@@ -220,8 +223,7 @@ func (f *fakeForge) Close(_ context.Context, _, id, reason string) error {
 }
 func (f *fakeForge) RecordMergeFailure(_ context.Context, _, id string, mf ports.MergeFailure) error {
 	ar := f.ar(id)
-	mf.At = time.Now().UTC()
-	ar.MergeFailures = append(ar.MergeFailures, mf)
+	ar.Comments = append(ar.Comments, ports.Comment{Author: "bob", Body: "反映できなかった（" + mf.Reason + "）\n\n" + mf.Detail, CreatedAt: time.Now().UTC()})
 	return nil
 }
 func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) (ports.Review, error) {
@@ -598,14 +600,13 @@ func TestDesiredWaiting(t *testing.T) {
 		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
 		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
-		{"conflict で失敗", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "conflict", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
+		{"修正待ちのラベルを付けた（conflict で失敗）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingFix},
 		{"同じ秒なら今の修正待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix}, []ports.Review{rc(t0.Add(300 * time.Millisecond))}, ports.WaitingFix},
 		{"同じ秒なら今のレビュー待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0.Add(500 * time.Millisecond), Waiting: ports.WaitingReview}, []ports.Review{rc(t0)}, ports.WaitingReview},
-		{"push だけのあと approve して merge_forbidden で失敗した", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix,
-			MergeFailures: []ports.MergeFailure{{Reason: "merge_forbidden", At: t0.Add(3 * time.Minute)}}},
+		{"push だけのあと approve して merge_forbidden で失敗した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(3 * time.Minute), FixWaitingAt: t0.Add(time.Minute), Waiting: ports.WaitingFix},
 			[]ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(3 * time.Minute)}}, ports.WaitingReview},
 		{"request changes のあとの approve", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(2 * time.Minute)}}, ports.WaitingReview},
-		{"snapshot_pending は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0, MergeFailures: []ports.MergeFailure{{Reason: "snapshot_pending", At: t0.Add(time.Minute)}}}, nil, ports.WaitingReview},
+		{"修正待ちのラベルのあとのレビュー待ちのラベル（snapshot_pending で失敗）", ports.ApplyRequest{FixWaitingAt: t0, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {
 		if got := desiredWaiting(c.ar, c.reviews); got != c.want {

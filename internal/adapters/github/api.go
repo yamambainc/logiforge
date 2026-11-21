@@ -391,42 +391,6 @@ func (a api) CreateReview(ctx context.Context, repo string, number int, event po
 	return x, nil
 }
 
-type statusJSON struct {
-	Context     string    `json:"context"`
-	State       string    `json:"state"`
-	Description string    `json:"description"`
-	Creator     user      `json:"creator"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-func (a api) SetStatus(ctx context.Context, repo, sha string, s pullreq.Status) error {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return err
-	}
-	return a.w(ctx, repo, http.MethodPost, rp+"/statuses/"+url.PathEscape(sha),
-		map[string]string{"state": s.State, "context": s.Context, "description": s.Description}, nil)
-}
-
-func (a api) ListStatuses(ctx context.Context, repo, sha string) ([]pullreq.Status, error) {
-	rp, err := repoPath(repo)
-	if err != nil {
-		return nil, err
-	}
-	ss, err := list[statusJSON](ctx, a.c, ports.TokenFrom(ctx), rp+"/commits/"+url.PathEscape(sha)+"/statuses")
-	if statusOf(err) == http.StatusNotFound {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	out := make([]pullreq.Status, 0, len(ss))
-	for _, s := range ss {
-		out = append(out, pullreq.Status{Context: s.Context, State: s.State, Description: s.Description, Creator: s.Creator.Login, CreatedAt: s.CreatedAt})
-	}
-	return out, nil
-}
-
 // EnsureLabel は、ラベルがなければ作る。GitHub は、ない名前のラベルを付けると既定の色で作るので、付ける前に呼ぶ。
 func (a api) EnsureLabel(ctx context.Context, repo string, l pullreq.Label) error {
 	rp, err := repoPath(repo)

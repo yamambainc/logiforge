@@ -70,11 +70,6 @@ type fakeReview struct {
 	At       time.Time
 }
 
-type fakeStatus struct {
-	Context, State, Description, Creator string
-	At                                   time.Time
-}
-
 type fakeEvent struct {
 	Event, Label, Actor string
 	At                  time.Time
@@ -99,14 +94,13 @@ type fakeGitHub struct {
 	trees      map[string]map[string]string
 	gitCommits map[string][2]string
 
-	mu       sync.Mutex
-	next     int // pull request と issue の番号（共通）
-	pulls    map[int]*fakePull
-	issues   map[int]*fakeIssue
-	reviews  map[int][]*fakeReview
-	statuses map[string][]fakeStatus
-	labels   map[string]bool
-	events   map[int][]fakeEvent
+	mu      sync.Mutex
+	next    int // pull request と issue の番号（共通）
+	pulls   map[int]*fakePull
+	issues  map[int]*fakeIssue
+	reviews map[int][]*fakeReview
+	labels  map[string]bool
+	events  map[int][]fakeEvent
 	// writers は、リポジトリに書く権限を持つログイン名（review を数えるか）。
 	writers  map[string]bool
 	comments []*fakeComment
@@ -182,7 +176,7 @@ type fakeUser struct {
 
 func newFakeGitHub(t *testing.T) *fakeGitHub {
 	f := &fakeGitHub{t: t, next: 1, trees: map[string]map[string]string{}, gitCommits: map[string][2]string{}, pulls: map[int]*fakePull{}, issues: map[int]*fakeIssue{}, files: map[string]string{},
-		reviews: map[int][]*fakeReview{}, statuses: map[string][]fakeStatus{}, labels: map[string]bool{}, events: map[int][]fakeEvent{}, writers: map[string]bool{"alice": true, "bob": true, fakeAgentLogin: true},
+		reviews: map[int][]*fakeReview{}, labels: map[string]bool{}, events: map[int][]fakeEvent{}, writers: map[string]bool{"alice": true, "bob": true, fakeAgentLogin: true},
 		users: map[string]fakeUser{}, readable: map[string]bool{}, failPutAfter: -1, ownTokens: map[string]bool{}, branchFiles: map[string]map[string]string{}, branchHead: map[string]string{}}
 	f.users[fakeAgent] = fakeUser{login: fakeAgentLogin}
 	f.readable[fakeAgent] = true
@@ -278,8 +272,6 @@ var (
 	reIssLabel  = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/labels/(.+)$`)
 	reEvents    = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)/events$`)
 	reLabel     = regexp.MustCompile(`^/repos/acme/study/labels/(.+)$`)
-	reStatuses  = regexp.MustCompile(`^/repos/acme/study/statuses/(.+)$`)
-	reCStatuses = regexp.MustCompile(`^/repos/acme/study/commits/([^/]+)/statuses$`)
 	rePull      = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)$`)
 	reMerge     = regexp.MustCompile(`^/repos/acme/study/pulls/(\d+)/merge$`)
 	reIssue     = regexp.MustCompile(`^/repos/acme/study/issues/(\d+)$`)
@@ -574,16 +566,6 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		f.reviews[n] = append(f.reviews[n], rv)
 		f.pulls[n].updatedAt = time.Now()
 		write(w, http.StatusOK, map[string]any{"id": rv.ID, "state": rv.State, "body": rv.Body, "user": map[string]string{"login": login}, "commit_id": rv.CommitID, "submitted_at": rv.At})
-	case reStatuses.MatchString(p) && r.Method == http.MethodPost:
-		sha := reStatuses.FindStringSubmatch(p)[1]
-		f.statuses[sha] = append([]fakeStatus{{Context: str("context"), State: str("state"), Description: str("description"), Creator: login, At: time.Now()}}, f.statuses[sha]...)
-		write(w, http.StatusCreated, map[string]string{})
-	case reCStatuses.MatchString(p) && r.Method == http.MethodGet:
-		var out []map[string]any
-		for _, st := range f.statuses[reCStatuses.FindStringSubmatch(p)[1]] {
-			out = append(out, map[string]any{"context": st.Context, "state": st.State, "description": st.Description, "creator": map[string]string{"login": st.Creator}, "created_at": st.At})
-		}
-		page(w, r, out)
 	case reLabel.MatchString(p) && r.Method == http.MethodGet:
 		if !f.labels[reLabel.FindStringSubmatch(p)[1]] {
 			fail(w, http.StatusNotFound, "Not Found")

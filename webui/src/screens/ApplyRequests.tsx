@@ -4,7 +4,7 @@
 // open の apply request は、その repository に Write がある利用者が、ここでレビューできる（approve なら反映まで）。
 import { useEffect, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, FAILURE, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
+import { arTitle, AWAITING, byTime, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -176,10 +176,18 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         </ol>
       )}
 
-      {(a.merge_failures ?? []).length > 0 && (
+      {(a.comments ?? []).length > 0 && (
         <>
-          <h3 className="sec">反映できなかったこと</h3>
-          <ul className="ops">{a.merge_failures!.map((f, i) => <li key={i}><span>{FAILURE[f.reason] ?? f.reason}</span><span className="dim">{f.detail}</span><span className="mono dim">{f.commit.slice(0, 7)}</span></li>)}</ul>
+          {/* pull request のコメントを、そのまま示す。反映の失敗と close の理由も、ここに人が読む文で入る */}
+          <h3 className="sec">コメント</h3>
+          <ol className="reviews">
+            {a.comments!.map((c, i) => (
+              <li key={i}>
+                <div className="r-head"><b className="r-who">{c.author}</b><span className="dim">{fmt(c.created_at)}</span></div>
+                <Markdown className="report" text={c.body} />
+              </li>
+            ))}
+          </ol>
         </>
       )}
 

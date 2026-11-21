@@ -333,10 +333,10 @@ func TestForgejo(t *testing.T) {
 	if err := gf.RecordMergeFailure(asAlice, ref, ids["b"], ports.MergeFailure{Revision: hB, Reason: "conflict", Detail: "衝突"}); err != nil {
 		t.Fatal(err)
 	}
-	if b := mustGet(ctx, t, gf, ref, ids["b"]); len(b.MergeFailures) != 1 || b.MergeFailures[0].Reason != "conflict" || b.MergeFailures[0].At.IsZero() {
-		t.Fatalf("反映の失敗：%+v", b.MergeFailures)
+	if b := mustGet(ctx, t, gf, ref, ids["b"]); len(b.Comments) == 0 || !strings.Contains(b.Comments[len(b.Comments)-1].Body, "conflict") || b.Comments[len(b.Comments)-1].CreatedAt.IsZero() {
+		t.Fatalf("反映の失敗のコメント：%+v", b.Comments)
 	}
-	t.Log("確かめた：書く権限の主体が commit status を立て、head の commit status を読める")
+	t.Log("確かめた：反映の失敗は、pull request のふつうのコメントとして読める")
 
 	// ---- close と reopen（GitForge の状態に従う） ----
 	if err := gf.Close(ctx, ref, ids["b"], "やめる"); err != nil {

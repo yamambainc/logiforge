@@ -326,7 +326,7 @@ func TestViewShowsCommits(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/verdicts/v-0000000001"):
 			return 200, "application/json", `{"id":"v-0000000001","hypothesis_id":"h-0000000001","value":true,"report_body":"本文","artifacts":[],"citations":[],"submitted_commit":"` + sha + `","superseded_commit":null}`
 		case strings.HasSuffix(r.URL.Path, "/apply-requests/apr_1"):
-			return 200, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + sha + `","head_commits":[{"commit":"` + base + `","base_commit":"","seen_at":"2026-11-14T01:02:03Z","author_session_id":null},{"commit":"` + sha + `","base_commit":"","seen_at":null,"author_session_id":null}],"operations":[],"reviews":[],"merge_failures":[],"awaiting":"review","warnings":[]}`
+			return 200, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + sha + `","head_commits":[{"commit":"` + base + `","base_commit":"","seen_at":"2026-11-14T01:02:03Z","author_session_id":null},{"commit":"` + sha + `","base_commit":"","seen_at":null,"author_session_id":null}],"operations":[],"reviews":[],"comments":[],"awaiting":"review","warnings":[]}`
 		}
 		return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`
 	})

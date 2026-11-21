@@ -410,11 +410,11 @@ func (a *App) printAR(v map[string]any) {
 			fmt.Fprintf(a.Stdout, "  %s コミット %s（有効：%s）\n", str(rv, "kind"), str(rv, "commit"), str(rv, "valid"))
 		}
 	}
-	if fs, _ := v["merge_failures"].([]any); len(fs) > 0 {
-		fmt.Fprintln(a.Stdout, "反映の失敗：")
-		for _, x := range fs {
-			mf := x.(map[string]any)
-			fmt.Fprintf(a.Stdout, "  コミット %s：%s %s\n", str(mf, "commit"), str(mf, "reason"), str(mf, "detail"))
+	if cs, _ := v["comments"].([]any); len(cs) > 0 {
+		fmt.Fprintln(a.Stdout, "コメント：")
+		for _, x := range cs {
+			c := x.(map[string]any)
+			fmt.Fprintf(a.Stdout, "  %s（%s）：%s\n", str(c, "author"), str(c, "created_at"), strings.Join(strings.Fields(str(c, "body")), " "))
 		}
 	}
 	if ws, _ := v["warnings"].([]any); len(ws) > 0 {
@@ -550,6 +550,9 @@ func (a *App) arReview(ctx context.Context, args []string) error {
 	return a.show(res, func(v map[string]any) {
 		if ar, ok := v["apply_request"].(map[string]any); ok {
 			a.printAR(ar)
+		}
+		if mf, ok := v["merge_failure"].(map[string]any); ok {
+			fmt.Fprintf(a.Stdout, "反映できなかった：コミット %s：%s %s\n", str(mf, "commit"), str(mf, "reason"), str(mf, "detail"))
 		}
 	})
 }
