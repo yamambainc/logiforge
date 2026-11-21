@@ -116,7 +116,7 @@ func TestReviewAndMerge(t *testing.T) {
 	if _, err := b.MergeApplyRequest(ctx, reviewer, "q", id); code(err) != CodeNotApproved {
 		t.Fatalf("approve の前の merge：%v", err)
 	}
-	// approve は、検査に通れば GitForge に approve を出すだけで、merge しない。
+	// approve は、確かめに通れば GitForge に approve を出すだけで、merge しない。
 	ap, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, PromptRevision: "p"})
 	if err != nil || ap.Value.ApplyRequest.State != "open" || ap.Value.Review.Kind != "approve" {
 		t.Fatalf("approve: %+v %v", ap.Value, err)
@@ -170,14 +170,14 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	if res, err := approve(t, f, x.Value.ID); err != nil || res.Value.ApplyRequest.State != "merged" {
 		t.Fatalf("x：%+v %v", res.Value, err)
 	}
-	// y の approve は、検査に通らないので、GitForge に出さない。
+	// y の approve は、確かめに通らないので、GitForge に出さない。
 	_, err := b.ReviewApplyRequest(ctx, reviewer, "q", y.Value.ID, NewReview{Kind: "approve", Commit: y.Value.HeadCommit, PromptRevision: "p"})
 	e := AsError(err)
 	if e == nil || e.Code != CodeStaleTarget {
 		t.Fatalf("stale_target でない：%v", err)
 	}
 	if rs := f.forge.reviews[y.Value.ID].Items; len(rs) != 0 {
-		t.Fatalf("検査に通らない approve を出した：%+v", rs)
+		t.Fatalf("確かめに通らない approve を出した：%+v", rs)
 	}
 	ar, err := b.GetApplyRequest(ctx, reviewer, "q", y.Value.ID)
 	if err != nil || ar.State != "open" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
@@ -191,6 +191,56 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	// 反映の失敗は、apply request のコメントとして、人が読む文で読める。
 	if len(ar.Comments) != 1 || !strings.Contains(ar.Comments[0].Body, "stale_target") {
 		t.Fatalf("反映の失敗のコメント：%+v", ar.Comments)
+	}
+}
+
+// approve のあとに、別の apply request が反映されたら、merge の直前の確かめで断る（design/backend/merge.md の「merge」）。
+// opener も merge を呼べる。断ったら、コメントを書いて修正待ちにし、merge しない。
+func TestMergeRechecksAfterApprove(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	x := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	y := create(t, f, "y", "s4", map[string][]byte{dH1 + "/background.md": []byte("二\n")})
+	for _, id := range []string{x, y} {
+		if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"}); err != nil {
+			t.Fatalf("%s の approve：%v", id, err)
+		}
+	}
+	if m, err := f.b.MergeApplyRequest(ctx, reviewerC, "q", x); err != nil || m.Value.State != "merged" {
+		t.Fatalf("x の merge：%+v %v", m.Value, err)
+	}
+	_, err := f.b.MergeApplyRequest(ctx, agentC, "q", y)
+	if code(err) != CodeStaleTarget {
+		t.Fatalf("y の merge：%v", err)
+	}
+	ar, err := f.b.GetApplyRequest(ctx, agentC, "q", y)
+	if err != nil || ar.State != "open" || ar.Awaiting == nil || *ar.Awaiting != "fix" || len(ar.Comments) != 1 || !strings.Contains(ar.Comments[0].Body, "stale_target") {
+		t.Fatalf("y のあと：%+v %v", ar, err)
+	}
+}
+
+// merge の確かめのあいだに request_changes が出たら、merge しない。確かめのあと、squash の前に review を読み直すからである。
+func TestMergeRereadsReviews(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	head := f.forge.ar(id).HeadRevision
+	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: head, PromptRevision: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	other := Caller{Token: "rev2", Principal: ports.Principal{Login: "reviewer2", Kind: ports.PrincipalClient}}
+	f.forge.onMainHead = func() {
+		f.forge.onMainHead = nil
+		time.Sleep(1100 * time.Millisecond) // GitForge の時刻は秒の単位なので、approve と別の秒にする
+		if _, err := f.b.ReviewApplyRequest(ctx, other, "q", id, NewReview{Kind: "request_changes", Commit: head, Body: "直して"}); err != nil {
+			t.Errorf("request_changes：%v", err)
+		}
+	}
+	if _, err := f.b.MergeApplyRequest(ctx, reviewerC, "q", id); code(err) != CodeNotApproved {
+		t.Fatalf("確かめのあいだの request_changes を見ずに merge した：%v", err)
+	}
+	if ar := f.forge.ar(id); ar.State == ports.StateMerged {
+		t.Fatal("merge した")
 	}
 }
 
@@ -388,7 +438,7 @@ type merged struct {
 
 type refusal struct{ Reason, Detail string }
 
-// refusals は、検査や GitForge に断られた approve と merge の code である（design/backend/merge.md）。
+// refusals は、確かめや GitForge に断られた approve と merge の code である（design/backend/merge.md）。
 var refusals = map[Code]bool{CodeStaleTarget: true, CodeConflict: true, CodeInvariantViolation: true, CodeSnapshotPending: true,
 	CodeNotApproved: true, CodeMergeForbidden: true}
 

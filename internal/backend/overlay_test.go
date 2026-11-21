@@ -125,9 +125,9 @@ func TestTargetNotMain(t *testing.T) {
 		t.Fatalf("H2 が作業に出ない：%+v", w.Items)
 	}
 
-	// approve は検査せずに出し、警告を付ける。Logiforge では merge しない（GitForge で merge する）。
+	// approve は確かめずに出し、警告を付ける。Logiforge では merge しない（GitForge で merge する）。
 	rv, err := b.ReviewApplyRequest(ctx, reviewerC, "q", "apr_2", NewReview{Kind: "approve", Commit: f.forge.ar("apr_2").HeadRevision, PromptRevision: "p"})
-	if err != nil || !slices.ContainsFunc(rv.Value.ApplyRequest.Warnings, func(s string) bool { return strings.Contains(s, "検査していない") }) {
+	if err != nil || !slices.ContainsFunc(rv.Value.ApplyRequest.Warnings, func(s string) bool { return strings.Contains(s, "確かめていない") }) {
 		t.Fatalf("approve：%+v %v", rv.Value.ApplyRequest, err)
 	}
 	if _, err := b.MergeApplyRequest(ctx, reviewerC, "q", "apr_2"); code(err) != CodeValidationFailed {

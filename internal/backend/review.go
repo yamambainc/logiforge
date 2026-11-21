@@ -29,7 +29,7 @@ type ReviewResult struct {
 	ApplyRequest ApplyRequest `json:"apply_request"`
 }
 
-// ReviewApplyRequest は、レビューを付ける。approve では、先に今の main で検査し、通ったときだけ GitForge に approve を出す。
+// ReviewApplyRequest は、レビューを付ける。approve では、先に今の main で確かめ、通ったときだけ GitForge に approve を出す。
 // merge はしない（design/backend/merge.md の「approve」）。
 func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id string, n NewReview) (Written[ReviewResult], error) {
 	var out Written[ReviewResult]
@@ -81,7 +81,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	if d.branch == nil {
 		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", d.current.Commit)
 	}
-	// approve は、今の main で検査し、通らなければ出さない。向き先が main でなければ、Logiforge は検査しない。
+	// approve は、今の main で確かめ、通らなければ出さない。向き先が main でなければ、Logiforge は確かめない。
 	if kind == ports.ReviewApprove && targetsMain(d.port) {
 		f, err := b.checkOnCurrentMain(ctx, repo, ref, d)
 		if err != nil {
@@ -105,7 +105,7 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	}
 	// 向き先が main でない apply request は、Logiforge の反映の対象でない（design/backend/apply-request/target.md の「向き先」）。
 	if kind == ports.ReviewApprove && !targetsMain(d.port) {
-		warnings = append(warnings, "向き先が main でない（"+d.port.Target+"）ので、Logiforge は検査していない")
+		warnings = append(warnings, "向き先が main でない（"+d.port.Target+"）ので、Logiforge は確かめていない")
 	}
 	ar, err := b.GetApplyRequest(ctx, c, repo, id)
 	if err != nil {
@@ -127,7 +127,7 @@ func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
 	return last
 }
 
-// checkOnCurrentMain は、今の main での検査を行う（design/backend/merge.md の「今の main での検査」）。
+// checkOnCurrentMain は、今の main での確かめを行う（design/backend/merge.md の「approve と merge の前に確かめること」）。
 // approve の前と、merge の前に使う。通らなければ、理由を返す（GitForge には書かない）。
 func (b *Backend) checkOnCurrentMain(ctx context.Context, repo, ref string, d *arDetail) (*ports.MergeFailure, error) {
 	failure := func(reason, detail string) (*ports.MergeFailure, error) {
@@ -157,7 +157,7 @@ func (b *Backend) checkOnCurrentMain(ctx context.Context, repo, ref string, d *a
 	return failure(reason, detail)
 }
 
-// refuse は、検査に通らなかった approve か merge を断るエラーを返す。エラーの code は、理由である。
+// refuse は、確かめに通らなかった approve か merge を断るエラーを返す。エラーの code は、理由である。
 // opener が直すべき理由なら、pull request のふつうのコメントに理由を書き、修正待ちのラベルに付け替える
 // （design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。ほかの理由では、GitForge に書かない。
 func (b *Backend) refuse(ctx context.Context, ref, id string, f ports.MergeFailure) error {
@@ -210,13 +210,20 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	if p := approvalProblem(d); p != "" {
 		return out, fail(CodeNotApproved, "%s。先頭のコミットを approve してもらってから merge する", p)
 	}
-	// 2 と 3. 今の main での検査。
+	// 2 と 3. 今の main での確かめ。
 	f, err := b.checkOnCurrentMain(ctx, repo, ref, d)
 	if err != nil {
 		return out, err
 	}
 	if f != nil {
 		return out, b.refuse(ctx, ref, id, *f)
+	}
+	// 確かめるあいだに worker を待つことがあるので、その間に出た request_changes を見落とさないよう、review を読み直す。
+	if d.reviews, err = b.Forge.ListReviews(ctx, ref, id); err != nil {
+		return out, err
+	}
+	if p := approvalProblem(d); p != "" {
+		return out, fail(CodeNotApproved, "%s。先頭のコミットを approve してもらってから merge する", p)
 	}
 	sha, err := b.squash(ctx, ref, id, d)
 	if err != nil {
@@ -236,7 +243,7 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 func approvalProblem(d *arDetail) string {
 	last := lastDecisive(d.reviews.Items, "")
 	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
-		return "最後の決めるレビューが、先頭のコミット " + d.current.Commit + " への approve でない"
+		return "最後の決めるレビューが、先頭のコミット " + shortSHA(d.current.Commit) + " への approve でない"
 	}
 	return ""
 }

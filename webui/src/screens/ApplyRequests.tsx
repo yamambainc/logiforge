@@ -250,7 +250,7 @@ function ReviewPane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onC
       // 新しい先頭のコミットを読み直して示し、もう一度確かめさせる。書きかけは残す
       case 'conflict': setConfirmFor(null); setConflict(r.message); if (r.ar) onChanged(r.ar, null); break;
       case 'not_open': clearDraft(repo, a.id); setConfirmFor(null); onChanged(r.ar, r.message); break;
-      // 検査に通らず、approve を出さなかった。書きかけは残す
+      // 確かめに通らず、approve を出さなかった。書きかけは残す
       case 'refused': setConfirmFor(null); setError(r.message); if (r.ar) onChanged(r.ar, null); break;
       case 'error': setError(r.message); break;
       case 'unauthenticated': break;
@@ -329,7 +329,7 @@ function MergePane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onCh
       {error && <p className="form-error" role="alert">{error}</p>}
       {confirm ? (
         <div className="confirm" role="dialog" aria-label="merge の確かめ">
-          <p><b>この先頭のコミットを、main に squash merge します。</b>直前に、今の main で検査し直します。</p>
+          <p><b>この先頭のコミットを、main に squash merge します。</b>直前に、今の main で確かめ直します。</p>
           <div className="form-actions">
             <button type="button" className="btn primary" disabled={busy} onClick={() => void send()}>{busy ? '送っています…' : 'merge を送る'}</button>
             <button type="button" className="btn" disabled={busy} onClick={() => setConfirm(false)}>やめる</button>

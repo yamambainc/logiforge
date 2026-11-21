@@ -210,7 +210,7 @@ func TestApplyRequestCommands(t *testing.T) {
 		st.reqs[len(st.reqs)-1].URL.Path != "/v1/repositories/q/apply-requests/apr_1/merge" {
 		t.Fatalf("ar merge: %d %s %s", code, out, errs)
 	}
-	// 検査に通らなければ、理由と説明を書き、終了コードを 1 にする。
+	// 確かめに通らなければ、理由と説明を書き、終了コードを 1 にする。
 	if code, _, errs := run(t, dir, e, "", "ar", "merge", "apr_2"); code != ExitError || !strings.Contains(errs, "stale_target") || !strings.Contains(errs, "今の main に合わせる") {
 		t.Fatalf("ar merge の失敗: %d %s", code, errs)
 	}

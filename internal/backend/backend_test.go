@@ -82,6 +82,8 @@ type fakeForge struct {
 	mergeErr error
 	// mainHead があれば、MainHead はそれを返す（worker が追いつかない場合を作るため）。
 	mainHead string
+	// onMainHead があれば、MainHead の前に呼ぶ（確かめているあいだに、ほかの人が review を出した場合を作るため）。
+	onMainHead func()
 	// archived は、archive の git リポジトリ（gitforge_ref）。
 	archived map[string]bool
 	// waitingErr があれば、SetWaiting はそれを返す（ラベルを書けない主体の場合を作るため）。
@@ -100,6 +102,9 @@ func (f *fakeForge) GitForgeRef(_ context.Context, name string) (string, error) 
 }
 func (f *fakeForge) GitURL(ref string) string { return "https://forge.example.com/" + ref + ".git" }
 func (f *fakeForge) MainHead(context.Context, string) (string, error) {
+	if f.onMainHead != nil {
+		f.onMainHead()
+	}
 	if f.mainHead != "" {
 		return f.mainHead, nil
 	}
@@ -190,12 +195,8 @@ func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting)
 	case ports.WaitingReview:
 		ar.ReviewWaitingAt = time.Now().UTC()
 	case ports.WaitingFix:
-		// テストの context にはトークンがないので、最後に review を出した人が付けたものとする。
-		actor := ""
-		if rs := f.reviews[id]; len(rs.Items) > 0 {
-			actor = rs.Items[len(rs.Items)-1].Reviewer
-		}
-		ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{Actor: actor, At: time.Now().UTC()})
+		// 付けた人は記録しない。ずれ直しは、付けた人を見ないからである（design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+		ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{At: time.Now().UTC()})
 	}
 	return nil
 }
@@ -609,7 +610,7 @@ func TestDesiredWaiting(t *testing.T) {
 		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
 		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
-		{"検査に通らず修正待ちのラベルを付けた（approve は出していない）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
+		{"確かめに通らず修正待ちのラベルを付けた（approve は出していない）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
 		// ラベルを付けられるのは、書く権限がある人だけなので、だれが付けたかは見ない。
 		{"GitForge の画面で修正待ちのラベルを付けた", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "admin", At: t0.Add(time.Minute)}}},
 			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(30 * time.Second)}}, ports.WaitingFix},

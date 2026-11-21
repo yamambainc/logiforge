@@ -14,7 +14,7 @@ import (
 //   - approve のあとに request_changes が付いた apply request を、人が merge しても、受け入れる。review は見ない。
 //   - コードを書く権限のない reviewer の approve は数えず、権限のある reviewer の approve し直しで反映される。
 //
-// approve のときに Logiforge が今の main で検査しないよう、向き先を main でないブランチにしてからレビューし、
+// approve のときに Logiforge が今の main で確かめないよう、向き先を main でないブランチにしてからレビューし、
 // あとで main に戻す（Forgejo の画面で向き先を変えるのと同じ）。人の merge は、Logiforge を通さない。
 func TestE2EHumanMerge(t *testing.T) {
 	w := setup(t)

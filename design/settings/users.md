@@ -41,7 +41,7 @@
 ## WebUI からのレビュー
 
 - `user` は、WebUI で、apply request をレビューできる。CLI のレビューと同じ API と、同じ意味である（[apply request をレビューする](../api/endpoints/apply-request/review.md)）。
-  - approve は、今の `main` で検査に通ったときだけ出す。merge はしない（[approve](../backend/merge.md#approve)）。
+  - approve は、今の `main` で確かめに通ったときだけ出す。merge はしない（[approve](../backend/merge.md#approve)）。
   - approve された apply request は、WebUI から merge できる（[apply request を merge する](../api/endpoints/apply-request/merge.md)）。
 - 書くのは、サインインした本人の user access token である。merge も、本人のトークンで行う。
 - その repository に Write がなければ、`forbidden` を返す。

@@ -743,8 +743,8 @@ paths:
       summary: レビューを付ける（client と、その repository に Write がある user。pull request の作者とは別のアカウント）
       description: |
         user（WebUI）は、WebUI のサインインで得たトークンで呼ぶ。その repository に Write がなければ forbidden（../../design/settings/users.md の「WebUI からのレビュー」）。
-        `approve` は、向き先が main なら、先に今の main で検査する（../../design/backend/merge.md の「approve」）。通ったときだけ GitForge に approve を出す。merge はしない（mergeApplyRequest）。
-        検査に通らなければ、approve を出さず、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
+        `approve` は、向き先が main なら、先に今の main で確かめる（../../design/backend/merge.md の「approve」）。通ったときだけ GitForge に approve を出す。merge はしない（mergeApplyRequest）。
+        確かめに通らなければ、approve を出さず、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く（apply request の `comments` で読める）。
         先頭のコミットが GitForge にはあるが、worker がまだスナップショットにしていなければ、どの種類のレビュー（approve、request_changes、comment）も付けられず、snapshot_pending を返す。少し待って送り直す。
         呼んだ主体が pull request の作者なら、GitForge が approve を拒む（../../design/adapters/pull-requests.md の「数える review」）。
       parameters:
@@ -790,7 +790,7 @@ paths:
       description: |
         merge の直前に、反映の条件を、今の main で確かめ直す（../../design/backend/merge.md の「merge」）。
         - 最後の決めるレビューが、先頭のコミットへの数える approve でなければ、not_approved。
-        - 検査に通らなければ、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く。
+        - 確かめに通らなければ、理由を code にして返す（stale_target、conflict、invariant_violation、snapshot_pending）。stale_target、conflict、invariant_violation では、理由を pull request のふつうのコメントにも書く。
         - 呼んだ主体に merge の権限がなく、GitForge が断ったら、merge_forbidden。
         - 向き先が main でなければ、validation_failed。Logiforge では merge しない。GitForge で merge する。
         opener も呼べる。もう反映された apply request に送り直したら、成功として今の状態を返す。

@@ -10,10 +10,10 @@ approve された apply request を、`main` に反映するときに、CLI か 
 
 ## すること
 
-- 反映の条件と、今の `main` での検査を確かめ直してから、呼んだ主体のトークンで、GitForge の pull request を squash merge する（[merge](../../../backend/merge.md#merge)）。
+- 反映の条件と、今の `main` での確かめを確かめ直してから、呼んだ主体のトークンで、GitForge の pull request を squash merge する（[merge](../../../backend/merge.md#merge)）。
 - 確かめに通らなければ、merge しない。理由をエラーの code で返す。
   - `not_approved`：最後の決めるレビューが、先頭のコミットへの数える approve でない。
-  - `stale_target`、`conflict`、`invariant_violation`：今の `main` での検査に通らない。pull request のふつうのコメントにも、理由を書く。
+  - `stale_target`、`conflict`、`invariant_violation`：今の `main` での確かめに通らない。pull request のふつうのコメントにも、理由を書く。
   - `snapshot_pending`：先頭のコミットか今の `main` を、worker がまだ取り込んでいない。少し待って送り直す。
   - `merge_forbidden`：呼んだ主体に merge の権限がなく、GitForge が断った。
 - `client` も `user` も呼べる。`user` は、その repository に Write があるときだけ受け付ける。opener も呼べる。

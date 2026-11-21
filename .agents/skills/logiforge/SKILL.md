@@ -1,6 +1,6 @@
 ---
 name: logiforge
-description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、approve された apply request を merge する、request_changes や検査に通らなかった理由（conflict、stale_target など）のあとに直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
+description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、approve された apply request を merge する、request_changes や確かめに通らなかった理由（conflict、stale_target など）のあとに直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
 ---
 
 # Logiforge を使う

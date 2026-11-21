@@ -30,7 +30,7 @@ const (
 	CodeSetupDone Code = "setup_done"
 	// CodeSetupInProgress は、セットアップが、ほかのブラウザで進んでいることである。
 	CodeSetupInProgress Code = "setup_in_progress"
-	// 検査に通らない approve と merge の理由（design/backend/merge.md）。
+	// 確かめに通らない approve と merge の理由（design/backend/merge.md）。
 	CodeStaleTarget        Code = "stale_target"
 	CodeConflict           Code = "conflict"
 	CodeInvariantViolation Code = "invariant_violation"

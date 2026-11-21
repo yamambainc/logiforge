@@ -15,7 +15,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
 | 先頭のコミット | pull request の head のコミット（[先頭のコミット](../backend/apply-request/README.md#先頭のコミット)） |
 | レビュー | pull request の review（approve、request changes、comment）。reviewer のトークンで出す |
 | 反映する | pull request の merge。merge の操作を呼んだ主体のトークンで、squash を選び、head の SHA とメッセージを渡す（[merge](../backend/merge.md#merge)）。GitForge の画面からの merge も受け入れる |
-| 反映できない理由 | `approve` か merge が今の `main` での検査に通らなかった理由を、人が読む文で書いた、pull request のふつうのコメントと、ラベルの付け替え（[レビュー待ちと修正待ちのラベル](#レビュー待ちと修正待ちのラベル)）。要求を送った主体のトークンで書く |
+| 反映できない理由 | `approve` か merge が今の `main` での確かめに通らなかった理由を、人が読む文で書いた、pull request のふつうのコメントと、ラベルの付け替え（[レビュー待ちと修正待ちのラベル](#レビュー待ちと修正待ちのラベル)）。要求を送った主体のトークンで書く |
 | close | pull request の close。理由は、close した主体のトークンで書く pull request のコメント（人が読む文） |
 | 人への依頼 | issue。起票した主体のトークンで作る。識別子は issue の番号。タイトルは対象ノードの識別子で始める |
 | 回答 | 回答した利用者のトークンで書く issue のコメントと、その issue の close |
@@ -76,16 +76,16 @@ review と issue の本文に書くことは、[review と issue の本文](text
 |---|---|---|
 | apply request を作ったとき | レビュー待ち | opener |
 | `request changes` の review を出したとき | 修正待ち | reviewer |
-| `approve` か merge が、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）で今の `main` での検査に通らなかったとき | 修正待ち | 要求を送った主体 |
+| `approve` か merge が、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）で今の `main` での確かめに通らなかったとき | 修正待ち | 要求を送った主体 |
 | opener が直し終えたと申告したとき（[直し終えたと申告する](../api/endpoints/apply-request/fixed.md)） | レビュー待ち | opener |
 | 反映したとき、close したとき | 両方を外す | merge した主体か、close した主体 |
 
-- 検査に通らなかったときは、付けるラベルが既に付いていても、外して付け直す。
-  - なぜ：ずれ直しは、検査に通らなかった出来事を、そのときラベルを付けた出来事で読むから（下の「ラベルがずれたとき」）。付け直さないと、`request changes` で修正待ちになったあとの出来事が残らない。
+- 確かめに通らなかったときは、付けるラベルが既に付いていても、外して付け直す。
+  - なぜ：ずれ直しは、確かめに通らなかった出来事を、そのときラベルを付けた出来事で読むから（下の「ラベルがずれたとき」）。付け直さないと、`request changes` で修正待ちになったあとの出来事が残らない。
 - push では、ラベルを変えない。なぜ：push しても、直し終えたとは限らないから。直し終えたかは、opener が申告する。
 - ラベルがなければ、付けるときに、上の色と説明で作る。repository の用意のときには作らない。
   - なぜ付ける前に作るか：GitHub では、ない名前のラベルを pull request に付けると、既定の色で作られてしまうから。
-- ラベルを作り、付け、外すのに要る権限は、repository に書く権限である（GitHub と Forgejo）。読むだけの主体は、付け外しできない。
+- ラベルを付け外すのに要る権限は、GitHub では Triage 以上、Forgejo では repository に書く権限である。読むだけの主体は、付け外しできない。
 
 ### ラベルがずれたとき
 
@@ -98,12 +98,12 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - 一覧を読むときは、review を読まないので、分からない。worker も、ずれを直さない（worker のトークンは読むだけである）。
 - 正しいラベルは、その pull request の次の出来事のうち、いちばん新しいもので決める。
   - 数える `request changes` の review（GitForge の画面から直接出したものも含む）：修正待ち
-  - 修正待ちのラベルを付けたこと（opener が直すべき理由で検査に通らなかったこと。GitForge の画面で付けたものも含む）：修正待ち
-    - なぜ付けた人を見ないか：検査に通らなかった `approve` は GitForge に出ないので、付けた人の `approve` を手がかりにできないから。ラベルを付けられるのは、repository に書く権限のある人だけである。
+  - 修正待ちのラベルを付けたこと（opener が直すべき理由で確かめに通らなかったこと。GitForge の画面で付けたものも含む）：修正待ち
+    - なぜ付けた人を見ないか：確かめに通らなかった `approve` は GitForge に出ないので、付けた人の `approve` を手がかりにできないから。ラベルを付けられるのは、GitHub では Triage 以上、Forgejo では repository に書く権限のある人だけである。ラベルは表示にだけ使うので、だれが付けたものも数えて、保証は弱くならない。
   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）：レビュー待ち
   - 数える `approve` の review：レビュー待ち。なぜ：`approve` のあとに open のまま残るのは、`approve` し直しを待つものだから
   - どれもなければ、レビュー待ち
-  - 反映できない理由のコメントは、読まない。なぜ：人が読む文で、だれでも書けるから。検査に通らなかった出来事は、そのときに付け替えたラベルの出来事で読む。
+  - 反映できない理由のコメントは、読まない。なぜ：人が読む文で、だれでも書けるから。確かめに通らなかった出来事は、そのときに付け替えたラベルの出来事で読む。
   - ラベルを付けた時刻は、pull request の出来事の一覧（GitHub は issue の events、Forgejo は issue の timeline）で読む。
   - GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
 - 直すときは、その要求を送った主体のトークンで書く。その主体に書く権限がなければ、直さずに、応答に警告を付ける。警告には、書く権限のある人が読めば直ることを書く。
