@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/gitx"
+	"github.com/yamambainc/logiforge/internal/ids"
 	"github.com/yamambainc/logiforge/internal/ports"
 	"github.com/yamambainc/logiforge/internal/snapshot"
 	"github.com/yamambainc/logiforge/internal/store"
@@ -80,6 +81,8 @@ type Worker struct {
 	locks map[string]chan struct{} // repository ごとのロック（容量 1。入れたら取った、抜いたら放した）
 	// moved は、古いフォーマットバージョンの下のブランチのスナップショットを、版の外に移し終えた repository である。プロセスごとに 1 度だけ移す。
 	moved map[string]bool
+	// cloneOK は、手元の複製が git の repository だと、このプロセスで確かめた repository である。
+	cloneOK map[string]bool
 	// hasLatest は、latest があるとわかった repository である。repositories を書くのに使う。
 	hasLatest map[string]bool
 	// written は、最後に書いた repositories である。変わったときだけ書く。書いていなければ nil。
@@ -292,12 +295,38 @@ func (w *Worker) writeRepositories(ctx context.Context, repos []ports.Repository
 }
 
 func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
+	if !ids.RepositoryNamePattern.MatchString(name) {
+		return nil, fmt.Errorf("repository の名前の形が正しくない：%q", name)
+	}
 	dir := filepath.Join(w.cfg.Dir, name+".git")
-	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-		if _, err := gitx.Init(ctx, dir); err != nil {
+	g := &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}
+	_, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return nil, err
+	case w.checkedClone(name):
+		return g, nil
+	default:
+		ok, err := g.IsRepo(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			w.markClone(name, true)
+			return g, nil
+		}
+		// 手元の複製が git の repository として読めなければ、消して作り直す。次の fetch で取り直す。
+		// なぜ：壊れたままだと、見回りのたびに同じ失敗をくり返し、取り込みが止まるから。
+		w.cfg.Log.Warn("手元の複製が git の repository でないので、作り直す", "repository", name, "dir", dir)
+		if err := os.RemoveAll(dir); err != nil {
 			return nil, err
 		}
 	}
+	if _, err := gitx.Init(ctx, dir); err != nil {
+		return nil, err
+	}
+	w.markClone(name, true)
 	return &gitx.Repo{Dir: dir, Env: w.cfg.GitEnv, Timeout: w.cfg.GitTimeout}, nil
 }
 
@@ -305,7 +334,33 @@ func (w *Worker) repo(ctx context.Context, name string) (*gitx.Repo, error) {
 // repository のロックを取るまで待つ。
 func (w *Worker) Sync(ctx context.Context, r ports.Repository) error {
 	defer w.lock(r.Name)()
-	return w.syncLocked(ctx, r)
+	err := w.syncLocked(ctx, r)
+	if err != nil && strings.Contains(err.Error(), "not a git repository") {
+		// 確かめたあとに複製が壊れた。次の見回りで確かめ直し、作り直す。
+		w.markClone(r.Name, false)
+	}
+	return err
+}
+
+// checkedClone は、このプロセスで、手元の複製が git の repository だと確かめたかを返す。
+// なぜ覚えるか：見回りのたびに、repository ごとに git を 1 つ余分に動かさないため。
+func (w *Worker) checkedClone(name string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.cloneOK[name]
+}
+
+func (w *Worker) markClone(name string, ok bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.cloneOK == nil {
+		w.cloneOK = map[string]bool{}
+	}
+	if ok {
+		w.cloneOK[name] = true
+	} else {
+		delete(w.cloneOK, name)
+	}
 }
 
 func (w *Worker) syncLocked(ctx context.Context, r ports.Repository) error {

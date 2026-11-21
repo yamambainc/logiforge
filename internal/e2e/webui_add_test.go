@@ -31,10 +31,14 @@ func TestWebUIAddRepository(t *testing.T) {
 			Prepared *bool  `json:"prepared"`
 		} `json:"items"`
 	}
-	st, b := w.call("alice", "GET", "/settings/repositories", nil)
-	if st != 200 || json.Unmarshal(b, &list) != nil || len(list.Items) != 1 || list.Items[0].Prepared == nil || !*list.Items[0].Prepared {
-		t.Fatalf("登録した repository の一覧の prepared：%d %s", st, b)
-	}
+	// prepared は、worker が main を取り込んで latest を置くまで false に見える（design/backend/list-reads.md の「置き場の読み」）。
+	var st int
+	var b []byte
+	w.eventually("登録した repository の一覧の prepared が true になる", 60*time.Second, func() bool {
+		st, b = w.call("alice", "GET", "/settings/repositories", nil)
+		list.Items = nil
+		return st == 200 && json.Unmarshal(b, &list) == nil && len(list.Items) == 1 && list.Items[0].Prepared != nil && *list.Items[0].Prepared
+	})
 	if st, b := w.call("alice", "DELETE", "/settings/repositories/"+old, nil); st != 204 {
 		t.Fatalf("%s を外す：%d %s", old, st, b)
 	}

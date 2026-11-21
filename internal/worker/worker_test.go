@@ -622,3 +622,39 @@ func TestCitationOverlap(t *testing.T) {
 		t.Fatalf("重なりの警告：%v", c.Warnings)
 	}
 }
+
+// 手元の複製が git の repository として読めなくなったら、消して作り直し、取り込みを続ける。
+func TestBrokenCloneIsRecreated(t *testing.T) {
+	ctx := context.Background()
+	r := setupRemote(t)
+	w, st := newWorker(t, r)
+	syncRepo(t, w)
+	dir := filepath.Join(w.cfg.Dir, "q.git")
+	// 中身が消えて、ディレクトリだけが残った。
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.write(h2+"/background.md", []byte("あと\n"))
+	head := r.commit("after")
+	// このプロセスでは、もう確かめた複製なので、まず git の操作が失敗する。そこで、確かめ直す印を付ける。
+	if err := w.Sync(ctx, ports.Repository{Name: "q", GitForgeRef: "o/q"}); err == nil || !strings.Contains(err.Error(), "not a git repository") {
+		t.Fatalf("壊れた複製で、git の誤りを返していない：%v", err)
+	}
+	// 次の見回りで、確かめ直して作り直し、取り込む。
+	syncRepo(t, w)
+	if latest, _ := store.GetLatest(ctx, st, "q"); latest != head {
+		t.Fatalf("作り直したあとに取り込んでいない：latest %s、want %s", latest, head)
+	}
+}
+
+// repository の名前の形が正しくなければ、手元の複製に触らない（消す操作の手前で守る）。
+func TestRepoRejectsBadName(t *testing.T) {
+	r := setupRemote(t)
+	w, _ := newWorker(t, r)
+	if _, err := w.repo(context.Background(), "../x"); err == nil {
+		t.Fatal("../x を受け付けた")
+	}
+}
