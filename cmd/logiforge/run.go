@@ -69,7 +69,7 @@ func openSettings(backend bool) (*settings.DB, settings.Keys, error) {
 		}
 	} else if os.Getenv(envBackendKey) != "" || os.Getenv(envBackendKey+"_FILE") != "" {
 		// worker に、バックエンドの鍵を渡さない（design/settings/secrets.md の「2 つの鍵」）。
-		return nil, keys, fmt.Errorf("worker に %s を渡さない。記録の署名の秘密鍵と、GitHub App の client secret を、worker から隠すため", envBackendKey)
+		return nil, keys, fmt.Errorf("worker に %s を渡さない。GitHub App の秘密鍵と client secret を、worker から隠すため", envBackendKey)
 	}
 	db, err := settings.Open(path, !backend)
 	if err != nil {
@@ -470,7 +470,7 @@ func workerHealth() error {
 
 // runSettings は、`logiforge settings` のコマンドである。
 //
-//	logiforge settings load <ファイル>   JSON の設定を、設定の DB に書く（全体を置き換える。記録の鍵は足すだけ）
+//	logiforge settings load <ファイル>   JSON の設定を、設定の DB に書く（全体を置き換える）
 //	logiforge settings rekey --old-backend-key-file <ファイル> --old-shared-key-file <ファイル>
 //	                                    すべての秘密を、新しい鍵（LOGIFORGE_BACKEND_KEY と LOGIFORGE_SHARED_KEY）で暗号化し直す
 func runSettings(ctx context.Context, args []string) error {

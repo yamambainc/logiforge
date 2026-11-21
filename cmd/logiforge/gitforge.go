@@ -34,7 +34,7 @@ type readSource interface {
 type forgeSetup struct {
 	forge *pullreq.Adapter
 	auth  ports.Authenticator
-	// reader は、読むだけのトークンで git と記録を読む。GitForge のアダプタを読むだけで呼ぶときも、reader.ReadToken を使う。
+	// reader は、読むだけのトークンで git と、pull request と review を読む。GitForge のアダプタを読むだけで呼ぶときも、reader.ReadToken を使う。
 	reader readSource
 	// webURL は、WebUI のサインイン（OAuth）に使う GitForge の URL。kind は、構成（forgejo か github）。
 	webURL, kind string

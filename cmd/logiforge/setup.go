@@ -300,7 +300,6 @@ func (s *setupService) Finish(ctx context.Context, token string) (api.SetupState
 	if c.WebUIURL == "" {
 		return api.SetupState{}, problem(backend.CodeValidationFailed, "WebUI の URL がない。構成を選び直す")
 	}
-	// 記録の鍵は、まだない。主体を確かめるだけなので、空の鍵で作る。
 	fs, err := setupForge(c, true, nil)
 	if err != nil {
 		return api.SetupState{}, err
