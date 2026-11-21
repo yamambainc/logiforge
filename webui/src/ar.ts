@@ -21,7 +21,7 @@ export const REVIEW: Record<string, string> = { approve: 'approve', request_chan
 export const STATE: Record<string, string> = { open: 'open', merged: '反映済み', closed: '閉じた' };
 export const AWAITING: Record<string, string> = { review: 'レビュー待ち', fix: '修正待ち' };
 export const FAILURE: Record<string, string> = {
-  stale_target: '対象ノードが先に変わった', invariant_violation: '決まりに沿わない', conflict: 'git の衝突', snapshot_pending: '取り込み中で確かめられなかった',
+  stale_target: 'ブランチを今の main に合わせる必要がある', invariant_violation: '決まりに沿わない', conflict: 'git の衝突', snapshot_pending: '取り込み中で確かめられなかった',
   merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
 };
 

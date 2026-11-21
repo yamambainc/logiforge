@@ -230,27 +230,8 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 	if len(br.Outside) > 0 {
 		return "invariant_violation", fmt.Sprintf("%s（ディレクトリの外）：%s", tree.RuleOutsideDirectory, strings.Join(br.Outside, "、")), nil
 	}
-	baseNum, err := b.mainNumber(ctx, onto, br.Diff.Base)
-	if err != nil {
-		return "", "", err
-	}
-	for _, t := range targetsOf(ops) {
-		n := onto.main.SnapshotTree.Nodes[t]
-		if n == nil || baseNum == 0 || n.LastChanged.Number > baseNum {
-			return "stale_target", fmt.Sprintf("対象ノード %s が、base のあとに変わった", t), nil
-		}
-	}
-	// 引用した部分木が、base のあとに変わっていれば、それも stale_target にする（design/backend/merge.md の「対象ノードの変化」）。
-	// 今の main にないノードは、同じ apply request で加えるノードなので、変わったとみなさない。先頭のコミットの木にあるかは、下の検査で確かめる。
-	for _, op := range ops {
-		for _, ci := range op.Citations {
-			if ci.TargetKind != "subtree" || onto.main.SnapshotTree.Nodes[ci.NodeID] == nil {
-				continue
-			}
-			if onto.main.SnapshotTree.SubtreeChangedAfter(ci.NodeID, baseNum) {
-				return "stale_target", fmt.Sprintf("引用した部分木 %s が、base のあとに変わった", ci.NodeID), nil
-			}
-		}
+	if reason, detail, err := b.staleProblem(ctx, onto, br.Diff.Base, ops); err != nil || reason != "" {
+		return reason, detail, err
 	}
 	res, conflicts, err := b.checkVersion(ctx, onto, onto, br)
 	if err != nil {
@@ -263,6 +244,66 @@ func (b *Backend) changeProblem(ctx context.Context, onto *view, br *snapshot.Br
 		return "invariant_violation", violations(res.Rejected), nil
 	}
 	return "", "", nil
+}
+
+// staleProblem は、対象ノードと引用した部分木が、ブランチが main から分かれたコミット base のあとに変わっていないかを確かめる
+// （design/backend/merge.md の「対象ノードの変化」）。変わっていれば stale_target と、利用者が読む説明を返す。
+//   - 今の main にないノードは、同じ apply request で加えるノードなので、変わったとみなさない。先頭のコミットの木にあるかは、差分の検査で確かめる。
+//   - base が今の main の並びになければ、確かめられないので、変わったものとみなす。
+func (b *Backend) staleProblem(ctx context.Context, onto *view, base string, ops []Operation) (string, string, error) {
+	nodes := onto.main.SnapshotTree.Nodes
+	type check struct {
+		label string
+		last  snapshot.Rev
+	}
+	var checks []check
+	for _, t := range targetsOf(ops) {
+		if n := nodes[t]; n != nil {
+			checks = append(checks, check{"対象ノード " + t, n.LastChanged})
+		}
+	}
+	for _, op := range ops {
+		for _, ci := range op.Citations {
+			if ci.TargetKind != "subtree" {
+				continue
+			}
+			if last, ok := onto.main.SnapshotTree.SubtreeLastChanged(ci.NodeID); ok {
+				checks = append(checks, check{"引用した部分木 " + ci.NodeID, last})
+			}
+		}
+	}
+	if len(checks) == 0 {
+		return "", "", nil
+	}
+	baseNum, err := b.mainNumber(ctx, onto, base)
+	if err != nil {
+		return "", "", err
+	}
+	if baseNum == 0 {
+		return "stale_target", fmt.Sprintf("このブランチが main から分かれたコミット %s が、今の main の履歴にない（main が書き換えられたかもしれない）。"+
+			"ブランチを今の main に合わせて（rebase か merge で）push し、レビューを受け直す", shortSHA(base)), nil
+	}
+	for _, c := range checks {
+		if c.last.Number <= baseNum {
+			continue
+		}
+		// どの apply request の反映かは、説明を補うだけなので、読めなければ書かない。
+		by := "main のコミット " + shortSHA(c.last.Revision) + " "
+		if m, err := b.Snap.Commit(ctx, onto.repo, c.last.Revision); err == nil && m.ApplyRequest != "" {
+			by = "main のコミット " + shortSHA(c.last.Revision) + "（apply request #" + m.ApplyRequest + " の反映）"
+		}
+		return "stale_target", fmt.Sprintf("%s は、このブランチが main から分かれたコミット %s のあとに、%sで変わった。"+
+			"ブランチを今の main に合わせて（rebase か merge で）push し、レビューを受け直す", c.label, shortSHA(base), by), nil
+	}
+	return "", "", nil
+}
+
+// shortSHA は、利用者が読む文に書く、コミットの SHA の先頭 7 文字を返す。
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 // squash は、反映の手順の 4 と 5 である。メッセージに、機械が読む trailer は書かない。どのコミットがどの apply request の反映かは、
