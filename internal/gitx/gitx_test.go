@@ -297,3 +297,24 @@ func TestTimeout(t *testing.T) {
 		t.Fatalf("上限のあと、戻るまでに %v かかった", d)
 	}
 }
+
+// IsRepo は、bare repository なら true、中身のないディレクトリなら false を返す。
+func TestIsRepo(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "r.git")
+	if _, err := Init(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := (&Repo{Dir: dir}).IsRepo(ctx); err != nil || !ok {
+		t.Fatalf("bare repository：%v %v", ok, err)
+	}
+	empty := t.TempDir()
+	if ok, err := (&Repo{Dir: empty}).IsRepo(ctx); err != nil || ok {
+		t.Fatalf("中身のないディレクトリ：%v %v", ok, err)
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := (&Repo{Dir: dir}).IsRepo(cctx); err == nil {
+		t.Fatal("git を動かせないときに、誤りを返していない")
+	}
+}
