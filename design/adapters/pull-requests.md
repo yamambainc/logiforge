@@ -141,3 +141,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - 他人の review の本文
 - review が dismiss されるか消されたら、その review は数えない。dismiss と削除は、取り下げとして扱う。
   - Forgejo では、dismiss できるのは admin だけで、消せるのは review を書いた人と admin だけである。
+  - GitHub では、repository に書く権限（Write）を持つ人は、他人の review を dismiss できる（`main` を守る設定で、dismiss できる人を絞っていなければ）。
+  - そのため、GitHub では、Write を持つ opener が、他人の `request changes` を dismiss できる。そのあと、opener と別の 1 人の `approve` があれば、GitForge の画面から merge でき、worker の反映かの判定も通る。
+    - これは、受け入れる危険である。なぜ：Write を持つ主体を信じる（上の「信頼の境界」）からであり、dismiss は GitForge が記録し、だれが行ったかが残るから。
+    - Forgejo では、dismiss できるのは admin だけなので、Write を持つだけの opener は、これをできない。

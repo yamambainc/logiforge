@@ -610,6 +610,12 @@ type Verifier interface {
 	VerifyMerge(ctx context.Context, r ports.Repository, sha string, parents []string, prevVersion string, committed time.Time, files tree.Files, broken *store.Broken) (ports.MergeVerdict, error)
 }
 
+// ArchiveChecker は、GitForge で、git リポジトリが archive されているかを、worker のトークンで読む。
+// Verifier がこれも持てば、移した元の主張で、元の repository が archive されていることも確かめる（design/directory/migrate.md）。
+type ArchiveChecker interface {
+	Archived(ctx context.Context, gitForgeRef string) (bool, error)
+}
+
 // authorized は、main のコミットが反映によるものかを決める。Verifier がなければ nil（trailer で決める）。
 // 用意のコミット（根のコミットと、GitHub で背景情報を置く根の次のコミット）は、位置と trailer Logiforge-Init: と、
 // 差分がファイルを加えるだけであることで決める（design/backend/verify/init.md の「repository の用意のコミット」）。署名は使わない。
@@ -908,8 +914,19 @@ func (w *Worker) markDeleted(ctx context.Context, repo string, heads map[string]
 
 // migratedFromMatches は、移した先の用意のコミットの主張（元の repository src の、移したコミット commit）が、置き場と合うかを返す
 // （design/directory/migrate.md の「移した元」）。移したコミットが元の latest で、files の tree/ と artifacts/ が、元のそのスナップショットと
-// 同じときだけ true。読めないときは false にして、migrated_to を書かない。
+// 同じで、元の git リポジトリが GitForge で archive されているときだけ true。読めないときは false にして、migrated_to を書かない。
 func (w *Worker) migratedFromMatches(ctx context.Context, src, commit string, files tree.Files) bool {
+	if ac, ok := w.cfg.Verifier.(ArchiveChecker); ok {
+		ref, err := w.src.GitForgeRef(ctx, src)
+		if err != nil {
+			w.cfg.Log.Warn("移した元の repository の gitforge_ref を求められない。移した先を書かない", "from", src, "err", err)
+			return false
+		}
+		if archived, err := ac.Archived(ctx, ref); err != nil || !archived {
+			w.cfg.Log.Warn("移した元の git リポジトリが archive されていない（か、読めない）。移した先を書かない", "from", src, "err", err)
+			return false
+		}
+	}
 	latest, err := store.GetLatest(ctx, w.store, src)
 	if err != nil || latest == "" || latest != commit {
 		w.cfg.Log.Warn("移した元の主張が、元の repository の latest と合わない。移した先を書かない", "from", src, "commit", commit, "latest", latest, "err", err)

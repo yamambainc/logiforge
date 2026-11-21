@@ -96,6 +96,15 @@ func (v verifier) VerifyMerge(ctx context.Context, r ports.Repository, sha strin
 	return v.b.VerifyMerge(ports.WithToken(ctx, tok), r.Name, r.GitForgeRef, sha, parents, prevVersion, committed, files, broken)
 }
 
+// Archived は、git リポジトリが archive されているかを、worker のトークンで読む（移した元の主張を確かめる。design/directory/migrate.md）。
+func (v verifier) Archived(ctx context.Context, gitForgeRef string) (bool, error) {
+	tok, err := v.src.ReadToken(ctx, gitForgeRef)
+	if err != nil {
+		return false, err
+	}
+	return v.b.Forge.Archived(ports.WithToken(ctx, tok), gitForgeRef)
+}
+
 // allowProtocol は、LOGIFORGE_GIT_ALLOW_PROTOCOL（git で使える転送の方式）を読み、git の環境変数に足す。
 // 既定は https と file だけ。テストの GitForge が http で動くときなどに、足す。
 func allowProtocol(gitEnv []string) ([]string, error) {
