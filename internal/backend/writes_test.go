@@ -165,9 +165,86 @@ func TestMergeFailureStaleTarget(t *testing.T) {
 	if mf := res.Value.MergeFailure; ar.State != "open" || mf == nil || mf.Reason != "stale_target" || ar.Awaiting == nil || *ar.Awaiting != "fix" {
 		t.Fatalf("stale_target: %+v %+v", ar, mf)
 	}
+	// 説明は、どのコミット・どの apply request で変わったかと、何をすればよいかを書く。利用者に「base」の語を見せない。
+	if d := res.Value.MergeFailure.Detail; !strings.Contains(d, "対象ノード "+H1) || !strings.Contains(d, "apply request #"+x.Value.ID) ||
+		!strings.Contains(d, "今の main に合わせて") || mentionsBase(d) {
+		t.Fatalf("stale_target の説明：%s", d)
+	}
 	// 反映の失敗は、apply request のコメントとして、人が読む文で読める。
 	if len(ar.Comments) != 1 || !strings.Contains(ar.Comments[0].Body, "stale_target") {
 		t.Fatalf("反映の失敗のコメント：%+v", ar.Comments)
+	}
+}
+
+// mentionsBase は、利用者が読む文に、内部の語の「base」があるかを返す。git の操作の名前の rebase は除く。
+func mentionsBase(s string) bool {
+	return strings.Contains(strings.ReplaceAll(s, "rebase", ""), "base")
+}
+
+// 同じ apply request で作る仮説を対象にする操作は、stale_target にしない。その仮説は今の main にないので、base のあとに変わりようがない
+// （design/backend/merge.md の「対象ノードの変化」）。本番の apply request #16（論理木の初版）の形である。
+func TestMergeTargetAddedInSameApplyRequest(t *testing.T) {
+	const sNew, hNew = "s-aaaaaaaaaa", "h-bbbbbbbbbb"
+	dNew := dH2 + "/" + sNew + "/" + hNew
+	withNew := func(files map[string][]byte) map[string][]byte {
+		files[dH2+"/"+sNew+"/story.md"] = tree.MarshalStory(tree.StoryContent{ID: sNew, Title: "t", Summary: "s"})
+		files[dNew+"/hypothesis.md"] = tree.MarshalHypothesis(tree.HypothesisContent{ID: hNew, Statement: "x"})
+		return files
+	}
+	cases := map[string]map[string][]byte{
+		"新しい仮説の下にストーリー": withNew(map[string][]byte{
+			dNew + "/s-cccccccccc/story.md":                   tree.MarshalStory(tree.StoryContent{ID: "s-cccccccccc", Title: "t2", Summary: "s2"}),
+			dNew + "/s-cccccccccc/h-dddddddddd/hypothesis.md": tree.MarshalHypothesis(tree.HypothesisContent{ID: "h-dddddddddd", Statement: "y"}),
+		}),
+		"新しい仮説に検証結果": withNew(verdictFile(dNew, "v-9999999999", true)),
+	}
+	for name, files := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := live(t)
+			id := create(t, f, "x", "s3", files)
+			res, err := approve(t, f, id)
+			if err != nil || res.Value.ApplyRequest.State != "merged" {
+				t.Fatalf("approve: %+v %+v %v", res.Value.ApplyRequest, res.Value.MergeFailure, err)
+			}
+		})
+	}
+}
+
+// main が書き換えられて対象ノードが消えたら、今の main にないノードとして飛ばしても、反映しない。
+// 止めるのは、今の main に差分を重ねた木の検査である（design/backend/checks.md の「head の木で確かめること」）。
+func TestMergeTargetRemovedFromMain(t *testing.T) {
+	cases := map[string]map[string][]byte{
+		"背景情報の追加": {dH2 + "/background.md": []byte("一\n")},
+		"検証結果を出す": verdictFile(dH2, "v-9999999999", true),
+	}
+	for name, files := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := live(t)
+			id := create(t, f, "x", "s3", files)
+			// main の先頭のコミットを、H2 を消したものに書き換える（force push に当たる）。
+			f.r.git("rm", "-r", "--quiet", dH2)
+			f.r.git("commit", "--quiet", "--amend", "-m", "H2 を消して書き換えた")
+			res, err := approve(t, f, id)
+			if r := lastFailure(t, res, err); r != "conflict" && r != "invariant_violation" {
+				t.Fatalf("got %s", r)
+			}
+		})
+	}
+}
+
+// ブランチが main から分かれたコミットが、今の main の履歴になければ（main が書き換えられた）、確かめられないので stale_target にする。
+// 説明は、変わったとは書かず、分かれたコミットが今の main の履歴にないと書く。
+func TestMergeFailureBaseNotInMain(t *testing.T) {
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	// main の先頭のコミットを書き換える（force push に当たる）。
+	f.r.git("commit", "--quiet", "--amend", "--allow-empty", "-m", "書き換えた")
+	res, err := approve(t, f, id)
+	if r := lastFailure(t, res, err); r != "stale_target" {
+		t.Fatalf("got %s", r)
+	}
+	if d := res.Value.MergeFailure.Detail; !strings.Contains(d, "今の main の履歴にない") || strings.Contains(d, "変わった") || mentionsBase(d) {
+		t.Fatalf("説明：%s", d)
 	}
 }
 
