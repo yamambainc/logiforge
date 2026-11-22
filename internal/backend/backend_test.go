@@ -82,6 +82,12 @@ type fakeForge struct {
 	mergeErr error
 	// mainHead があれば、MainHead はそれを返す（worker が追いつかない場合を作るため）。
 	mainHead string
+	// requireApproval なら、main を承認を必須にする GitForge の設定で守る。本物と同じく、merge のときに、先頭のコミットへの approve が
+	// 1 つもないか、request changes が残っていれば ErrNotApproved で断る。一覧の承認の状態も、そのときだけ返す（一覧で分かる GitForge と同じ）。
+	// なければ、承認がなくても GitForge は merge する（設定のない GitForge と同じ）。1 件の承認の状態は、いつも返す。
+	requireApproval bool
+	// onMainHead があれば、MainHead の前に呼ぶ（確かめているあいだに、ほかの人が review を出した場合を作るため）。
+	onMainHead func()
 	// archived は、archive の git リポジトリ（gitforge_ref）。
 	archived map[string]bool
 	// waitingErr があれば、SetWaiting はそれを返す（ラベルを書けない主体の場合を作るため）。
@@ -100,6 +106,9 @@ func (f *fakeForge) GitForgeRef(_ context.Context, name string) (string, error) 
 }
 func (f *fakeForge) GitURL(ref string) string { return "https://forge.example.com/" + ref + ".git" }
 func (f *fakeForge) MainHead(context.Context, string) (string, error) {
+	if f.onMainHead != nil {
+		f.onMainHead()
+	}
 	if f.mainHead != "" {
 		return f.mainHead, nil
 	}
@@ -169,6 +178,10 @@ func (f *fakeForge) ListApplyRequests(_ context.Context, _, state string) ([]por
 		}
 		x := ar
 		x.Comments = nil
+		// 承認を必須にする設定があれば、一覧でも承認の状態を返す（一覧で分かる GitForge と同じ）。
+		if f.requireApproval && x.State == ports.StateOpen {
+			x.ReviewDecision = f.decision(x.ID)
+		}
 		out = append(out, x)
 	}
 	return out, nil
@@ -190,12 +203,8 @@ func (f *fakeForge) SetWaiting(_ context.Context, _, id string, w ports.Waiting)
 	case ports.WaitingReview:
 		ar.ReviewWaitingAt = time.Now().UTC()
 	case ports.WaitingFix:
-		// テストの context にはトークンがないので、最後に review を出した人が付けたものとする。
-		actor := ""
-		if rs := f.reviews[id]; len(rs.Items) > 0 {
-			actor = rs.Items[len(rs.Items)-1].Reviewer
-		}
-		ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{Actor: actor, At: time.Now().UTC()})
+		// 付けた人は記録しない。ずれ直しは、付けた人を見ないからである（design/adapters/pull-requests.md の「ラベルがずれたとき」）。
+		ar.FixWaitingLabeled = append(ar.FixWaitingLabeled, ports.LabelEvent{At: time.Now().UTC()})
 	}
 	return nil
 }
@@ -212,6 +221,9 @@ func (f *fakeForge) Merge(_ context.Context, _, id, head, title, message string)
 	}
 	if ar.HeadRevision != head {
 		return "", ports.ErrHeadMoved
+	}
+	if f.requireApproval && f.decision(id) != ports.DecisionApproved {
+		return "", fmt.Errorf("%w（偽物：承認が足りない）", ports.ErrNotApproved)
 	}
 	f.remote.git("checkout", "--quiet", "main")
 	cmd := exec.Command("git", "-C", f.remote.dir, "merge", "--squash", head)
@@ -247,7 +259,29 @@ func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) (
 	return r, nil
 }
 func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews, error) {
-	return f.reviews[id], nil
+	rs := f.reviews[id]
+	rs.Decision = f.decision(id)
+	return rs, nil
+}
+
+// decision は、本物のアダプタが review から決めるのと同じ規則で、承認の状態を決める（design/adapters/pull-requests.md の「承認の状態」）。
+// 書いた人ごとのいちばん新しい approve か request changes を見る。どのコミットへの review かは見ない。
+// request changes が 1 つでもあれば変更を求められている、そうでなく approve があれば承認済み、どちらもなければまだ。
+func (f *fakeForge) decision(id string) ports.ReviewDecision {
+	last := map[string]ports.ReviewKind{}
+	for _, r := range f.reviews[id].Items {
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			last[r.Reviewer] = r.Kind
+		}
+	}
+	d := ports.DecisionPending
+	for _, k := range last {
+		if k == ports.ReviewRequestChanges {
+			return ports.DecisionChangesRequested
+		}
+		d = ports.DecisionApproved
+	}
+	return d
 }
 func (f *fakeForge) CreateHumanRequest(_ context.Context, _ string, n ports.NewHumanRequest) (ports.HumanRequest, error) {
 	key := n.Requester + "\n" + n.TargetNode + "\n" + n.Body
@@ -394,7 +428,7 @@ func setup(t *testing.T) *fixture {
 	forge := &fakeForge{
 		ars: []ports.ApplyRequest{
 			{ID: "apr_1", Number: 1, Branch: "a", Target: "main", State: ports.StateMerged, MergedRevision: c2},
-			{ID: "apr_2", Number: 2, Branch: "b", State: ports.StateOpen, HeadRevision: head, CreatedAt: now.Add(time.Hour), Description: "説明"},
+			{ID: "apr_2", Number: 2, Branch: "b", State: ports.StateOpen, HeadRevision: head, CreatedAt: now.Add(time.Hour), Description: "説明", Waiting: ports.WaitingReview},
 		},
 		reviews: map[string]ports.Reviews{},
 		hrs: []ports.HumanRequest{
@@ -588,17 +622,27 @@ func TestExport(t *testing.T) {
 }
 
 func TestAwaiting(t *testing.T) {
-	for w, want := range map[ports.Waiting]string{ports.WaitingNone: "review", ports.WaitingReview: "review", ports.WaitingFix: "fix", ports.WaitingBoth: "fix"} {
+	for w, want := range map[ports.Waiting]string{ports.WaitingReview: "review", ports.WaitingFix: "fix", ports.WaitingBoth: "fix"} {
 		if got := awaiting(w); got == nil || *got != want {
 			t.Fatalf("%q: %v", w, got)
 		}
+	}
+	// ラベルがなければ、どちらでもない（approve されて merge を待つもの）。
+	if got := awaiting(ports.WaitingNone); got != nil {
+		t.Fatalf("ラベルなし：%v", *got)
 	}
 }
 
 // ずれたラベルの正しいもの：出来事のうち、いちばん新しいもので決める（design/adapters/pull-requests.md の「ラベルがずれたとき」）。
 func TestDesiredWaiting(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	rc := func(at time.Time) ports.Review { return ports.Review{Kind: ports.ReviewRequestChanges, CreatedAt: at} }
+	const head, old = "h2", "h1"
+	rc := func(at time.Time) ports.Review {
+		return ports.Review{Kind: ports.ReviewRequestChanges, CreatedAt: at, Revision: head}
+	}
+	ap := func(at time.Time, rev string) ports.Review {
+		return ports.Review{Kind: ports.ReviewApprove, CreatedAt: at, Revision: rev}
+	}
 	cases := []struct {
 		name    string
 		ar      ports.ApplyRequest
@@ -608,19 +652,20 @@ func TestDesiredWaiting(t *testing.T) {
 		{"何もない", ports.ApplyRequest{}, nil, ports.WaitingReview},
 		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
-		{"approve は修正待ちにしない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{{Kind: ports.ReviewApprove, CreatedAt: t0.Add(time.Minute)}}, ports.WaitingReview},
-		{"approve した人が、同じ秒に修正待ちのラベルを付けた（conflict で失敗）", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "Bob", At: t0.Add(time.Minute)}}},
-			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(time.Minute)}}, ports.WaitingFix},
-		{"approve した人が、次の秒に修正待ちのラベルを付けた", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(61 * time.Second)}}},
-			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(time.Minute)}}, ports.WaitingFix},
-		{"approve していない人が修正待ちのラベルを付けた（画面での付け替え）", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "admin", At: t0.Add(time.Minute)}}},
-			[]ports.Review{{Kind: ports.ReviewApprove, Reviewer: "bob", CreatedAt: t0.Add(30 * time.Second)}}, ports.WaitingReview},
+		{"approve は、どちらのラベルも外す", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), head)}, ports.WaitingNone},
+		{"前の先頭のコミットへの approve も数える", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), old)}, ports.WaitingNone},
+		{"確かめに通らず修正待ちのラベルを付けた（approve は出していない）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
+		// ラベルを付けられるのは、書く権限がある人だけなので、だれが付けたかは見ない。
+		{"GitForge の画面で修正待ちのラベルを付けた", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "admin", At: t0.Add(time.Minute)}}},
+			[]ports.Review{ap(t0.Add(30*time.Second), head)}, ports.WaitingFix},
+		{"修正待ちのラベルのあとの approve", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}},
+			[]ports.Review{ap(t0.Add(2*time.Minute), head)}, ports.WaitingNone},
 		{"同じ秒なら今の修正待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix}, []ports.Review{rc(t0.Add(300 * time.Millisecond))}, ports.WaitingFix},
 		{"同じ秒なら今のレビュー待ちを変えない", ports.ApplyRequest{ReviewWaitingAt: t0.Add(500 * time.Millisecond), Waiting: ports.WaitingReview}, []ports.Review{rc(t0)}, ports.WaitingReview},
-		{"push だけのあと approve して merge_forbidden で失敗した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(3 * time.Minute), FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}, Waiting: ports.WaitingFix},
-			[]ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(3 * time.Minute)}}, ports.WaitingReview},
-		{"request changes のあとの approve", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute)), {Kind: ports.ReviewApprove, CreatedAt: t0.Add(2 * time.Minute)}}, ports.WaitingReview},
-		{"修正待ちのラベルのあとのレビュー待ちのラベル（snapshot_pending で失敗）", ports.ApplyRequest{FixWaitingLabeled: []ports.LabelEvent{{At: t0}}, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
+		{"同じ秒なら、ラベルのないままにする", ports.ApplyRequest{ReviewWaitingAt: t0.Add(500 * time.Millisecond), Waiting: ports.WaitingNone}, []ports.Review{ap(t0, head)}, ports.WaitingNone},
+		{"request changes のあとの approve", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute)), ap(t0.Add(2*time.Minute), head)}, ports.WaitingNone},
+		{"approve のあとの request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), head), rc(t0.Add(2 * time.Minute))}, ports.WaitingFix},
+		{"修正待ちのラベルのあとのレビュー待ちのラベル（直し終えたと申告した）", ports.ApplyRequest{FixWaitingLabeled: []ports.LabelEvent{{At: t0}}, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {
 		if got := desiredWaiting(c.ar, c.reviews); got != c.want {

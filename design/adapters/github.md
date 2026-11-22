@@ -38,15 +38,20 @@ GitHub に固有のところだけを書く。
 
 ### merge を断られたとき
 
-merge の要求に GitHub が次のものを返したら、アダプタは反映の失敗 `merge_forbidden` にする（[反映の手順](../backend/merge.md)）。
+merge の要求に GitHub が次のものを返したら、アダプタは、承認が足りない（`not_approved`）か、merge の権限がない（`merge_forbidden`）とする（[merge](../backend/merge.md#merge)）。
+
+- 405 で、応答が承認の不足を書いたもの（「approving review」「Review required」「Changes requested」「code owner review」「Waiting on required approvals」などを含む）：`not_approved`。
+  - 例：branch protection の「At least 1 approving review is required by reviewers with write access.」。
+  - 例：ディレクトリの守りの (B) で、承認の team の承認がない（応答に `Waiting on required approvals from <承認の team>` が付く。[main の守り（ディレクトリ方式）](../directory/main.md#github-の守る設定)）。呼んだ主体を変えても通らず、直すのは承認をもらうことだから。
+  - なぜ待たないか：待っても、断られることは変わらないから。
+
+ほかは、`merge_forbidden` にする。
 
 - 403。主体に merge の権限がない（Write がない、トークンの権限が足りない）。
   - レート制限による 403 は、`merge_forbidden` にしない。待ってやり直す（[GitHub での main の守りと制約](github-main.md)）。
-- 405 で、応答が `Repository rule violations found` のもの。ルールセットが、この主体の merge を断った。
-  - 例：ディレクトリの守りの (B) の bypass にいない人が、ディレクトリを変える PR を merge した（[main の守り（ディレクトリ方式）](../directory/main.md#github-の守る設定)）。リポジトリの admin でも同じである。
-  - 応答には、`Waiting on required approvals from <承認の team>` も付く。
+- 405 で、応答が `Repository rule violations found` のもの（承認の不足を書いていないもの）。ルールセットが、この主体の merge を断った。
   - なぜ待たないか：待っても、断られることは変わらないから。
-- ほかの 405 は、`merge_forbidden` にしない。pull request を読み直し、衝突や先頭のコミットの変化として扱う。
+- ほかの 405 は、`not_approved` にも `merge_forbidden` にもしない。pull request を読み直し、衝突や先頭のコミットの変化として扱う。
 
 ### GitHub の誤りの応答
 

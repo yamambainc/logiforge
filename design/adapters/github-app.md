@@ -15,7 +15,7 @@ Logiforge が持つ GitHub のものは、1 つの GitHub App だけである。
 | worker | バックエンドが作った installation token（[worker のトークン](#worker-のトークン)） | Contents、Issues、Pull requests、Metadata の Read だけ |
 | バックエンドの作業用の git の複製 | GitHub App の installation token | 同じ |
 
-- reviewer に merge の権限が要る。なぜ：反映は、`approve` をした reviewer のトークンで merge するから（[反映の手順](../backend/merge.md)）。
+- Logiforge から merge する主体に、merge の権限が要る。なぜ：merge は、merge の操作を呼んだ主体のトークンで行うから（[merge](../backend/merge.md#merge)）。
 - opener と reviewer のトークンの決まりは、[CLI の認証](../cli/auth.md) に書く。
   - `repo` は、そのアカウントが書けるすべてのリポジトリに及ぶ。範囲は広いが、受け入れる。なぜ：OAuth のスコープは、リポジトリごとに絞れないから。
   - 絞りたいときは、Logiforge のためだけの機械用アカウントを作り、登録した repository にだけ Write を与える。
@@ -29,7 +29,7 @@ App は、初回のセットアップで、manifest flow で作る（[初回の�
 
 | 権限 | 値 | 使う者と理由 |
 |---|---|---|
-| Repository の Contents | Read and write | 利用者が repository を用意する（contents API と Git Data API）。利用者が、WebUI のレビューの approve で、pull request を merge する（merge は Contents の write が要る）。worker が git を読む |
+| Repository の Contents | Read and write | 利用者が repository を用意する（contents API と Git Data API）。利用者が、WebUI の merge で、pull request を merge する（merge は Contents の write が要る）。worker が git を読む |
 | Repository の Issues | Read and write | 利用者が、人への依頼に回答し、issue を閉じる |
 | Repository の Pull requests | Read and write | 利用者が、WebUI のレビューで、pull request に review を出す（review は、Pull requests の write が要る）。WebUI で apply request を読む。worker が、どの apply request の反映かを決めるのに、反映した pull request の一覧を読む |
 | Repository の Metadata | Read | GitHub が必ず求める |

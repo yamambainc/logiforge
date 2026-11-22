@@ -216,13 +216,6 @@ func commentOf(c ports.Comment) Comment {
 	return out
 }
 
-// MergeFailure は、その要求の中での反映の失敗である（レビューの応答だけに入る）。
-type MergeFailure struct {
-	Commit string `json:"commit"`
-	Reason string `json:"reason"`
-	Detail string `json:"detail"`
-}
-
 // ApplyRequest は、apply request である。
 type ApplyRequest struct {
 	ID     string `json:"id"`
@@ -238,10 +231,13 @@ type ApplyRequest struct {
 	Operations     []Operation  `json:"operations"`
 	Reviews        []Review     `json:"reviews"`
 	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入り、一覧では空である。
-	Comments     []Comment `json:"comments"`
-	Awaiting     *string   `json:"awaiting"`
-	Warnings     []string  `json:"warnings"`
-	MergedCommit *string   `json:"merged_commit"`
+	Comments []Comment `json:"comments"`
+	Awaiting *string   `json:"awaiting"`
+	// ReviewDecision は、承認の状態である（approved、changes_requested、pending）。分からなければ null
+	// （design/adapters/pull-requests.md の「承認の状態」）。
+	ReviewDecision *string  `json:"review_decision"`
+	Warnings       []string `json:"warnings"`
+	MergedCommit   *string  `json:"merged_commit"`
 }
 
 // ReviewMaterial は、レビューの材料である。

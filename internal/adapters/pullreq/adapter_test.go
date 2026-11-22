@@ -27,6 +27,9 @@ type fake struct {
 	files    map[string][]byte
 	canPush  map[string]bool
 	calls    map[string]int
+	// decisions があれば、ReviewDecisions は、PR 全体の承認の状態を返す GitForge（GitHub）のように、番号ごとに返す。
+	// なければ、返さない GitForge（Forgejo）のように、空を返す。
+	decisions map[int]string
 	// noAttachments は、添付を持てない GitForge にする。
 	noAttachments bool
 	// closedErr は、ClosedPullsPage が返す誤りである。
@@ -119,6 +122,18 @@ func (f *fake) MergePull(_ context.Context, _ string, n int, head, _, _ string) 
 	p.State, p.Merged, p.MergeCommit, p.UpdatedAt = "closed", true, "m-"+head, f.tick()
 	return p.MergeCommit, nil
 }
+func (f *fake) ReviewDecisions(_ context.Context, _ string, numbers []int) (map[int]string, error) {
+	f.call("ReviewDecisions")
+	out := map[int]string{}
+	if f.decisions == nil {
+		return out, nil
+	}
+	for _, n := range numbers {
+		out[n] = f.decisions[n]
+	}
+	return out, nil
+}
+
 func (f *fake) ListReviews(_ context.Context, _ string, n int) ([]PullReview, error) {
 	f.call("ListReviews")
 	out := slices.Clone(f.reviews[n])
@@ -395,7 +410,8 @@ func TestListCallCount(t *testing.T) {
 	}
 	ar2, hr2 := count(2)
 	ar40, hr40 := count(40)
-	if ar2 != ar40 || hr2 != hr40 || ar2 != 1 || hr2 != 1 {
+	// apply request の一覧は、pull request の一覧と、承認の状態（ReviewDecisions）の 2 回である。
+	if ar2 != ar40 || hr2 != hr40 || ar2 != 2 || hr2 != 1 {
 		t.Fatalf("呼ぶ回数が、項目の数で変わる：apply request %d と %d、人への依頼 %d と %d", ar2, ar40, hr2, hr40)
 	}
 }
@@ -504,5 +520,52 @@ func TestMergedApplyRequestListError(t *testing.T) {
 		if _, err := a.MergedApplyRequest(context.Background(), "o/r", "m1", f.now); err == nil || errors.Is(err, ports.ErrNotFound) {
 			t.Fatalf("%v：%v", e, err)
 		}
+	}
+}
+
+// GitForge が PR 全体の承認の状態を返さないとき、1 件では、review の印から決める（design/adapters/pull-requests.md の「承認の状態」）。
+func TestDecisionFromReviews(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name    string
+		reviews []PullReview
+		want    ports.ReviewDecision
+	}{
+		{"何もない", nil, ports.DecisionPending},
+		{"先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
+		// どのコミットへの approve かは見ない。古い approve を外すかは、GitForge の設定に任せる。
+		{"前の先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h0"}}, ports.DecisionApproved},
+		{"dismiss された approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Dismissed: true}}, ports.DecisionPending},
+		{"書く権限のない人の approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "eve", CommitID: "h1"}}, ports.DecisionPending},
+		{"approve のあとの request changes", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewRequestChanges, Author: "carol", CommitID: "h1"}}, ports.DecisionChangesRequested},
+		{"request changes のあと、同じ人の approve", []PullReview{{ID: 1, Kind: ports.ReviewRequestChanges, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
+	}
+	for _, c := range cases {
+		f := newFake()
+		f.canPush["carol"] = true
+		f.pulls[1] = &Pull{Number: 1, State: "open", HeadSHA: "h1", Head: "b", Base: "main"}
+		f.reviews[1] = c.reviews
+		a := &Adapter{API: f}
+		rs, err := a.ListReviews(ctx, "o/r", "1")
+		if err != nil || rs.Decision != c.want {
+			t.Fatalf("%s：%q %v", c.name, rs.Decision, err)
+		}
+	}
+}
+
+// GitForge が PR 全体の承認の状態を判定していれば、それをそのまま使う。どのコミットへの approve かは見ない。
+func TestDecisionFromGitForge(t *testing.T) {
+	ctx := context.Background()
+	f := newFake()
+	f.pulls[1] = &Pull{Number: 1, State: "open", HeadSHA: "h2", Head: "b", Base: "main"}
+	f.decisions = map[int]string{1: "approved"}
+	f.reviews[1] = []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}
+	a := &Adapter{API: f}
+	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("GitForge の判定：%q %v", rs.Decision, err)
+	}
+	f.decisions[1] = "pending"
+	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("GitForge の判定（まだ）：%q %v", rs.Decision, err)
 	}
 }

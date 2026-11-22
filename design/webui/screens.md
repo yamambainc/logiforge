@@ -57,9 +57,10 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - レビューの材料：`getReviewMaterial`。レビューの欄に示す。説明欄は示さない。
 - 自分が作ったか：`getApplyRequest` の `opened_by_caller`。`true` なら、approve の前に示す。
 - レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
-  - 応答の `apply_request` で反映したかを、`merge_failure` で反映できなかった理由を示す。
+  - approve が確かめに通らなければ、エラーの `code`（`stale_target` など）と `detail` で、approve を出さなかった理由を示し、`getApplyRequest` で読み直す。
   - 議論は、`comment` のレビューとして `reviews` に入っている。ほかの種類のレビューと同じく、`created_at` の順に示し、書いた人（`reviewer`）と時刻を添える。
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
+- merge：`mergeApplyRequest`。`review_decision` が `approved` のときだけ、merge の欄を示す。一覧と詳細では、`review_decision` があれば、承認の状態を示す。断られたら、エラーの `code` と `detail` で理由を示し、`getApplyRequest` で読み直す。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
 - 反映したあとの姿：ビュワーを `?apply_request=` で開く（[差分の重ね表示](overlay.md#差分の重ね表示)）。
 - 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[WebUI のための API](#webui-のための-api)）。

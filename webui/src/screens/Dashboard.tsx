@@ -11,6 +11,7 @@ const KINDS: { key: string; label: string; to?: (repo: string) => string }[] = [
   { key: 'needs_reconsideration', label: '要再検討', to: (r) => `/r/${r}/tree?f=nr-work` },
   { key: 'review_waiting', label: 'レビュー待ち', to: (r) => `/r/${r}/apply-requests?work=review_waiting` },
   { key: 'fix_waiting', label: '修正待ち', to: (r) => `/r/${r}/apply-requests?work=fix_waiting` },
+  { key: 'approved', label: '承認済み（merge を待つ）', to: (r) => `/r/${r}/apply-requests?work=approved` },
   { key: 'human_request_answered', label: '回答済みの依頼', to: (r) => `/r/${r}/human-requests?state=answered&work=1` },
   { key: 'citation_changed', label: '引用元が変化した検証結果', to: (r) => `/r/${r}/tree?f=cited` },
 ];

@@ -206,8 +206,26 @@ func (a *Adapter) ListApplyRequests(ctx context.Context, repo, state string) ([]
 		return nil, err
 	}
 	out := make([]ports.ApplyRequest, 0, len(pulls))
+	var open []int
 	for _, p := range pulls {
 		out = append(out, toApplyRequest(p))
+		if p.State == "open" {
+			open = append(open, p.Number)
+		}
+	}
+	// 承認の状態は、GitForge が一覧と一緒に返せるときだけ入れる（GitHub は、pull request の別名を並べた GraphQL で 1 回に読む）。
+	if len(open) > 0 {
+		// 承認の状態は、一覧では表示にだけ使うので、読めなければ分からないとして続ける（1 件を読めば分かる）。
+		ds, err := a.API.ReviewDecisions(ctx, repo, open)
+		for i := range out {
+			if err != nil {
+				if out[i].State == ports.StateOpen {
+					out[i].Warnings = append(out[i].Warnings, "承認の状態を読めない："+err.Error())
+				}
+				continue
+			}
+			out[i].ReviewDecision = ports.ReviewDecision(ds[out[i].Number])
+		}
 	}
 	return out, nil
 }
@@ -266,7 +284,7 @@ func (a *Adapter) RecordMergeFailure(ctx context.Context, repo, id string, f por
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf("Logiforge：先頭のコミット %s を反映できなかった（%s）。", f.Revision, f.Reason)
+	text := fmt.Sprintf("Logiforge：先頭のコミット %s は、今の main に反映できない（%s）。", f.Revision, f.Reason)
 	if strings.TrimSpace(f.Detail) != "" {
 		text += "\n\n" + f.Detail
 	}
@@ -392,6 +410,40 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 			}
 		}
 		out.Items = append(out.Items, r)
+	}
+	out.Decision, err = a.decision(ctx, repo, num, rs)
+	return out, err
+}
+
+// decision は、1 件の pull request の承認の状態を返す（design/adapters/pull-requests.md の「承認の状態」）。
+//   - GitForge が PR 全体の承認の状態を判定していれば（GitHub の reviewDecision）、それをそのまま使う。
+//     push のあとに古い approve を外すかは、GitForge の設定に任せる。
+//   - していなければ（GitHub で承認を必須にする設定がない、Forgejo）、書く権限を持つ人ごとの、いちばん新しい approve か
+//     request changes で決める（dismiss されたものは除く）。どのコミットへの review かは見ない。
+//     request changes が 1 つでもあれば変更を求められている、そうでなく approve があれば承認済み、どちらもなければまだとする。
+func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullReview) (ports.ReviewDecision, error) {
+	ds, err := a.API.ReviewDecisions(ctx, repo, []int{num})
+	if err != nil {
+		return "", err
+	}
+	if d := ports.ReviewDecision(ds[num]); d != ports.DecisionNone {
+		return d, nil
+	}
+	last := map[string]PullReview{}
+	for _, r := range rs {
+		if r.Dismissed || r.CanPush == nil || !*r.CanPush {
+			continue
+		}
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			last[strings.ToLower(r.Author)] = r
+		}
+	}
+	out := ports.DecisionPending
+	for _, r := range last {
+		if r.Kind == ports.ReviewRequestChanges {
+			return ports.DecisionChangesRequested, nil
+		}
+		out = ports.DecisionApproved
 	}
 	return out, nil
 }

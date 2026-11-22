@@ -90,6 +90,9 @@ type fakeGitHub struct {
 	srv *httptest.Server
 	// private なら、トークンなしでは読めない。
 	private bool
+	// requireApproval なら、main を承認を必須にする設定（branch protection）で守る。GitHub と同じく、そのときだけ reviewDecision を返し、
+	// 承認が足りない merge を 405 で断る。なければ reviewDecision は null で、承認がなくても merge できる。
+	requireApproval bool
 	// tree は、Git Data API で作りかけのツリー（ツリーの SHA → パス → 中身）。gitCommits は、コミットの SHA → ツリーの SHA とメッセージ。
 	trees      map[string]map[string]string
 	gitCommits map[string][2]string
@@ -547,6 +550,20 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 				"errors": []map[string]any{{"type": "NOT_FOUND", "message": fmt.Sprintf("Could not resolve to a Repository with the name '%v/%v'.", owner, name)}}})
 			return
 		}
+		// 承認の状態（api.go の ReviewDecisions）：pull request の別名（p<番号>）ごとに reviewDecision を返す。
+		if q, _ := in["query"].(string); strings.Contains(q, "reviewDecision") {
+			repo := map[string]any{}
+			for _, m := range regexp.MustCompile(`p(\d+): pullRequest`).FindAllStringSubmatch(q, -1) {
+				n, _ := strconv.Atoi(m[1])
+				var d any
+				if f.requireApproval {
+					d = f.reviewDecision(n)
+				}
+				repo["p"+m[1]] = map[string]any{"reviewDecision": d}
+			}
+			write(w, http.StatusOK, map[string]any{"data": map[string]any{"repository": repo}})
+			return
+		}
 		n := int(vars["number"].(float64))
 		var nodes []map[string]any
 		for _, rv := range f.reviews[n] {
@@ -670,6 +687,11 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusForbidden, "Must have push access to repository")
 			return
 		}
+		// 承認を必須にする branch protection の応答（GitHub の文言）。
+		if f.requireApproval && f.reviewDecision(x.Number) != "APPROVED" {
+			fail(w, http.StatusMethodNotAllowed, "At least 1 approving review is required by reviewers with write access.")
+			return
+		}
 		if f.ruleBlocked {
 			fail(w, http.StatusMethodNotAllowed, "Repository rule violations found\n\nWaiting on required approvals from acme/gate.\n\n")
 			return
@@ -785,4 +807,23 @@ func (f *fakeGitHub) commentJSON(r *http.Request, c *fakeComment) map[string]any
 func (f *fakeGitHub) issueJSON(is *fakeIssue) map[string]any {
 	return map[string]any{"number": is.Number, "title": is.Title, "body": is.Body, "state": is.State, "user": map[string]string{"login": is.Author}, "created_at": time.Now(),
 		"labels": labelObjs(is.Labels), "closed_at": is.closedAt}
+}
+
+// reviewDecision は、GitHub と同じく、書く権限のある人ごとのいちばん新しい approve か request changes から、承認の状態を決める。
+// 古い approve を外す設定はないものとする（どのコミットへの approve も数える）。呼ぶ側が f.mu を持つ。
+func (f *fakeGitHub) reviewDecision(n int) string {
+	last := map[string]string{}
+	for _, rv := range f.reviews[n] {
+		if (rv.State == "APPROVED" || rv.State == "CHANGES_REQUESTED") && f.writers[rv.Author] {
+			last[rv.Author] = rv.State
+		}
+	}
+	d := "REVIEW_REQUIRED"
+	for _, s := range last {
+		if s == "CHANGES_REQUESTED" {
+			return "CHANGES_REQUESTED"
+		}
+		d = "APPROVED"
+	}
+	return d
 }

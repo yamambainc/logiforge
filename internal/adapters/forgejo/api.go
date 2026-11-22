@@ -175,6 +175,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 			p, err := a.getPull(ctx, repo, number)
 			return p.MergeCommitSHA, err
 		}
+		// 承認を必須にする設定（branch protection）で承認が足りなければ、405 の "not allowed to merge [reason: Does not have enough approvals]"、
+		// 変更を求める review が残っていれば "[reason: There are requested changes]" を返す（Forgejo 17 で確かめた）。待っても変わらない。
+		if statusOf(err) == http.StatusMethodNotAllowed && notApproved(errMessage(err)) {
+			return "", fmt.Errorf("%w（Forgejo：%v）", ports.ErrNotApproved, err)
+		}
 		// 主体に merge の権限がなければ、403 か、405 の "User not allowed to merge PR" を返す（Forgejo 17 で確かめた）。
 		// 待っても変わらないので、すぐに返す。
 		if s := statusOf(err); s == http.StatusForbidden || (s == http.StatusMethodNotAllowed && strings.Contains(strings.ToLower(errMessage(err)), "not allowed to merge")) {
@@ -295,6 +300,12 @@ func (r reviewJSON) review() (pullreq.PullReview, bool) {
 	official := r.Official
 	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: r.Dismissed,
 		CanPush: &official, SubmittedAt: r.SubmittedAt}, true
+}
+
+// ReviewDecisions は、空の map を返す。Forgejo は、PR 全体の承認の状態を返さないからである。1 件では、review の official と stale から求める
+// （pullreq の ListReviews）。
+func (a api) ReviewDecisions(context.Context, string, []int) (map[int]string, error) {
+	return map[int]string{}, nil
 }
 
 func (a api) ListReviews(ctx context.Context, repo string, number int) ([]pullreq.PullReview, error) {
@@ -552,4 +563,10 @@ func (a api) DownloadAttachment(ctx context.Context, repo string, commentID int6
 		return nil, err
 	}
 	return a.download(ctx, ports.TokenFrom(ctx), as.URL)
+}
+
+// notApproved は、merge を断った応答の文言が、承認が足りないことか（design/adapters/forgejo.md の「merge を断られたとき」）。
+func notApproved(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "enough approvals") || strings.Contains(m, "requested changes") || strings.Contains(m, "official review")
 }

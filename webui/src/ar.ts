@@ -20,9 +20,12 @@ export function opLabel(op: Operation): { what: string; target: string } {
 export const REVIEW: Record<string, string> = { approve: 'approve', request_changes: 'request_changes', comment: 'コメント' };
 export const STATE: Record<string, string> = { open: 'open', merged: '反映済み', closed: '閉じた' };
 export const AWAITING: Record<string, string> = { review: 'レビュー待ち', fix: '修正待ち' };
+/** 承認の状態（review_decision）の言葉 */
+export const DECISION: Record<string, string> = { approved: '承認済み', changes_requested: '変更を求められている', pending: '承認待ち' };
+/** approve と merge が、今の main での確かめや GitForge に断られた理由（エラーの code） */
 export const FAILURE: Record<string, string> = {
   stale_target: 'ブランチを今の main に合わせる必要がある', invariant_violation: '決まりに沿わない', conflict: 'git の衝突', snapshot_pending: '取り込み中で確かめられなかった',
-  merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
+  not_approved: '承認されていない', merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
 };
 
 /** 一覧の 1 行の見出し。説明の最初の行、なければブランチ */

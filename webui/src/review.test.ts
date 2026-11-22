@@ -43,28 +43,22 @@ describe('レビューを送る', () => {
     expect(c.body).toEqual({ kind: 'comment', commit: 'c1', body: '見ました' });
     expect(c.body).not.toHaveProperty('prompt_revision');
   });
-  it('本文のない approve は、body を送らない', async () => {
-    stubFetch(() => ok({ review: {}, apply_request: ar({ state: 'merged' }) }, 201));
+  it('本文のない approve は、body を送らない。approve は merge しない', async () => {
+    stubFetch(() => ok({ review: {}, apply_request: ar() }, 201));
     const { submitReview } = await load();
     const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
     expect(callOf().body).toEqual({ kind: 'approve', commit: 'c1' });
-    expect(r).toMatchObject({ kind: 'sent', message: 'approve を付け、反映しました。' });
+    expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けました。merge は、別に行います。' });
   });
-  it('approve で反映できなかったら、その先頭のコミットの理由を示す', async () => {
-    stubFetch(() => ok({ review: {}, apply_request: ar(), merge_failure: { commit: 'c1', reason: 'merge_forbidden', detail: 'protected' } }, 201));
+  it('今の main での確かめに通らなければ、approve を出さなかった理由を示し、apply request を読み直す', async () => {
+    stubFetch((url, init) => (init?.method === 'POST' ? problem(409, 'stale_target', 'd') : ok(ar())));
     const { submitReview } = await load();
     const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
-    expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けましたが、反映できませんでした：GitForge で merge する権限がなく、GitForge が merge を断った（protected）' });
+    expect(r).toMatchObject({ kind: 'refused', message: 'approve を出しませんでした：ブランチを今の main に合わせる必要がある（d）' });
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(2);
   });
-  it('stale_target は、ブランチを今の main に合わせることを見出しにする', async () => {
-    stubFetch(() => ok({ review: {}, apply_request: ar(), merge_failure: { commit: 'c1', reason: 'stale_target', detail: 'd' } }, 201));
-    const { submitReview } = await load();
-    const r = await submitReview('demo', 'apr_1', 'approve', 'c1', '');
-    expect(r).toMatchObject({ kind: 'sent', message: 'approve を付けましたが、反映できませんでした：ブランチを今の main に合わせる必要がある（d）' });
-  });
-  it('approve で、まだ反映の条件を満たさなければ、そう示す', async () => {
+  it('approve のあとに示す言葉', async () => {
     const { outcome } = await load();
-    expect(outcome('approve', ar())).toBe('approve を付けました。反映の条件をまだ満たしていないので、反映していません。');
     expect(outcome('approve', ar({ target: 'feature' }))).toContain('main 向きではない');
     expect(outcome('request_changes', ar())).toBe('request_changes を付けました。');
   });
@@ -126,7 +120,33 @@ describe('approve の前に示すこと', () => {
     expect(ownNotice(ar({ opened_by_caller: true }))).toBe(OWN_AR);
     expect(ownNotice(ar({ opened_by_caller: false }))).toBeNull();
     expect(ownNotice(ar())).toBeNull();
-    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。', '反映の条件を満たしたら、そのまま main に反映します。'], own: OWN_AR });
-    expect(approveSummary(ar({ target: 'feature' }), 'c1', 0).lines[1]).toBe('main 向きではないので、Logiforge は反映しません。');
+    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。', '今の main で確かめ、通ったときだけ approve を出します。merge は、別に行います。'], own: OWN_AR });
+    expect(approveSummary(ar({ target: 'feature' }), 'c1', 0).lines[1]).toBe('main 向きではないので、Logiforge は確かめません。');
+  });
+});
+
+describe('merge', () => {
+  const rv = (kind: 'approve' | 'request_changes' | 'comment', commit: string) => ({ id: 'r', kind, commit, valid: true });
+  it('承認済みのときだけ、merge の欄を示す', async () => {
+    const { canMerge } = await load();
+    expect(canMerge(ar({ review_decision: 'approved', awaiting: null }))).toBe(true);
+    expect(canMerge(ar({ review_decision: null, awaiting: null }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'pending', awaiting: 'review' }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'changes_requested', awaiting: 'fix' }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'approved', target: 'feature' }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'approved', state: 'merged' }))).toBe(false);
+  });
+  it('merge を送る', async () => {
+    stubFetch(() => ok(ar({ state: 'merged' })));
+    const { submitMerge } = await load();
+    const r = await submitMerge('demo', 'apr_1');
+    expect(callOf().url).toBe('/v1/repositories/demo/apply-requests/apr_1/merge');
+    expect(callOf().init.method).toBe('POST');
+    expect(r).toMatchObject({ kind: 'sent', message: 'merge しました。' });
+  });
+  it('merge が断られたら、理由を示す', async () => {
+    stubFetch((url, init) => (init?.method === 'POST' ? problem(403, 'merge_forbidden', 'protected') : ok(ar())));
+    const { submitMerge } = await load();
+    expect(await submitMerge('demo', 'apr_1')).toMatchObject({ kind: 'refused', message: 'merge しませんでした：GitForge で merge する権限がなく、GitForge が merge を断った（protected）' });
   });
 });

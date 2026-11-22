@@ -50,9 +50,9 @@ stateDiagram-v2
 ```
 
 - apply request の状態は、`open`、`merged`、`closed` の 3 つである。
-- `request_changes`、opener の修正、反映の失敗のときは、`open` のままである。
+- `request_changes`、opener の修正、`approve` か merge が確かめに通らなかったときは、`open` のままである。
 - レビューの種類は、`approve`、`request_changes`、`comment` の 3 つである。
-- [反映の条件](review.md) を満たすと、apply request は反映される。
+- [反映の条件](review.md) を満たした apply request を merge すると、反映される。`approve` だけでは、反映されない（[merge](review.md#merge)）。
 - reviewer の却下と、opener の取り下げは、どちらも `closed` にする。
   - どちらの場合も、理由を書く。
   - 取り下げは、apply request を作った人が行う。
@@ -64,14 +64,14 @@ stateDiagram-v2
   - 一部だけが反映されることはない。
 - 不変条件は、apply request が反映されるたびに、常に成り立つ。
   - 反映すると不変条件を満たさなくなる apply request は、反映しない。
-  - ただし、反映の直前の確認と反映の間に、別の apply request が反映されることがある。
+  - ただし、merge の直前の確認と merge の間に、別の apply request が反映されることがある。GitForge の画面から直接 merge したときは、直前の確認もない。
   - そのときに不変条件が破れたら、Logiforge は反映のあとに警告する。
   - 直すのは、新しい apply request である。
   - 不変条件は、[仮説とストーリーの木](../tree/README.md) と [inactive 化](../tree/inactive.md) に書く。
-- apply request を作ったあとに、その操作の対象ノードが別の apply request によって変わっていたら、反映しない。
-  - その apply request は、理由を残して `open` に戻す。
+- apply request を作ったあとに、その操作の対象ノードが別の apply request によって変わっていたら、`approve` も merge もしない。
+  - その apply request は `open` のまま、理由を残す。
   - なぜ：古い状態を前提にした変更を、気づかないまま反映しないため。
-- 反映すると不変条件を満たさなくなった場合も、理由を残して `open` に戻す。
+- 反映すると不変条件を満たさなくなる場合も、`approve` も merge もしない。理由を残し、`open` のまま残す。
 
 ## main への直接の変更
 

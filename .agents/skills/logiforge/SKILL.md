@@ -1,6 +1,6 @@
 ---
 name: logiforge
-description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、request_changes や反映の失敗（conflict、stale_target など）のあとに直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
+description: Logiforge（仮説と根拠を記録する正本）を、opener として CLI（logiforge）で使うときに使う。スナップショットツリーの今の状態や値を読む、着手できる作業（work list）を探す、ストーリーや検証結果の apply request を出す、approve された apply request を merge する、request_changes や確かめに通らなかった理由（conflict、stale_target など）のあとに直す、人への依頼（PVR、判断の依頼）を起票し回答を検証結果にする、のどれかをするとき。`logiforge` コマンド、`LOGIFORGE_` の環境変数、仮説・ストーリー・検証結果・apply request の語が出てきたら、Logiforge の名前が無くても使う。apply request をレビューするときは logiforge-review を使う。
 ---
 
 # Logiforge を使う
@@ -57,9 +57,10 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - `story.inactivate`：ストーリーを inactive にする。
   - `verdict.submit`：葉に検証結果を出す。
   - `node.edit`：仮説の背景情報に、文章を加える。
-- 差分を書いたのとは別の GitForge のアカウントの reviewer が `approve` すると、反映される。
+- 差分を書いたのとは別の GitForge のアカウントの reviewer が `approve` したあと、merge すると反映される。
   - 別のアカウントにするのは、書いた本人の推論に引きずられずに、論理を審査するためである。作者自身の `approve` は、GitForge が拒む。
-  - 差分が更新されたら、`approve` はやり直しになる。
+  - 差分を更新したあとに `approve` が残るかは、GitForge の設定で決まる。残っていても、直した差分は reviewer に見てもらう（修正待ちなら `ar fixed` で申告する）。
+  - `approve` だけでは、merge されない。approve されたら、opener が `logiforge ar merge <apply request>` で merge する。人が GitForge の画面で merge してもよい（[merge](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#merge)）。
 
 ### 役割
 
@@ -74,7 +75,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - ノードはディレクトリで、中身は md のファイルである。
 - apply request は、GitForge の pull request である。opener はブランチを push し、CLI でそれを apply request にする。
 - バックエンド（Logiforge のサーバ）は、git リポジトリを取り込んで検査し、値を計算して、API で返す。
-  - `approve` されたら、バックエンドが pull request を merge する。
+  - `approve` の前と merge の前に、バックエンドが、今の `main` で木が壊れないかを確かめる。merge は、`ar merge` を呼んだ主体のトークンで行う。
   - 値はファイルに保存されない。今の値は、clone ではなく CLI（API）で読む。
 - 最新の `main` のコミットの木が不変条件を満たさないと、そのコミットは「valid でない」。そのあいだ、API は、いちばん新しい valid なコミットの木を返す（[main への直接の変更](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#main-への直接の変更)）。
 
@@ -146,8 +147,8 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 
 ## apply request を直す
 
-`logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、コメント（`comments`。反映の失敗の理由も、ここに人が読む文で入る）を読む。
-直したら、同じブランチに push する。push すると新しい先頭のコミットになり、どの理由で直した場合も、レビューからやり直しになる。
+`logiforge ar view <apply request> --json` で、ブランチ（`branch`）、レビューの本文（`reviews`）、コメント（`comments`。`approve` か merge が確かめに通らなかった理由も、ここに人が読む文で入る）を読む。
+直したら、同じブランチに push する。push すると新しい先頭のコミットになる。それまでの `approve` が外れるかは GitForge の設定で決まり、外れたらレビューを受け直す。どちらでも、直した差分は reviewer に見てもらう。
 修正待ち（`fix_waiting`）の apply request は、push しただけではレビュー待ちに戻らない。直し終えたら、`logiforge ar fixed <apply request>` で申告する。
 
 - `request_changes`、`invariant_violation`：同じブランチでファイルを直し、`git commit` して push する。
@@ -157,7 +158,11 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
      - merge のコミットではなく rebase にする。なぜ：差分が `main` からの変化だけになり、レビューしやすいから。
   2. `logiforge check`
   3. `git push --force-with-lease`（rebase で履歴が変わるため）
-- `snapshot_pending`、`merge_forbidden`：opener が直すものではない。reviewer の `approve` し直しを待つ。
+- approve されたら：`logiforge ar merge <apply request>` で merge する。merge の直前に、バックエンドが確かめ直す。
+  - `stale_target`、`invariant_violation`、`conflict`：上のとおり直す。
+  - `snapshot_pending`：少し待って、送り直す。
+  - `not_approved`：今の差分が、まだ承認されていないか、変更を求められている。レビューを待つか、直す。
+  - `merge_forbidden`：自分の主体に merge の権限が無い。権限のある人に merge を頼む。
 - 取り下げるとき：`logiforge ar close <apply request> --reason <理由>`
 - 反映か close のあと、手元のブランチは `logiforge ar cleanup` で消せる。
 

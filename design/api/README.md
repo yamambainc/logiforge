@@ -68,9 +68,8 @@ API ごとの概要は、[API の一覧](endpoints/README.md) にある。
 - `code` に、機械で判定できるエラーの種類を入れる。
 - エラーの種類と意味は、[openapi.yaml](openapi.yaml) の `Problem` が正本である。
 
-- 反映の失敗は、エラーにしない。
-  - レビューの応答で、apply request が `open` のままであることと、失敗の理由を返す。
-  - なぜ：`approve` 自体は受け付けており、失敗は apply request の状態だから（[反映の手順](../backend/merge.md)）。
+- `approve` と merge が、今の `main` での確かめに通らなければ、エラーにする。`code` は、その理由（`stale_target` など）である（[反映の手順](../backend/merge.md#approve-と-merge-の前に確かめること)）。
+  - なぜ：`approve` も merge も出していないから。
 
 ## アップロードの大きさ
 

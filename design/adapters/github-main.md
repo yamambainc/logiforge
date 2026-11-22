@@ -8,7 +8,8 @@ GitHub アダプタそのものは、[GitHub アダプタ](github.md) に書く�
 - 利用者とエージェントは、GitHub リポジトリに、apply request のもとになるブランチを push する（[CLI](../cli/README.md)）。
 - `main` を守る設定（ルールセットかブランチ保護）は、勧めるが求めない（[main を守る](pull-requests.md#main-を守る)）。使うときは、リポジトリの admin が用意する。
   - ルールセットで、`main` に「Require a pull request before merging」「Block force pushes」「Restrict deletions」を付ける。bypass には、だれも入れない。
-  - merge できる人は絞らない。reviewer が merge するからである。
+  - 「Require a pull request before merging」では、承認の数を 1 以上にし、新しい push で古い approve を外す（Dismiss stale pull request approvals）。外さなければ、push のあとも reviewDecision は APPROVED のままで、Logiforge もそれに従う。GitHub の画面からの merge にも承認を求めるため（[承認の状態](pull-requests.md#承認の状態)）。
+  - merge できる人は絞らない。エージェントも人も merge するからである。
 - `main` に追いついていることを merge の条件にする設定は、使わない（[衝突](../backend/merge.md)）。
 - 守る設定がないか外れて、`main` に直接 push されても、Logiforge はそのコミットを受け入れる。木が不変条件を満たさなければ、そのコミットは valid でない（[最新のコミットが valid でないとき](../backend/invalid-main.md)）。
 - 信頼の境界は、[GitForge のポートを pull request と issue で実装する](pull-requests.md) に書く。

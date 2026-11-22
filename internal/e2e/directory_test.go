@@ -65,7 +65,7 @@ func TestE2EDirectory(t *testing.T) {
 	}
 	agent.commitPush("bg", "背景")
 	ar := agent.create("bg")
-	if got, code, out := reviewer.review(ar.ID, "approve", 1); code != 0 || got.State != "merged" {
+	if got, code, out := reviewer.approveMerge(ar.ID, 1); code != 0 || got.State != "merged" {
 		t.Fatalf("approve：%d %s", code, out)
 	}
 	var node struct {

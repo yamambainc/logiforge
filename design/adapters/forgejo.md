@@ -57,8 +57,13 @@ GitHub アダプタと共通のところは、[GitForge のポートを pull req
 `main` を守る設定は、次のとおりである。
 
 - `enable_push: false`：だれも `main` に push できない。
-- `enable_merge_whitelist: false`：merge できる人は絞らない。reviewer が merge するからである。
+- `enable_merge_whitelist: false`：merge できる人は絞らない。エージェントも人も merge するからである。
 - `block_on_outdated_branch: false`：`main` に追いついていることを merge の条件にしない。
+
+Forgejo の画面からの merge にも承認を求めるなら、利用者が、この設定に `required_approvals`（1 以上）と `dismiss_stale_approvals: true` を足す（[反映の条件](../../docs/apply-request/review.md#反映の条件)）。Logiforge の merge の操作は、足さなくても、承認されていない apply request を merge しない。
+
+- `dismiss_stale_approvals: true` にすると、push のあとに、それまでの approve が外れる（dismissed）。Logiforge は、外れた approve を数えない。
+- 足さなければ、push のあとも approve は残る（review は stale になるが、外れない）。Logiforge は stale を承認の判定に使わないので、承認済みのまま merge できる。
 
 - pull request の最後の先頭のコミットは、`refs/pull/<index>/head` で取れる（[ブランチの履歴](../backend/snapshot/README.md)）。
 

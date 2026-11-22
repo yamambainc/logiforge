@@ -479,7 +479,7 @@ func TestMergedApplyRequest(t *testing.T) {
 	}
 }
 
-// merge の権限のない主体の merge は ErrMergeForbidden。制限に当たり続けた 403 は、権限がないことにしない。
+// merge の権限のない主体の merge は ErrMergeForbidden、承認の team の承認がない merge は ErrNotApproved。制限に当たり続けた 403 は、権限がないことにしない。
 func TestMergeForbidden(t *testing.T) {
 	f, a, _ := newTestAdapter(t)
 	ctx := agentCtx()
@@ -492,9 +492,9 @@ func TestMergeForbidden(t *testing.T) {
 	if _, err := a.Merge(ports.WithToken(context.Background(), "tok-weak"), fakeRepo, "1", "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
 		t.Fatalf("権限のない主体：%v", err)
 	}
-	// ルールセットに断られた merge（実際の GitHub で確かめた応答の形）も、merge の権限がないこととする。
+	// 承認の team の承認がないとルールセットに断られた merge（実際の GitHub で確かめた応答の形）は、承認が足りないこととする。
 	f.ruleBlocked = true
-	if _, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
+	if _, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m"); !errors.Is(err, ports.ErrNotApproved) {
 		t.Fatalf("ルールセットに断られた merge：%v", err)
 	}
 	f.ruleBlocked = false
@@ -607,5 +607,49 @@ func TestErrorsUnwrap(t *testing.T) {
 	_, a, _ := newTestAdapter(t)
 	if _, err := a.API.ListReviews(agentCtx(), "acme/other", 1); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("ない repository の review：%v", err)
+	}
+}
+
+// 承認を必須にする設定があるときだけ、GitHub は reviewDecision を返す。一覧は、pull request の一覧と GraphQL の 1 回で読む。
+// 承認が足りない merge は、ErrNotApproved である（design/adapters/pull-requests.md の「承認の状態」）。
+func TestReviewDecisionAndNotApproved(t *testing.T) {
+	f, a, _ := newTestAdapter(t)
+	ctx := agentCtx()
+	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil {
+		t.Fatal(err)
+	}
+	f.pulls[1].pending = 0
+	// 設定がなければ、承認の状態はない。
+	ars, err := a.ListApplyRequests(ctx, fakeRepo, "open")
+	if err != nil || len(ars) != 1 || ars[0].ReviewDecision != ports.DecisionNone {
+		t.Fatalf("設定なしの一覧：%+v %v", ars, err)
+	}
+	// 設定がなくても、1 件では、書く権限のある人の review から承認の状態を決める。
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("設定なしの 1 件：%+v %v", rs, err)
+	}
+	// どのコミットへの approve かは見ない（古い approve を外すかは、GitHub の設定に任せる）。
+	f.reviews[1] = append(f.reviews[1], &fakeReview{ID: 8, State: "APPROVED", Author: "bob", CommitID: "old", At: time.Now()})
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("前の先頭のコミットへの approve：%+v %v", rs, err)
+	}
+	f.reviews[1] = f.reviews[1][:len(f.reviews[1])-1]
+	f.requireApproval = true
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("承認の前：%+v %v", rs, err)
+	}
+	if _, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); !errors.Is(err, ports.ErrNotApproved) {
+		t.Fatalf("承認の前の merge：%v", err)
+	}
+	f.reviews[1] = append(f.reviews[1], &fakeReview{ID: 9, State: "APPROVED", Author: "alice", CommitID: "h1", At: time.Now()})
+	ars, err = a.ListApplyRequests(ctx, fakeRepo, "open")
+	if err != nil || len(ars) != 1 || ars[0].ReviewDecision != ports.DecisionApproved {
+		t.Fatalf("承認のあとの一覧：%+v %v", ars, err)
+	}
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("承認のあとの 1 件：%+v %v", rs, err)
+	}
+	if _, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); err != nil {
+		t.Fatalf("承認のあとの merge：%v", err)
 	}
 }

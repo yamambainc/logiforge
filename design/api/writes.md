@@ -10,7 +10,7 @@
 
 ### git に書く API
 
-- git に関わる書き込み（repository の作成、`approve` による反映）の API は、書いたあと、読む側に出るまで待ってから応答する。
+- git に関わる書き込み（repository の作成、apply request の merge）の API は、書いたあと、読む側に出るまで待ってから応答する。
   - 読む側に出るとは、`latest` がそのコミットに進むことである。
   - worker は起こさない。
 - 待つ時間の上限は、設定の DB に置く（[設定](../settings/README.md#設定の-db-に置くもの)）。

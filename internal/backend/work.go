@@ -17,7 +17,7 @@ import (
 )
 
 // 作業の種類（docs/work/README.md）。並びは、この順である。
-var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "human_request_answered", "citation_changed"}
+var workKinds = []string{"undecided_leaf", "needs_reconsideration", "review_waiting", "fix_waiting", "approved", "human_request_answered", "citation_changed"}
 
 // WorkQuery は、着手できる作業の問い合わせである。
 type WorkQuery struct {
@@ -68,13 +68,20 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 		}
 	}
 
-	// レビュー待ちと修正待ちの apply request。
+	// レビュー待ちと修正待ちの apply request と、承認済みの apply request（merge を待つもの）。
+	// 一覧の承認の状態は、GitForge のポートが分かるときだけ入る（design/adapters/pull-requests.md の「承認の状態」）。
 	for _, ar := range open.ars {
 		d, err := b.applyRequest(ctx, repo, ref, ar, readList, nil)
 		if err != nil {
 			return nil, nil, err
 		}
-		if d.model.Awaiting == nil {
+		kind := ""
+		switch {
+		case d.model.Awaiting != nil:
+			kind = *d.model.Awaiting + "_waiting"
+		case d.model.ReviewDecision != nil && *d.model.ReviewDecision == string(ports.DecisionApproved):
+			kind = "approved"
+		default:
 			continue
 		}
 		targets := open.arTargets[ar.ID]
@@ -82,7 +89,7 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 		if len(targets) > 0 && !slices.ContainsFunc(targets, active) {
 			continue
 		}
-		it := WorkItem{Kind: *d.model.Awaiting + "_waiting", SubjectID: ar.ID}
+		it := WorkItem{Kind: kind, SubjectID: ar.ID}
 		if len(targets) > 0 {
 			it.NodeID = targets[0]
 		}
