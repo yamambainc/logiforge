@@ -153,12 +153,12 @@ func TestE2EHumanMerge(t *testing.T) {
 		} `json:"apply_request"`
 	}
 	// 書く権限（コード）のない人の approve は、数える review にならない（design/adapters/pull-requests.md の「数える review」）。
-	// そのため、レビュー待ちのままで、警告を返す。コードを書く権限のない主体の merge は、GitForge が断る（merge_forbidden）。
+	// そのため、レビュー待ちのままで、警告を返す。数えない approve しかないので、Logiforge は merge を断る（not_approved）。
 	_, code, out = weak.review(fb.ID, "approve", 1)
 	if code != 0 || json.Unmarshal([]byte(out), &forbidden) != nil {
 		t.Fatalf("書く権限のない reviewer の approve：%d %s", code, out)
 	}
-	if code, out := weak.cli("", "ar", "merge", fb.ID, "--repo", "q", "--json"); code != 1 || !strings.Contains(out, "merge_forbidden") {
+	if code, out := weak.cli("", "ar", "merge", fb.ID, "--repo", "q", "--json"); code != 1 || !strings.Contains(out, "not_approved") {
 		t.Fatalf("書く権限のない reviewer の merge：%d %s", code, out)
 	}
 	if forbidden.ApplyRequest.State != "open" ||
