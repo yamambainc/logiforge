@@ -5,16 +5,18 @@ apply request が、どういう条件で反映され、論理レビューと me
 
 ## 反映の条件
 
-[apply request](README.md) を merge してよいかは、GitForge が決める。Logiforge は、承認が足りるかを自分では数えない。
+[apply request](README.md) が承認されているかは、GitForge の review と、その扱いの設定で決まる。Logiforge は、独自の数え方をしない。
 
 - GitForge は、作者自身の `approve` を拒む。書いた人と確かめる人を分けるのは、この GitForge の仕組みである。
 - Logiforge の merge の操作は、承認されていない apply request を merge しない。GitForge の設定によらない（[merge](#merge)）。
 - GitForge の画面から直接 merge するときに承認を求めるのは、GitForge の設定である。`main` に、次の設定を掛けることを勧める（[GitForge の設定](#gitforge-の設定)）。
   - 承認を必須にする。
   - 新しい push で、古い `approve` を外す。
+    - push のあとに、それまでの `approve` を残すか外すかは、GitForge の設定で決まる。Logiforge は、どのコミットへの `approve` かを見ない。
+    - 外さなければ、`approve` のあとに push した差分も、承認済みのまま merge できる。push のたびにレビューし直させたいなら、この設定を掛ける。
 - 設定しなければ、GitForge の画面からは、`approve` がなくても merge できる。これは GitForge の仕様どおりである。
 - Logiforge が示す承認の状態（承認済み、変更を求められている、まだ）は、GitForge の review から決める。
-  - 承認済みとするのは、書く権限を持つ人の `approve` が今の差分にあり、変更を求める review が残っていないときである。
+  - 承認済みとするのは、書く権限を持つ人の `approve` があり、変更を求める review が残っていないときである。外された `approve` は数えない。
   - GitForge によっては、一覧では承認の状態が分からず、示さないことがある。1 件を読めば示す。
 
 ### GitForge の設定

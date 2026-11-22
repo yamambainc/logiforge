@@ -204,11 +204,11 @@ func awaiting(w ports.Waiting) *string {
 //   - 修正待ちのラベルを付けたこと（opener が直すべき理由で、approve か merge が確かめに通らなかったとき。GitForge の画面で付けたものも含む）：修正待ち。
 //     ラベルを付けられるのは、書く権限に近い権限を持つ人だけである（design/adapters/pull-requests.md）
 //   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）：レビュー待ち
-//   - 先頭のコミット head への、数える approve の review：どちらのラベルもない
+//   - 数える approve の review：どちらのラベルもない（どのコミットへの approve かは見ない。古い approve を外すかは GitForge の設定に任せる）
 //   - どれもなければ、レビュー待ち
 //
 // reviews は、数える review だけである。
-func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review, head string) ports.Waiting {
+func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
 	at := map[ports.Waiting]time.Time{ports.WaitingReview: ar.ReviewWaitingAt}
 	later := func(w ports.Waiting, t time.Time) {
 		if t.After(at[w]) {
@@ -222,7 +222,7 @@ func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review, head string) 
 		switch {
 		case r.Kind == ports.ReviewRequestChanges:
 			later(ports.WaitingFix, r.CreatedAt)
-		case r.Kind == ports.ReviewApprove && r.Revision == head:
+		case r.Kind == ports.ReviewApprove:
 			later(ports.WaitingNone, r.CreatedAt)
 		}
 	}
@@ -255,7 +255,7 @@ func (b *Backend) repairWaiting(ctx context.Context, gfRef string, d *arDetail) 
 	if d.model.State != string(ports.StateOpen) || !targetsMain(d.port) {
 		return
 	}
-	want := desiredWaiting(d.port, d.reviews.Items, d.current.Commit)
+	want := desiredWaiting(d.port, d.reviews.Items)
 	if d.port.Waiting == want {
 		return
 	}

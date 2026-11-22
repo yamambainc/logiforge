@@ -416,34 +416,22 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 }
 
 // decision は、1 件の pull request の承認の状態を返す（design/adapters/pull-requests.md の「承認の状態」）。
-//   - GitForge が PR 全体の承認の状態を判定していれば（GitHub の reviewDecision）、それを使う。
-//   - していなければ（GitHub で承認を必須にする設定がない、Forgejo）、GitForge が review に付けた印で決める。
-//     書く権限を持つ人ごとの、いちばん新しい approve か request changes のうち、dismiss されておらず、新しい push で古くなっていない
-//     （Forgejo の stale でない）ものを見る。request changes が 1 つでもあれば変更を求められている、
-//     そうでなく今の先頭のコミットへの approve があれば承認済み、どちらもなければまだとする。
+//   - GitForge が PR 全体の承認の状態を判定していれば（GitHub の reviewDecision）、それをそのまま使う。
+//     push のあとに古い approve を外すかは、GitForge の設定に任せる。
+//   - していなければ（GitHub で承認を必須にする設定がない、Forgejo）、書く権限を持つ人ごとの、いちばん新しい approve か
+//     request changes で決める（dismiss されたものは除く）。どのコミットへの review かは見ない。
+//     request changes が 1 つでもあれば変更を求められている、そうでなく approve があれば承認済み、どちらもなければまだとする。
 func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullReview) (ports.ReviewDecision, error) {
 	ds, err := a.API.ReviewDecisions(ctx, repo, []int{num})
 	if err != nil {
 		return "", err
 	}
-	p, err := a.API.GetPull(ctx, repo, num)
-	if err != nil {
-		return "", err
-	}
-	// 今の先頭のコミットへの、数える approve があるか。GitForge が承認済みと判定していても、なければまだとする。
-	// なぜ：新しい push で古い approve を外す設定がなければ、GitForge は、だれも見ていない新しい差分も承認済みとするから。
-	headApproved := slices.ContainsFunc(rs, func(r PullReview) bool {
-		return r.Kind == ports.ReviewApprove && r.CommitID == p.HeadSHA && !r.Dismissed && !r.Stale && r.CanPush != nil && *r.CanPush
-	})
 	if d := ports.ReviewDecision(ds[num]); d != ports.DecisionNone {
-		if d == ports.DecisionApproved && !headApproved {
-			return ports.DecisionPending, nil
-		}
 		return d, nil
 	}
 	last := map[string]PullReview{}
 	for _, r := range rs {
-		if r.Dismissed || r.Stale || r.CanPush == nil || !*r.CanPush {
+		if r.Dismissed || r.CanPush == nil || !*r.CanPush {
 			continue
 		}
 		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
@@ -452,12 +440,10 @@ func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullR
 	}
 	out := ports.DecisionPending
 	for _, r := range last {
-		switch {
-		case r.Kind == ports.ReviewRequestChanges:
+		if r.Kind == ports.ReviewRequestChanges {
 			return ports.DecisionChangesRequested, nil
-		case r.CommitID == p.HeadSHA:
-			out = ports.DecisionApproved
 		}
+		out = ports.DecisionApproved
 	}
 	return out, nil
 }

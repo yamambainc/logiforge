@@ -533,8 +533,10 @@ func TestDecisionFromReviews(t *testing.T) {
 	}{
 		{"何もない", nil, ports.DecisionPending},
 		{"先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
-		{"前の先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h0"}}, ports.DecisionPending},
-		{"古くなった approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Stale: true}}, ports.DecisionPending},
+		// どのコミットへの approve かは見ない。古い approve を外すかは、GitForge の設定に任せる。
+		{"前の先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h0"}}, ports.DecisionApproved},
+		{"古くなった approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Stale: true}}, ports.DecisionApproved},
+		{"dismiss された approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Dismissed: true}}, ports.DecisionPending},
 		{"書く権限のない人の approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "eve", CommitID: "h1"}}, ports.DecisionPending},
 		{"approve のあとの request changes", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewRequestChanges, Author: "carol", CommitID: "h1"}}, ports.DecisionChangesRequested},
 		{"request changes のあと、同じ人の approve", []PullReview{{ID: 1, Kind: ports.ReviewRequestChanges, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
@@ -552,19 +554,19 @@ func TestDecisionFromReviews(t *testing.T) {
 	}
 }
 
-// GitForge が承認済みと判定していても、今の先頭のコミットへの数える approve がなければ、まだとする（新しい push で古い approve を外す設定がないとき）。
-func TestDecisionApprovedNeedsHeadApprove(t *testing.T) {
+// GitForge が PR 全体の承認の状態を判定していれば、それをそのまま使う。どのコミットへの approve かは見ない。
+func TestDecisionFromGitForge(t *testing.T) {
 	ctx := context.Background()
 	f := newFake()
 	f.pulls[1] = &Pull{Number: 1, State: "open", HeadSHA: "h2", Head: "b", Base: "main"}
 	f.decisions = map[int]string{1: "approved"}
 	f.reviews[1] = []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}
 	a := &Adapter{API: f}
-	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionPending {
-		t.Fatalf("古いコミットへの approve だけ：%q %v", rs.Decision, err)
-	}
-	f.reviews[1] = append(f.reviews[1], PullReview{ID: 2, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h2"})
 	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionApproved {
-		t.Fatalf("先頭への approve：%q %v", rs.Decision, err)
+		t.Fatalf("GitForge の判定：%q %v", rs.Decision, err)
+	}
+	f.decisions[1] = "pending"
+	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("GitForge の判定（まだ）：%q %v", rs.Decision, err)
 	}
 }

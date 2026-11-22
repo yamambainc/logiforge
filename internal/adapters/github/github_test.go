@@ -628,10 +628,12 @@ func TestReviewDecisionAndNotApproved(t *testing.T) {
 	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
 		t.Fatalf("設定なしの 1 件：%+v %v", rs, err)
 	}
+	// どのコミットへの approve かは見ない（古い approve を外すかは、GitHub の設定に任せる）。
 	f.reviews[1] = append(f.reviews[1], &fakeReview{ID: 8, State: "APPROVED", Author: "bob", CommitID: "old", At: time.Now()})
-	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
-		t.Fatalf("前の先頭のコミットへの approve は数えない：%+v %v", rs, err)
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("前の先頭のコミットへの approve：%+v %v", rs, err)
 	}
+	f.reviews[1] = f.reviews[1][:len(f.reviews[1])-1]
 	f.requireApproval = true
 	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
 		t.Fatalf("承認の前：%+v %v", rs, err)

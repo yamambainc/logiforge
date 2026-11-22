@@ -54,11 +54,11 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - GitHub：pull request の `reviewDecision`（`APPROVED`、`CHANGES_REQUESTED`、`REVIEW_REQUIRED`）を読み替える。承認を必須にする設定がなければ、GitHub は null を返すので、review から決める。
     - 一覧では、pull request の一覧のあとに、その pull request の番号を別名で並べた GraphQL を、50 件ごとに 1 回呼ぶ。pull request ごとには呼ばない（[一覧の読み](../backend/list-reads.md)）。null なら、一覧では分からないとする。
   - Forgejo：PR 全体の承認の状態を返さない。1 件を読むときだけ、review から決める。一覧では分からないとする。
-  - review から決めるとき：[数える review](#数える-review) のうち、書いた人ごとのいちばん新しい `approve` か `request changes` を見る。Forgejo では、`stale`（新しい push で古くなった）ものも除く。
+  - review から決めるとき：[数える review](#数える-review) のうち、書いた人ごとのいちばん新しい `approve` か `request changes` を見る。dismiss された review は数えない。どのコミットへの review かと、Forgejo の `stale`（新しい push で古くなった）は見ない。
+    - なぜ：push のあとに古い `approve` を外すかは、GitForge の設定（古い approve を外す）に任せるから。外す設定なら、GitForge が dismiss する。
     - `request changes` が 1 つでもあれば `changes_requested`
-    - そうでなく、今の先頭のコミットへの `approve` があれば `approved`
+    - そうでなく、`approve` があれば `approved`
     - どちらもなければ `pending`
-  - GitForge が承認済みと判定していても、今の先頭のコミットへの数える `approve` がなければ `pending` とする。なぜ：新しい push で古い `approve` を外す設定がなければ、GitForge は、だれも見ていない新しい差分も承認済みとするから。
 
 ## 数える review
 
@@ -121,7 +121,7 @@ review と issue の本文に書くことは、[review と issue の本文](text
   - 修正待ちのラベルを付けたこと（opener が直すべき理由で確かめに通らなかったこと。GitForge の画面で付けたものも含む）：修正待ち
     - なぜ付けた人を見ないか：確かめに通らなかった `approve` は GitForge に出ないので、付けた人の `approve` を手がかりにできないから。ラベルを付けられるのは、GitHub では Triage 以上、Forgejo では repository に書く権限のある人だけである。ラベルは表示にだけ使うので、だれが付けたものも数えて、保証は弱くならない。
   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）：レビュー待ち
-  - 今の先頭のコミットへの、数える `approve` の review：どちらのラベルもない（merge を待つ）
+  - 数える `approve` の review：どちらのラベルもない（merge を待つ）。どのコミットへの `approve` かは見ない
   - どれもなければ、レビュー待ち
   - 反映できない理由のコメントは、読まない。なぜ：人が読む文で、だれでも書けるから。確かめに通らなかった出来事は、そのときに付け替えたラベルの出来事で読む。
   - ラベルを付けた時刻は、pull request の出来事の一覧（GitHub は issue の events、Forgejo は issue の timeline）で読む。

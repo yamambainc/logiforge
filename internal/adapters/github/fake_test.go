@@ -810,13 +810,10 @@ func (f *fakeGitHub) issueJSON(is *fakeIssue) map[string]any {
 }
 
 // reviewDecision は、GitHub と同じく、書く権限のある人ごとのいちばん新しい approve か request changes から、承認の状態を決める。
-// 古い approve を外す設定（Dismiss stale approvals）と同じく、今の head への approve だけを数える。呼ぶ側が f.mu を持つ。
+// 古い approve を外す設定はないものとする（どのコミットへの approve も数える）。呼ぶ側が f.mu を持つ。
 func (f *fakeGitHub) reviewDecision(n int) string {
 	last := map[string]string{}
 	for _, rv := range f.reviews[n] {
-		if rv.State == "APPROVED" && rv.CommitID != f.pulls[n].HeadSHA {
-			continue
-		}
 		if (rv.State == "APPROVED" || rv.State == "CHANGES_REQUESTED") && f.writers[rv.Author] {
 			last[rv.Author] = rv.State
 		}

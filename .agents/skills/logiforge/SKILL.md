@@ -59,7 +59,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
   - `node.edit`：仮説の背景情報に、文章を加える。
 - 差分を書いたのとは別の GitForge のアカウントの reviewer が `approve` したあと、merge すると反映される。
   - 別のアカウントにするのは、書いた本人の推論に引きずられずに、論理を審査するためである。作者自身の `approve` は、GitForge が拒む。
-  - 差分が更新されたら、`approve` はやり直しになる。
+  - 差分を更新したあとに `approve` が残るかは、GitForge の設定で決まる。残っていても、直した差分は reviewer に見てもらう（修正待ちなら `ar fixed` で申告する）。
   - `approve` だけでは、merge されない。approve されたら、opener が `logiforge ar merge <apply request>` で merge する。人が GitForge の画面で merge してもよい（[merge](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review.md#merge)）。
 
 ### 役割

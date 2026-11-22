@@ -19,7 +19,7 @@ Logiforge は、いま着手できる作業を返す問い合わせを提供す�
 - 未決の葉（[葉と検証結果](../tree/README.md)）
 - 要再検討の仮説（[真偽値の伝播](../tree/propagation.md)）
 - レビュー待ちの apply request
-  - 修正待ちでなく、今の差分に `approve` も出ていない、open の apply request をいう。
+  - 修正待ちでなく、`approve` も出ていない、open の apply request をいう。
 - 修正待ちの apply request
   - `request_changes` を受けたか、opener が直すべき理由で `approve` か merge が確かめに通らなかった apply request をいう（[反映](../apply-request/README.md)）。
   - opener が直し終えたと申告するまで、修正待ちのままである。push しただけでは、レビュー待ちに戻らない。なぜ：push しても、直し終えたとは限らないから。

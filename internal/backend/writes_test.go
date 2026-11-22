@@ -265,8 +265,9 @@ func TestMergeWithoutRequiredApproval(t *testing.T) {
 	}
 }
 
-// approve のあとに push されたら、merge は not_approved で断り、その場でレビュー待ちのラベルに戻す。
-func TestMergeAfterPushNotApproved(t *testing.T) {
+// approve のあとに push されても、古い approve を外すかは GitForge の設定に任せるので、承認済みのまま merge できる。
+// 木の確かめは、merge の直前に、今の先頭のコミットで行う（design/backend/merge.md の「merge」）。
+func TestMergeAfterPushKeepsApprove(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
 	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
@@ -279,11 +280,12 @@ func TestMergeAfterPushNotApproved(t *testing.T) {
 	f.r.git("checkout", "--quiet", "main")
 	f.forge.ar(id).HeadRevision = head
 	f.waitVersion(t, Written[ApplyRequest]{Value: ApplyRequest{HeadCommit: head}})
-	if _, err := f.b.MergeApplyRequest(ctx, agentC, "q", id); code(err) != CodeNotApproved {
-		t.Fatalf("push のあとの merge：%v", err)
+	m, err := f.b.MergeApplyRequest(ctx, agentC, "q", id)
+	if err != nil || m.Value.State != "merged" {
+		t.Fatalf("push のあとの merge：%+v %v", m.Value, err)
 	}
-	if ar := f.forge.ar(id); ar.State == ports.StateMerged || ar.Waiting != ports.WaitingReview {
-		t.Fatalf("merge のあと：%+v", ar)
+	if got := f.r.git("show", "main:"+dH1+"/background.md"); got != "一\n二" {
+		t.Fatalf("今の先頭のコミットが反映されていない：%q", got)
 	}
 }
 

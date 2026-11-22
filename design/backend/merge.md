@@ -102,7 +102,7 @@ Logiforge からの merge（[apply request を merge する](../api/endpoints/ap
 
 - apply request は、open のまま残る。
 - opener は、ブランチを直して push する。新しい先頭のコミットになる。
-  - それまでの approve は、新しい先頭のコミットには効かない（[反映の条件](../../docs/apply-request/review.md)）。
+  - それまでの approve を外すかは、GitForge の設定で決まる（[反映の条件](../../docs/apply-request/review.md#反映の条件)）。外さない設定でも、merge の直前に、今の先頭のコミットで木を確かめる。
 - 修正待ちになるのは、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）のときだけである。
 - `snapshot_pending` のあとは、同じ操作（`approve` か merge）を送り直す。
 - `merge_forbidden` のあとは、merge の権限のある人が merge する。`approve` し直す必要はない。

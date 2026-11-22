@@ -265,24 +265,21 @@ func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews,
 }
 
 // decision は、本物のアダプタが review から決めるのと同じ規則で、承認の状態を決める（design/adapters/pull-requests.md の「承認の状態」）。
-// 書いた人ごとのいちばん新しい approve か request changes を見る。request changes が 1 つでもあれば変更を求められている、
-// そうでなく今の先頭のコミットへの approve があれば承認済み、どちらもなければまだ。
+// 書いた人ごとのいちばん新しい approve か request changes を見る。どのコミットへの review かは見ない。
+// request changes が 1 つでもあれば変更を求められている、そうでなく approve があれば承認済み、どちらもなければまだ。
 func (f *fakeForge) decision(id string) ports.ReviewDecision {
-	head := f.ar(id).HeadRevision
-	last := map[string]ports.Review{}
+	last := map[string]ports.ReviewKind{}
 	for _, r := range f.reviews[id].Items {
 		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
-			last[r.Reviewer] = r
+			last[r.Reviewer] = r.Kind
 		}
 	}
 	d := ports.DecisionPending
-	for _, r := range last {
-		switch {
-		case r.Kind == ports.ReviewRequestChanges:
+	for _, k := range last {
+		if k == ports.ReviewRequestChanges {
 			return ports.DecisionChangesRequested
-		case r.Revision == head:
-			d = ports.DecisionApproved
 		}
+		d = ports.DecisionApproved
 	}
 	return d
 }
@@ -655,8 +652,8 @@ func TestDesiredWaiting(t *testing.T) {
 		{"何もない", ports.ApplyRequest{}, nil, ports.WaitingReview},
 		{"request changes", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingFix},
 		{"直し終えたと申告した", ports.ApplyRequest{ReviewWaitingAt: t0.Add(2 * time.Minute)}, []ports.Review{rc(t0.Add(time.Minute))}, ports.WaitingReview},
-		{"先頭のコミットへの approve は、どちらのラベルも外す", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), head)}, ports.WaitingNone},
-		{"前の先頭のコミットへの approve は数えない", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), old)}, ports.WaitingReview},
+		{"approve は、どちらのラベルも外す", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), head)}, ports.WaitingNone},
+		{"前の先頭のコミットへの approve も数える", ports.ApplyRequest{ReviewWaitingAt: t0}, []ports.Review{ap(t0.Add(time.Minute), old)}, ports.WaitingNone},
 		{"確かめに通らず修正待ちのラベルを付けた（approve は出していない）", ports.ApplyRequest{ReviewWaitingAt: t0, FixWaitingLabeled: []ports.LabelEvent{{Actor: "bob", At: t0.Add(time.Minute)}}}, nil, ports.WaitingFix},
 		// ラベルを付けられるのは、書く権限がある人だけなので、だれが付けたかは見ない。
 		{"GitForge の画面で修正待ちのラベルを付けた", ports.ApplyRequest{ReviewWaitingAt: t0, Waiting: ports.WaitingFix, FixWaitingLabeled: []ports.LabelEvent{{Actor: "admin", At: t0.Add(time.Minute)}}},
@@ -671,7 +668,7 @@ func TestDesiredWaiting(t *testing.T) {
 		{"修正待ちのラベルのあとのレビュー待ちのラベル（直し終えたと申告した）", ports.ApplyRequest{FixWaitingLabeled: []ports.LabelEvent{{At: t0}}, ReviewWaitingAt: t0.Add(time.Minute)}, nil, ports.WaitingReview},
 	}
 	for _, c := range cases {
-		if got := desiredWaiting(c.ar, c.reviews, head); got != c.want {
+		if got := desiredWaiting(c.ar, c.reviews); got != c.want {
 			t.Fatalf("%s: %q", c.name, got)
 		}
 	}
