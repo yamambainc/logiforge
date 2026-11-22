@@ -83,9 +83,9 @@ Logiforge からの merge（[apply request を merge する](../api/endpoints/ap
 ## 衝突
 
 - 今の main での確かめを通っても、git の衝突で merge できないことがある（例：同じ `background.md` の末尾への追加どうし）。GitForge の merge が失敗したら、`conflict` で断り、確かめに通らなかったときと同じく、コメントを書いて修正待ちにする。
-  - opener は、ブランチを今の `main` に合わせて直し、push する。新しい先頭のコミットになるので、レビューからやり直す。
+  - opener は、ブランチを今の `main` に合わせて直し、push する。新しい先頭のコミットになる。それまでの `approve` が外れるかは、GitForge の設定で決まる（[反映の条件](../../docs/apply-request/review.md#反映の条件)）。外れたら、レビューを受け直す。
 - merge の手順 3 で、pull request の head が指定した SHA でなければ、GitForge の merge が失敗する。バックエンドは `commit_conflict` を返す。
-  - なぜ：レビューのあとに push されたコミットを、レビューなしに反映しないため。
+  - なぜ：直前に今の `main` で確かめた木と、merge する木を同じにするため。確かめたあとに push されたコミットを、確かめずに反映しない。
 - `main` に追いついていることを merge の条件にする GitForge の保護と、ブランチを `main` に追いつかせる操作は、使わない。
   - なぜ：衝突しない変更まで、`main` が進むたびに作り直しになるから。今の main での確かめと git の衝突で足りる。
 

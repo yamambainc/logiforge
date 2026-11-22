@@ -85,7 +85,7 @@ export const canMerge = (a: ApplyRequest): boolean => a.state === 'open' && a.ta
 
 export const MERGE_ERRORS: Record<string, string> = {
   forbidden: 'merge できるのは、この repository に Write がある人だけです。',
-  commit_conflict: '先頭のコミットが新しくなりました。新しい先頭のコミットを、レビューからやり直してください。',
+  commit_conflict: '先頭のコミットが新しくなりました。新しい先頭のコミットを確かめてから、merge を送り直してください（approve が外れていれば、レビューを受け直してください）。',
   snapshot_pending: REVIEW_ERRORS.snapshot_pending,
   unavailable: REVIEW_ERRORS.unavailable,
 };

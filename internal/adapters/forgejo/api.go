@@ -287,7 +287,6 @@ type reviewJSON struct {
 	CommitID    string    `json:"commit_id"`
 	Dismissed   bool      `json:"dismissed"`
 	Official    bool      `json:"official"`
-	Stale       bool      `json:"stale"`
 	SubmittedAt time.Time `json:"submitted_at"`
 }
 
@@ -300,7 +299,7 @@ func (r reviewJSON) review() (pullreq.PullReview, bool) {
 	// 「数える review」）。ほかの人の権限を読む API（collaborators/{user}/permission）は、repository の admin しか使えないので、使わない。
 	official := r.Official
 	return pullreq.PullReview{ID: r.ID, Kind: k, Author: r.User.Login, Body: r.Body, CommitID: r.CommitID, Dismissed: r.Dismissed,
-		Stale: r.Stale, CanPush: &official, SubmittedAt: r.SubmittedAt}, true
+		CanPush: &official, SubmittedAt: r.SubmittedAt}, true
 }
 
 // ReviewDecisions は、空の map を返す。Forgejo は、PR 全体の承認の状態を返さないからである。1 件では、review の official と stale から求める

@@ -337,7 +337,7 @@ func (b *Backend) squash(ctx context.Context, ref, id string, d *arDetail) (stri
 	sha, err := b.Forge.Merge(ctx, ref, id, d.current.Commit, title, "")
 	switch {
 	case errors.Is(err, ports.ErrHeadMoved):
-		return "", fail(CodeCommitConflict, "merge の前に、新しいコミットが push された。新しい先頭のコミットを、レビューからやり直す")
+		return "", fail(CodeCommitConflict, "merge の前に、新しいコミットが push された。新しい先頭のコミットで、確かめてから merge を送り直す（GitForge の設定で approve が外れていれば、レビューを受け直す）")
 	case errors.Is(err, ports.ErrConflict):
 		return "", b.refuse(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: "conflict",
 			Detail: "git の衝突で merge できない：" + err.Error() + "。ブランチを今の main に合わせて（rebase か merge で）push し、レビューを受け直す"})

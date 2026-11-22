@@ -25,7 +25,7 @@ export const DECISION: Record<string, string> = { approved: '承認済み', chan
 /** approve と merge が、今の main での確かめや GitForge に断られた理由（エラーの code） */
 export const FAILURE: Record<string, string> = {
   stale_target: 'ブランチを今の main に合わせる必要がある', invariant_violation: '決まりに沿わない', conflict: 'git の衝突', snapshot_pending: '取り込み中で確かめられなかった',
-  not_approved: '先頭のコミットへの approve がない', merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
+  not_approved: '承認されていない', merge_forbidden: 'GitForge で merge する権限がなく、GitForge が merge を断った',
 };
 
 /** 一覧の 1 行の見出し。説明の最初の行、なければブランチ */

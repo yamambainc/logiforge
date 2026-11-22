@@ -535,7 +535,6 @@ func TestDecisionFromReviews(t *testing.T) {
 		{"先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
 		// どのコミットへの approve かは見ない。古い approve を外すかは、GitForge の設定に任せる。
 		{"前の先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h0"}}, ports.DecisionApproved},
-		{"古くなった approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Stale: true}}, ports.DecisionApproved},
 		{"dismiss された approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Dismissed: true}}, ports.DecisionPending},
 		{"書く権限のない人の approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "eve", CommitID: "h1"}}, ports.DecisionPending},
 		{"approve のあとの request changes", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewRequestChanges, Author: "carol", CommitID: "h1"}}, ports.DecisionChangesRequested},

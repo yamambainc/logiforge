@@ -88,9 +88,6 @@ type PullReview struct {
 	CommitID string
 	// Dismissed は、dismiss されたか。
 	Dismissed bool
-	// Stale は、review を出したあとに新しいコミットが push され、GitForge が古いとみなしたか（Forgejo の stale）。GitHub は持たない。
-	// 承認の状態の判定には使わない。古い approve を外すかは、GitForge の設定に任せるからである。
-	Stale bool
 	// CanPush は、書いた人が repository に書く権限を持つか。読めなければ nil（GitHub は authorCanPushToRepository、Forgejo は official）。
 	CanPush     *bool
 	SubmittedAt time.Time
