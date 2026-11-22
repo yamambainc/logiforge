@@ -43,7 +43,7 @@ Logiforge の承認の team（例：`logiforge-gate`）は、メンバーのい�
   - ディレクトリの中のファイルを外へ rename する PR
   - ディレクトリを消す PR
   - 外のファイルをディレクトリの中へ移す PR
-- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は断る。アダプタは、これを反映の失敗 `merge_forbidden` にする（[GitHub アダプタ](../adapters/github.md#merge-を断られたとき) の「merge を断られたとき」）。
+- (B) の bypass にいない人が、ディレクトリを変える PR を merge すると、GitHub は断る。アダプタは、これを承認が足りない `not_approved` にする。承認の team の人に approve してもらうと merge できる（[GitHub アダプタ](../adapters/github.md#merge-を断られたとき) の「merge を断られたとき」）。
 
 ## Forgejo の守る設定
 

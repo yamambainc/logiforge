@@ -479,7 +479,7 @@ func TestMergedApplyRequest(t *testing.T) {
 	}
 }
 
-// merge の権限のない主体の merge は ErrMergeForbidden。制限に当たり続けた 403 は、権限がないことにしない。
+// merge の権限のない主体の merge は ErrMergeForbidden、承認の team の承認がない merge は ErrNotApproved。制限に当たり続けた 403 は、権限がないことにしない。
 func TestMergeForbidden(t *testing.T) {
 	f, a, _ := newTestAdapter(t)
 	ctx := agentCtx()
@@ -492,9 +492,9 @@ func TestMergeForbidden(t *testing.T) {
 	if _, err := a.Merge(ports.WithToken(context.Background(), "tok-weak"), fakeRepo, "1", "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
 		t.Fatalf("権限のない主体：%v", err)
 	}
-	// ルールセットに断られた merge（実際の GitHub で確かめた応答の形）も、merge の権限がないこととする。
+	// 承認の team の承認がないとルールセットに断られた merge（実際の GitHub で確かめた応答の形）は、承認が足りないこととする。
 	f.ruleBlocked = true
-	if _, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m"); !errors.Is(err, ports.ErrMergeForbidden) {
+	if _, err := a.API.MergePull(ctx, fakeRepo, 1, "h1", "t", "m"); !errors.Is(err, ports.ErrNotApproved) {
 		t.Fatalf("ルールセットに断られた merge：%v", err)
 	}
 	f.ruleBlocked = false

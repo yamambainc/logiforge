@@ -623,5 +623,5 @@ func (a api) DownloadAttachment(context.Context, string, int64, string) ([]byte,
 func notApproved(msg string) bool {
 	m := strings.ToLower(msg)
 	return strings.Contains(m, "approving review") || strings.Contains(m, "review is required") || strings.Contains(m, "code owner review") ||
-		strings.Contains(m, "changes requested") || strings.Contains(m, "review required")
+		strings.Contains(m, "changes requested") || strings.Contains(m, "review required") || strings.Contains(m, "required approvals")
 }

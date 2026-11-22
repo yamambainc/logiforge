@@ -264,21 +264,25 @@ func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews,
 	return rs, nil
 }
 
-// decision は、GitForge と同じく、人ごとのいちばん新しい、先頭のコミットへの approve か request changes から、承認の状態を決める。
+// decision は、本物のアダプタが review から決めるのと同じ規則で、承認の状態を決める（design/adapters/pull-requests.md の「承認の状態」）。
+// 書いた人ごとのいちばん新しい approve か request changes を見る。request changes が 1 つでもあれば変更を求められている、
+// そうでなく今の先頭のコミットへの approve があれば承認済み、どちらもなければまだ。
 func (f *fakeForge) decision(id string) ports.ReviewDecision {
 	head := f.ar(id).HeadRevision
-	last := map[string]ports.ReviewKind{}
+	last := map[string]ports.Review{}
 	for _, r := range f.reviews[id].Items {
-		if r.Revision == head && (r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges) {
-			last[r.Reviewer] = r.Kind
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			last[r.Reviewer] = r
 		}
 	}
 	d := ports.DecisionPending
-	for _, k := range last {
-		if k == ports.ReviewRequestChanges {
+	for _, r := range last {
+		switch {
+		case r.Kind == ports.ReviewRequestChanges:
 			return ports.DecisionChangesRequested
+		case r.Revision == head:
+			d = ports.DecisionApproved
 		}
-		d = ports.DecisionApproved
 	}
 	return d
 }

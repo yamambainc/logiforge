@@ -215,11 +215,15 @@ func (a *Adapter) ListApplyRequests(ctx context.Context, repo, state string) ([]
 	}
 	// 承認の状態は、GitForge が一覧と一緒に返せるときだけ入れる（GitHub は、pull request の別名を並べた GraphQL で 1 回に読む）。
 	if len(open) > 0 {
+		// 承認の状態は、一覧では表示にだけ使うので、読めなければ分からないとして続ける（1 件を読めば分かる）。
 		ds, err := a.API.ReviewDecisions(ctx, repo, open)
-		if err != nil {
-			return nil, err
-		}
 		for i := range out {
+			if err != nil {
+				if out[i].State == ports.StateOpen {
+					out[i].Warnings = append(out[i].Warnings, "承認の状態を読めない："+err.Error())
+				}
+				continue
+			}
 			out[i].ReviewDecision = ports.ReviewDecision(ds[out[i].Number])
 		}
 	}
@@ -422,12 +426,20 @@ func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullR
 	if err != nil {
 		return "", err
 	}
-	if d := ds[num]; d != "" {
-		return ports.ReviewDecision(d), nil
-	}
 	p, err := a.API.GetPull(ctx, repo, num)
 	if err != nil {
 		return "", err
+	}
+	// 今の先頭のコミットへの、数える approve があるか。GitForge が承認済みと判定していても、なければまだとする。
+	// なぜ：新しい push で古い approve を外す設定がなければ、GitForge は、だれも見ていない新しい差分も承認済みとするから。
+	headApproved := slices.ContainsFunc(rs, func(r PullReview) bool {
+		return r.Kind == ports.ReviewApprove && r.CommitID == p.HeadSHA && !r.Dismissed && !r.Stale && r.CanPush != nil && *r.CanPush
+	})
+	if d := ports.ReviewDecision(ds[num]); d != ports.DecisionNone {
+		if d == ports.DecisionApproved && !headApproved {
+			return ports.DecisionPending, nil
+		}
+		return d, nil
 	}
 	last := map[string]PullReview{}
 	for _, r := range rs {

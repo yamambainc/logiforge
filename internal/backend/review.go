@@ -203,6 +203,8 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	}
 	// Logiforge からの merge は、承認されていなければ断る。GitForge の設定によらない（design/backend/merge.md の「merge」）。
 	if p := approvalProblem(d); p != "" {
+		// approve のあとに push されたなどで、ラベルがずれていれば、その場で直す（レビュー待ちに戻り、reviewer の作業に出る）。
+		b.repairWaiting(ctx, ref, d)
 		return out, fail(CodeNotApproved, "%s", p)
 	}
 	// 2 と 3. 今の main での確かめ。

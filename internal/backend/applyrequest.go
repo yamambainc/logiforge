@@ -135,8 +135,13 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		m.Awaiting = awaiting(ar.Waiting)
 		// 承認の状態は、1 件を読むときは review の一覧と一緒に、一覧では pull request の一覧と一緒に、GitForge から読む。
 		dec := ar.ReviewDecision
-		if how.reviews {
+		switch {
+		case how.reviews:
 			dec = reviews.Decision
+		case dec == ports.DecisionNone && ar.Waiting == ports.WaitingNone:
+			// 一覧で承認の状態が分からず、どちらのラベルもなければ、承認済みとみなす。Logiforge がラベルを外すのは、approve のときだけだから
+			// （design/adapters/pull-requests.md の「ラベルがずれたとき」）。1 件を読めば、GitForge の review から正しい状態に直る。
+			dec = ports.DecisionApproved
 		}
 		if dec != ports.DecisionNone {
 			s := string(dec)

@@ -265,6 +265,46 @@ func TestMergeWithoutRequiredApproval(t *testing.T) {
 	}
 }
 
+// approve のあとに push されたら、merge は not_approved で断り、その場でレビュー待ちのラベルに戻す。
+func TestMergeAfterPushNotApproved(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	f.r.git("checkout", "--quiet", "x")
+	f.r.write(dH1+"/background.md", []byte("一\n二\n"))
+	head := f.r.commit("版 2")
+	f.r.git("checkout", "--quiet", "main")
+	f.forge.ar(id).HeadRevision = head
+	f.waitVersion(t, Written[ApplyRequest]{Value: ApplyRequest{HeadCommit: head}})
+	if _, err := f.b.MergeApplyRequest(ctx, agentC, "q", id); code(err) != CodeNotApproved {
+		t.Fatalf("push のあとの merge：%v", err)
+	}
+	if ar := f.forge.ar(id); ar.State == ports.StateMerged || ar.Waiting != ports.WaitingReview {
+		t.Fatalf("merge のあと：%+v", ar)
+	}
+}
+
+// 一覧で承認の状態が分からず、どちらのラベルもない apply request は、承認済みとみなし、一覧と作業から落とさない。
+func TestListUnknownDecisionWithoutLabels(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: f.forge.ar(id).HeadRevision, PromptRevision: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	ars, err := f.b.ListApplyRequests(ctx, agentC, "q", "open", "", 0)
+	i := slices.IndexFunc(ars.Items, func(a ApplyRequest) bool { return a.ID == id })
+	if err != nil || i < 0 || ars.Items[i].Awaiting != nil || ars.Items[i].ReviewDecision == nil || *ars.Items[i].ReviewDecision != "approved" {
+		t.Fatalf("一覧：%+v %v", ars, err)
+	}
+	if w, err := f.b.ListWork(ctx, agentC, "q", WorkQuery{Kinds: []string{"approved"}}); err != nil || len(w.Items) != 1 || w.Items[0].SubjectID != id {
+		t.Fatalf("作業：%+v %v", w, err)
+	}
+}
+
 // mentionsBase は、利用者が読む文に、内部の語の「base」があるかを返す。git の操作の名前の rebase は除く。
 func mentionsBase(s string) bool {
 	return strings.Contains(strings.ReplaceAll(s, "rebase", ""), "base")

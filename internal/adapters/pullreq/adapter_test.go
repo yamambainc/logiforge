@@ -551,3 +551,20 @@ func TestDecisionFromReviews(t *testing.T) {
 		}
 	}
 }
+
+// GitForge が承認済みと判定していても、今の先頭のコミットへの数える approve がなければ、まだとする（新しい push で古い approve を外す設定がないとき）。
+func TestDecisionApprovedNeedsHeadApprove(t *testing.T) {
+	ctx := context.Background()
+	f := newFake()
+	f.pulls[1] = &Pull{Number: 1, State: "open", HeadSHA: "h2", Head: "b", Base: "main"}
+	f.decisions = map[int]string{1: "approved"}
+	f.reviews[1] = []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}
+	a := &Adapter{API: f}
+	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("古いコミットへの approve だけ：%q %v", rs.Decision, err)
+	}
+	f.reviews[1] = append(f.reviews[1], PullReview{ID: 2, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h2"})
+	if rs, err := a.ListReviews(ctx, "o/r", "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("先頭への approve：%q %v", rs.Decision, err)
+	}
+}
