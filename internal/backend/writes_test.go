@@ -100,6 +100,8 @@ func TestReviewAndMerge(t *testing.T) {
 	}
 	f.waitVersion(t, created)
 	id := created.Value.ID
+	// main を、承認を必須にする GitForge の設定で守る（docs/apply-request/review.md の「GitForge の設定」）。
+	f.forge.requireApproval = true
 
 	if _, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit}); code(err) != CodeValidationFailed {
 		t.Fatalf("prompt_revision なし：%v", err)
@@ -112,14 +114,19 @@ func TestReviewAndMerge(t *testing.T) {
 		t.Fatalf("request_changes: %+v %v", rc.Value.ApplyRequest, err)
 	}
 
-	// 数える approve がなければ、merge できない。
+	// 承認が足りなければ、GitForge が merge を断る。Logiforge は、その理由を not_approved で返す。
 	if _, err := b.MergeApplyRequest(ctx, reviewer, "q", id); code(err) != CodeNotApproved {
 		t.Fatalf("approve の前の merge：%v", err)
 	}
-	// approve は、確かめに通れば GitForge に approve を出すだけで、merge しない。
+	// approve は、確かめに通れば GitForge に approve を出すだけで、merge しない。レビュー待ちのラベルは外れ、承認の状態は GitForge のものを示す。
 	ap, err := b.ReviewApplyRequest(ctx, reviewer, "q", id, NewReview{Kind: "approve", Commit: created.Value.HeadCommit, PromptRevision: "p"})
-	if err != nil || ap.Value.ApplyRequest.State != "open" || ap.Value.Review.Kind != "approve" {
+	if a := ap.Value.ApplyRequest; err != nil || a.State != "open" || ap.Value.Review.Kind != "approve" || a.Awaiting != nil ||
+		a.ReviewDecision == nil || *a.ReviewDecision != "approved" || f.forge.ar(id).Waiting != ports.WaitingNone {
 		t.Fatalf("approve: %+v %v", ap.Value, err)
+	}
+	// 着手できる作業には、GitForge が承認済みと判定した apply request が出る（merge を待つもの）。
+	if w, err := b.ListWork(ctx, agent, "q", WorkQuery{Kinds: []string{"approved"}}); err != nil || len(w.Items) != 1 || w.Items[0].SubjectID != id {
+		t.Fatalf("承認済みの作業：%+v %v", w, err)
 	}
 	// merge は、別の操作である。opener も呼べる。merge し、読む側に出るまで待つ。
 	ok, err := b.MergeApplyRequest(ctx, agent, "q", id)
@@ -219,10 +226,11 @@ func TestMergeRechecksAfterApprove(t *testing.T) {
 	}
 }
 
-// merge の確かめのあいだに request_changes が出たら、merge しない。確かめのあと、squash の前に review を読み直すからである。
+// merge の確かめのあいだに request_changes が出たら、merge しない。承認が足りるかは、merge のときに GitForge が確かめるからである。
 func TestMergeRereadsReviews(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
+	f.forge.requireApproval = true
 	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
 	head := f.forge.ar(id).HeadRevision
 	if _, err := f.b.ReviewApplyRequest(ctx, reviewerC, "q", id, NewReview{Kind: "approve", Commit: head, PromptRevision: "p"}); err != nil {
@@ -241,6 +249,17 @@ func TestMergeRereadsReviews(t *testing.T) {
 	}
 	if ar := f.forge.ar(id); ar.State == ports.StateMerged {
 		t.Fatal("merge した")
+	}
+}
+
+// 承認を必須にする設定のない GitForge では、approve がなくても merge できる。Logiforge は、木の確かめだけをする（design/backend/merge.md の「merge」）。
+func TestMergeWithoutRequiredApproval(t *testing.T) {
+	ctx := context.Background()
+	f := live(t)
+	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
+	m, err := f.b.MergeApplyRequest(ctx, agentC, "q", id)
+	if err != nil || m.Value.State != "merged" {
+		t.Fatalf("merge：%+v %v", m.Value, err)
 	}
 }
 

@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"time"
 
@@ -132,6 +133,15 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	// 向き先が main でない apply request は、Logiforge の検査と反映の対象でないので、レビュー待ちにも修正待ちにもしない。
 	if m.State == string(ports.StateOpen) && targetsMain(ar) {
 		m.Awaiting = awaiting(ar.Waiting)
+		// 承認の状態は、1 件を読むときは review の一覧と一緒に、一覧では pull request の一覧と一緒に、GitForge から読む。
+		dec := ar.ReviewDecision
+		if how.reviews {
+			dec = reviews.Decision
+		}
+		if dec != ports.DecisionNone {
+			s := string(dec)
+			m.ReviewDecision = &s
+		}
 		if ar.Waiting == ports.WaitingBoth {
 			m.Warnings = append(m.Warnings, "レビュー待ちと修正待ちのラベルが、両方付いている。修正待ちとみなす")
 		}
@@ -168,11 +178,17 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 }
 
 // awaiting は、open で向き先が main の apply request が、レビュー待ち（review）か修正待ち（fix）かを、pull request のラベルで決める
-// （design/backend/compute.md の「レビュー待ちと修正待ち」）。ラベルがなければレビュー待ち、両方あれば修正待ちとみなす。
+// （design/backend/compute.md の「レビュー待ちと修正待ち」）。両方あれば修正待ちとみなす。
+// ラベルがなければ、どちらでもない（approve されて merge を待つもの。nil）。
 func awaiting(w ports.Waiting) *string {
-	s := "review"
-	if w == ports.WaitingFix || w == ports.WaitingBoth {
+	var s string
+	switch w {
+	case ports.WaitingReview:
+		s = "review"
+	case ports.WaitingFix, ports.WaitingBoth:
 		s = "fix"
+	default:
+		return nil
 	}
 	return &s
 }
@@ -180,36 +196,51 @@ func awaiting(w ports.Waiting) *string {
 // desiredWaiting は、その pull request の出来事のうち、いちばん新しいもので、正しいラベルを決める
 // （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
 //   - 数える request changes の review：修正待ち
-//   - 修正待ちのラベルを付けたこと（opener が直すべき理由で、approve か merge が確かめに通らなかったとき）：修正待ち。
+//   - 修正待ちのラベルを付けたこと（opener が直すべき理由で、approve か merge が確かめに通らなかったとき。GitForge の画面で付けたものも含む）：修正待ち。
 //     ラベルを付けられるのは、GitHub では Triage 以上、Forgejo では書く権限がある人だけである
-//   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）、数える approve の review：レビュー待ち
+//   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）：レビュー待ち
+//   - 先頭のコミット head への、数える approve の review：どちらのラベルもない
+//   - どれもなければ、レビュー待ち
 //
 // reviews は、数える review だけである。
-func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review) ports.Waiting {
-	var fixAt time.Time
-	reviewAt := ar.ReviewWaitingAt
-	for _, e := range ar.FixWaitingLabeled {
-		if e.At.After(fixAt) {
-			fixAt = e.At
+func desiredWaiting(ar ports.ApplyRequest, reviews []ports.Review, head string) ports.Waiting {
+	at := map[ports.Waiting]time.Time{ports.WaitingReview: ar.ReviewWaitingAt}
+	later := func(w ports.Waiting, t time.Time) {
+		if t.After(at[w]) {
+			at[w] = t
 		}
+	}
+	for _, e := range ar.FixWaitingLabeled {
+		later(ports.WaitingFix, e.At)
 	}
 	for _, r := range reviews {
 		switch {
-		case r.Kind == ports.ReviewRequestChanges && r.CreatedAt.After(fixAt):
-			fixAt = r.CreatedAt
-		case r.Kind == ports.ReviewApprove && r.CreatedAt.After(reviewAt):
-			reviewAt = r.CreatedAt
+		case r.Kind == ports.ReviewRequestChanges:
+			later(ports.WaitingFix, r.CreatedAt)
+		case r.Kind == ports.ReviewApprove && r.Revision == head:
+			later(ports.WaitingNone, r.CreatedAt)
 		}
 	}
-	fixAt, reviewAt = fixAt.Truncate(time.Second), reviewAt.Truncate(time.Second)
-	// GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルを変えない。
-	if !fixAt.IsZero() && fixAt.Equal(reviewAt) && (ar.Waiting == ports.WaitingFix || ar.Waiting == ports.WaitingReview) {
+	// GitForge の時刻は秒の単位なので、同じ秒の出来事は、どちらが新しいか決まらない。そのときは、今のラベルがその中にあれば変えない。
+	var newest time.Time
+	for _, t := range at {
+		if t = t.Truncate(time.Second); t.After(newest) {
+			newest = t
+		}
+	}
+	if newest.IsZero() {
+		return ports.WaitingReview
+	}
+	var tied []ports.Waiting
+	for _, w := range []ports.Waiting{ports.WaitingFix, ports.WaitingReview, ports.WaitingNone} {
+		if t, ok := at[w]; ok && t.Truncate(time.Second).Equal(newest) {
+			tied = append(tied, w)
+		}
+	}
+	if len(tied) > 1 && slices.Contains(tied, ar.Waiting) {
 		return ar.Waiting
 	}
-	if !fixAt.IsZero() && fixAt.After(reviewAt) {
-		return ports.WaitingFix
-	}
-	return ports.WaitingReview
+	return tied[0]
 }
 
 // repairWaiting は、1 件の apply request を読んだときに、ラベルがずれていれば、要求を送った主体のトークンで直す
@@ -219,7 +250,7 @@ func (b *Backend) repairWaiting(ctx context.Context, gfRef string, d *arDetail) 
 	if d.model.State != string(ports.StateOpen) || !targetsMain(d.port) {
 		return
 	}
-	want := desiredWaiting(d.port, d.reviews.Items)
+	want := desiredWaiting(d.port, d.reviews.Items, d.current.Commit)
 	if d.port.Waiting == want {
 		return
 	}

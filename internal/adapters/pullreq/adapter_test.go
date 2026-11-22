@@ -27,6 +27,9 @@ type fake struct {
 	files    map[string][]byte
 	canPush  map[string]bool
 	calls    map[string]int
+	// decisions があれば、ReviewDecisions は、PR 全体の承認の状態を返す GitForge（GitHub）のように、番号ごとに返す。
+	// なければ、返さない GitForge（Forgejo）のように、空を返す。
+	decisions map[int]string
 	// noAttachments は、添付を持てない GitForge にする。
 	noAttachments bool
 	// closedErr は、ClosedPullsPage が返す誤りである。
@@ -119,6 +122,18 @@ func (f *fake) MergePull(_ context.Context, _ string, n int, head, _, _ string) 
 	p.State, p.Merged, p.MergeCommit, p.UpdatedAt = "closed", true, "m-"+head, f.tick()
 	return p.MergeCommit, nil
 }
+func (f *fake) ReviewDecisions(_ context.Context, _ string, numbers []int) (map[int]string, error) {
+	f.call("ReviewDecisions")
+	out := map[int]string{}
+	if f.decisions == nil {
+		return out, nil
+	}
+	for _, n := range numbers {
+		out[n] = f.decisions[n]
+	}
+	return out, nil
+}
+
 func (f *fake) ListReviews(_ context.Context, _ string, n int) ([]PullReview, error) {
 	f.call("ListReviews")
 	out := slices.Clone(f.reviews[n])
@@ -395,7 +410,8 @@ func TestListCallCount(t *testing.T) {
 	}
 	ar2, hr2 := count(2)
 	ar40, hr40 := count(40)
-	if ar2 != ar40 || hr2 != hr40 || ar2 != 1 || hr2 != 1 {
+	// apply request の一覧は、pull request の一覧と、承認の状態（ReviewDecisions）の 2 回である。
+	if ar2 != ar40 || hr2 != hr40 || ar2 != 2 || hr2 != 1 {
 		t.Fatalf("呼ぶ回数が、項目の数で変わる：apply request %d と %d、人への依頼 %d と %d", ar2, ar40, hr2, hr40)
 	}
 }

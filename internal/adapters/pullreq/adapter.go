@@ -206,8 +206,22 @@ func (a *Adapter) ListApplyRequests(ctx context.Context, repo, state string) ([]
 		return nil, err
 	}
 	out := make([]ports.ApplyRequest, 0, len(pulls))
+	var open []int
 	for _, p := range pulls {
 		out = append(out, toApplyRequest(p))
+		if p.State == "open" {
+			open = append(open, p.Number)
+		}
+	}
+	// 承認の状態は、GitForge が一覧と一緒に返せるときだけ入れる（GitHub は、pull request の別名を並べた GraphQL で 1 回に読む）。
+	if len(open) > 0 {
+		ds, err := a.API.ReviewDecisions(ctx, repo, open)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].ReviewDecision = ports.ReviewDecision(ds[out[i].Number])
+		}
 	}
 	return out, nil
 }
@@ -392,6 +406,35 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 			}
 		}
 		out.Items = append(out.Items, r)
+	}
+	out.Decision, err = a.decision(ctx, repo, num, rs)
+	return out, err
+}
+
+// decision は、1 件の pull request の承認の状態を返す（design/adapters/pull-requests.md の「承認の状態」）。
+//   - GitForge が PR 全体の承認の状態を返すなら（GitHub の reviewDecision）、それを使う。
+//   - 返さなければ（Forgejo）、GitForge が review に付けた印で決める。書く権限のある人のいちばん新しい review（official）のうち、
+//     dismiss されておらず、新しい push で古くなっていない（stale でない）ものが 1 つでも request changes なら変更を求められている、
+//     そうでなく approve があれば承認済みとする。
+func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullReview) (ports.ReviewDecision, error) {
+	ds, err := a.API.ReviewDecisions(ctx, repo, []int{num})
+	if err != nil {
+		return "", err
+	}
+	if d, ok := ds[num]; ok {
+		return ports.ReviewDecision(d), nil
+	}
+	out := ports.DecisionNone
+	for _, r := range rs {
+		if r.Dismissed || r.Stale || r.CanPush == nil || !*r.CanPush {
+			continue
+		}
+		switch r.Kind {
+		case ports.ReviewRequestChanges:
+			return ports.DecisionChangesRequested, nil
+		case ports.ReviewApprove:
+			out = ports.DecisionApproved
+		}
 	}
 	return out, nil
 }

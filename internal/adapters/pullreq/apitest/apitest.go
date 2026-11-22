@@ -76,6 +76,10 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			rs, err := api.ListReviews(ctx, ref, p.Number)
 			return want(err, len(rs) == 1, "ListReviews が、出した review を返さない")
 		}},
+		{"ReviewDecisions", func() error {
+			_, err := api.ReviewDecisions(ctx, ref, []int{p.Number})
+			return err
+		}},
 		{"AddLabel", func() error {
 			if err := api.AddLabel(ctx, ref, p.Number, label); err != nil {
 				return err

@@ -26,6 +26,10 @@ type API interface {
 	// ListReviews は、pull request の、出された review を返す（pending は除く）。
 	// 各 review の CanPush に、書いた人が repository に書く権限を持つかを入れる（design/adapters/pull-requests.md の「数える review」）。
 	ListReviews(ctx context.Context, repo string, number int) ([]PullReview, error)
+	// ReviewDecisions は、pull request ごとの、GitForge が判定した承認の状態（ports.ReviewDecision の値）を返す。
+	// 1 回の呼び出しで、numbers のすべてを読む（一覧で pull request ごとに呼ばないため。design/backend/list-reads.md）。
+	// PR 全体の承認の状態を返さない GitForge（Forgejo）は、空の map を返す。
+	ReviewDecisions(ctx context.Context, repo string, numbers []int) (map[int]string, error)
 	// CreateReview は、review を出す。event は approve、request_changes、comment のどれか（ports.ReviewKind）。
 	CreateReview(ctx context.Context, repo string, number int, event ports.ReviewKind, body, commitID string) (PullReview, error)
 
@@ -84,6 +88,8 @@ type PullReview struct {
 	CommitID string
 	// Dismissed は、dismiss されたか。
 	Dismissed bool
+	// Stale は、review を出したあとに新しいコミットが push され、GitForge が古いとみなしたか（Forgejo の stale）。GitHub は持たない。
+	Stale bool
 	// CanPush は、書いた人が repository に書く権限を持つか。読めなければ nil（GitHub は authorCanPushToRepository、Forgejo は official）。
 	CanPush     *bool
 	SubmittedAt time.Time

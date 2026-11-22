@@ -181,6 +181,11 @@ func (a api) MergePull(ctx context.Context, repo string, number int, headSHA, ti
 		if statusOf(err) == http.StatusForbidden && !limited(err) {
 			return "", fmt.Errorf("%w（GitHub：%v）", ports.ErrMergeForbidden, err)
 		}
+		// 405 で、承認が足りないことを書いた応答（例：branch protection かルールセットの "At least 1 approving review is required by
+		// reviewers with write access."、"Changes requested"、code owner の review 待ち）は、承認が足りないこととする。待っても変わらない。
+		if statusOf(err) == http.StatusMethodNotAllowed && notApproved(errMessage(err)) {
+			return "", fmt.Errorf("%w（GitHub：%v）", ports.ErrNotApproved, err)
+		}
 		// 405 の "Repository rule violations found"：ルールセットが、この主体の merge を断った（例：ディレクトリの守りで、
 		// reviewer の team に入っていない。design/adapters/github.md の「merge を断られたとき」）。待っても変わらないので、merge の権限がないこととする。
 		if statusOf(err) == http.StatusMethodNotAllowed && strings.Contains(errMessage(err), "Repository rule violations") {
@@ -342,6 +347,52 @@ func (e *graphQLError) Unwrap() error {
 		return ports.ErrUnavailable
 	}
 	return nil
+}
+
+// reviewDecisionChunk は、1 回の GraphQL で、承認の状態を読む pull request の数である。
+const reviewDecisionChunk = 50
+
+// ReviewDecisions は、pull request ごとの reviewDecision（GitHub が、承認を必須にする設定に従って判定した承認の状態）を、
+// pull request の別名を並べた GraphQL で読む。50 件ごとに 1 回である。
+// reviewDecision は、承認を必須にする設定（branch protection かルールセット）がなければ null で、そのときは空の文字列にする。
+func (a api) ReviewDecisions(ctx context.Context, repo string, numbers []int) (map[int]string, error) {
+	out := map[int]string{}
+	owner, name, ok := strings.Cut(gitRef(repo), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return nil, fmt.Errorf("github: gitforge_ref の形が正しくない: %q", repo)
+	}
+	for start := 0; start < len(numbers); start += reviewDecisionChunk {
+		chunk := numbers[start:min(start+reviewDecisionChunk, len(numbers))]
+		var q strings.Builder
+		q.WriteString("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {")
+		for _, n := range chunk {
+			fmt.Fprintf(&q, " p%d: pullRequest(number: %d) { reviewDecision }", n, n)
+		}
+		q.WriteString(" } }")
+		var res struct {
+			Data struct {
+				Repository map[string]*struct {
+					ReviewDecision *string `json:"reviewDecision"`
+				} `json:"repository"`
+			} `json:"data"`
+			Errors []graphQLError `json:"errors"`
+		}
+		if err := a.c.graphQL(ctx, ports.TokenFrom(ctx), q.String(), map[string]any{"owner": owner, "name": name}, &res); err != nil {
+			return nil, err
+		}
+		if len(res.Errors) > 0 {
+			return nil, fmt.Errorf("github: 承認の状態を読めない: %w", &res.Errors[0])
+		}
+		for _, n := range chunk {
+			p := res.Data.Repository[fmt.Sprintf("p%d", n)]
+			d := ""
+			if p != nil && p.ReviewDecision != nil {
+				d = strings.ToLower(*p.ReviewDecision)
+			}
+			out[n] = d
+		}
+	}
+	return out, nil
 }
 
 // ListReviews は、1 件の pull request の review を、GraphQL で読む。pending は除き、dismiss されたものは Dismissed にする。
@@ -565,4 +616,11 @@ func (a api) UploadAttachment(context.Context, string, int64, string, []byte) (s
 
 func (a api) DownloadAttachment(context.Context, string, int64, string) ([]byte, error) {
 	return nil, ports.ErrAttachmentsUnsupported
+}
+
+// notApproved は、merge を断った 405 の文言が、承認が足りないことか（design/adapters/github.md の「merge を断られたとき」）。
+func notApproved(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "approving review") || strings.Contains(m, "review is required") || strings.Contains(m, "code owner review") ||
+		strings.Contains(m, "changes requested") || strings.Contains(m, "review required")
 }

@@ -133,11 +133,11 @@ func TestTargetNotMain(t *testing.T) {
 	if _, err := b.MergeApplyRequest(ctx, reviewerC, "q", "apr_2"); code(err) != CodeValidationFailed {
 		t.Fatalf("main でない向き先の merge：%v", err)
 	}
-	// 向き先を main に戻すと、レビュー待ちになる（approve し直すと反映する）。
+	// 向き先を main に戻すと、出ている approve で、レビュー待ちでも修正待ちでもなくなる。merge は、直前に今の main で確かめる。
 	f.forge.ar("apr_2").Target = "main"
 	ar, _ = b.GetApplyRequest(ctx, c, "q", "apr_2")
-	if ar.Awaiting == nil || *ar.Awaiting != "review" {
-		t.Fatalf("main に戻したあと：%+v", ar.Awaiting)
+	if ar.Awaiting != nil {
+		t.Fatalf("main に戻したあと：%+v", *ar.Awaiting)
 	}
 	res, err := approve(t, f, "apr_2")
 	if err != nil || res.Value.ApplyRequest.State != "merged" {

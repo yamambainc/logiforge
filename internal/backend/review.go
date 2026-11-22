@@ -97,10 +97,15 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 		return out, err
 	}
 	var warnings []string
-	// request changes を出したら、修正待ちのラベルに付け替える（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
-	if kind == ports.ReviewRequestChanges && targetsMain(d.port) {
-		if err := b.Forge.SetWaiting(ctx, ref, id, ports.WaitingFix); err != nil {
-			warnings = append(warnings, "修正待ちのラベルを付けられない（書く権限のある人が読めば直る）："+err.Error())
+	// request changes を出したら、修正待ちのラベルに付け替える。approve を出したら、レビュー待ちのラベルを外す
+	// （design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+	if targetsMain(d.port) && (kind == ports.ReviewRequestChanges || kind == ports.ReviewApprove) {
+		w := ports.WaitingFix
+		if kind == ports.ReviewApprove {
+			w = ports.WaitingNone
+		}
+		if err := b.Forge.SetWaiting(ctx, ref, id, w); err != nil {
+			warnings = append(warnings, "レビュー待ちか修正待ちかのラベルを付け替えられない（書く権限のある人が読めば直る）："+err.Error())
 		}
 	}
 	// 向き先が main でない apply request は、Logiforge の反映の対象でない（design/backend/apply-request/target.md の「向き先」）。
@@ -114,17 +119,6 @@ func (b *Backend) ReviewApplyRequest(ctx context.Context, c Caller, repo, id str
 	ar.Warnings = append(ar.Warnings, warnings...)
 	out.Value = ReviewResult{ApplyRequest: ar, Review: reviewOf(r, true)}
 	return out, nil
-}
-
-// lastDecisive は、決めるレビュー（approve か request_changes）の最後のものを返す。revision が空でなければ、そのコミットへのものだけを見る。
-func lastDecisive(reviews []ports.Review, revision string) *ports.Review {
-	var last *ports.Review
-	for i, r := range reviews {
-		if (revision == "" || r.Revision == revision) && (r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges) {
-			last = &reviews[i]
-		}
-	}
-	return last
 }
 
 // checkOnCurrentMain は、今の main での確かめを行う（design/backend/merge.md の「approve と merge の前に確かめること」）。
@@ -207,9 +201,7 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	if d.branch == nil {
 		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", shortSHA(d.current.Commit))
 	}
-	if p := approvalProblem(d); p != "" {
-		return out, fail(CodeNotApproved, "%s。先頭のコミットを approve してもらってから merge する", p)
-	}
+	// 承認が足りるかは、Logiforge では確かめない。GitForge の承認を必須にする設定が、merge のときに確かめる（design/backend/merge.md の「merge」）。
 	// 2 と 3. 今の main での確かめ。
 	f, err := b.checkOnCurrentMain(ctx, repo, ref, d)
 	if err != nil {
@@ -217,13 +209,6 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	}
 	if f != nil {
 		return out, b.refuse(ctx, ref, id, *f)
-	}
-	// 確かめるあいだに worker を待つことがあるので、その間に出た request_changes を見落とさないよう、review を読み直す。
-	if d.reviews, err = b.Forge.ListReviews(ctx, ref, id); err != nil {
-		return out, err
-	}
-	if p := approvalProblem(d); p != "" {
-		return out, fail(CodeNotApproved, "%s。先頭のコミットを approve してもらってから merge する", p)
 	}
 	sha, err := b.squash(ctx, ref, id, d)
 	if err != nil {
@@ -235,17 +220,6 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	}
 	out.Value, err = b.GetApplyRequest(ctx, c, repo, id)
 	return out, err
-}
-
-// approvalProblem は、反映の手順の手順 1 のうち、レビューとセッションの条件を確かめ、満たさなければ理由を返す。
-//   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビューが、今の先頭のコミットへの approve である
-//     （design/backend/merge.md。先頭を前のコミットに戻しても、そのあとの request_changes を見落とさないため）。
-func approvalProblem(d *arDetail) string {
-	last := lastDecisive(d.reviews.Items, "")
-	if last == nil || last.Kind != ports.ReviewApprove || last.Revision != d.current.Commit {
-		return "最後の決めるレビューが、先頭のコミット " + shortSHA(d.current.Commit) + " への approve でない"
-	}
-	return ""
 }
 
 // changeProblem は、反映の手順の手順 3 を、onto を今の main として行い、満たさなければ失敗の理由と詳しい説明を返す。
@@ -342,6 +316,9 @@ func (b *Backend) squash(ctx context.Context, ref, id string, d *arDetail) (stri
 	case errors.Is(err, ports.ErrConflict):
 		return "", b.refuse(ctx, ref, id, ports.MergeFailure{Revision: d.current.Commit, Reason: "conflict",
 			Detail: "git の衝突で merge できない：" + err.Error() + "。ブランチを今の main に合わせて（rebase か merge で）push し、レビューを受け直す"})
+	case errors.Is(err, ports.ErrNotApproved):
+		// GitForge の承認を必須にする設定が、承認が足りないとして断った（design/backend/merge.md の「merge」）。
+		return "", fail(CodeNotApproved, "GitForge が、承認が足りないとして merge を断った。先頭のコミットを approve してもらってから merge する：%v", err)
 	case errors.Is(err, ports.ErrMergeForbidden):
 		// 呼んだ主体のトークンで merge するので、その主体に merge の権限がなければ、GitForge が断る（design/backend/merge.md の「merge」）。
 		return "", fail(CodeMergeForbidden, "GitForge が、この主体の merge を断った（merge の権限がない）：%v", err)
