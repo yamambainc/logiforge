@@ -41,17 +41,18 @@ apply request を `approve` するときと、`main` に merge するときに�
 
 Logiforge からの merge（[apply request を merge する](../api/endpoints/apply-request/merge.md)）では、バックエンドは、次の順に処理する。
 
-1. 反映の条件を、GitForge から読んだ pull request と review で確かめる。
-   - review は、その pull request の review の一覧を、その場で読む。数えるのは、[数える review](../adapters/pull-requests.md#数える-review) だけである。
+1. 反映の条件を確かめる。
    - pull request の向き先が `main` である。違えば、`validation_failed` で断る。Logiforge の反映の対象でないので、GitForge で merge する（[向き先](apply-request/target.md#向き先)）。
-   - すべての先頭のコミットに対するレビューのうち、最後の決めるレビュー（`approve` か `request_changes`）が、先頭のコミット（head のコミット）への `approve` である。違えば、`not_approved` で断る。
-     - なぜ先頭のコミットに限らないか：ブランチを前の先頭のコミットに戻しても、そのあとの `request_changes` を見落とさないため。
+   - 承認の状態が、承認済み（`approved`）である。違えば、`not_approved` で断る。GitForge の承認を必須にする設定によらない（[反映の条件](../../docs/apply-request/review.md#反映の条件)）。
+     - 承認の状態は、その場で GitForge のポートから読む。GitForge の review から決めるのは、アダプタである（[承認の状態](../adapters/pull-requests.md#承認の状態)）。
 2. [approve と merge の前に確かめること](#approve-と-merge-の前に確かめること) を、もう一度行う。
    - なぜもう一度か：`approve` のあとに、別の apply request が反映されているかもしれないから。
+   - 確かめたあと、承認の状態を、もう一度読む。承認済みでなければ、`not_approved` で断る。なぜ：確かめるあいだに worker を待つことがあり、その間に出た `request_changes` を見落とさないため。
 3. GitForge の pull request の squash merge を、先頭のコミットの SHA を指定して、呼んだ主体のトークンで呼ぶ。
    - 呼べるのは、`client` と、その repository に Write がある `user` である。opener も呼べる。
    - Logiforge は、merge するための自分のアカウントを持たない（[GitForge のポートを pull request と issue で実装する](../adapters/pull-requests.md)）。
    - 呼んだ主体に merge の権限がなければ、GitForge が拒む。そのときは、`merge_forbidden` で断る。GitForge には書かない。
+   - GitForge の承認を必須にする設定が、承認が足りないとして断ったら、`not_approved` で断る。GitForge には書かない。
    - メッセージには、機械が読む trailer を書かない（[反映のコミット](../files/revisions.md#反映のコミット)）。
 4. `latest` が反映のコミットになるまで、上限つきで待ってから応答する（[書いた直後の読み](../api/writes.md)）。
    - 手順 1 から手順 3 のあいだに向き先が変えられると、GitForge は、`main` でないブランチに merge する。

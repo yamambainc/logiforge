@@ -79,13 +79,9 @@ export function outcome(kind: ReviewKind, ar: ApplyRequest): string {
   return 'approve を付けました。merge は、別に行います。';
 }
 
-/** merge の欄を示すか：open で main 向きで、GitForge が承認済みと判定したか、レビュー待ちでも修正待ちでもない（approve された）とき。
- * 承認が足りるかは、merge のときに GitForge が確かめる（docs/apply-request/review.md の「merge」） */
-export function canMerge(a: ApplyRequest): boolean {
-  if (a.state !== 'open' || a.target !== 'main') return false;
-  if (a.review_decision === 'approved') return true;
-  return !a.awaiting && a.review_decision !== 'changes_requested';
-}
+/** merge の欄を示すか：open で main 向きで、承認済みのとき（docs/apply-request/review.md の「merge」）。
+ * 1 件を読んだ apply request では、承認の状態がいつも入る */
+export const canMerge = (a: ApplyRequest): boolean => a.state === 'open' && a.target === 'main' && a.review_decision === 'approved';
 
 export const MERGE_ERRORS: Record<string, string> = {
   forbidden: 'merge できるのは、この repository に Write がある人だけです。',

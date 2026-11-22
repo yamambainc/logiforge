@@ -19,7 +19,7 @@ var (
 	ErrConflict      = errors.New("git の衝突で merge できない")
 	// ErrMergeForbidden は、merge を呼んだ主体に、merge の権限がないことを表す（design/backend/merge.md の手順 4）。
 	ErrMergeForbidden = errors.New("この主体には、merge の権限がない")
-	// ErrNotApproved は、承認を必須にする GitForge の設定（branch protection、ルールセット）で、承認が足りずに merge を断られたことを表す。
+	// ErrNotApproved は、承認を必須にする GitForge の設定で、承認が足りずに merge を断られたことを表す。
 	ErrNotApproved     = errors.New("GitForge の設定で、承認が足りないので merge できない")
 	ErrAlreadyAnswered = errors.New("すでに回答がある")
 	ErrUnauthenticated = errors.New("この主体は、Logiforge の主体でない")
@@ -79,7 +79,7 @@ type ApplyRequest struct {
 	Opener string
 	// Waiting は、pull request のラベルが表す、レビュー待ちか修正待ちか（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
 	Waiting Waiting
-	// ReviewDecision は、GitForge が判定した承認の状態である。一覧で GitForge が返すときだけ入る（GitHub）。
+	// ReviewDecision は、承認の状態である。一覧では、アダプタが pull request ごとに GitForge を呼ばずに分かるときだけ入る。分からなければ空。
 	ReviewDecision ReviewDecision
 	// ReviewWaitingAt は、レビュー待ちのラベルを最後に付けた時刻である。1 件を読むときだけ入る（ずれを直すのに使う）。
 	ReviewWaitingAt time.Time
@@ -161,19 +161,23 @@ type Review struct {
 type Reviews struct {
 	// Items は、数えたレビュー（design/adapters/pull-requests.md の「数える review」）を、出した順に並べたもの。
 	Items []Review
-	// Decision は、GitForge が判定した承認の状態である（design/adapters/pull-requests.md の「承認の状態」）。
+	// Decision は、承認の状態である。GitForge の印から、アダプタが決める（design/adapters/pull-requests.md の「承認の状態」）。
 	Decision ReviewDecision
 	Warnings []string
 }
 
-// ReviewDecision は、GitForge が判定した pull request の承認の状態である。GitForge が判定しなければ空。
+// ReviewDecision は、pull request の承認の状態である。分からなければ空（DecisionNone）。
 type ReviewDecision string
 
 const (
-	DecisionNone             ReviewDecision = ""
-	DecisionApproved         ReviewDecision = "approved"
+	// DecisionNone は、承認の状態が分からないことである。
+	DecisionNone ReviewDecision = ""
+	// DecisionApproved は、今の先頭のコミットが approve されていることである。
+	DecisionApproved ReviewDecision = "approved"
+	// DecisionChangesRequested は、変更を求められていることである。
 	DecisionChangesRequested ReviewDecision = "changes_requested"
-	DecisionReviewRequired   ReviewDecision = "review_required"
+	// DecisionPending は、まだ approve も変更の求めもないことである。
+	DecisionPending ReviewDecision = "pending"
 )
 
 // HumanRequestKind は、人への依頼の種類である。

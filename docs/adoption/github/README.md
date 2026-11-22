@@ -79,7 +79,9 @@ LOGIFORGE_BACKEND_KEY_FILE=$PWD/backend_key logiforge serve
 
 - 規則と bypass は、[GitHub での main の守りと制約](../../../design/adapters/github-main.md#main-への書き込みを守る) に従う。
 - Target branches は、`main`（Include default branch）にする。
-- Require a pull request before merging の承認の数は、0 にする。
+- Require a pull request before merging の承認の数は、1 以上にし、「Dismiss stale pull request approvals when new commits are pushed」を有効にする。
+  - なぜ：GitHub の画面から直接 merge するときも、承認を求めるため（[反映の条件](../../apply-request/review.md#反映の条件)）。Logiforge の merge の操作は、この設定がなくても、承認されていない apply request を merge しない。
+  - この設定があると、Logiforge は、apply request の一覧でも承認の状態を示せる。なければ、1 件を読んだときだけ示す。
 
 ## 利用者とエージェント
 

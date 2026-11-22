@@ -252,14 +252,16 @@ func TestMergeRereadsReviews(t *testing.T) {
 	}
 }
 
-// 承認を必須にする設定のない GitForge では、approve がなくても merge できる。Logiforge は、木の確かめだけをする（design/backend/merge.md の「merge」）。
+// 承認を必須にする GitForge の設定がなくても、Logiforge からの merge は、承認されていなければ断る（design/backend/merge.md の「merge」）。
 func TestMergeWithoutRequiredApproval(t *testing.T) {
 	ctx := context.Background()
 	f := live(t)
 	id := create(t, f, "x", "s3", map[string][]byte{dH1 + "/background.md": []byte("一\n")})
-	m, err := f.b.MergeApplyRequest(ctx, agentC, "q", id)
-	if err != nil || m.Value.State != "merged" {
-		t.Fatalf("merge：%+v %v", m.Value, err)
+	if _, err := f.b.MergeApplyRequest(ctx, agentC, "q", id); code(err) != CodeNotApproved {
+		t.Fatalf("approve のない merge：%v", err)
+	}
+	if ar := f.forge.ar(id); ar.State == ports.StateMerged {
+		t.Fatal("merge した")
 	}
 }
 

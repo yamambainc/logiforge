@@ -21,6 +21,7 @@
 
 - 一覧では、review を読まない。レビュー待ちか修正待ちかは、pull request の一覧に入っているラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。
   - なぜ：review は、GitHub の REST でも Forgejo でも、pull request ごとにしか読めないから。review の状態で絞れる一覧もない。
+- 一覧の承認の状態は、GitForge のポートが pull request ごとに呼ばずに分かるときだけ返す。分からなければ空にする（[承認の状態](../adapters/pull-requests.md#承認の状態)）。
 - pull request の一覧の各項目には、番号、作者、状態、merge のコミット、head の SHA とブランチ、向き先、ラベルが入っている（GitHub と Forgejo）。一覧に要るのは、これだけである。
 - open の一覧は、`state=open` で読む。ブランチが消えた open の apply request は `closed` に数える（[apply request の状態](../adapters/pull-requests.md#apply-request-の状態)）。そのため、`closed` の一覧では、GitForge で open のものも読む。
 - 人への依頼の種類はラベル、回答済みかは issue の状態、対象ノードは issue のタイトルの頭で決める（[人への依頼の issue](../adapters/texts.md#人への依頼の-issue)）。どれも issue の一覧に入っている。
@@ -28,8 +29,8 @@
 ## 1 件の読みと書き込み
 
 - apply request を 1 件読むときと、`approve` と merge のときは、その pull request と、その review の一覧と、その出来事（ラベルの付け外し）とコメントの一覧を、その場で読む。
-  - なぜ：反映の条件は、今の GitForge の review で決めるから（[反映の手順](merge.md)）。
-  - GitHub では、その pull request の review を、GraphQL の 1 回で読む。書いた人が push できるか（`authorCanPushToRepository`）を、読む権限だけで読めるからである（[数える review](../adapters/pull-requests.md#数える-review)）。GraphQL を使うのは、ここだけである。
+  - なぜ：ラベルのずれと承認の状態は、今の GitForge の review で決めるから（[承認の状態](../adapters/pull-requests.md#承認の状態)）。merge の操作は、承認の状態が承認済みのときだけ merge する（[merge](merge.md#merge)）。
+  - GitHub では、その pull request の review を、GraphQL の 1 回で読む。書いた人が push できるか（`authorCanPushToRepository`）を、読む権限だけで読めるからである（[数える review](../adapters/pull-requests.md#数える-review)）。
 - 人への依頼を 1 件読むときは、その issue のコメントから回答を読む（[回答](../adapters/texts.md#回答)）。
 
 ## 反映した pull request の一覧（worker）

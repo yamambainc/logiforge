@@ -127,13 +127,12 @@ describe('approve の前に示すこと', () => {
 
 describe('merge', () => {
   const rv = (kind: 'approve' | 'request_changes' | 'comment', commit: string) => ({ id: 'r', kind, commit, valid: true });
-  it('GitForge が承認済みと判定したか、レビュー待ちでも修正待ちでもないとき、merge の欄を示す', async () => {
+  it('承認済みのときだけ、merge の欄を示す', async () => {
     const { canMerge } = await load();
     expect(canMerge(ar({ review_decision: 'approved', awaiting: null }))).toBe(true);
-    expect(canMerge(ar({ review_decision: null, awaiting: null }))).toBe(true);
-    expect(canMerge(ar({ review_decision: 'changes_requested', awaiting: null }))).toBe(false);
-    expect(canMerge(ar({ review_decision: null, awaiting: 'review' }))).toBe(false);
-    expect(canMerge(ar({ review_decision: null, awaiting: 'fix' }))).toBe(false);
+    expect(canMerge(ar({ review_decision: null, awaiting: null }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'pending', awaiting: 'review' }))).toBe(false);
+    expect(canMerge(ar({ review_decision: 'changes_requested', awaiting: 'fix' }))).toBe(false);
     expect(canMerge(ar({ review_decision: 'approved', target: 'feature' }))).toBe(false);
     expect(canMerge(ar({ review_decision: 'approved', state: 'merged' }))).toBe(false);
   });

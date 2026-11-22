@@ -201,7 +201,10 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	if d.branch == nil {
 		return out, fail(CodeSnapshotPending, "先頭のコミット %s のスナップショットが、まだない。少し待って送り直す", shortSHA(d.current.Commit))
 	}
-	// 承認が足りるかは、Logiforge では確かめない。GitForge の承認を必須にする設定が、merge のときに確かめる（design/backend/merge.md の「merge」）。
+	// Logiforge からの merge は、承認されていなければ断る。GitForge の設定によらない（design/backend/merge.md の「merge」）。
+	if p := approvalProblem(d); p != "" {
+		return out, fail(CodeNotApproved, "%s", p)
+	}
 	// 2 と 3. 今の main での確かめ。
 	f, err := b.checkOnCurrentMain(ctx, repo, ref, d)
 	if err != nil {
@@ -209,6 +212,13 @@ func (b *Backend) MergeApplyRequest(ctx context.Context, c Caller, repo, id stri
 	}
 	if f != nil {
 		return out, b.refuse(ctx, ref, id, *f)
+	}
+	// 確かめるあいだに worker を待つことがあるので、その間に出た request changes を見落とさないよう、承認の状態を読み直す。
+	if d.reviews, err = b.Forge.ListReviews(ctx, ref, id); err != nil {
+		return out, err
+	}
+	if p := approvalProblem(d); p != "" {
+		return out, fail(CodeNotApproved, "%s", p)
 	}
 	sha, err := b.squash(ctx, ref, id, d)
 	if err != nil {
@@ -302,6 +312,19 @@ func shortSHA(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// approvalProblem は、承認の状態が承認済みでなければ、理由を返す（design/backend/merge.md の「merge」）。
+func approvalProblem(d *arDetail) string {
+	switch d.reviews.Decision {
+	case ports.DecisionApproved:
+		return ""
+	case ports.DecisionChangesRequested:
+		return "変更を求められている。直して、先頭のコミットを approve してもらってから merge する"
+	case ports.DecisionPending:
+		return "先頭のコミット " + shortSHA(d.current.Commit) + " が、まだ approve されていない。approve してもらってから merge する"
+	}
+	return "承認の状態が分からないので、merge しない。少し待って送り直す"
 }
 
 // squash は、反映の手順の 4 である。メッセージに、機械が読む trailer は書かない。どのコミットがどの apply request の反映かは、

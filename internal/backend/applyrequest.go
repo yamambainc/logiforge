@@ -197,7 +197,7 @@ func awaiting(w ports.Waiting) *string {
 // （design/adapters/pull-requests.md の「ラベルがずれたとき」）。
 //   - 数える request changes の review：修正待ち
 //   - 修正待ちのラベルを付けたこと（opener が直すべき理由で、approve か merge が確かめに通らなかったとき。GitForge の画面で付けたものも含む）：修正待ち。
-//     ラベルを付けられるのは、GitHub では Triage 以上、Forgejo では書く権限がある人だけである
+//     ラベルを付けられるのは、書く権限に近い権限を持つ人だけである（design/adapters/pull-requests.md）
 //   - レビュー待ちのラベルを付けたこと（作成、直し終えたという申告）：レビュー待ち
 //   - 先頭のコミット head への、数える approve の review：どちらのラベルもない
 //   - どれもなければ、レビュー待ち

@@ -412,27 +412,38 @@ func (a *Adapter) ListReviews(ctx context.Context, repo, applyRequestID string) 
 }
 
 // decision は、1 件の pull request の承認の状態を返す（design/adapters/pull-requests.md の「承認の状態」）。
-//   - GitForge が PR 全体の承認の状態を返すなら（GitHub の reviewDecision）、それを使う。
-//   - 返さなければ（Forgejo）、GitForge が review に付けた印で決める。書く権限のある人のいちばん新しい review（official）のうち、
-//     dismiss されておらず、新しい push で古くなっていない（stale でない）ものが 1 つでも request changes なら変更を求められている、
-//     そうでなく approve があれば承認済みとする。
+//   - GitForge が PR 全体の承認の状態を判定していれば（GitHub の reviewDecision）、それを使う。
+//   - していなければ（GitHub で承認を必須にする設定がない、Forgejo）、GitForge が review に付けた印で決める。
+//     書く権限を持つ人ごとの、いちばん新しい approve か request changes のうち、dismiss されておらず、新しい push で古くなっていない
+//     （Forgejo の stale でない）ものを見る。request changes が 1 つでもあれば変更を求められている、
+//     そうでなく今の先頭のコミットへの approve があれば承認済み、どちらもなければまだとする。
 func (a *Adapter) decision(ctx context.Context, repo string, num int, rs []PullReview) (ports.ReviewDecision, error) {
 	ds, err := a.API.ReviewDecisions(ctx, repo, []int{num})
 	if err != nil {
 		return "", err
 	}
-	if d, ok := ds[num]; ok {
+	if d := ds[num]; d != "" {
 		return ports.ReviewDecision(d), nil
 	}
-	out := ports.DecisionNone
+	p, err := a.API.GetPull(ctx, repo, num)
+	if err != nil {
+		return "", err
+	}
+	last := map[string]PullReview{}
 	for _, r := range rs {
 		if r.Dismissed || r.Stale || r.CanPush == nil || !*r.CanPush {
 			continue
 		}
-		switch r.Kind {
-		case ports.ReviewRequestChanges:
+		if r.Kind == ports.ReviewApprove || r.Kind == ports.ReviewRequestChanges {
+			last[strings.ToLower(r.Author)] = r
+		}
+	}
+	out := ports.DecisionPending
+	for _, r := range last {
+		switch {
+		case r.Kind == ports.ReviewRequestChanges:
 			return ports.DecisionChangesRequested, nil
-		case ports.ReviewApprove:
+		case r.CommitID == p.HeadSHA:
 			out = ports.DecisionApproved
 		}
 	}

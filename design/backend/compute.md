@@ -35,8 +35,10 @@
 
 - レビュー待ちと修正待ちは、向き先が `main` の open の pull request のラベルで決める（[レビュー待ちと修正待ちのラベル](../adapters/pull-requests.md#レビュー待ちと修正待ちのラベル)）。review は読まない。
 - 修正待ち：`request changes` の review か、opener が直すべき理由（`stale_target`、`invariant_violation`、`conflict`）で `approve` か merge が今の `main` での確かめに通らなかったあと、opener が直し終えたと申告するまで。
-- レビュー待ち：修正待ちでないもの。`approve` のあと、そのほかの理由（`snapshot_pending` など）で反映に失敗し、`approve` し直しを待つものも含む。
-  - 向き先が `main` でないあいだに `approve` され、あとで向き先を `main` に戻したときも、これに当たる（[向き先](apply-request/target.md)）。
+- レビュー待ち：作ったとき、または opener が直し終えたと申告したあと、`approve` か `request changes` が出るまで。
+- どちらでもない：今の先頭のコミットに `approve` が出たあと。merge を待つ。
+  - merge を待つことは、承認の状態（`approved`）で示す。一覧では、GitForge のポートが pull request ごとに呼ばずに分かるときだけ示す（[承認の状態](../adapters/pull-requests.md#承認の状態)）。
+  - 着手できる作業では、承認済みのものを `approved` の作業として出す（[着手できる作業](../../docs/work/README.md)）。
 - [着手できる作業](../../docs/work/README.md) の「反映に失敗して `open` に戻った」は、opener が直すべき失敗のことである。
 
 ### 回答済みの人への依頼

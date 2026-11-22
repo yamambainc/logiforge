@@ -68,8 +68,8 @@ func (b *Backend) work(ctx context.Context, repo, ref string, v *view, open *ope
 		}
 	}
 
-	// レビュー待ちと修正待ちの apply request と、GitForge が承認済みと判定した apply request（merge を待つもの）。
-	// 承認の状態は、GitForge が一覧と一緒に返すときだけわかる（design/adapters/pull-requests.md の「承認の状態」）。
+	// レビュー待ちと修正待ちの apply request と、承認済みの apply request（merge を待つもの）。
+	// 一覧の承認の状態は、GitForge のポートが分かるときだけ入る（design/adapters/pull-requests.md の「承認の状態」）。
 	for _, ar := range open.ars {
 		d, err := b.applyRequest(ctx, repo, ref, ar, readList, nil)
 		if err != nil {

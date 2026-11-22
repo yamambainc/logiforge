@@ -161,7 +161,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 - approve されたら：`logiforge ar merge <apply request>` で merge する。merge の直前に、バックエンドが確かめ直す。
   - `stale_target`、`invariant_violation`、`conflict`：上のとおり直す。
   - `snapshot_pending`：少し待って、送り直す。
-  - `not_approved`：最後の決めるレビューが、先頭のコミットへの `approve` でない。レビューを待つ。
+  - `not_approved`：今の差分が、まだ承認されていないか、変更を求められている。レビューを待つか、直す。
   - `merge_forbidden`：自分の主体に merge の権限が無い。権限のある人に merge を頼む。
 - 取り下げるとき：`logiforge ar close <apply request> --reason <理由>`
 - 反映か close のあと、手元のブランチは `logiforge ar cleanup` で消せる。

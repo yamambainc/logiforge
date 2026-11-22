@@ -83,8 +83,8 @@ type fakeForge struct {
 	// mainHead があれば、MainHead はそれを返す（worker が追いつかない場合を作るため）。
 	mainHead string
 	// requireApproval なら、main を承認を必須にする GitForge の設定で守る。本物と同じく、merge のときに、先頭のコミットへの approve が
-	// 1 つもないか、request changes が残っていれば ErrNotApproved で断る。承認の状態（Reviews.Decision）も、そのときだけ返す。
-	// なければ、承認がなくても merge できる（設定のない GitForge と同じ）。
+	// 1 つもないか、request changes が残っていれば ErrNotApproved で断る。一覧の承認の状態も、そのときだけ返す（一覧で分かる GitForge と同じ）。
+	// なければ、承認がなくても GitForge は merge する（設定のない GitForge と同じ）。1 件の承認の状態は、いつも返す。
 	requireApproval bool
 	// onMainHead があれば、MainHead の前に呼ぶ（確かめているあいだに、ほかの人が review を出した場合を作るため）。
 	onMainHead func()
@@ -178,7 +178,7 @@ func (f *fakeForge) ListApplyRequests(_ context.Context, _, state string) ([]por
 		}
 		x := ar
 		x.Comments = nil
-		// 承認を必須にする設定があれば、一覧でも承認の状態を返す（GitHub の reviewDecision と同じ）。
+		// 承認を必須にする設定があれば、一覧でも承認の状態を返す（一覧で分かる GitForge と同じ）。
 		if f.requireApproval && x.State == ports.StateOpen {
 			x.ReviewDecision = f.decision(x.ID)
 		}
@@ -260,9 +260,7 @@ func (f *fakeForge) AddReview(_ context.Context, _, id string, r ports.Review) (
 }
 func (f *fakeForge) ListReviews(_ context.Context, _, id string) (ports.Reviews, error) {
 	rs := f.reviews[id]
-	if f.requireApproval {
-		rs.Decision = f.decision(id)
-	}
+	rs.Decision = f.decision(id)
 	return rs, nil
 }
 
@@ -275,7 +273,7 @@ func (f *fakeForge) decision(id string) ports.ReviewDecision {
 			last[r.Reviewer] = r.Kind
 		}
 	}
-	d := ports.DecisionReviewRequired
+	d := ports.DecisionPending
 	for _, k := range last {
 		if k == ports.ReviewRequestChanges {
 			return ports.DecisionChangesRequested

@@ -385,9 +385,10 @@ func (a api) ReviewDecisions(ctx context.Context, repo string, numbers []int) (m
 		}
 		for _, n := range chunk {
 			p := res.Data.Repository[fmt.Sprintf("p%d", n)]
+			// reviewDecision を、ポートの承認の状態に読み替える。null（承認を必須にする設定がない）は空にする。
 			d := ""
 			if p != nil && p.ReviewDecision != nil {
-				d = strings.ToLower(*p.ReviewDecision)
+				d = map[string]string{"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REVIEW_REQUIRED": "pending"}[*p.ReviewDecision]
 			}
 			out[n] = d
 		}

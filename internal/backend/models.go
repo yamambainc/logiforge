@@ -233,8 +233,8 @@ type ApplyRequest struct {
 	// Comments は、pull request のコメントである（古い順）。1 件を読むときだけ入り、一覧では空である。
 	Comments []Comment `json:"comments"`
 	Awaiting *string   `json:"awaiting"`
-	// ReviewDecision は、GitForge が判定した承認の状態である（approved、changes_requested、review_required）。
-	// GitForge が判定しなければ null（design/adapters/pull-requests.md の「承認の状態」）。
+	// ReviewDecision は、承認の状態である（approved、changes_requested、pending）。分からなければ null
+	// （design/adapters/pull-requests.md の「承認の状態」）。
 	ReviewDecision *string  `json:"review_decision"`
 	Warnings       []string `json:"warnings"`
 	MergedCommit   *string  `json:"merged_commit"`

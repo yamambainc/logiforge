@@ -143,8 +143,8 @@ export interface ApplyRequest {
   /** pull request のコメント（古い順）。1 件を読むときだけ入る。反映の失敗と close の理由も、人が読む文で入る */
   comments?: { author: string; body: string; created_at: string | null }[];
   awaiting?: 'review' | 'fix' | null;
-  /** GitForge が判定した承認の状態。GitForge が判定しなければ null（GitHub は承認を必須にする設定があるときだけ、Forgejo は一覧では null） */
-  review_decision?: 'approved' | 'changes_requested' | 'review_required' | null;
+  /** 承認の状態。分からなければ null（一覧では、GitForge によっては分からない） */
+  review_decision?: 'approved' | 'changes_requested' | 'pending' | null;
   warnings?: string[]; merged_commit?: string | null;
   /** 要求を送った主体が、この apply request を作った主体と同じか。approve の前に示す（design/settings/users.md の「WebUI からのレビュー」） */
   opened_by_caller?: boolean;

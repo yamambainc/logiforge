@@ -140,6 +140,10 @@ func (u *user) approveMerge(id string, n int) (applyRequest, int, string) {
 	if got, code, out := u.review(id, "approve", n); code != 0 {
 		return got, code, out
 	}
+	// approve を出したら、レビュー待ちのラベルは外れる（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+	if u.w.hasLabel(u.repoName(), id, "logiforge/review-waiting") || u.w.hasLabel(u.repoName(), id, "logiforge/fix-waiting") {
+		u.w.t.Fatalf("%s：approve のあとに、レビュー待ちか修正待ちのラベルが残っている", id)
+	}
 	code, out := u.cli("", "ar", "merge", id, "--repo", u.repoName(), "--json")
 	var ar applyRequest
 	_ = json.Unmarshal([]byte(out), &ar)
@@ -312,8 +316,8 @@ func TestE2E(t *testing.T) {
 	// ラベルを両方外すと、1 件読んだときに、出来事から正しいラベル（直近は修正待ちのラベルを付けたこと）に直す。
 	w.setLabels("q", ar4.ID)
 	agent.must(&listed, "ar", "list", "--state", "open")
-	if len(listed.Items) != 1 || listed.Items[0].Awaiting != "review" {
-		t.Fatalf("ラベルのないものは、一覧ではレビュー待ち：%+v", listed)
+	if len(listed.Items) != 1 || listed.Items[0].Awaiting != "" {
+		t.Fatalf("ラベルのないものは、一覧ではレビュー待ちでも修正待ちでもない：%+v", listed)
 	}
 	reviewer.must(&viewed, "ar", "view", ar4.ID, "--repo", "q")
 	if viewed.Awaiting != "fix" || !w.hasLabel("q", ar4.ID, "logiforge/fix-waiting") {

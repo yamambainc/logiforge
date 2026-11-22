@@ -624,8 +624,16 @@ func TestReviewDecisionAndNotApproved(t *testing.T) {
 	if err != nil || len(ars) != 1 || ars[0].ReviewDecision != ports.DecisionNone {
 		t.Fatalf("設定なしの一覧：%+v %v", ars, err)
 	}
+	// 設定がなくても、1 件では、書く権限のある人の review から承認の状態を決める。
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("設定なしの 1 件：%+v %v", rs, err)
+	}
+	f.reviews[1] = append(f.reviews[1], &fakeReview{ID: 8, State: "APPROVED", Author: "bob", CommitID: "old", At: time.Now()})
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
+		t.Fatalf("前の先頭のコミットへの approve は数えない：%+v %v", rs, err)
+	}
 	f.requireApproval = true
-	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionReviewRequired {
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionPending {
 		t.Fatalf("承認の前：%+v %v", rs, err)
 	}
 	if _, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); !errors.Is(err, ports.ErrNotApproved) {

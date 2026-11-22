@@ -522,3 +522,32 @@ func TestMergedApplyRequestListError(t *testing.T) {
 		}
 	}
 }
+
+// GitForge が PR 全体の承認の状態を返さないとき、1 件では、review の印から決める（design/adapters/pull-requests.md の「承認の状態」）。
+func TestDecisionFromReviews(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name    string
+		reviews []PullReview
+		want    ports.ReviewDecision
+	}{
+		{"何もない", nil, ports.DecisionPending},
+		{"先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
+		{"前の先頭への approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h0"}}, ports.DecisionPending},
+		{"古くなった approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1", Stale: true}}, ports.DecisionPending},
+		{"書く権限のない人の approve", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "eve", CommitID: "h1"}}, ports.DecisionPending},
+		{"approve のあとの request changes", []PullReview{{ID: 1, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewRequestChanges, Author: "carol", CommitID: "h1"}}, ports.DecisionChangesRequested},
+		{"request changes のあと、同じ人の approve", []PullReview{{ID: 1, Kind: ports.ReviewRequestChanges, Author: "bob", CommitID: "h1"}, {ID: 2, Kind: ports.ReviewApprove, Author: "bob", CommitID: "h1"}}, ports.DecisionApproved},
+	}
+	for _, c := range cases {
+		f := newFake()
+		f.canPush["carol"] = true
+		f.pulls[1] = &Pull{Number: 1, State: "open", HeadSHA: "h1", Head: "b", Base: "main"}
+		f.reviews[1] = c.reviews
+		a := &Adapter{API: f}
+		rs, err := a.ListReviews(ctx, "o/r", "1")
+		if err != nil || rs.Decision != c.want {
+			t.Fatalf("%s：%q %v", c.name, rs.Decision, err)
+		}
+	}
+}

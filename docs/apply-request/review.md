@@ -5,14 +5,24 @@ apply request が、どういう条件で反映され、論理レビューと me
 
 ## 反映の条件
 
-[apply request](README.md) を merge できるのは、次の条件をすべて満たすときである。
+[apply request](README.md) を merge してよいかは、GitForge が決める。Logiforge は、承認が足りるかを自分では数えない。
 
-- apply request を作った人とは別の GitForge のアカウントによる `approve` がある。
-- `approve` が有効なのは、`approve` した時点の差分に対してだけである。
-  - apply request が更新されたら、それまでの `approve` は無効になる。
-- 最新の差分に対するレビューのうち、最後のものが `approve` である。
+- GitForge は、作者自身の `approve` を拒む。書いた人と確かめる人を分けるのは、この GitForge の仕組みである。
+- Logiforge の merge の操作は、承認されていない apply request を merge しない。GitForge の設定によらない（[merge](#merge)）。
+- GitForge の画面から直接 merge するときに承認を求めるのは、GitForge の設定である。`main` に、次の設定を掛けることを勧める（[GitForge の設定](#gitforge-の設定)）。
+  - 承認を必須にする。
+  - 新しい push で、古い `approve` を外す。
+- 設定しなければ、GitForge の画面からは、`approve` がなくても merge できる。これは GitForge の仕様どおりである。
+- Logiforge が示す承認の状態（承認済み、変更を求められている、まだ）は、GitForge の review から決める。
+  - 承認済みとするのは、書く権限を持つ人の `approve` が今の差分にあり、変更を求める review が残っていないときである。
+  - GitForge によっては、一覧では承認の状態が分からず、示さないことがある。1 件を読めば示す。
 
-この条件は、GitForge の「承認を必須にする」設定（required review）に相当する。
+### GitForge の設定
+
+GitForge ごとの手順は、次の頁に書く。
+
+- GitHub：[main を守る](../adoption/github/README.md#main-を守る)
+- Forgejo：[repository の用意](../../design/adapters/forgejo.md#repository-の用意)
 
 - 論理レビューは、CLI を使う主体か、WebUI の利用者が行う。人も reviewer になれる。
   - WebUI のレビューは、CLI のレビューと同じ意味である。
@@ -29,11 +39,12 @@ apply request が、どういう条件で反映され、論理レビューと me
 
 ## merge
 
-- 反映の条件を満たした apply request は、だれが merge してもよい。エージェントでも人でもよい。
+- `approve` された apply request は、だれが merge してもよい。エージェントでも人でもよい。
 - Logiforge から merge する：CLI、WebUI、API の merge の操作を使う。
   - merge は、呼んだ主体のトークンで行う。その主体に、GitForge で merge する権限が要る。
-  - merge の直前に、Logiforge は、反映の条件と、`approve` の前と同じ確かめを、今の `main` でやり直す。通らなければ、merge しない。
+  - merge の直前に、Logiforge は、`approve` の前と同じ確かめを、今の `main` でやり直す。通らなければ、merge しない。
     - なぜやり直すか：`approve` のあとに、別の apply request が反映されているかもしれないから。
+  - 承認されていなければ、merge しない。GitForge の承認を必須にする設定が merge を断ったときも、その理由を返す。
   - merge できるのは、`approve` と同じく、その repository に書ける主体である。opener も merge できる。
 - GitForge の画面から直接 merge する：Logiforge は止めない。
   - `main` のコミットは、どう入ったかによらず受け入れる。ぶつかっていたら、あとの確かめで警告する（[main への直接の変更](README.md#main-への直接の変更)）。
@@ -96,12 +107,16 @@ apply request の説明欄は、材料に含めない。
 
 ## 保証の範囲
 
-Logiforge が確かめること：
+GitForge が確かめること：
 
 - reviewer は、apply request を作った人と別の GitForge のアカウントである。GitForge が、自分の pull request の `approve` を拒むから。
   - 書いた人と確かめる人を分ける保証は、この 1 つである。同じアカウントの別のセッションで書き、確かめることはできない。
-  - GitForge の画面から直接出した review も、Logiforge を通した review と同じに数える。
-- 数えるのは、その repository に書く権限（Write）を持つ人の review だけである。
+- GitForge の画面からの merge で、承認が足りるか。承認を必須にする GitForge の設定があるときだけ確かめる（[GitForge の設定](#gitforge-の設定)）。
+
+Logiforge が確かめること：
+
+- Logiforge からの merge で、承認されているか。
+  - GitForge の画面から直接出した review も、Logiforge を通した review と同じに扱う。
 - WebUI のレビューでも、別のアカウントであることを、GitForge が確かめる。
   - 自分が指示した差分を、自分のアカウントで `approve` しないのは、人の責任である。
   - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request と履歴](../webui/history.md)）。
