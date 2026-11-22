@@ -18,7 +18,9 @@ type applyRequest struct {
 	State      string `json:"state"`
 	HeadCommit string `json:"head_commit"`
 	Awaiting   string `json:"awaiting"`
-	Operations []struct {
+	// ReviewDecision は、承認の状態である。
+	ReviewDecision string `json:"review_decision"`
+	Operations     []struct {
 		Kind string `json:"kind"`
 	} `json:"operations"`
 	Warnings []string `json:"warnings"`
@@ -137,14 +139,15 @@ func (u *user) review(id, kind string, n int) (applyRequest, int, string) {
 // approve か merge が断られたら、その終了コードと出力を返す。
 func (u *user) approveMerge(id string, n int) (applyRequest, int, string) {
 	u.w.t.Helper()
-	if got, code, out := u.review(id, "approve", n); code != 0 {
+	got, code, out := u.review(id, "approve", n)
+	if code != 0 {
 		return got, code, out
 	}
-	// approve を出したら、レビュー待ちのラベルは外れる（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
-	if u.w.hasLabel(u.repoName(), id, "logiforge/review-waiting") || u.w.hasLabel(u.repoName(), id, "logiforge/fix-waiting") {
-		u.w.t.Fatalf("%s：approve のあとに、レビュー待ちか修正待ちのラベルが残っている", id)
+	// approve を出したら、レビュー待ちでも修正待ちでもなくなり、承認済みになる（design/adapters/pull-requests.md の「レビュー待ちと修正待ちのラベル」）。
+	if got.Awaiting != "" || got.ReviewDecision != "approved" {
+		u.w.t.Fatalf("%s：approve のあと：%+v", id, got)
 	}
-	code, out := u.cli("", "ar", "merge", id, "--repo", u.repoName(), "--json")
+	code, out = u.cli("", "ar", "merge", id, "--repo", u.repoName(), "--json")
 	var ar applyRequest
 	_ = json.Unmarshal([]byte(out), &ar)
 	return ar, code, out
@@ -315,6 +318,8 @@ func TestE2E(t *testing.T) {
 	}
 	// ラベルを両方外すと、1 件読んだときに、出来事から正しいラベル（直近は修正待ちのラベルを付けたこと）に直す。
 	w.setLabels("q", ar4.ID)
+	// null の awaiting は、前の値を上書きしないので、読む前に空にする。
+	listed.Items = nil
 	agent.must(&listed, "ar", "list", "--state", "open")
 	if len(listed.Items) != 1 || listed.Items[0].Awaiting != "" {
 		t.Fatalf("ラベルのないものは、一覧ではレビュー待ちでも修正待ちでもない：%+v", listed)
@@ -379,8 +384,11 @@ func (w *world) hasLabel(repo, arID, name string) bool {
 // setLabels は、管理者として、GitForge の画面と同じように、pull request のラベルを置き換える。
 func (w *world) setLabels(repo, arID string, names ...string) {
 	w.t.Helper()
-	if names == nil {
-		names = []string{}
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", w.org, repo, w.pullNumber(repo, arID))
+	// 空で置き換えても外れないので、すべて外すときは DELETE を使う。
+	if len(names) == 0 {
+		w.forgejoCall(w.admin, http.MethodDelete, path, nil, nil, 204)
+		return
 	}
-	w.forgejoCall(w.admin, http.MethodPut, fmt.Sprintf("/repos/%s/%s/issues/%d/labels", w.org, repo, w.pullNumber(repo, arID)), map[string]any{"labels": names}, nil, 200)
+	w.forgejoCall(w.admin, http.MethodPut, path, map[string]any{"labels": names}, nil, 200)
 }

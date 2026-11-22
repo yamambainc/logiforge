@@ -34,7 +34,7 @@ const (
 	CodeStaleTarget        Code = "stale_target"
 	CodeConflict           Code = "conflict"
 	CodeInvariantViolation Code = "invariant_violation"
-	// CodeNotApproved は、merge しようとした apply request の、最後の決めるレビューが、先頭のコミットへの approve でないことである。
+	// CodeNotApproved は、merge しようとした apply request が承認されていないか、GitForge が承認が足りないとして merge を断ったことである。
 	CodeNotApproved Code = "not_approved"
 	// CodeMergeForbidden は、GitForge が、呼んだ主体の merge を断ったことである。
 	CodeMergeForbidden Code = "merge_forbidden"

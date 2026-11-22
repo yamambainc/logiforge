@@ -40,7 +40,8 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - 自分が作った apply request なら、approve の前に「あなたが作った apply request です」と示す。
   - approve は、今の `main` での確かめに通ったときだけ出す。通らなかったら、その理由を示す（[approve](../apply-request/review.md#approve)）。
 - approve された apply request は、その repository に書ける利用者が、この画面で merge できる（[merge](../apply-request/review.md#merge)）。
-  - 最後の決めるレビューが、今の先頭のコミットへの approve のときだけ、merge の欄を示す。
+  - 承認済みのときだけ、merge の欄を示す（[反映の条件](../apply-request/review.md#反映の条件)）。
+- 一覧と詳細には、承認の状態（承認済み、変更を求められている、承認待ち）を示す。一覧では、分からなければ示さない。
   - 押したら、確かめてから送る。merge できなかったら、その理由を示す。
 
 ## 反映したあとの木
