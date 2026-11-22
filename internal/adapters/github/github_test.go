@@ -609,3 +609,37 @@ func TestErrorsUnwrap(t *testing.T) {
 		t.Fatalf("ない repository の review：%v", err)
 	}
 }
+
+// 承認を必須にする設定があるときだけ、GitHub は reviewDecision を返す。一覧は、pull request の一覧と GraphQL の 1 回で読む。
+// 承認が足りない merge は、ErrNotApproved である（design/adapters/pull-requests.md の「承認の状態」）。
+func TestReviewDecisionAndNotApproved(t *testing.T) {
+	f, a, _ := newTestAdapter(t)
+	ctx := agentCtx()
+	if _, err := a.CreateApplyRequest(ctx, fakeRepo, ports.NewApplyRequest{Branch: "b1", Opener: fakeAgentLogin}); err != nil {
+		t.Fatal(err)
+	}
+	f.pulls[1].pending = 0
+	// 設定がなければ、承認の状態はない。
+	ars, err := a.ListApplyRequests(ctx, fakeRepo, "open")
+	if err != nil || len(ars) != 1 || ars[0].ReviewDecision != ports.DecisionNone {
+		t.Fatalf("設定なしの一覧：%+v %v", ars, err)
+	}
+	f.requireApproval = true
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionReviewRequired {
+		t.Fatalf("承認の前：%+v %v", rs, err)
+	}
+	if _, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); !errors.Is(err, ports.ErrNotApproved) {
+		t.Fatalf("承認の前の merge：%v", err)
+	}
+	f.reviews[1] = append(f.reviews[1], &fakeReview{ID: 9, State: "APPROVED", Author: "alice", CommitID: "h1", At: time.Now()})
+	ars, err = a.ListApplyRequests(ctx, fakeRepo, "open")
+	if err != nil || len(ars) != 1 || ars[0].ReviewDecision != ports.DecisionApproved {
+		t.Fatalf("承認のあとの一覧：%+v %v", ars, err)
+	}
+	if rs, err := a.ListReviews(ctx, fakeRepo, "1"); err != nil || rs.Decision != ports.DecisionApproved {
+		t.Fatalf("承認のあとの 1 件：%+v %v", rs, err)
+	}
+	if _, err := a.Merge(ctx, fakeRepo, "1", "h1", "t", "m"); err != nil {
+		t.Fatalf("承認のあとの merge：%v", err)
+	}
+}

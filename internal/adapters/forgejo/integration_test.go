@@ -261,6 +261,16 @@ func TestForgejo(t *testing.T) {
 	if err := gf.SetWaiting(ctx, ref, ar.ID, ports.WaitingReview); err != nil {
 		t.Fatal(err)
 	}
+	// ---- 承認を必須にする設定（branch protection）。承認が足りない merge は ErrNotApproved、承認の状態は review の official と stale で決める ----
+	// main を守る設定は、用意のときに repository を作った利用者が掛けている。その設定に、承認を必須にすることを足す。
+	e.call(e.tokens["alice"], "PATCH", "/repos/"+ref+"/branch_protections/main", map[string]any{"required_approvals": 1, "dismiss_stale_approvals": true}, nil, 200)
+	if _, err := gf.Merge(asAlice, ref, ar.ID, head1, "t", "m"); !errors.Is(err, ports.ErrNotApproved) {
+		t.Fatalf("承認の前の merge：%v", err)
+	}
+	if rs, err := gf.ListReviews(ctx, ref, ar.ID); err != nil || rs.Decision != ports.DecisionChangesRequested {
+		t.Fatalf("request changes のあとの承認の状態：%+v %v", rs, err)
+	}
+	t.Log("確かめた：承認が足りない merge を、Forgejo は 405 の [reason: ...] で断る。request changes の review は official")
 	rv, err := gf.AddReview(asAlice, ref, ar.ID, ports.Review{Kind: ports.ReviewApprove, Body: "よい", Revision: head1, PromptRevision: "p1"})
 	if err != nil || rv.Kind != ports.ReviewApprove || rv.Body != "よい\n\nプロンプトの版：p1" {
 		t.Fatalf("approve: %+v %v", rv, err)
@@ -269,6 +279,9 @@ func TestForgejo(t *testing.T) {
 	// Forgejo は、同じ人があとで approve すると、前の request changes を dismissed にする。
 	if err != nil || len(reviews.Items) != 1 || reviews.Items[0].Kind != ports.ReviewApprove || reviews.Items[0].Revision != head1 || reviews.Items[0].Reviewer != e.login("alice") || reviews.Items[0].Body != "よい\n\nプロンプトの版：p1" {
 		t.Fatalf("reviews: %+v %v", reviews, err)
+	}
+	if reviews.Decision != ports.DecisionApproved {
+		t.Fatalf("approve のあとの承認の状態：%+v", reviews)
 	}
 	t.Log("確かめた：pull request の review を出し、一覧で読める。書く権限のある人の approve は official で、同じ人の前の request changes は dismissed になる")
 
@@ -280,6 +293,8 @@ func TestForgejo(t *testing.T) {
 	if err != nil || len(sha) != 40 {
 		t.Fatalf("merge: %q %v", sha, err)
 	}
+	// ここから先は、承認を必須にしない（設定のない GitForge では、承認がなくても merge できる）。
+	e.call(e.tokens["alice"], "PATCH", "/repos/"+ref+"/branch_protections/main", map[string]any{"required_approvals": 0}, nil, 200)
 	if mh, err := gf.MainHead(ctx, ref); err != nil || mh != sha {
 		t.Fatalf("main head: %q %v", mh, err)
 	}

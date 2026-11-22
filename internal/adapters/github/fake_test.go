@@ -687,6 +687,11 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusForbidden, "Must have push access to repository")
 			return
 		}
+		// 承認を必須にする branch protection の応答（GitHub の文言）。
+		if f.requireApproval && f.reviewDecision(x.Number) != "APPROVED" {
+			fail(w, http.StatusMethodNotAllowed, "At least 1 approving review is required by reviewers with write access.")
+			return
+		}
 		if f.ruleBlocked {
 			fail(w, http.StatusMethodNotAllowed, "Repository rule violations found\n\nWaiting on required approvals from acme/gate.\n\n")
 			return
