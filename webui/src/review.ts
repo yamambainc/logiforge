@@ -79,12 +79,12 @@ export function outcome(kind: ReviewKind, ar: ApplyRequest): string {
   return 'approve を付けました。merge は、別に行います。';
 }
 
-/** merge を送ってよいか：open で main 向きで、最後の決めるレビューが、今の先頭のコミットへの approve であるとき */
+/** merge の欄を示すか：open で main 向きで、GitForge が承認済みと判定したか、レビュー待ちでも修正待ちでもない（approve された）とき。
+ * 承認が足りるかは、merge のときに GitForge が確かめる（docs/apply-request/review.md の「merge」） */
 export function canMerge(a: ApplyRequest): boolean {
   if (a.state !== 'open' || a.target !== 'main') return false;
-  const decisive = (a.reviews ?? []).filter((r) => r.kind === 'approve' || r.kind === 'request_changes');
-  const last = decisive[decisive.length - 1];
-  return !!last && last.kind === 'approve' && last.commit === a.head_commit;
+  if (a.review_decision === 'approved') return true;
+  return !a.awaiting && a.review_decision !== 'changes_requested';
 }
 
 export const MERGE_ERRORS: Record<string, string> = {

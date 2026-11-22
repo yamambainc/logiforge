@@ -4,7 +4,7 @@
 // open の apply request は、その repository に Write がある利用者が、ここでレビューできる（approve なら反映まで）。
 import { useEffect, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
+import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -15,7 +15,7 @@ import { Markdown } from '../MarkdownLazy';
 
 const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }) : '');
 // 作業としての絞り込み（ダッシュボードの件数と同じもの。listWork の subject_id）
-const WORK: Record<string, string> = { review_waiting: 'レビュー待ち（作業）', fix_waiting: '修正待ち（作業）' };
+const WORK: Record<string, string> = { review_waiting: 'レビュー待ち（作業）', fix_waiting: '修正待ち（作業）', approved: '承認済み（作業）' };
 // レビューを送る直前に、アクセストークンの残りがこれより少なければ、先に authorize に行く（design/webui/auth.md）
 const MIN_TOKEN_MS = 5 * 60_000;
 
@@ -94,6 +94,8 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
               <a href={`?id=${a.id}`} className={a.id === id ? 'on' : ''} onClick={(e) => { e.preventDefault(); go({ id: a.id }, true); }}>
                 <span className="item-text">{arTitle(a)}<span className="dim mono small-block">{a.branch} → {a.target}</span></span>
                 {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
+        {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
+                {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
                 <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
               </a>
             </li>
@@ -325,7 +327,7 @@ function MergePane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onCh
   return (
     <div className="review-pane">
       <h3 className="sec">merge する</h3>
-      <p className="dim small">先頭のコミット <span className="mono">{a.head_commit.slice(0, 7)}</span> は approve されています。merge できるのは、この repository に Write がある人だけです。GitForge の画面から merge してもかまいません。</p>
+      <p className="dim small">先頭のコミット <span className="mono">{a.head_commit.slice(0, 7)}</span> を merge できます。承認が足りるかは、merge のときに GitForge が確かめます。merge できるのは、この repository に Write がある人だけです。GitForge の画面から merge してもかまいません。</p>
       {error && <p className="form-error" role="alert">{error}</p>}
       {confirm ? (
         <div className="confirm" role="dialog" aria-label="merge の確かめ">
