@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arTitle, filterBySubjects, opLabel } from './ar';
+import { arTitle, filterBySubjects, opLabel, outsideSummary } from './ar';
 import type { ApplyRequest } from './api';
 import { buildIndex, filterNodes, type Filter, type Node } from './model';
 
@@ -13,6 +13,18 @@ describe('apply request の言葉', () => {
   it('見出しは、説明の最初の行（# を外す）。なければブランチ', () => {
     expect(arTitle({ id: 'apr_1', state: 'open', branch: 'b3', target: 'main', head_commit: 'c', description: '\n# 検証 2\n本文' })).toBe('検証 2');
     expect(arTitle({ id: 'apr_1', state: 'open', branch: 'b3', target: 'main', head_commit: 'c' })).toBe('b3');
+  });
+});
+
+describe('ディレクトリの外の変更', () => {
+  const a = (outside_paths?: string[] | null): ApplyRequest => ({ id: '3', state: 'open', branch: 'b', target: 'main', head_commit: 'c', outside_paths });
+  it('ふつうの repository と、まだ取り込んでいないときは出さない', () => {
+    expect(outsideSummary(a(undefined))).toBeNull();
+    expect(outsideSummary(a(null))).toBeNull();
+  });
+  it('ディレクトリの repository では、あるかないかと件数', () => {
+    expect(outsideSummary(a([]))).toBe('ディレクトリの外の変更：なし');
+    expect(outsideSummary(a(['README.md', 'other/x.md']))).toBe('ディレクトリの外の変更：2 件（反映しません）');
   });
 });
 

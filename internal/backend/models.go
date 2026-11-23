@@ -218,7 +218,9 @@ func commentOf(c ports.Comment) Comment {
 
 // ApplyRequest は、apply request である。
 type ApplyRequest struct {
-	ID     string `json:"id"`
+	ID string `json:"id"`
+	// URL は、GitForge の pull request の画面の URL である。アダプタが分からなければ空。
+	URL    string `json:"url,omitempty"`
 	Branch string `json:"branch"`
 	// Target は、向き先（pull request の base のブランチ）である。main でなければ、Logiforge は検査も反映もしない。
 	Target string `json:"target"`
@@ -238,6 +240,9 @@ type ApplyRequest struct {
 	ReviewDecision *string  `json:"review_decision"`
 	Warnings       []string `json:"warnings"`
 	MergedCommit   *string  `json:"merged_commit"`
+	// OutsidePaths は、ディレクトリの repository で、先頭のコミットが base からディレクトリの外で変えたパスである（変えていなければ空）。
+	// ふつうの repository と、先頭のコミットのスナップショットがまだないときは null。外も変える apply request は反映しない（design/directory/README.md）。
+	OutsidePaths []string `json:"outside_paths"`
 }
 
 // ReviewMaterial は、レビューの材料である。

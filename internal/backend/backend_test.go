@@ -754,3 +754,38 @@ func TestAsErrorGitForge(t *testing.T) {
 		t.Error("ポートの誤りで包んでいない誤りは、内部の誤り")
 	}
 }
+
+// apply request の URL は、アダプタが返したものをそのまま返す。ディレクトリの外の変更は、ディレクトリの repository のときだけ、
+// 先頭のコミットのスナップショット（worker が git の差分から書いたもの）から返す。GitForge を呼び増やさない。
+func TestApplyRequestURLAndOutside(t *testing.T) {
+	ctx := context.Background()
+	f := setup(t)
+	f.forge.ars[1].URL = "https://forge.example.com/o/q/pulls/2"
+	ar, err := f.b.GetApplyRequest(ctx, f.caller, "q", "apr_2")
+	if err != nil || ar.URL != "https://forge.example.com/o/q/pulls/2" || ar.OutsidePaths != nil {
+		t.Fatalf("ふつうの repository：%q %v %v", ar.URL, ar.OutsidePaths, err)
+	}
+
+	port := f.forge.ars[1]
+	d, err := f.b.applyRequest(ctx, "q", "o/q:paper", port, readList, nil)
+	if err != nil || d.model.OutsidePaths == nil || len(d.model.OutsidePaths) != 0 {
+		t.Fatalf("ディレクトリの repository、外の変更なし：%#v %v", d.model.OutsidePaths, err)
+	}
+	st := f.b.Snap.(*snapstore.Adapter).Store.(*store.Dir)
+	br, err := store.GetBranch(ctx, st, "q", f.head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	br.Outside = []string{"README.md", "other/x.md"}
+	if err := store.PutBranch(ctx, st, "q", br); err != nil {
+		t.Fatal(err)
+	}
+	d, err = f.b.applyRequest(ctx, "q", "o/q:paper", port, readList, nil)
+	if err != nil || strings.Join(d.model.OutsidePaths, ",") != "README.md,other/x.md" {
+		t.Fatalf("ディレクトリの repository、外の変更あり：%v %v", d.model.OutsidePaths, err)
+	}
+	// ふつうの repository では、スナップショットに外のパスがあっても返さない。
+	if d, err = f.b.applyRequest(ctx, "q", "o/q", port, readList, nil); err != nil || d.model.OutsidePaths != nil {
+		t.Fatalf("ふつうの repository：%v %v", d.model.OutsidePaths, err)
+	}
+}

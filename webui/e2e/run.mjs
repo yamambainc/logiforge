@@ -256,6 +256,10 @@ try {
   step('右側のタブ「レビュー」で、差分と先頭のコミット。approve と merge はタブの外。木に戻れる');
   await openAR(AR_MAIN);
   if (!(await page.$$eval('.ar-head button', (bs) => bs.map((b) => b.textContent))).includes('approve する')) throw new Error('approve がタブの外に出ない');
+  // GitForge の pull request の画面へのリンク。ふつうの repository なので、ディレクトリの外の変更は出さない
+  const prLink = await page.$eval('.ar-head .d-head a', (a) => [a.textContent, a.getAttribute('href'), a.target]).catch(() => null);
+  if (!prLink || prLink[0] !== `pull request #${AR_MAIN}` || !prLink[1].endsWith(`/pulls/${AR_MAIN}`) || prLink[2] !== '_blank') throw new Error('pull request へのリンクが出ない：' + prLink);
+  if (await page.$('.ar-head .outside')) throw new Error('ふつうの repository で、ディレクトリの外の変更が出る');
   await page.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === 'レビュー').click());
   await page.waitForFunction(() => new URL(location.href).searchParams.get('tab') === 'review' && document.querySelector('ul.ops')?.textContent.includes('検証結果を出す（偽）'), { timeout: 20000 });
   if ((await page.$$('ol.commits li')).length < 1) throw new Error('先頭のコミットが出ない');

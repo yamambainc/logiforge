@@ -4,7 +4,7 @@
 // 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
 import { useEffect, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
+import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -139,6 +139,7 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
   if (!a) return <section className="item-pane">{back}<div className="loading">読み込み中…</div></section>;
   const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); };
   // 示す木：open なら反映したあと、反映済みなら反映したコミット。閉じたものには木はない
+  const outside = outsideSummary(a);
   const source: Source | null = a.state === 'open' ? { kind: 'ar', id: a.id } : a.state === 'merged' && a.merged_commit ? { kind: 'commit', commit: a.merged_commit } : null;
   return (
     <section className="ar-pane" aria-label="apply request">
@@ -147,11 +148,14 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
         <div className="d-head">
           <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
           {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
-          <span className="mono dim">{a.id}</span>
+          {a.url ? <a className="mono" href={a.url} target="_blank" rel="noopener noreferrer">pull request #{a.id}</a> : <span className="mono dim">{a.id}</span>}
           <span className="d-title">{arTitle(a)}</span>
           <span className="dim mono">{a.branch} → {a.target} · 先頭 {a.head_commit.slice(0, 7)}</span>
         </div>
         {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
+        {outside && (a.outside_paths!.length === 0 ? <p className="dim outside">{outside}</p> : (
+          <details open className="note warn-note outside"><summary>{outside}</summary><ul className="mono">{a.outside_paths!.map((p) => <li key={p}>{p}</li>)}</ul></details>
+        ))}
         {notice && <p className="note" role="status">{notice}</p>}
         <div className="ar-bar">
           <div className="seg ar-tabs" role="tablist" aria-label="右側">

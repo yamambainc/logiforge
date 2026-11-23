@@ -33,3 +33,10 @@ export const arTitle = (a: ApplyRequest) => (a.description ?? '').split('\n').fi
 
 /** 作業としての絞り込み：apply request の一覧から、作業の対象（識別子の集まり）だけを、一覧の順のまま残す */
 export const filterBySubjects = (all: ApplyRequest[], ids: Set<string>) => all.filter((a) => ids.has(a.id));
+
+// ディレクトリの外の変更の 1 行（design/webui/screens.md の「apply request の画面」）。ふつうの repository と、まだ取り込んでいないときは null
+export function outsideSummary(a: ApplyRequest): string | null {
+  const ps = a.outside_paths;
+  if (ps == null) return null;
+  return ps.length === 0 ? 'ディレクトリの外の変更：なし' : `ディレクトリの外の変更：${ps.length} 件（反映しません）`;
+}

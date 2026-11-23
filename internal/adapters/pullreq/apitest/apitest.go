@@ -11,6 +11,8 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
@@ -50,16 +52,18 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			if p, err = api.CreatePull(ctx, ref, e.Merge, "表のテスト", "本文"); err != nil {
 				return err
 			}
-			closing, err = api.CreatePull(ctx, ref, e.Close, "閉じる", "本文")
-			return err
+			if closing, err = api.CreatePull(ctx, ref, e.Close, "閉じる", "本文"); err != nil {
+				return err
+			}
+			return want(nil, page(ref, p), "CreatePull の URL が、pull request の画面でない："+p.URL)
 		}},
 		{"GetPull", func() error {
 			got, err := api.GetPull(ctx, ref, p.Number)
-			return want(err, got.Number == p.Number && got.Head == e.Merge, "GetPull が、作った pull request を返さない")
+			return want(err, got.Number == p.Number && got.Head == e.Merge && page(ref, got), "GetPull が、作った pull request を、画面の URL と一緒に返さない")
 		}},
 		{"ListPulls", func() error {
 			ps, err := api.ListPulls(ctx, ref, "open")
-			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number }), "ListPulls に、作った pull request がない")
+			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && page(ref, x) }), "ListPulls に、作った pull request が、画面の URL と一緒にない")
 		}},
 		{"EditPullBody", func() error {
 			if err := api.EditPullBody(ctx, ref, p.Number, "新しい本文"); err != nil {
@@ -139,7 +143,7 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 		}},
 		{"ClosedPullsPage", func() error {
 			ps, _, err := api.ClosedPullsPage(ctx, ref, 1)
-			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && x.Merged }), "ClosedPullsPage に、merge した pull request がない")
+			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && x.Merged && page(ref, x) }), "ClosedPullsPage に、merge した pull request が、画面の URL と一緒にない")
 		}},
 	}
 
@@ -161,6 +165,13 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 }
 
 // want は、err がなく、ok なら nil を返す。
+// page は、URL が、その repository（:パス を除く）の、その番号の pull request の画面かである。
+// GitHub は /owner/name/pull/1、Forgejo は /owner/name/pulls/1 である。
+func page(ref string, p pullreq.Pull) bool {
+	repo, _, _ := strings.Cut(ref, ":")
+	return strings.HasPrefix(p.URL, "http") && (strings.HasSuffix(p.URL, "/"+repo+"/pull/"+strconv.Itoa(p.Number)) || strings.HasSuffix(p.URL, "/"+repo+"/pulls/"+strconv.Itoa(p.Number)))
+}
+
 func want(err error, ok bool, msg string) error {
 	if err != nil {
 		return err

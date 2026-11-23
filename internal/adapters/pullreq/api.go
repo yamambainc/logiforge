@@ -62,7 +62,9 @@ var ErrAttachmentsUnsupported = ports.ErrAttachmentsUnsupported
 
 // Pull は、pull request である。
 type Pull struct {
-	Number  int
+	Number int
+	// URL は、pull request の画面の URL である。
+	URL     string
 	Title   string
 	Body    string
 	Head    string // ブランチの名前

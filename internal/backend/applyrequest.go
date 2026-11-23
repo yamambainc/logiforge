@@ -117,7 +117,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 	if target == "" {
 		target = mainTarget
 	}
-	*m = ApplyRequest{ID: ar.ID, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
+	*m = ApplyRequest{ID: ar.ID, URL: ar.URL, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
 		Operations: []Operation{}, Reviews: []Review{}, Comments: []Comment{}, Warnings: append([]string{}, ar.Warnings...)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
@@ -165,6 +165,9 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		switch {
 		case err == nil:
 			d.branch = br
+			if _, dir := ports.SplitRef(gfRef); dir != "" {
+				m.OutsidePaths = append([]string{}, br.Outside...)
+			}
 		case errors.Is(err, ports.ErrNotFound):
 			m.Warnings = append(m.Warnings, "先頭のコミットのスナップショットが、まだない（worker を待っている）")
 		default:

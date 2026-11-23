@@ -37,11 +37,13 @@ func labelNames(ls []labelJSON) []string {
 }
 
 type pullJSON struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	Merged bool   `json:"merged"`
+	// HTMLURL は、pull request の画面の URL である。
+	HTMLURL string `json:"html_url"`
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	State   string `json:"state"`
+	Merged  bool   `json:"merged"`
 	// Mergeable は、Forgejo が merge できるかを確かめた結果。
 	Mergeable      bool        `json:"mergeable"`
 	MergeCommitSHA string      `json:"merge_commit_sha"`
@@ -59,7 +61,7 @@ type pullJSON struct {
 }
 
 func (p pullJSON) pull() pullreq.Pull {
-	pr := pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
+	pr := pullreq.Pull{Number: p.Number, URL: p.HTMLURL, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
 		State: p.State, Merged: p.Merged, Base: p.Base.Ref, Author: p.User.Login, Labels: labelNames(p.Labels),
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 	if p.Merged {

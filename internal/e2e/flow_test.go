@@ -24,6 +24,9 @@ type applyRequest struct {
 		Kind string `json:"kind"`
 	} `json:"operations"`
 	Warnings []string `json:"warnings"`
+	// URL は、GitForge の pull request の画面である。OutsidePaths は、ディレクトリの repository でだけ null でない。
+	URL          string    `json:"url"`
+	OutsidePaths *[]string `json:"outside_paths"`
 }
 
 type checkOut struct {
@@ -72,6 +75,9 @@ func (u *user) create(branch string) applyRequest {
 	u.w.t.Logf("ar create %s：%v", branch, time.Since(start).Round(time.Millisecond))
 	if !c.OK || len(c.Operations) != len(ar.Operations) {
 		u.w.t.Fatalf("check と ar create の操作が違う：%+v %+v", c, ar)
+	}
+	if !strings.HasPrefix(ar.URL, "http") || !strings.HasSuffix(ar.URL, "/pulls/"+ar.ID) {
+		u.w.t.Fatalf("apply request の url が、pull request の画面でない：%q", ar.URL)
 	}
 	for i := range c.Operations {
 		if c.Operations[i].Kind != ar.Operations[i].Kind {
@@ -193,6 +199,9 @@ func TestE2E(t *testing.T) {
 	hA, hB := hyps[0].(string), hyps[1].(string)
 	agent.commitPush("b1", "分解")
 	ar1 := agent.create("b1")
+	if ar1.OutsidePaths != nil {
+		t.Fatalf("ふつうの repository の outside_paths は null のはず：%v", *ar1.OutsidePaths)
+	}
 	var mat struct {
 		Targets []map[string]any `json:"targets"`
 	}
