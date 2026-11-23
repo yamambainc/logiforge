@@ -13,7 +13,8 @@ page.on('pageerror', (e) => console.error('pageerror:', e.message));
 await page.setViewport({ width: 1280, height: 800 });
 const step = (s) => console.log('…', s);
 const listIds = () => page.$$eval('ul.items a', (as) => as.map((a) => new URL(a.href).searchParams.get('id')));
-const listHas = (want) => page.waitForFunction((id, w) => !!document.querySelector('ul.items') && [...document.querySelectorAll('ul.items a')].some((a) => new URL(a.href).searchParams.get('id') === id) === w, { timeout: 30000 }, AR, want);
+// 一覧を読み終えていて（空なら「ありません」）、AR があるかが want か
+const listHas = (want) => page.waitForFunction((id, w) => (!!document.querySelector('.list-pane ul.items') || document.querySelector('.list-pane p.dim')?.textContent === 'apply request はありません。') && [...document.querySelectorAll('ul.items a')].some((a) => new URL(a.href).searchParams.get('id') === id) === w, { timeout: 30000 }, AR, want);
 
 try {
   await page.goto(BASE + `/r/${REPO}/apply-requests?id=${AR}`, { waitUntil: 'networkidle0' });
