@@ -1,14 +1,15 @@
 # 差分の重ね表示と過去の時点
 
-ビュワーで、apply request を反映したあとの姿と、過去の時点の姿を示すところを実装するときに読む。
+apply request の画面で、反映したあとの姿を示すところと、ビュワーで過去の時点の姿を示すところを実装するときに読む。
 要件は [apply request と履歴](../../docs/webui/history.md) が正本である。表示の共通の決まりは、[スナップショットツリーのビュワー](snapshot-tree-viewer.md) に書く。
 
 ## 差分の重ね表示
 
-open の apply request を選ぶと、ビュワーは、それを向き先の今の先頭に反映したあとの姿を示す。
+apply request と履歴の画面で open の apply request を選ぶと、右側に、それを向き先の今の先頭に反映したあとの姿を示す（[apply request と履歴](screens.md#apply-request-と履歴)）。
 
-- ビュワーの上の「AR を重ねる」で選ぶ。選べるのは、open の apply request である（`listApplyRequests` の `state=open`）。apply request と履歴の画面からも、`?apply_request=` で開ける。
-- 重ねるのをやめると、今の `main` に戻る。重ねる・やめるは、ブラウザの履歴に積む。戻るで、前の姿に戻る。
+- 右側は、ビュワーそのもの（`TreeScreen`）を、示す時点を固めて埋め込む。時点を選ぶ欄は出さず、ビュワーの状態（表示、選んだノード、検索）は URL に持たない。
+  - なぜ：新しい部品を作らず、木のビュワーと同じ表示で確かめられるようにするため。URL は、apply request の画面のもの（`id`、`tab` など）だから。
+- ビュワーの画面（`/tree`）では、apply request を重ねない。`?apply_request=` も読まない。
 - 次の順に読み、ブラウザの中で比べる。
   1. `listNodes` を、`apply_request` を付けて呼ぶ。応答の `commit` は、重ねた向き先のコミットである。
   2. その `commit` が、手元に読んである `main` の応答の `commit` と同じなら、手元の応答と比べる。
@@ -46,7 +47,6 @@ open の apply request を選ぶと、ビュワーは、それを向き先の今
 - 消える行の詳細は、`getNode` を、比べた向き先の `commit` を付けて読む。
   - なぜ：`apply_request` を付けると、反映したあとの姿にそのノードがないので、`not_found` になるから。
 - 上の帯に、apply request の説明、識別子、ブランチ、向き先、比べた向き先のコミット、追加・変化・消えるノードの件数を示す。
-- 「AR を重ねる」の選択肢には、ブランチと向き先を示す。一覧の応答には説明がないことがあるからである。
 - 向き先が `main` でなければ、上の帯を黄にし、「`main` 向きではないので、検査していません」と示す（[反映したあとの木](../../docs/webui/history.md#反映したあとの木)）。
   - 詳細のパネルの「この AR での変化」にも、同じ注意を示す。
   - 向き先が `main` でないときは、衝突を判定しない（[向き先に重ねる](../backend/snapshot/branch.md#向き先に重ねる)）。本当の衝突は、GitForge の画面で分かる。

@@ -120,7 +120,7 @@ describe('approve の前に示すこと', () => {
     expect(ownNotice(ar({ opened_by_caller: true }))).toBe(OWN_AR);
     expect(ownNotice(ar({ opened_by_caller: false }))).toBeNull();
     expect(ownNotice(ar())).toBeNull();
-    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。', '今の main で確かめ、通ったときだけ approve を出します。merge は、別に行います。'], own: OWN_AR });
+    expect(approveSummary(ar({ opened_by_caller: true }), 'c1', 3)).toEqual({ commit: 'c1', lines: ['差分の操作 3 個。'], own: OWN_AR });
     expect(approveSummary(ar({ target: 'feature' }), 'c1', 0).lines[1]).toBe('main 向きではないので、Logiforge は確かめません。');
   });
 });

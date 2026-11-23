@@ -115,7 +115,7 @@ export const ownNotice = (a: ApplyRequest): string | null => (a.opened_by_caller
 export function approveSummary(a: ApplyRequest, commit: string, operations: number): { commit: string; lines: string[]; own: string | null } {
   return {
     commit,
-    lines: [`差分の操作 ${operations} 個。`, a.target === 'main' ? '今の main で確かめ、通ったときだけ approve を出します。merge は、別に行います。' : 'main 向きではないので、Logiforge は確かめません。'],
+    lines: [`差分の操作 ${operations} 個。`, ...(a.target === 'main' ? [] : ['main 向きではないので、Logiforge は確かめません。'])],
     own: ownNotice(a),
   };
 }

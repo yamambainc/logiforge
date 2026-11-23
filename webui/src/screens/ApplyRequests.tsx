@@ -1,7 +1,7 @@
 // apply request と履歴（docs/webui/history.md、design/webui/screens.md の「apply request と履歴」）。
-// apply request の一覧と詳細（差分、先頭のコミット、レビュー）と、main のコミットの一覧（過去の時点）。
-// 状態（見るもの、状態、選んだ apply request、作業の絞り込み）は URL に持つ。
-// open の apply request は、その repository に Write がある利用者が、ここでレビューできる（approve なら反映まで）。
+// apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）と、main のコミットの一覧（過去の時点）。
+// 右側は「木」（既定）と「レビュー」のタブ。approve と merge は、木を見たまま押せるよう、タブの外に置く。
+// 状態（見るもの、状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
 import { useEffect, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
 import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
@@ -12,6 +12,8 @@ import { textOf, type Node } from '../model';
 import { approveSummary, canMerge, canSendApprove, ownNotice, submitMerge, submitReview } from '../review';
 import { navigate, useLocation } from '../router';
 import { Markdown } from '../MarkdownLazy';
+import type { Source } from '../source';
+import { TreeScreen } from './TreeScreen';
 
 const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }) : '');
 // 作業としての絞り込み（ダッシュボードの件数と同じもの。listWork の subject_id）
@@ -25,6 +27,7 @@ export function ApplyRequests({ repo }: { repo: string }) {
   const state = loc.searchParams.get('state') ?? 'open';
   const work = loc.searchParams.get('work') ?? '';
   const id = loc.searchParams.get('id');
+  const tab = loc.searchParams.get('tab') === 'review' ? 'review' : 'tree';
   const mobile = useMobile();
 
   const go = (p: Record<string, string | null>, push = false) => {
@@ -36,16 +39,16 @@ export function ApplyRequests({ repo }: { repo: string }) {
 
   const tabs = (
     <div className="seg list-tabs" role="tablist" aria-label="見るもの">
-      <button className={view === 'ars' ? 'on' : ''} onClick={() => go({ view: null, id: null }, true)}>apply request</button>
-      <button className={view === 'commits' ? 'on' : ''} onClick={() => go({ view: 'commits', id: null, work: null }, true)}>main の履歴</button>
+      <button className={view === 'ars' ? 'on' : ''} onClick={() => go({ view: null, id: null, tab: null }, true)}>apply request</button>
+      <button className={view === 'commits' ? 'on' : ''} onClick={() => go({ view: 'commits', id: null, work: null, tab: null }, true)}>main の履歴</button>
     </div>
   );
   const list = view === 'commits'
     ? <CommitList repo={repo} tabs={tabs} />
     : <ArList repo={repo} tabs={tabs} state={state} work={work} id={id} go={go} />;
   const detail = view === 'ars' && id
-    ? <ArDetail key={id} repo={repo} id={id} mobile={mobile} onBack={() => go({ id: null }, true)} />
-    : view === 'ars' && !mobile ? <section className="item-pane empty"><p className="dim">apply request を選ぶと、ここに差分とレビューが出ます。</p></section> : null;
+    ? <ArDetail key={id} repo={repo} id={id} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
+    : view === 'ars' && !mobile ? <section className="item-pane empty"><p className="dim">apply request を選んでください。</p></section> : null;
   if (mobile) return <main className="split one">{detail ?? list}</main>;
   return <main className={`split ${view === 'commits' ? 'one' : ''}`}>{list}{detail}</main>;
 }
@@ -91,10 +94,9 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
         <ul className="items">
           {items.map((a) => (
             <li key={a.id}>
-              <a href={`?id=${a.id}`} className={a.id === id ? 'on' : ''} onClick={(e) => { e.preventDefault(); go({ id: a.id }, true); }}>
+              <a href={`?id=${a.id}`} className={a.id === id ? 'on' : ''} onClick={(e) => { e.preventDefault(); go({ id: a.id, tab: null }, true); }}>
                 <span className="item-text">{arTitle(a)}<span className="dim mono small-block">{a.branch} → {a.target}</span></span>
                 {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
-        {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
                 {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
                 <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
               </a>
@@ -107,11 +109,20 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
   );
 }
 
-function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobile: boolean; onBack: () => void }) {
+type Tab = 'tree' | 'review';
+
+function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: string; tab: Tab; onTab: (t: Tab) => void; mobile: boolean; onBack: () => void }) {
   const [a, setA] = useState<ApplyRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   // レビューを送ったあとの言葉（反映したか、反映できなかった理由など）。反映して open でなくなっても示す
   const [notice, setNotice] = useState<string | null>(null);
+  // レビューの材料（CLI の reviewer と同じもの）。approve で送る先頭のコミットは、材料を作ったコミット
+  const [material, setMaterial] = useState<ReviewMaterial | null>(null);
+  const [mError, setMError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  // レビューのタブでノードを押したら、木のタブでそのノードを選ぶ
+  const [focus, setFocus] = useState<string | null>(null);
+  const showNode = (n: string) => { setFocus(n); onTab('tree'); };
   useEffect(() => {
     let live = true;
     getApplyRequest(repo, id).then((r) => live && setA(r)).catch((e) => {
@@ -119,28 +130,166 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
     });
     return () => { live = false; };
   }, [repo, id]);
+  // main 向きでなければ、Logiforge は検査しないので、材料はない（overlay_unsupported）
+  const wantMaterial = !!a && a.state === 'open' && a.target === 'main';
+  useEffect(() => {
+    let live = true;
+    setMaterial(null); setMError(null);
+    if (!wantMaterial) return;
+    withPendingRetry(() => getReviewMaterial(repo, id), (w) => { if (live) setPending(w); })
+      .then((m) => { if (live) setMaterial(m); })
+      .catch((e) => {
+        if (!live || (e instanceof Problem && e.status === 401)) return;
+        setMError(e instanceof Problem && e.code === 'snapshot_pending_timeout' ? '先頭のコミットを、まだ取り込んでいます。少し待って、読み直してください。' : e instanceof Problem ? e.detail || e.code : String(e));
+      });
+    return () => { live = false; };
+  }, [repo, id, a?.head_commit, wantMaterial]);
   const back = mobile && <button className="link back" onClick={onBack}>← 一覧</button>;
   if (error) return <section className="item-pane">{back}<p className="dim">{error}</p></section>;
   if (!a) return <section className="item-pane">{back}<div className="loading">読み込み中…</div></section>;
-  const open = (to: string) => (e: React.MouseEvent) => { e.preventDefault(); navigate(to); };
-  const tree = (q: string) => `/r/${repo}/tree?${q}`;
+  const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); };
+  // 示す木：open なら反映したあと、反映済みなら反映したコミット。閉じたものには木はない
+  const source: Source | null = a.state === 'open' ? { kind: 'ar', id: a.id } : a.state === 'merged' && a.merged_commit ? { kind: 'commit', commit: a.merged_commit } : null;
   return (
-    <section className="item-pane" aria-label="apply request">
-      {back}
-      <div className="d-head">
-        <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
-        {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
-        <span className="mono dim">{a.id}</span>
+    <section className="ar-pane" aria-label="apply request">
+      <div className="ar-head">
+        {back}
+        <div className="d-head">
+          <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
+          {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
+          <span className="mono dim">{a.id}</span>
+          <span className="d-title">{arTitle(a)}</span>
+          <span className="dim mono">{a.branch} → {a.target} · 先頭 {a.head_commit.slice(0, 7)}</span>
+        </div>
+        {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
+        {notice && <p className="note" role="status">{notice}</p>}
+        <div className="ar-bar">
+          <div className="seg ar-tabs" role="tablist" aria-label="右側">
+            <button role="tab" aria-selected={tab === 'tree'} className={tab === 'tree' ? 'on' : ''} onClick={() => onTab('tree')}>木</button>
+            <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => onTab('review')}>レビュー</button>
+          </div>
+          <span className="spacer" />
+          {a.state === 'open' && (
+            <div className="ar-actions">
+              <ApproveBar repo={repo} a={a} material={material} mError={mError} onChanged={changed} />
+              {canMerge(a) && <MergeBar repo={repo} a={a} onChanged={changed} />}
+            </div>
+          )}
+        </div>
       </div>
-      <h2 className="d-title">{arTitle(a)}</h2>
-      <p className="dim mono">{a.branch} → {a.target} · 先頭 {a.head_commit.slice(0, 7)}</p>
-      <div className="actions">
-        {a.state === 'open' && <a className="btn" href={tree(`apply_request=${a.id}`)} onClick={open(tree(`apply_request=${a.id}`))}>反映したあとの姿を見る</a>}
-        {a.state === 'merged' && a.merged_commit && <a className="btn" href={tree(`commit=${a.merged_commit}`)} onClick={open(tree(`commit=${a.merged_commit}`))}>反映した時点を見る</a>}
-      </div>
-      {a.target !== 'main' && <p className="note">main 向きではないので、Logiforge は検査も反映もしません。</p>}
-      {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
+      {tab === 'tree' ? (
+        source ? <TreeScreen key={a.head_commit + (a.merged_commit ?? '') + (focus ?? '')} repo={repo} fixed={source} node={focus} /> : <div className="item-pane empty"><p className="dim">閉じた apply request なので、反映したあとの木はありません。</p></div>
+      ) : (
+        <div className="item-pane">
+          <ReviewTab repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={changed} onNode={showNode} />
+        </div>
+      )}
+    </section>
+  );
+}
 
+const VALUE = (v: boolean | null) => (v === true ? '真' : v === false ? '偽' : '未決');
+const KINDS: { k: ReviewKind; label: string }[] = [{ k: 'comment', label: 'コメント' }, { k: 'request_changes', label: 'request_changes' }];
+type Changed = (a: ApplyRequest | null, notice: string | null) => void;
+
+// レビューを送る（approve も、コメントも）。送ったあとの言葉は onChanged で示す。書きかけを消すかを返す
+async function sendReview(repo: string, a: ApplyRequest, k: ReviewKind, commit: string, body: string, onChanged: Changed, setError: (m: string | null) => void): Promise<boolean> {
+  // 残りが少なければ、書きかけを置いて先に authorize に行く（送っている途中で期限が来ないように）
+  if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return false;
+  setError(null);
+  const r = await submitReview(repo, a.id, k, commit, body);
+  switch (r.kind) {
+    case 'sent': onChanged(r.ar, r.message); return true;
+    // 新しい先頭のコミットを読み直して示し、もう一度確かめさせる。書きかけは残す
+    case 'conflict': onChanged(r.ar ?? null, r.message); return false;
+    case 'not_open': onChanged(r.ar, r.message); return true;
+    // 確かめに通らず、approve を出さなかった。書きかけは残す
+    case 'refused': setError(r.message); if (r.ar) onChanged(r.ar, null); return false;
+    case 'error': setError(r.message); return false;
+    case 'unauthenticated': return false;
+  }
+}
+
+// approve（docs/apply-request/review.md）。押したら、先頭のコミットを示して確かめてから送る
+function ApproveBar({ repo, a, material, mError, onChanged }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; onChanged: Changed }) {
+  const main = a.target === 'main';
+  // 示す先頭のコミット。材料があれば、材料を作ったコミット（approve で送るのは、確かめたこのコミット）
+  const shown = material?.commit ?? a.head_commit;
+  // approve を確かめた先頭のコミット。示す先頭のコミットが変わったら、確かめ直させる
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const own = ownNotice(a);
+  const summary = approveSummary(a, shown, (material?.operations ?? a.operations ?? []).length);
+  const start = () => {
+    if (main && !material) { setError(mError ? `レビューの材料を読めませんでした：${mError}` : 'レビューの材料を読み込んでいます。少し待ってから押してください。'); return; }
+    setError(null); setConfirmFor(shown);
+  };
+  const send = async () => {
+    setBusy(true);
+    await sendReview(repo, a, 'approve', confirmFor!, '', onChanged, setError);
+    setBusy(false); setConfirmFor(null);
+  };
+  return (
+    <div className="ar-action">
+      {own && <p className="note" role="status">{own}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {canSendApprove(confirmFor, shown) ? (
+        <div className="confirm" role="dialog" aria-label="approve の確かめ">
+          <p><b>この先頭のコミットを approve します。</b> <span className="mono">{summary.commit}</span></p>
+          <p>{summary.lines.join('')}</p>
+          <div className="form-actions">
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void send()}>{busy ? '送っています…' : 'approve を送る'}</button>
+            <button type="button" className="btn" disabled={busy} onClick={() => setConfirmFor(null)}>やめる</button>
+          </div>
+        </div>
+      ) : (
+        <div className="form-actions"><button type="button" className="btn primary" onClick={start}>approve する</button></div>
+      )}
+    </div>
+  );
+}
+
+// merge（docs/apply-request/review.md の「merge」）。approve された apply request を、サインインした人のトークンで merge する。
+// 押したら確かめてから送る。バックエンドが、直前に今の main で反映の条件を確かめ直す。
+function MergeBar({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onChanged: Changed }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const send = async () => {
+    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
+    setBusy(true); setError(null);
+    const r = await submitMerge(repo, a.id);
+    setBusy(false); setConfirm(false);
+    switch (r.kind) {
+      case 'sent': onChanged(r.ar, r.message); break;
+      case 'refused': setError(r.message); if (r.ar) onChanged(r.ar, null); break;
+      case 'conflict': case 'not_open': case 'error': setError(r.message); break;
+      case 'unauthenticated': break;
+    }
+  };
+  return (
+    <div className="ar-action">
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {confirm ? (
+        <div className="confirm" role="dialog" aria-label="merge の確かめ">
+          <p><b>この先頭のコミットを、main に squash merge します。</b> <span className="mono">{a.head_commit.slice(0, 7)}</span></p>
+          <div className="form-actions">
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void send()}>{busy ? '送っています…' : 'merge を送る'}</button>
+            <button type="button" className="btn" disabled={busy} onClick={() => setConfirm(false)}>やめる</button>
+          </div>
+        </div>
+      ) : (
+        <div className="form-actions"><button type="button" className="btn primary" onClick={() => setConfirm(true)}>merge する</button></div>
+      )}
+    </div>
+  );
+}
+
+// レビューのタブ：差分、先頭のコミット、レビューとコメントの一覧、コメントを書く欄
+function ReviewTab({ repo, a, material, mError, pending, onChanged, onNode }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed; onNode: (id: string) => void }) {
+  return (
+    <>
       <h3 className="sec">差分</h3>
       {(a.operations ?? []).length === 0 ? <p className="dim">差分の操作はありません。</p> : (
         <ul className="ops">
@@ -149,7 +298,7 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
             return (
               <li key={op.position}>
                 <span>{l.what}</span>
-                <a className="mono" href={tree(`node=${l.target}`)} onClick={open(tree(`node=${l.target}`))}>{l.target}</a>
+                <NodeLink id={l.target} onNode={onNode} />
                 {/* 検証結果のレポートは、折りたたみで、Markdown として示す（design/webui/markdown.md） */}
                 {op.kind === 'verdict.submit' && <details className="op-report"><summary>レポート</summary><Markdown className="report" text={op.report_body} /></details>}
               </li>
@@ -193,163 +342,52 @@ function ArDetail({ repo, id, mobile, onBack }: { repo: string; id: string; mobi
         </>
       )}
 
-      {notice && <p className="note" role="status">{notice}</p>}
-      {canMerge(a) && <MergePane repo={repo} a={a} onChanged={(r, m) => { if (r) setA(r); setNotice(m); }} />}
-      {a.state === 'open' && <ReviewPane repo={repo} a={a} onChanged={(r, m) => { if (r) setA(r); setNotice(m); }} />}
-    </section>
+      {a.state === 'open' && <ReviewPane repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={onChanged} onNode={onNode} />}
+    </>
   );
 }
 
-const VALUE = (v: boolean | null) => (v === true ? '真' : v === false ? '偽' : '未決');
-const KINDS: { k: ReviewKind; label: string }[] = [{ k: 'comment', label: 'コメント' }, { k: 'request_changes', label: 'request_changes' }, { k: 'approve', label: 'approve' }];
-
-// レビューの欄（docs/webui/history.md の「apply request の閲覧」）。
+// コメントと request_changes を書く欄（docs/webui/history.md の「apply request の閲覧」）。
 // CLI の reviewer と同じレビューの材料（getReviewMaterial）を示す。説明欄は示さない（材料に含めないものを、判断の横に置かないため）。
-function ReviewPane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onChanged: (a: ApplyRequest | null, notice: string | null) => void }) {
-  const [material, setMaterial] = useState<ReviewMaterial | null>(null);
-  const [mError, setMError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+function ReviewPane({ repo, a, material, mError, pending, onChanged, onNode }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed; onNode: (id: string) => void }) {
   const [kind, setKind] = useState<ReviewKind>('comment');
   const [body, setBody] = useState(() => loadDraft(repo, a.id)?.body ?? '');
-  // approve を確かめた先頭のコミット。示す先頭のコミットが変わったら、確かめ直させる
-  const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<string | null>(null);
   // 書きかけ（トークンの期限で authorize に行き直しても失わない）。サインアウトで消える
   useEffect(() => { saveDraft(repo, a.id, { body, fileNames: [], links: [] }); }, [repo, a.id, body]);
-
   const main = a.target === 'main';
-  useEffect(() => {
-    let live = true;
-    setMaterial(null); setMError(null);
-    // main 向きでなければ、Logiforge は検査しないので、材料はない（overlay_unsupported）
-    if (!main) return;
-    withPendingRetry(() => getReviewMaterial(repo, a.id), (w) => { if (live) setPending(w); })
-      .then((m) => { if (live) setMaterial(m); })
-      .catch((e) => {
-        if (!live || (e instanceof Problem && e.status === 401)) return;
-        setMError(e instanceof Problem && e.code === 'snapshot_pending_timeout' ? '先頭のコミットを、まだ取り込んでいます。少し待って、読み直してください。' : e instanceof Problem ? e.detail || e.code : String(e));
-      });
-    return () => { live = false; };
-  }, [repo, a.id, a.head_commit, main]);
-
-  // 示す先頭のコミット。材料があれば、材料を作ったコミット（approve で送るのは、確かめたこのコミット）
   const shown = material?.commit ?? a.head_commit;
-  const confirming = canSendApprove(confirmFor, shown);
-  const own = ownNotice(a);
-  const summary = approveSummary(a, shown, (material?.operations ?? a.operations ?? []).length);
-  const tree = `/r/${repo}/tree?apply_request=${a.id}`;
-
-  const send = async (k: ReviewKind, commit: string) => {
-    // 残りが少なければ、書きかけを置いて先に authorize に行く（送っている途中で期限が来ないように）
-    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
-    setBusy(true); setError(null); setConflict(null);
-    const r = await submitReview(repo, a.id, k, commit, body);
-    setBusy(false);
-    switch (r.kind) {
-      case 'sent': clearDraft(repo, a.id); setBody(''); setConfirmFor(null); onChanged(r.ar, r.message); break;
-      // 新しい先頭のコミットを読み直して示し、もう一度確かめさせる。書きかけは残す
-      case 'conflict': setConfirmFor(null); setConflict(r.message); if (r.ar) onChanged(r.ar, null); break;
-      case 'not_open': clearDraft(repo, a.id); setConfirmFor(null); onChanged(r.ar, r.message); break;
-      // 確かめに通らず、approve を出さなかった。書きかけは残す
-      case 'refused': setConfirmFor(null); setError(r.message); if (r.ar) onChanged(r.ar, null); break;
-      case 'error': setError(r.message); break;
-      case 'unauthenticated': break;
-    }
-  };
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (kind !== 'approve' && !body.trim()) { setError('本文を書いてください。'); return; }
-    if (kind === 'approve') {
-      if (main && !material) { setError('レビューの材料を読み込んでから approve してください。'); return; }
-      // 押したら、先頭のコミットと反映したあとの姿を示して、確かめてから送る
-      setError(null); setConfirmFor(shown); return;
-    }
-    void send(kind, shown);
+    if (!body.trim()) { setError('本文を書いてください。'); return; }
+    setBusy(true);
+    if (await sendReview(repo, a, kind, shown, body, onChanged, setError)) { clearDraft(repo, a.id); setBody(''); }
+    setBusy(false);
   };
-
   return (
     <div className="review-pane">
       <h3 className="sec">レビューする</h3>
-      <p className="dim small">レビューできるのは、この repository に Write がある人だけです。レビューする先頭のコミット：<span className="mono">{shown.slice(0, 7)}</span></p>
-      {conflict && <p className="note" role="status">{conflict}</p>}
       <h4 className="sub">レビューの材料</h4>
       {!main ? <p className="dim">main 向きではないので、レビューの材料はありません。</p>
         : mError ? <p className="dim">レビューの材料を読めませんでした：{mError}</p>
         : !material ? <div className="loading">{pending ? '先頭のコミットを取り込んでいます。読み直しています…' : '読み込み中…'}</div>
-        : <MaterialView repo={repo} m={material} />}
-      <form className="answer-form" onSubmit={submit}>
+        : <MaterialView m={material} onNode={onNode} />}
+      <form className="answer-form" onSubmit={(e) => void submit(e)}>
         <div className="seg" role="radiogroup" aria-label="レビューの種類">
-          {KINDS.map(({ k, label }) => <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? 'on' : ''} onClick={() => { setKind(k); setConfirmFor(null); }}>{label}</button>)}
+          {KINDS.map(({ k, label }) => <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{label}</button>)}
         </div>
-        {kind === 'approve' && own && <p className="note" role="status">{own}</p>}
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} aria-label="レビューの本文" placeholder={kind === 'approve' ? '本文（なくてもよい）' : '本文を書く'} />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} aria-label="レビューの本文" placeholder="本文を書く" />
         {error && <p className="form-error" role="alert">{error}</p>}
-        {kind === 'approve' && confirming ? (
-          <div className="confirm" role="dialog" aria-label="approve の確かめ">
-            <p><b>この先頭のコミットを approve します。</b></p>
-            <p className="mono">{summary.commit}</p>
-            <p>{summary.lines.join('')}</p>
-            {summary.own && <p className="note">{summary.own}</p>}
-            <p><a href={tree} target="_blank" rel="noopener">反映したあとの姿を見る</a>（別のタブで開く）</p>
-            <div className="form-actions">
-              <button type="button" className="btn primary" disabled={busy} onClick={() => void send('approve', confirmFor!)}>{busy ? '送っています…' : 'approve を送る'}</button>
-              <button type="button" className="btn" disabled={busy} onClick={() => setConfirmFor(null)}>やめる</button>
-            </div>
-          </div>
-        ) : (
-          <div className="form-actions"><button className="btn primary" type="submit" disabled={busy}>{busy ? '送っています…' : kind === 'approve' ? 'approve する' : kind === 'comment' ? 'コメントを送る' : 'request_changes を送る'}</button></div>
-        )}
+        <div className="form-actions"><button className="btn primary" type="submit" disabled={busy}>{busy ? '送っています…' : kind === 'comment' ? 'コメントを送る' : 'request_changes を送る'}</button></div>
       </form>
     </div>
   );
 }
 
-// merge の欄（docs/apply-request/review.md の「merge」）。approve された apply request を、サインインした人のトークンで merge する。
-// 押したら確かめてから送る。バックエンドが、直前に今の main で反映の条件を確かめ直す。
-function MergePane({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onChanged: (a: ApplyRequest | null, notice: string | null) => void }) {
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const send = async () => {
-    if (remainingMs() < MIN_TOKEN_MS && !(await reauthorize())) return;
-    setBusy(true); setError(null);
-    const r = await submitMerge(repo, a.id);
-    setBusy(false); setConfirm(false);
-    switch (r.kind) {
-      case 'sent': onChanged(r.ar, r.message); break;
-      case 'refused': setError(r.message); if (r.ar) onChanged(r.ar, null); break;
-      case 'conflict': case 'not_open': case 'error': setError(r.message); break;
-      case 'unauthenticated': break;
-    }
-  };
-  return (
-    <div className="review-pane">
-      <h3 className="sec">merge する</h3>
-      <p className="dim small">先頭のコミット <span className="mono">{a.head_commit.slice(0, 7)}</span> を merge できます。承認が足りるかは、merge のときに GitForge が確かめます。merge できるのは、この repository に Write がある人だけです。GitForge の画面から merge してもかまいません。</p>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {confirm ? (
-        <div className="confirm" role="dialog" aria-label="merge の確かめ">
-          <p><b>この先頭のコミットを、main に squash merge します。</b>直前に、今の main で確かめ直します。</p>
-          <div className="form-actions">
-            <button type="button" className="btn primary" disabled={busy} onClick={() => void send()}>{busy ? '送っています…' : 'merge を送る'}</button>
-            <button type="button" className="btn" disabled={busy} onClick={() => setConfirm(false)}>やめる</button>
-          </div>
-        </div>
-      ) : (
-        <div className="form-actions"><button type="button" className="btn primary" onClick={() => setConfirm(true)}>merge する</button></div>
-      )}
-    </div>
-  );
-}
-
 // レビューの材料（docs/apply-request/review.md の「レビューの材料」）。差分、対象ノードの今の値、根までの仮説、兄弟ストーリー、引用
-function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
-  const node = (id: string) => {
-    const to = `/r/${repo}/tree?node=${id}`;
-    return <a className="mono" href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}>{id}</a>;
-  };
+function MaterialView({ m, onNode }: { m: ReviewMaterial; onNode: (id: string) => void }) {
+  const node = (id: string) => <NodeLink id={id} onNode={onNode} />;
   const line = (n: Node) => <li key={n.id}>{node(n.id)}<span>{textOf(n)}</span><span className="dim">{VALUE(n.value)}{n.inactive ? '・inactive' : ''}</span></li>;
   return (
     <div className="material">
@@ -380,6 +418,11 @@ function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
       )}
     </div>
   );
+}
+
+// ノードへのリンク。押すと、右側の木のタブで、そのノードを選ぶ（加わるノードは今の main にないので、/tree には飛ばない）
+function NodeLink({ id, onNode }: { id: string; onNode: (id: string) => void }) {
+  return <button type="button" className="link mono" onClick={() => onNode(id)}>{id}</button>;
 }
 
 // main のコミットの一覧（listCommits）。押すと、その時点のビュワーを開く

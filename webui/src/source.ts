@@ -4,16 +4,15 @@ import { buildIndex, diff, withRemoved, type Change, type Index, type Node } fro
 
 export type Source = { kind: 'main' } | { kind: 'commit'; commit: string } | { kind: 'ar'; id: string };
 
+// apply request を反映したあとの姿は URL に持たない（apply request の画面に埋め込んで示す）
 export function sourceFromURL(q: URLSearchParams): Source {
-  const ar = q.get('apply_request'), commit = q.get('commit');
-  if (ar) return { kind: 'ar', id: ar };
+  const commit = q.get('commit');
   if (commit) return { kind: 'commit', commit };
   return { kind: 'main' };
 }
 
 export function sourceToURL(s: Source, q: URLSearchParams) {
-  q.delete('apply_request'); q.delete('commit');
-  if (s.kind === 'ar') q.set('apply_request', s.id);
+  q.delete('commit');
   if (s.kind === 'commit') q.set('commit', s.commit);
 }
 

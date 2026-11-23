@@ -608,3 +608,18 @@ a.btn { display: inline-block; text-decoration: none; }
 .flow-steps li.done::before { content: '✓ '; }
 .settings-form .over { color: var(--f-fg); font-weight: 700; }
 .settings-form textarea { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
+
+/* apply request の右側：上に見出しと approve・merge、下に「木」と「レビュー」のタブ */
+.ar-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); }
+.ar-head { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.ar-head .d-head { flex-wrap: wrap; }
+.ar-head .d-title { font-size: 16px; margin: 0; }
+.ar-head .note { margin: 0; }
+.ar-head .confirm p { margin: 0 0 6px; }
+.ar-action .form-actions { margin: 0; }
+.ar-bar { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.ar-bar .spacer { flex: 1; }
+.ar-head .back { align-self: flex-start; }
+.ar-pane > .item-pane { flex: 1; }
+@media (max-width: 767px) { .ar-head { padding: 8px 12px; } }
+.ar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
