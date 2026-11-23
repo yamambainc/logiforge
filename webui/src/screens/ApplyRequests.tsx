@@ -4,7 +4,7 @@
 // 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
 import { useEffect, useRef, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
+import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, loadFailure, oncePer, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -33,7 +33,8 @@ export function ApplyRequests({ repo }: { repo: string }) {
   const [listRev, setListRev] = useState(0);
   const [detailRev, setDetailRev] = useState(0);
   useEffect(() => {
-    const again = () => { if (document.visibilityState === 'visible') { setListRev((n) => n + 1); setDetailRev((n) => n + 1); } };
+    const reload = oncePer(1000, () => { setListRev((n) => n + 1); setDetailRev((n) => n + 1); });
+    const again = () => { if (document.visibilityState === 'visible') reload(); };
     window.addEventListener('focus', again);
     document.addEventListener('visibilitychange', again);
     return () => { window.removeEventListener('focus', again); document.removeEventListener('visibilitychange', again); };
@@ -58,10 +59,13 @@ function ArList({ repo, state, work, id, go, rev }: { repo: string; state: strin
   const [items, setItems] = useState<ApplyRequest[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fail = (e: unknown) => { if (!(e instanceof Problem && e.status === 401)) setError(String(e)); };
+  const [note, setNote] = useState<string | null>(null);
+  // 読み直しに失敗したら、今の一覧を残す
+  const loaded = useRef(false);
+  const fail = (e: unknown) => { const f = loadFailure(e, loaded.current); setError(f.error); setNote(f.note); };
   // 50 個ずつ読み、「もっと読む」で続きを読む
   const more = (cursor: string | null, live = () => true) => listApplyRequestsPage(repo, state === 'all' ? '' : state, cursor)
-    .then((p) => { if (!live()) return; setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
+    .then((p) => { if (!live()) return; loaded.current = true; setNote(null); setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
     .catch((e) => live() && fail(e));
   // 読み直しでは、読み終えるまで今の一覧を示したままにする（絞り込みを変えたときだけ空にする）
   const shown = useRef('');
@@ -69,13 +73,13 @@ function ArList({ repo, state, work, id, go, rev }: { repo: string; state: strin
     let alive = true;
     const live = () => alive;
     const key = `${repo}\n${state}\n${work}`;
-    if (shown.current !== key) { shown.current = key; setItems(null); setNext(null); }
+    if (shown.current !== key) { shown.current = key; loaded.current = false; setItems(null); setNext(null); setNote(null); }
     setError(null);
     if (work) {
       // 作業としての絞り込み：作業の一覧と、open の apply request の一覧を 1 回ずつ読み、識別子で絞る。
       // 1 つずつは読まない（design/backend/list-reads.md）
       Promise.all([workSubjects(repo, work), listOpenApplyRequests(repo)])
-        .then(([ids, all]) => live() && setItems(filterBySubjects(all, ids)))
+        .then(([ids, all]) => { if (!live()) return; loaded.current = true; setNote(null); setItems(filterBySubjects(all, ids)); })
         .catch((e) => live() && fail(e));
     } else void more(null, live);
     return () => { alive = false; };
@@ -94,6 +98,7 @@ function ArList({ repo, state, work, id, go, rev }: { repo: string; state: strin
           </label>
         )}
       </div>
+      {note && <p className="note">{note}</p>}
       {error ? <p className="dim pad">一覧を読めませんでした：{error}</p> : !items ? <div className="loading">読み込み中…</div> : items.length === 0 ? <p className="dim pad">apply request はありません。</p> : (
         <ul className="items">
           {items.map((a) => (
@@ -126,11 +131,17 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
   const [pending, setPending] = useState(false);
   // レビューのタブでノードを押したら、木のタブでそのノードを選ぶ
   const [focus, setFocus] = useState<string | null>(null);
+  const [reloadNote, setReloadNote] = useState<string | null>(null);
+  const loaded = useRef(false);
+  loaded.current = a !== null;
   const showNode = (n: string) => { setFocus(n); onTab('tree'); };
   useEffect(() => {
     let live = true;
-    getApplyRequest(repo, id).then((r) => live && setA(r)).catch((e) => {
-      if (live && !(e instanceof Problem && e.status === 401)) setError(e instanceof Problem && e.code === 'not_found' ? 'この apply request はありません' : String(e));
+    getApplyRequest(repo, id).then((r) => { if (live) { setA(r); setError(null); setReloadNote(null); } }).catch((e) => {
+      if (!live) return;
+      // 読み直し（もう示している）の失敗は、示しているものを残す
+      const f = loadFailure(e, loaded.current, 'この apply request はありません');
+      setError(f.error); setReloadNote(f.note);
     });
     return () => { live = false; };
   }, [repo, id, rev]);
@@ -172,6 +183,7 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
           <details open className="note warn-note outside"><summary>{outside}</summary><ul className="mono">{a.outside_paths!.map((p) => <li key={p}>{p}</li>)}</ul></details>
         ))}
         {notice && <p className="note" role="status">{notice}</p>}
+        {reloadNote && <p className="note">{reloadNote}</p>}
         <div className="ar-bar">
           <div className="seg ar-tabs" role="tablist" aria-label="右側">
             <button role="tab" aria-selected={tab === 'tree'} className={tab === 'tree' ? 'on' : ''} onClick={() => onTab('tree')}>木</button>

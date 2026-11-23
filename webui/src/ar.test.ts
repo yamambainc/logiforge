@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { arTitle, filterBySubjects, opLabel, outsideSummary } from './ar';
+import { arTitle, filterBySubjects, loadFailure, oncePer, opLabel, outsideSummary } from './ar';
+import { Problem } from './api';
 import type { ApplyRequest } from './api';
 import { buildIndex, filterNodes, type Filter, type Node } from './model';
 
@@ -25,6 +26,26 @@ describe('ディレクトリの外の変更', () => {
   it('ディレクトリの repository では、あるかないかと件数', () => {
     expect(outsideSummary(a([]))).toBe('ディレクトリの外の変更：なし');
     expect(outsideSummary(a(['README.md', 'other/x.md']))).toBe('ディレクトリの外の変更：2 件');
+  });
+});
+
+describe('読み直し', () => {
+  it('もう示しているものの読み直しに失敗したら、示しているものを残して伝える', () => {
+    const e = new Problem(502, 'gitforge_unavailable', '読めない');
+    expect(loadFailure(e, true)).toEqual({ error: null, note: '読み直せませんでした：' + String(e) });
+    expect(loadFailure(e, false)).toEqual({ error: String(e), note: null });
+  });
+  it('なくなったものは置き換える。401 はサインインに任せる', () => {
+    expect(loadFailure(new Problem(404, 'not_found', ''), true, 'ありません')).toEqual({ error: 'ありません', note: null });
+    expect(loadFailure(new Problem(401, 'unauthenticated', ''), true)).toEqual({ error: null, note: null });
+  });
+  it('focus と visibilitychange が続けて起きても、1 回だけ読み直す', () => {
+    let t = 0, n = 0;
+    const f = oncePer(1000, () => n++, () => t);
+    f(); f(); t = 500; f();
+    expect(n).toBe(1);
+    t = 1500; f();
+    expect(n).toBe(2);
   });
 });
 
