@@ -29,7 +29,7 @@ WebUI のセットアップと設定の画面が、BE のどの API を使うか
   - `/settings` を直接開いて `forbidden` なら、利用者でないことを示す。
 - repository のタブ：`listRegisteredRepositories`、`registerRepository`、`unregisterRepository`。
   - `registerRepository` が `validation_failed` を返し、`detail` に install の URL があれば、そのリンクを示す。
-  - 一覧で `prepared` が `false` の repository に、「取り込み待ちか、最初の問いがない」と示し、「最初の問いを入れる」を示す。
+  - 一覧で `prepared` が `false` の repository に、「最初の問いを入れる」を示す。
     - なぜ：一覧の `prepared` は、worker が `main` を取り込むまで `false` に見えるから（[一覧の読み](../backend/list-reads.md#置き場の読み)）。
 - repository を足す（[repository を足す](../../docs/webui/settings.md#repository-を足す)）：
   - 1 段目：登録するものは `registerRepository`。Forgejo に新しく作るものは、呼ばずに 2 段目へ進む。

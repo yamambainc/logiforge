@@ -26,7 +26,7 @@ export function Settings({ tab, add }: { tab: SettingsTab; add?: AddParam }) {
   if (error === 'forbidden') return (
     <div className="empty-box">
       <div className="empty-title">利用者ではありません</div>
-      <p>設定を開けるのは、利用者だけです。利用者になるには、ほかの利用者に頼んでください。</p>
+      <p>ほかの利用者に頼んでください。</p>
       <button className="btn" onClick={() => navigate('/')}>repository の一覧へ</button>
     </div>
   );
@@ -49,7 +49,6 @@ export function Settings({ tab, add }: { tab: SettingsTab; add?: AddParam }) {
   );
 }
 
-const WorkerNotice = ({ what }: { what: string }) => <p className="dim small">{what}は、worker が次に一覧を読み直したときに効きます。</p>;
 
 // --- repository ---
 
@@ -79,10 +78,6 @@ function RepositoryTab({ settings, add, onChanged }: { settings: SettingsValue; 
         <span className="spacer" />
         {!flow && <button className="btn" onClick={() => setFlow({ at: 'repository' })}>足す</button>}
       </div>
-      <p className="dim small">{github
-        ? 'GitHub リポジトリと、ディレクトリの repository を足します。'
-        : 'Forgejo に repository を作るか、ディレクトリの repository を登録します。'}</p>
-      <WorkerNotice what="repository の一覧の変更" />
       {flow && <AddFlow github={github} step={flow} onStep={setFlow} onClose={() => setFlow(null)} onRegistered={() => { void load(); onChanged(); }} />}
       {error && <p className="form-error" role="alert">{error}</p>}
       {!items ? <p className="dim">読み込み中…</p> : items.length === 0 ? <p className="dim">登録した repository はありません。</p> : (
@@ -93,7 +88,6 @@ function RepositoryTab({ settings, add, onChanged }: { settings: SettingsValue; 
               <span className="mono">{r.gitforge_ref}{r.directory ? ` : ${r.directory}` : ''}</span>
               <span className="spacer" />
               {/* prepared は、worker が取り込んだか（latest があるか）で決まるので、登録した直後は false に見える（design/webui/screens-setup.md） */}
-              {r.prepared === false && <span className="dim small">取り込み待ちか、最初の問いがない</span>}
               {r.prepared === false && <button className="btn primary" disabled={!!flow} onClick={() => setFlow({ at: 'question', name: r.name })}>最初の問いを入れる</button>}
               <button className="btn" disabled={busy === r.name} onClick={() => void remove(r.name)}>外す</button>
             </li>
@@ -207,7 +201,6 @@ function QuestionStep({ name, onDone, onCancel }: { name: string; onDone: (exist
   };
   return (
     <form className="setup-form settings-form" onSubmit={submit}>
-      <p className="small"><span className="mono strong">{name}</span> の根に置く、最初の問い（根の仮説）を書きます。</p>
       <label>根の仮説の主文 <span className={`dim ${n > MAX_STATEMENT ? 'over' : ''}`}>{n} / {MAX_STATEMENT}</span>
         <input value={statement} onChange={(e) => { setStatement(e.target.value); setError(null); }} placeholder="ある究極の問いの主文" autoFocus required />
       </label>
@@ -227,7 +220,6 @@ function Finished({ name, exists, onClose }: { name: string; exists: boolean; on
       <p>{exists
         ? <><span className="mono strong">{name}</span> には、スナップショットツリーがもうあります。最初の問いは要りません。</>
         : <><span className="mono strong">{name}</span> を用意しました。</>}</p>
-      {exists && <p className="dim small">worker が読み込むと、repository の一覧に出ます。</p>}
       <div className="form-actions">
         <button className="btn primary" onClick={() => navigate(`/r/${name}/tree`)}>スナップショットツリーを開く</button>
         <button className="btn" onClick={onClose}>閉じる</button>
@@ -287,11 +279,9 @@ function GitForgeTab({ settings, onSaved }: { settings: SettingsValue; onSaved: 
     setBusy(false);
   };
   const g = settings.github ?? {}, f = settings.forgejo ?? {};
-  const forge = settings.gitforge === 'github' ? 'GitHub' : 'Forgejo';
   return (
     <form className="card setup-form settings-form" onSubmit={submit}>
       <h2>{settings.gitforge === 'github' ? 'GitHub App' : 'Forgejo'}</h2>
-      <p className="dim small">構成（GitHub か Forgejo か）は変えられません。</p>
       {settings.gitforge === 'github' ? <>
         <label>App の ID<input inputMode="numeric" {...gh('app_id')} autoComplete="off" /></label>
         <label>client_id<input {...gh('client_id')} autoComplete="off" /></label>
@@ -307,16 +297,11 @@ function GitForgeTab({ settings, onSaved }: { settings: SettingsValue; onSaved: 
       </>}
 
       <h2>秘密</h2>
-      <p className="dim small">秘密は、画面に示しません。入れ直すことだけができます。入れたものだけを置き換えます。</p>
-      <ol className="small steps">
-        <li>{forge} の画面で、新しいものを作る。</li>
-        <li>この画面に入れて、保存する。</li>
-        <li>{forge} の画面で、古いものを消す。</li>
-      </ol>
+      <p className="dim small">入れたものだけを置き換えます。</p>
       {settings.gitforge === 'github' ? <>
         <Secret label="秘密鍵（.pem）" state={g.private_key}>
           <input type="file" accept=".pem,application/x-pem-file" aria-label="秘密鍵のファイル" onChange={(e) => void readPem(e.target.files?.[0])} />
-          {pemName && <span className="dim small">{pemName} を入れ直します。</span>}
+          {pemName && <span className="dim small">{pemName}</span>}
         </Secret>
         <Secret label="client secret" state={g.client_secret}>
           <input type="password" {...gh('client_secret')} autoComplete="new-password" placeholder="入れ直すときだけ" />
@@ -331,7 +316,6 @@ function GitForgeTab({ settings, onSaved }: { settings: SettingsValue; onSaved: 
       </>}
 
       <h2>間隔（秒）</h2>
-      <WorkerNotice what="間隔と上限" />
       {INTERVAL_KEYS.map((k) => (
         <label key={k}>{INTERVAL_LABELS[k]}<input type="number" min="0" step="any" {...iv(k)} /></label>
       ))}

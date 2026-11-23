@@ -26,7 +26,7 @@ export function SignIn({ reason }: { reason: SignedOutReason }) {
         )}
         {reason === 'signed-out' && forgejo && (
           <p className="dim small">
-            {g} にログインしたままだと、押す操作なしにサインインし直します。外れるには、<a href={forgejo} rel="noreferrer">{g}</a> からもログアウトしてください。
+            別のアカウントで入るときは、<a href={forgejo} rel="noreferrer">{g}</a> からもログアウトしてください。
           </p>
         )}
       </div>

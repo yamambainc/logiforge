@@ -1,7 +1,7 @@
 # apply request を merge する
 
 approve された apply request を、`main` に反映するときに、CLI か WebUI から呼ぶ。
-エージェントは CLI から、利用者は apply request と履歴の画面から使う。GitForge の画面から直接 merge してもよい（[merge](../../../../docs/apply-request/review.md#merge)）。
+エージェントは CLI から、利用者は apply request の画面から使う。GitForge の画面から直接 merge してもよい（[merge](../../../../docs/apply-request/review.md#merge)）。
 
 ## 呼び出し
 

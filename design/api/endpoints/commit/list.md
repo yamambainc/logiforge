@@ -17,7 +17,7 @@
 
 ## 関係する要件
 
-- [apply request と履歴](../../../../docs/webui/history.md)
+- [木のビューア](../../../../docs/webui/tree-viewer.md)
 
 ## 詳細
 

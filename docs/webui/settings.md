@@ -39,7 +39,7 @@
 | GitForge | GitHub App か Forgejo のつなぎ方。秘密の入れ直し。見回りの間隔 |
 
 - 変えた設定は、サーバを起動し直さずに効く。
-  - worker が読む設定（repository の一覧、見回りの間隔）は、worker が次に一覧を読み直したときに効く。画面に、そのことを示す。
+  - worker が読む設定（repository の一覧、見回りの間隔）は、worker が次に一覧を読み直したときに効く。
 - どのタブにも、最後に変えた利用者と時刻を示す。
 
 ## repository を足す
@@ -82,7 +82,7 @@ repository は、この画面だけで足す。
 - 入れ直せる秘密は、GitHub App の client secret と秘密鍵（`.pem`）、Forgejo の client secret と worker のトークンである。
   - 秘密鍵は、ファイルを選んで入れる。
 - 入れ直した秘密は、サーバを起動し直さずに効く。
-- 入れ直す手順を、画面に示す。
+- 入れ直す手順（画面には示さない）。
   1. GitForge の画面で、新しいものを作る。
   2. この画面に入れる。
   3. GitForge の画面で、古いものを消す。

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { answerHumanRequest, fetchAnswerAttachment, getHumanRequest, listHumanRequests, Problem, workSubjects, type AttachmentInput, type HumanRequest } from '../api';
 import { reauthorize, remainingMs } from '../auth';
-import { checkAttachments, clearDraft, HEAVY_ON_MOBILE, isWebLink, loadDraft, saveBlob, saveDraft, toBase64 } from '../files';
+import { checkAttachments, clearDraft, isWebLink, loadDraft, saveBlob, saveDraft, toBase64 } from '../files';
 import { useMobile } from '../hooks';
 import { navigate, useLocation } from '../router';
 import { Markdown } from '../MarkdownLazy';
@@ -74,7 +74,7 @@ export function HumanRequests({ repo }: { repo: string }) {
   );
   const detail = id
     ? <RequestDetail key={id} repo={repo} id={id} mobile={mobile} onBack={() => go({ id: null }, true)} onAnswered={() => setReload((x) => x + 1)} />
-    : <section className="item-pane empty"><p className="dim">依頼を選ぶと、ここに本文が出ます。</p></section>;
+    : <section className="item-pane empty"><p className="dim">依頼を選んでください。</p></section>;
   // モバイルは、一覧から選んだものを画面全体で示し、左上に戻るボタンを置く（design/webui/mobile.md）
   if (mobile) return <main className="split one">{id ? detail : list}</main>;
   return <main className="split">{list}{detail}</main>;
@@ -107,7 +107,7 @@ function RequestDetail({ repo, id, mobile, onBack, onAnswered }: { repo: string;
         <span className="spacer" />
         <span className={`state s-${h.state}`}>{STATE[h.state]}</span>
       </div>
-      <p className="target">対象：<a href={node} onClick={(e) => { e.preventDefault(); navigate(node); }} className="mono">{h.node_id}</a>（ビュワーで開く）</p>
+      <p className="target">対象：<a href={node} onClick={(e) => { e.preventDefault(); navigate(node); }} className="mono">{h.node_id}</a></p>
       <h3 className="sec">{h.kind === 'pvr' ? '検証手順' : '問い'}</h3>
       {/* 本文は Markdown として示す。生の HTML は通さない（design/webui/markdown.md） */}
       <Markdown className="report" text={h.body} />
@@ -190,11 +190,8 @@ function AnswerForm({ repo, h, onDone, onAlready }: { repo: string; h: HumanRequ
       )}
       <div className="attach">
         <label className="btn file-pick">ファイルを添付<input type="file" multiple onChange={(e) => { const fs = [...(e.target.files ?? [])]; setFiles((x) => [...x, ...fs]); setLost((l) => l.filter((n) => !fs.some((f) => f.name === n))); e.target.value = ''; }} /></label>
-        <span className="dim small">1 つ 10 MiB まで。大きなものはリンクで添える</span>
+        <span className="dim small">1 つ 10 MiB まで</span>
       </div>
-      {files.reduce((n, f) => n + f.size, 0) > HEAVY_ON_MOBILE && files.length > 1 && (
-        <p className="note small">ファイルの合計が大きいので、モバイルでは送るのに時間がかかることがあります。</p>
-      )}
       {(files.length > 0 || links.length > 0) && (
         <ul className="attached">
           {files.map((f, i) => <li key={'f' + i}><span>{f.name}</span><span className="dim">{fmtSize(f.size)}</span><button type="button" className="link" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>外す</button></li>)}

@@ -1,4 +1,4 @@
-// WebUI からのレビュー（docs/webui/history.md の「apply request の閲覧」、design/webui/screens.md の「apply request と履歴」、
+// WebUI からのレビュー（docs/webui/history.md の「apply request の閲覧」、design/webui/screens.md の「apply request の画面」、
 // design/settings/users.md の「WebUI からのレビュー」）。画面に依らない部分：送り方、エラーの言葉、結果の言葉。
 import { getApplyRequest, mergeApplyRequest, Problem, reviewApplyRequest, type ApplyRequest, type ReviewKind } from './api';
 import { FAILURE } from './ar';

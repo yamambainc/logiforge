@@ -30,7 +30,7 @@ export function Dashboard({ repo }: { repo: string }) {
     return () => { live = false; };
   }, [repo]);
   if (error) return <div className="empty-box"><div className="empty-title">{error}</div></div>;
-  if (!data) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
+  if (!data) return <div className="loading">{pending ? '取り込み中…' : '読み込み中…'}</div>;
   const { r, c, counts } = data;
   const tree = `/r/${repo}/tree`;
   return (
@@ -41,12 +41,9 @@ export function Dashboard({ repo }: { repo: string }) {
         <span className={`val big ${vc(c.root_value)}`}>{vLabel(c.root_value)}</span>
       </section>
       <section className="card">
-        <h2>作業の終わりの判定</h2>
         <table className="judge">
           <tbody>
-            <tr><th>根の値が決まっている</th><td className={c.decided ? 'ok' : 'ng'}>{c.decided ? 'はい' : 'いいえ'}</td></tr>
-            <tr><th>根拠部分木で着手できる作業</th>{c.decided ? <td className={c.remaining_work === 0 ? 'ok' : 'ng'}>{c.remaining_work} 件</td> : <td className="dim note-cell">根の値が決まってから数えます</td>}</tr>
-            <tr><th>作業の終わり</th><td className={c.done ? 'ok' : 'ng'}>{c.done ? '終わった' : 'まだ'}</td></tr>
+            <tr><th>作業の終わり</th><td className={c.done ? 'ok' : 'ng'}>{c.done ? '終わった' : c.decided ? `まだ：着手できる作業 ${c.remaining_work} 件` : 'まだ：根の値が決まっていない'}</td></tr>
           </tbody>
         </table>
       </section>

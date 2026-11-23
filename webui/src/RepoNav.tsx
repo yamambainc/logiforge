@@ -6,7 +6,7 @@ import { navigate, screenPath, type RepoScreen } from './router';
 const TABS: { key: RepoScreen; label: string; short: string; icon: React.ReactNode }[] = [
   { key: 'tree', label: 'スナップショットツリー', short: 'ツリー', icon: <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden><rect x="2" y="8" width="5" height="4" rx="1" /><rect x="13" y="3" width="5" height="4" rx="1" /><rect x="13" y="13" width="5" height="4" rx="1" /><path d="M7 10h3M10 5v10M10 5h3M10 15h3" fill="none" /></svg> },
   { key: 'human-requests', label: '人への依頼', short: '依頼', icon: <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden><path d="M3 4h14v10H8l-4 3v-3H3z" fill="none" /></svg> },
-  { key: 'apply-requests', label: 'AR と履歴', short: 'AR', icon: <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden><circle cx="6" cy="5" r="2" fill="none" /><circle cx="6" cy="15" r="2" fill="none" /><circle cx="14" cy="15" r="2" fill="none" /><path d="M6 7v6M14 13V9a3 3 0 00-3-3H9" fill="none" /></svg> },
+  { key: 'apply-requests', label: 'apply request', short: 'AR', icon: <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden><circle cx="6" cy="5" r="2" fill="none" /><circle cx="6" cy="15" r="2" fill="none" /><circle cx="14" cy="15" r="2" fill="none" /><path d="M6 7v6M14 13V9a3 3 0 00-3-3H9" fill="none" /></svg> },
   { key: 'dashboard', label: 'ダッシュボード', short: '状況', icon: <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden><path d="M3 17V9M8 17V4M13 17v-6M17 17V7" fill="none" /></svg> },
 ];
 

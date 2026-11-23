@@ -1,11 +1,11 @@
 # 差分の重ね表示と過去の時点
 
 apply request の画面で、反映したあとの姿を示すところと、ビュワーで過去の時点の姿を示すところを実装するときに読む。
-要件は [apply request と履歴](../../docs/webui/history.md) が正本である。表示の共通の決まりは、[スナップショットツリーのビュワー](snapshot-tree-viewer.md) に書く。
+要件は [apply request の画面](../../docs/webui/history.md) が正本である。表示の共通の決まりは、[スナップショットツリーのビュワー](snapshot-tree-viewer.md) に書く。
 
 ## 差分の重ね表示
 
-apply request と履歴の画面で open の apply request を選ぶと、右側に、それを向き先の今の先頭に反映したあとの姿を示す（[apply request と履歴](screens.md#apply-request-と履歴)）。
+apply request の画面で open の apply request を選ぶと、右側に、それを向き先の今の先頭に反映したあとの姿を示す（[apply request の画面](screens.md#apply-request-の画面)）。
 
 - 右側は、ビュワーそのもの（`TreeScreen`）を、示す時点を固めて埋め込む。時点を選ぶ欄は出さず、ビュワーの状態（表示、選んだノード、検索）は URL に持たない。
   - なぜ：新しい部品を作らず、木のビュワーと同じ表示で確かめられるようにするため。URL は、apply request の画面のもの（`id`、`tab` など）だから。
@@ -60,15 +60,14 @@ apply request と履歴の画面で open の apply request を選ぶと、右側
 | `overlay_conflict` | 今の `main` に重ねられないことと、`detail` の衝突したパス。向き先が `main` のときだけ返る |
 | `not_found` | 向き先のブランチが消えたこと（apply request がなくなったときも同じ） |
 | `snapshot_pending` | 「取り込み中」と示し、読み直す（[取り込み中の読み直し](snapshot-tree-viewer.md#取り込み中の読み直し)） |
-| `not_open` | apply request が open でなくなったこと。apply request と履歴の画面へのリンク |
+| `not_open` | apply request が open でなくなったこと。apply request の画面へのリンク |
 
 ## 過去の時点
 
 - `main` のコミットを選ぶと、`listNodes` を `commit` を付けて呼び、その時点の姿を示す。
-- コミットは、ビュワーの上の「時点」で、`listCommits` の新しい 50 個から選ぶ。古いものは、apply request と履歴の画面で、`listCommits` の一覧から選び、`?commit=` で開く（[画面と API](screens.md#webui-のための-api)）。
+- コミットは、ビュワーの上の「時点」で、`listCommits` の新しい 50 個から選ぶ。古いものは、`?commit=` で開く（[画面と API](screens.md#webui-のための-api)）。
   - 選択肢には、コミットの番号、時刻、反映した apply request を示す。
   - 上の帯の番号と時刻は、選択肢の 50 個から引く。なければ、SHA だけを示す。
 - 時点を変えても、選んでいたノードがその時点にあれば、選んだままにする。
 - 上の帯に、コミットの番号と時刻を示し、今の `main` に戻るボタンを置く。
 - 過去の時点では、審査中の apply request と open の人への依頼の札は、今のものである（[コミット](../api/README.md#コミット)）。そのため、過去の時点では、この 2 つの札を示さない。絞り込みの「審査中の AR」「open の依頼」も出さない。
-- 上の帯に、過去の時点では札を示さないことも書く。

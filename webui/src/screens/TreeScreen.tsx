@@ -47,7 +47,7 @@ class LoadGuard extends Component<{ onFallback: () => void; children: React.Reac
       <section className="graph-pane empty-3d">
         <div className="empty-box">
           <div className="empty-title">この端末では 3D を表示できません</div>
-          <p>3D の部分を読み込めませんでした。図かアウトラインで見てください。</p>
+          <p>3D の部分を読み込めませんでした。</p>
           <button className="btn" onClick={this.props.onFallback}>図で見る</button>
         </div>
       </section>
@@ -281,9 +281,9 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   if (error === 'pending-timeout') return <Empty title="スナップショットツリーが出ません" body="worker が止まっている可能性があります。" retry />;
   if (error) return <Empty title="スナップショットツリーを読めませんでした" body={error} retry />;
   // 引用元の変化の作業を読み終えるまでは、一致の数が決まらないので示さない（0 と見誤らないように）
-  if (wantCited && !citedWork) return <div className="loading">作業の一覧を読み込み中…</div>;
+  if (wantCited && !citedWork) return <div className="loading">読み込み中…</div>;
   if (blocked) return <BlockedView b={blocked} />;
-  if (!data || !ix) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
+  if (!data || !ix) return <div className="loading">{pending ? '取り込み中…' : '読み込み中…'}</div>;
 
   const userSetExpanded = (e: Set<string>) => { touched.current = true; setExpanded(e); };
   const setView = (v: View) => { if (v !== view) pushNext.current = true; setViewRaw(v); };
@@ -394,12 +394,12 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
 
       {wantCited && citedWork && (
         <div className="notice" role="status">
-          <span>引用元が変化した検証結果 <b className="cited-items">{citedWork.items}</b> 件（仮説 {citedWork.nodes.size} 個）を示しています。作業として残っているものです。</span>
+          <span>引用元が変化：<b className="cited-items">{citedWork.items}</b> 件（仮説 {citedWork.nodes.size} 個）</span>
         </div>
       )}
       {missing && (
         <div className="notice" role="status">
-          <span>このノードはありません（<span className="mono">{missing}</span>）。根を示しています。</span>
+          <span>ノード <span className="mono">{missing}</span> はありません</span>
           <button className="link" onClick={() => setMissing(null)}>閉じる</button>
         </div>
       )}
@@ -427,7 +427,6 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
           <span className="banner-title">過去の時点</span>
           {pastInfo && <span>#{pastInfo.number} {fmtTime(pastInfo.committed_at)}</span>}
           <span className="mono dim">{data.past.commit.slice(0, 7)}</span>
-          <span className="dim">審査中の AR と依頼の札は示しません</span>
           <span className="spacer" />
           {!fixed && <button className="link" onClick={() => setSource({ kind: 'main' })}>今の main に戻る</button>}
         </div>

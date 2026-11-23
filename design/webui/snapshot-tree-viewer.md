@@ -1,7 +1,7 @@
 # スナップショットツリーのビュワー
 
 ビュワーを実装するときと、ビュワーの表示の決まりを確かめるときに読む。
-画面の要件は、[木のビューア](../../docs/webui/tree-viewer.md) と [apply request と履歴](../../docs/webui/history.md) が正本である。使う API は、[画面と API](screens.md) に書く。
+画面の要件は、[木のビューア](../../docs/webui/tree-viewer.md) と [apply request の画面](../../docs/webui/history.md) が正本である。使う API は、[画面と API](screens.md) に書く。
 
 ## 3 つの表示
 
@@ -92,7 +92,7 @@
 - 示すものは、[木のビューア](../../docs/webui/tree-viewer.md#ノードの詳細) の一覧に従う。
 - 子のノードと引用しているノードは、押すとビュワーでそのノードを選ぶ。
 - 審査中の apply request と open の人への依頼は、識別子をリンクで示す。
-  - 押すと、apply request と履歴の画面か、人への依頼の画面で、それを開く（[URL](screens.md#url)）。
+  - 押すと、apply request の画面か、人への依頼の画面で、それを開く（[URL](screens.md#url)）。
 
 ## キーボード
 

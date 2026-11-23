@@ -1,7 +1,7 @@
 # apply request をレビューする
 
 reviewer が、論理レビューの結果を付けるときに、CLI か WebUI から呼ぶ。
-外の仕組みに起動された reviewer は、レビューの材料を読んだあとに、CLI から使う。利用者は、apply request と履歴の画面から使う（[WebUI からのレビュー](../../../settings/users.md#webui-からのレビュー)）。
+外の仕組みに起動された reviewer は、レビューの材料を読んだあとに、CLI から使う。利用者は、apply request の画面から使う（[WebUI からのレビュー](../../../settings/users.md#webui-からのレビュー)）。
 
 ## 呼び出し
 
