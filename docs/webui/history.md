@@ -1,4 +1,4 @@
-# apply request と履歴の画面
+# apply request の画面
 
 利用者が、木がどう変わってきたかを確かめるときに使う画面。
 apply request の決まりは、[apply request](../apply-request/README.md) に書く。
@@ -7,7 +7,7 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 
 ```
 +-----------------------------------------------------------------+
-| apply request と履歴    状態: [open ▼]                          |
+| apply request    状態: [open ▼]                                 |
 +------------------------------+----------------------------------+
 | S2 の作成            open    | open  S2 の作成  ar/s2 → main    |
 | H2 の検証            merged  | [approve する] [merge する]      |
@@ -60,4 +60,5 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 
 ## 過去の時点の木
 
-- 時点を選ぶと、その時点の木を、[木のビューア](tree-viewer.md) と同じ形で示す。
+- この画面には、`main` のコミットの一覧を置かない。過去の時点の木は、[木のビューア](tree-viewer.md#過去の時点の木) で選ぶ。
+  - なぜ：過去の時点を選ぶところを 1 つにするため。この画面は、apply request のレビューに使う。

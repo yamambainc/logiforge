@@ -12,7 +12,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 | repository の一覧 | `/` |
 | スナップショットツリーのビュワー | `/r/{repository}/tree?view=&orient=&root=&node=&commit=&q=&f=`（`view` は `outline`、`graph`、`3d`。`orient` は図の向きで、`h` か `v`。`root` は「ここから見る」の表示の根） |
 | 人への依頼 | `/r/{repository}/human-requests?kind=&state=&id=` |
-| apply request と履歴 | `/r/{repository}/apply-requests?view=&state=&id=&work=&tab=`（`tab` は右側のタブで、ないか `review`） |
+| apply request の画面 | `/r/{repository}/apply-requests?state=&id=&work=&tab=`（`tab` は右側のタブで、ないか `review`） |
 | ダッシュボード | `/r/{repository}` |
 | セットアップ | `/setup`。manifest flow から戻る先は `/setup/github/callback` |
 | 設定 | `/settings?tab=&add=`（`tab` は `repository`、`gitforge`。`add` は `new` か `first` で、repository を足す段を開く） |
@@ -47,9 +47,8 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 回答が `not_open` になったら（ほかのタブや人が先に回答した）、「この依頼は、もう回答されています」と示し、読み直して回答を示し、書きかけを消す。
 - サインアウトでは、書きかけをすべて消す。
 - 添付のリンクは、送る前も示すときも、`new URL()` で読んで、`protocol` が http か https かを確かめる。
-- ファイルを 2 つ以上選び、合計が 8 MiB を超えたら、モバイルでは送るのに時間がかかることがある、と示す。上限は変えない。
 
-### [apply request と履歴](../../docs/webui/history.md)
+### [apply request の画面](../../docs/webui/history.md)
 
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews`、pull request のコメントは `comments` で示す。
@@ -65,11 +64,10 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 反映したあとの姿：選んだ apply request の右側に、ビュワーを埋め込んで示す（[差分の重ね表示](overlay.md#差分の重ね表示)）。右側は「木」（はじめ）と「レビュー」のタブで切り替える。approve と merge の欄は、タブの外に置く。
   - 「レビュー」のタブには、差分、先頭のコミット、レビュー、コメント、レビューの材料、comment と request_changes を書く欄を示す。
   - 「レビュー」のタブでノードを押すと、「木」のタブに移り、そのノードを選ぶ。
-- 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[WebUI のための API](#webui-のための-api)）。
-  - 画面の「main の履歴」で、新しい 50 個ずつ示し、「もっと読む」で続きを読む。
+- 過去の時点の姿は、この画面では示さない。ビュワーの「時点」で選ぶ（[差分の重ね表示と過去の時点](overlay.md#過去の時点)）。
 - 反映済みの apply request は、右側に、`merged_commit` の木を示す。閉じた apply request には、木を示さない。
 - 作業としての絞り込み（`work=review_waiting`、`work=fix_waiting`）は、`listWork` のその種類の `subject_id` に入る apply request だけを示す。ダッシュボードの件数から、この絞り込みで開く。
-- URL は `/r/{repository}/apply-requests?view=&state=&id=&work=&tab=`（`view` は、apply request か `commits`。`tab` は右側のタブ）。
+- URL は `/r/{repository}/apply-requests?state=&id=&work=&tab=`（`tab` は右側のタブ）。
 
 ### [ダッシュボード](../../docs/webui/dashboard.md)
 
@@ -90,7 +88,7 @@ API は、WebUI のために次の 2 つを持つ。どれも、BE が持つも�
 
 | もの | 返すもの | 使う画面 | 元 |
 |---|---|---|---|
-| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | apply request と履歴（過去の時点） | `main` の並びの索引と、コミットの情報（[スナップショット](../backend/snapshot/README.md)） |
+| `GET /repositories/{repository}/commits`（`listCommits`） | `main` のコミットの一覧。新しい順。項目は `number`、`commit`、`committed_at`、`apply_request_id` | スナップショットツリーのビュワー（過去の時点） | `main` の並びの索引と、コミットの情報（[スナップショット](../backend/snapshot/README.md)） |
 | `Repository` の `root_statement` | 根の仮説の主文 | repository の一覧 | 今の `main` のスナップショットツリー |
 
 - `listCommits` の `apply_request_id` は、worker が反映した pull request の一覧で見つけた apply request である（[反映のコミット](../files/revisions.md#反映のコミット)）。見つからなかったコミット（`main` への直接の push など）なら null である。

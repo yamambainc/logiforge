@@ -127,7 +127,7 @@ export function Setup({ initial }: { initial: SetupState }) {
 
         {gitforge === 'github' ? <>
           <Step n={2} title="GitHub App" on={enabled('github_app')} done={done('github_app')} error={errors.github_app}>
-            {s.github_app && <p className="dim small">App「{s.github_app.slug}」を作りました。作り直すときだけ、もう一度押してください。</p>}
+            {s.github_app && <p className="dim small">App「{s.github_app.slug}」を作りました。もう一度押すと、App をもう 1 つ作ります。</p>}
             <GitHubAppStep disabled={!enabled('github_app') || busy === 'github_app'} onSubmit={(req) =>
               void run('github_app', async () => { submitManifest(await createSetupGitHubManifest(req)); })} />
           </Step>
@@ -137,7 +137,7 @@ export function Setup({ initial }: { initial: SetupState }) {
               <a className="btn" href={s.github_app.install_url} target="_blank" rel="noreferrer"
                 onClick={() => { markInstalled(); setProg(progress()); }}>GitHub で install する</a>
             ) : <button className="btn" disabled>GitHub で install する</button>}
-            <p className="dim small">登録する GitHub リポジトリの owner に install してください。GitHub の画面が、別のタブで開きます。</p>
+            <p className="dim small">登録する GitHub リポジトリの owner に install してください。</p>
           </Step>
 
           <Step n={4} title="repository" on={enabled('repository')} done={done('repository')} error={errors.repository}>

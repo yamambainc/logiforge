@@ -25,7 +25,7 @@ export function RepositoryList() {
         <span className="spacer" />
         {access === 'yes' && <a className="btn primary" href={add} onClick={(e) => { e.preventDefault(); navigate(add); }}>新しい repository</a>}
       </div>
-      {repos.length === 0 && <p className="dim">repository がまだありません。{access === 'yes' && '「新しい repository」から、設定の画面で足します。'}</p>}
+      {repos.length === 0 && <p className="dim">repository がまだありません。</p>}
       <ul className="repo-list">
         {repos.map((r) => (
           <li key={r.name}>

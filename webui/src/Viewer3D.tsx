@@ -430,7 +430,6 @@ export default function Viewer3D(p: Props) {
         {p.head}
         <div className="empty-box">
           <div className="empty-title">3D の描画が止まりました</div>
-          <p>端末が 3D の描画を止めました（画面を裏に回したときなどに起きます）。</p>
           <button className="btn" onClick={p.onRetry}>3D を作り直す</button>{' '}
           <button className="btn" onClick={p.onFallback}>図で見る</button>
         </div>
@@ -444,7 +443,7 @@ export default function Viewer3D(p: Props) {
         {p.head}
         <div className="empty-box">
           <div className="empty-title">この端末では 3D を表示できません</div>
-          <p>WebGL が使えないため、3D の表示を作れませんでした。図かアウトラインで見てください。</p>
+          <p>WebGL が使えません。</p>
           <button className="btn" onClick={p.onFallback}>図で見る</button>
         </div>
       </section>

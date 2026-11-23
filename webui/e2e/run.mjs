@@ -185,7 +185,7 @@ try {
   if (!(await selText(page)).includes('継続率も')) throw new Error('?node= のノードを選ばない：' + (await selText(page)));
   await page.goto(BASE + `/r/${REPO}/tree?node=h-0000000000`, { waitUntil: 'networkidle0' });
   await signedIn(page);
-  await page.waitForFunction(() => document.querySelector('.notice')?.textContent.includes('このノードはありません'), { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.notice')?.textContent.includes('はありません'), { timeout: 20000 });
 
   step('詳細のパネルの「審査中」と「依頼」のリンクを押すと、apply request と履歴、人への依頼の画面で、それが開く');
   const openLink = async (id, screen) => {
@@ -407,7 +407,7 @@ try {
   await flaky.waitForFunction(() => window.__3d && window.__3d.frames() > 0, { timeout: 30000 });
   await flaky.close();
 
-  step('ダッシュボード：上のタブで移る。根の値、作業の終わりの判定、着手できる作業の件数');
+  step('ダッシュボード：上のタブで移る。根の値、作業の終わり（1 行）、着手できる作業の件数');
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'ダッシュボード').click());
   await page.waitForFunction((r) => location.pathname === `/r/${r}`, { timeout: 5000 }, REPO);
   await page.waitForSelector('table.judge', { timeout: 20000 });
@@ -415,7 +415,7 @@ try {
   // 未決の葉は、open の AR が対象にしているので数えない（listWork の include_claimed）。レビュー待ちは、AR_MAIN
   if (counts['未決の葉'] !== 0 || !(counts['レビュー待ち'] >= 1)) throw new Error('着手できる作業の件数：' + JSON.stringify(counts));
   await page.screenshot({ path: OUT + '/dashboard.png' });
-  if (!(await page.$eval('table.judge', (t) => t.textContent)).includes('根の値が決まってから数えます')) throw new Error('根の値が決まる前の文がない');
+  if ((await page.$eval('table.judge', (t) => t.textContent)) !== '作業の終わりまだ：根の値が決まっていない') throw new Error('作業の終わりの行：' + (await page.$eval('table.judge', (t) => t.textContent)));
   await page.evaluate(() => [...document.querySelectorAll('.topbar .tab')].find((t) => t.textContent === 'スナップショットツリー').click());
   await page.waitForSelector('.row', { timeout: 20000 });
 
@@ -542,13 +542,8 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === 'レビュー').click());
   await page.waitForFunction(() => document.querySelector('ol.reviews')?.textContent.includes('approve'), { timeout: 20000 });
 
-  step('main の履歴：コミットを押すと、その時点のビュワー');
-  await page.goto(BASE + `/r/${REPO}/apply-requests?view=commits`, { waitUntil: 'networkidle0' });
-  await signedIn(page);
-  await page.waitForSelector('ul.items a', { timeout: 20000 });
-  await page.screenshot({ path: OUT + '/ar-commits.png' });
-  await page.evaluate(() => [...document.querySelectorAll('ul.items a')].at(-1).click());
-  await page.waitForSelector('.banner.past', { timeout: 30000 });
+  step('apply request の画面には、main の履歴のタブがない（過去の時点は、ビュワーの「時点」の欄で選ぶ）');
+  if (await page.$('.list-tabs')) throw new Error('main の履歴のタブが残っている');
   await page.goto(BASE + `/r/${REPO}/tree`, { waitUntil: 'networkidle0' });
   await signedIn(page);
   await page.waitForSelector('.row', { timeout: 20000 });

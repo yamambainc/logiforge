@@ -50,7 +50,7 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [repo, id, at?.commit, at?.apply_request]);
 
-  if (!n) return <aside className={`detail empty ${mobile ? 'sheet' : ''}`}><p className="dim">ノードを選ぶと、ここに詳細が出ます。</p></aside>;
+  if (!n) return <aside className={`detail empty ${mobile ? 'sheet' : ''}`}><p className="dim">ノードを選んでください。</p></aside>;
 
   const isH = n.node_type === 'hypothesis';
   const path = ancestors(ix, n.id);
@@ -96,11 +96,10 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
         {n.open_human_request_ids.map((h) => <ItemLink key={h} to={`${screenPath(repo, 'human-requests')}?id=${encodeURIComponent(h)}`}>依頼 {h}</ItemLink>)}
       </div>
 
-      {change && (
+      {/* 札と帯で分かること（追加、消える、main 向きでない）は、ここで繰り返さない。中身があるときだけ出す */}
+      {change && (change.kind === 'changed' || (change.kind === 'removed' && kids.length > 0)) && (
         <Section title="この AR での変化">
-          {unchecked && <p className="note">main 向きではないので、検査していません。</p>}
-          {change.kind === 'added' && <p><span className="tag t-added">追加</span> 反映すると加わります。</p>}
-          {change.kind === 'removed' && <p><span className="tag t-removed">消える</span> 反映すると、このノード{kids.length ? 'と子孫' : ''}が消えます。</p>}
+          {change.kind === 'removed' && kids.length > 0 && <p><span className="tag t-removed">消える</span> 子孫も消えます。</p>}
           {change.kind === 'changed' && (
             <table className="changes">
               <tbody>

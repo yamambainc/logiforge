@@ -8,7 +8,7 @@ WebUI を使うのは、利用者である。利用者ができることは、[�
 - [repository の一覧](repositories.md)：repository を選ぶ。
 - [木のビューア](tree-viewer.md)：木と、各ノードの詳細を見る。
 - [人への依頼](human-requests.md)：選んだ repository の人への依頼を一覧し、回答する。
-- [apply request と履歴](history.md)：apply request の差分とレビューと、反映したあとの木を見る。過去の時点の木を見る。
+- [apply request の画面](history.md)：apply request を反映したあとの木を見て、レビューする。
 - [ダッシュボード](dashboard.md)：作業の状況を見る。
 - [セットアップ](setup.md)：Logiforge を初めて起動したときに、GitForge とのつなぎ方と最初の利用者を決める。
 - [設定](settings.md)：利用者が、repository を足し、GitForge とのつなぎ方を変える。

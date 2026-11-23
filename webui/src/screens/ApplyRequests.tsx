@@ -1,9 +1,9 @@
-// apply request と履歴（docs/webui/history.md、design/webui/screens.md の「apply request と履歴」）。
-// apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）と、main のコミットの一覧（過去の時点）。
+// apply request の画面（docs/webui/history.md、design/webui/screens.md の「apply request の画面」）。
+// apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）。過去の時点は、ビュワーの「時点」の欄で選ぶ。
 // 右側は「木」（既定）と「レビュー」のタブ。approve と merge は、木を見たまま押せるよう、タブの外に置く。
-// 状態（見るもの、状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
+// 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
 import { useEffect, useState } from 'react';
-import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listCommits, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type MainCommit, type ReviewKind, type ReviewMaterial } from '../api';
+import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
 import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
@@ -23,7 +23,6 @@ const MIN_TOKEN_MS = 5 * 60_000;
 
 export function ApplyRequests({ repo }: { repo: string }) {
   const loc = useLocation();
-  const view = loc.searchParams.get('view') === 'commits' ? 'commits' : 'ars';
   const state = loc.searchParams.get('state') ?? 'open';
   const work = loc.searchParams.get('work') ?? '';
   const id = loc.searchParams.get('id');
@@ -37,23 +36,15 @@ export function ApplyRequests({ repo }: { repo: string }) {
     navigate(`/r/${repo}/apply-requests${s ? '?' + s : ''}`, !push);
   };
 
-  const tabs = (
-    <div className="seg list-tabs" role="tablist" aria-label="見るもの">
-      <button className={view === 'ars' ? 'on' : ''} onClick={() => go({ view: null, id: null, tab: null }, true)}>apply request</button>
-      <button className={view === 'commits' ? 'on' : ''} onClick={() => go({ view: 'commits', id: null, work: null, tab: null }, true)}>main の履歴</button>
-    </div>
-  );
-  const list = view === 'commits'
-    ? <CommitList repo={repo} tabs={tabs} />
-    : <ArList repo={repo} tabs={tabs} state={state} work={work} id={id} go={go} />;
-  const detail = view === 'ars' && id
+  const list = <ArList repo={repo} state={state} work={work} id={id} go={go} />;
+  const detail = id
     ? <ArDetail key={id} repo={repo} id={id} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
-    : view === 'ars' && !mobile ? <section className="item-pane empty"><p className="dim">apply request を選んでください。</p></section> : null;
+    : !mobile ? <section className="item-pane empty"><p className="dim">apply request を選んでください。</p></section> : null;
   if (mobile) return <main className="split one">{detail ?? list}</main>;
-  return <main className={`split ${view === 'commits' ? 'one' : ''}`}>{list}{detail}</main>;
+  return <main className="split">{list}{detail}</main>;
 }
 
-function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React.ReactNode; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void }) {
+function ArList({ repo, state, work, id, go }: { repo: string; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void }) {
   const [items, setItems] = useState<ApplyRequest[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +69,6 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
   }, [repo, state, work]);
   return (
     <section className="list-pane" aria-label="apply request の一覧">
-      {tabs}
       <div className="list-filters">
         {work ? (
           <span className="chip on">{WORK[work] ?? work}<button className="link" onClick={() => go({ work: null, id: null })} aria-label="作業の絞り込みを外す">×</button></span>
@@ -423,40 +413,4 @@ function MaterialView({ m, onNode }: { m: ReviewMaterial; onNode: (id: string) =
 // ノードへのリンク。押すと、右側の木のタブで、そのノードを選ぶ（加わるノードは今の main にないので、/tree には飛ばない）
 function NodeLink({ id, onNode }: { id: string; onNode: (id: string) => void }) {
   return <button type="button" className="link mono" onClick={() => onNode(id)}>{id}</button>;
-}
-
-// main のコミットの一覧（listCommits）。押すと、その時点のビュワーを開く
-function CommitList({ repo, tabs }: { repo: string; tabs: React.ReactNode }) {
-  const [items, setItems] = useState<MainCommit[]>([]);
-  const [next, setNext] = useState<string | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-  const more = (cursor: string | null) => listCommits(repo, cursor)
-    .then((p) => { setItems((x) => [...x, ...p.items]); setNext(p.next_cursor); })
-    .catch((e) => { if (!(e instanceof Problem && e.status === 401)) setError(String(e)); });
-  useEffect(() => { void more(null); /* 最初の 50 個 */ }, [repo]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <section className="list-pane wide" aria-label="main の履歴">
-      {tabs}
-      {error ? <p className="dim pad">履歴を読めませんでした：{error}</p> : next === undefined ? <div className="loading">読み込み中…</div> : (
-        <>
-          <ul className="items">
-            {items.map((c) => {
-              const to = `/r/${repo}/tree?commit=${c.commit}`;
-              return (
-                <li key={c.commit}>
-                  <a href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}>
-                    <span className="mono">#{c.number}</span>
-                    <span className="item-text">{c.apply_request_id ? <span className="mono">{c.apply_request_id}</span> : <span className="dim">反映によらないコミット</span>}</span>
-                    <span className="dim">{fmt(c.committed_at)}</span>
-                    <span className="mono dim">{c.commit.slice(0, 7)}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-          {next && <button className="btn more" onClick={() => void more(next)}>もっと読む</button>}
-        </>
-      )}
-    </section>
-  );
 }

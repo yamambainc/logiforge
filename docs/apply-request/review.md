@@ -121,7 +121,7 @@ Logiforge が確かめること：
   - GitForge の画面から直接出した review も、Logiforge を通した review と同じに扱う。
 - WebUI のレビューでも、別のアカウントであることを、GitForge が確かめる。
   - 自分が指示した差分を、自分のアカウントで `approve` しないのは、人の責任である。
-  - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request と履歴](../webui/history.md)）。
+  - WebUI は、自分が作った apply request なら、`approve` の前にそのことを示す（[apply request の画面](../webui/history.md)）。
 
 Logiforge が review の本文に書くこと：
 

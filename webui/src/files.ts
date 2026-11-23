@@ -40,9 +40,6 @@ export function isWebLink(uri: string | undefined): boolean {
   try { const u = new URL(uri); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
 }
 
-/** モバイルで重くなる目安（ファイルを base64 にして送るので、合計がこれを超えると、端末によっては時間がかかる） */
-export const HEAVY_ON_MOBILE = 8 * 1024 * 1024;
-
 export function toBase64(buf: ArrayBuffer): string {
   const b = new Uint8Array(buf);
   let s = '';

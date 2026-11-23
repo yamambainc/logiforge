@@ -155,7 +155,7 @@ export const listApplyRequestsPage = (repo: string, state: string, cursor: strin
   call<Page<ApplyRequest>>(`/repositories/${enc(repo)}/apply-requests?limit=50${state ? '&state=' + enc(state) : ''}${cursor ? '&cursor=' + enc(cursor) : ''}`);
 export const getApplyRequest = (repo: string, id: string) => call<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests/${enc(id)}`);
 
-// --- レビュー（design/webui/screens.md の「apply request と履歴」） ---
+// --- レビュー（design/webui/screens.md の「apply request の画面」） ---
 
 /** レビューの材料（getReviewMaterial）。説明欄は含まない（docs/apply-request/review.md の「レビューの材料」） */
 export interface ReviewMaterial {

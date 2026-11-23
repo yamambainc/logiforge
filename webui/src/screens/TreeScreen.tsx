@@ -2,6 +2,7 @@
 // 状態（選んだノード、開いたノード、検索、絞り込み）は 2 つの表示で共通にする。表示と選んだノードと検索の語は URL に持つ。
 // 示す時点（今の main、過去の時点）も URL に持つ。apply request を反映したあとの姿は、apply request の画面に埋め込んで示す（design/webui/overlay.md）。
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { commitPager } from '../commits';
 import { listCommits, Problem, workNodes, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
@@ -28,6 +29,9 @@ const short = (t: string, k = 16) => (t.length > k ? t.slice(0, k) + '…' : t);
 const sourceKey = (s: Source) => (s.kind === 'ar' ? 'ar:' + s.id : s.kind === 'commit' ? 'commit:' + s.commit : 'main');
 const fmtTime = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
 
+// 時点の選択肢で、続きのコミットを読む項目の値（コミットの SHA とぶつからない）
+const MORE = 'more';
+
 type View = 'outline' | 'graph' | '3d';
 const viewOf = (v: string | null): View => (v === 'graph' || v === '3d' ? v : 'outline');
 
@@ -47,7 +51,7 @@ class LoadGuard extends Component<{ onFallback: () => void; children: React.Reac
       <section className="graph-pane empty-3d">
         <div className="empty-box">
           <div className="empty-title">この端末では 3D を表示できません</div>
-          <p>3D の部分を読み込めませんでした。図かアウトラインで見てください。</p>
+          <p>3D の部分を読み込めませんでした。</p>
           <button className="btn" onClick={this.props.onFallback}>図で見る</button>
         </div>
       </section>
@@ -67,6 +71,9 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   const [around, setAround] = useState<Set<string> | null>(null);
   // 選べる main のコミット（過去の時点）
   const [commits, setCommits] = useState<MainCommit[]>([]);
+  // 続きのコミットを読むカーソル。null なら、もうない
+  const [commitsNext, setCommitsNext] = useState<string | null>(null);
+  const pager = useMemo(() => commitPager((cur) => listCommits(repo, cur), (s) => { setCommits(s.items); setCommitsNext(s.next); }), [repo]);
   // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
   const [root, setRoot] = useState<string | null>(null);
   const rootRef = useRef<string | null>(null);
@@ -135,8 +142,10 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   // 選べる main のコミット（新しい 50 個）。読めなくても、ビュワーは使える
   useEffect(() => {
     if (fixed) return;
-    listCommits(repo).then((p) => setCommits(p.items)).catch(() => {});
-  }, [repo, fixed]);
+    pager.first().catch(() => {});
+  }, [pager, fixed]);
+  // 「さらに古いコミット…」：続きの 50 個を読み、選択肢に足す（読み込み中は読まない）
+  const moreCommits = () => { pager.more().catch(() => {}); };
 
   // URL に、表示、向き、選んだノード、検索の語を持つ（design/webui/screens.md の「URL」）
   useEffect(() => {
@@ -281,9 +290,9 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   if (error === 'pending-timeout') return <Empty title="スナップショットツリーが出ません" body="worker が止まっている可能性があります。" retry />;
   if (error) return <Empty title="スナップショットツリーを読めませんでした" body={error} retry />;
   // 引用元の変化の作業を読み終えるまでは、一致の数が決まらないので示さない（0 と見誤らないように）
-  if (wantCited && !citedWork) return <div className="loading">作業の一覧を読み込み中…</div>;
+  if (wantCited && !citedWork) return <div className="loading">読み込み中…</div>;
   if (blocked) return <BlockedView b={blocked} />;
-  if (!data || !ix) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
+  if (!data || !ix) return <div className="loading">{pending ? '取り込み中…' : '読み込み中…'}</div>;
 
   const userSetExpanded = (e: Set<string>) => { touched.current = true; setExpanded(e); };
   const setView = (v: View) => { if (v !== view) pushNext.current = true; setViewRaw(v); };
@@ -344,13 +353,17 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
               className="pick"
               aria-label="時点"
               value={source.kind === 'commit' ? source.commit : ''}
-              onChange={(e) => setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' })}
+              onChange={(e) => {
+                if (e.target.value === MORE) { moreCommits(); return; }
+                setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' });
+              }}
             >
               <option value="">今の main{source.kind === 'main' ? ` ${data.commit.slice(0, 7)}` : ''}</option>
               {source.kind === 'commit' && !commits.some((c) => c.commit === source.commit) && <option value={source.commit}>{source.commit.slice(0, 7)}</option>}
               {commits.map((c) => (
                 <option key={c.commit} value={c.commit}>#{c.number} {fmtTime(c.committed_at)}{c.apply_request_id ? ` ${c.apply_request_id.slice(0, 12)}…` : ''}</option>
               ))}
+              {commitsNext && <option value={MORE}>さらに古いコミット…</option>}
             </select>
           </div>
         )}
@@ -394,12 +407,12 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
 
       {wantCited && citedWork && (
         <div className="notice" role="status">
-          <span>引用元が変化した検証結果 <b className="cited-items">{citedWork.items}</b> 件（仮説 {citedWork.nodes.size} 個）を示しています。作業として残っているものです。</span>
+          <span>引用元が変化：<b className="cited-items">{citedWork.items}</b> 件（仮説 {citedWork.nodes.size} 個）</span>
         </div>
       )}
       {missing && (
         <div className="notice" role="status">
-          <span>このノードはありません（<span className="mono">{missing}</span>）。根を示しています。</span>
+          <span>ノード <span className="mono">{missing}</span> はありません</span>
           <button className="link" onClick={() => setMissing(null)}>閉じる</button>
         </div>
       )}
@@ -427,7 +440,6 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
           <span className="banner-title">過去の時点</span>
           {pastInfo && <span>#{pastInfo.number} {fmtTime(pastInfo.committed_at)}</span>}
           <span className="mono dim">{data.past.commit.slice(0, 7)}</span>
-          <span className="dim">審査中の AR と依頼の札は示しません</span>
           <span className="spacer" />
           {!fixed && <button className="link" onClick={() => setSource({ kind: 'main' })}>今の main に戻る</button>}
         </div>
