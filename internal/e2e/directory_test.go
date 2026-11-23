@@ -109,7 +109,7 @@ func TestE2EDirectory(t *testing.T) {
 	}
 	w.forgejoCall(w.tokens["agent"], "POST", "/repos/"+ref+"/pulls", map[string]string{"head": "both", "base": "main", "title": "外も"}, &pull, 201)
 	w.outsidePaths("cache", fmt.Sprint(pull.Number), "README.md")
-	w.outsideBrowser("cache", fmt.Sprint(pull.Number), "ディレクトリの外の変更：1 件（反映しません）", "README.md")
+	w.outsideBrowser("cache", fmt.Sprint(pull.Number), "ディレクトリの外の変更：1 件", "README.md")
 	w.forgejoCall(w.tokens["agent"], "PATCH", fmt.Sprintf("/repos/%s/pulls/%d", ref, pull.Number), map[string]string{"state": "closed"}, nil, 201)
 
 	// ---- 人が、apply request でない PR で index の木を不変条件に反する形にすると、index だけが valid でなくなる ----

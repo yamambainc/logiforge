@@ -241,7 +241,7 @@ type ApplyRequest struct {
 	Warnings       []string `json:"warnings"`
 	MergedCommit   *string  `json:"merged_commit"`
 	// OutsidePaths は、ディレクトリの repository で、先頭のコミットが base からディレクトリの外で変えたパスである（変えていなければ空）。
-	// ふつうの repository と、先頭のコミットのスナップショットがまだないときは null。外も変える apply request は反映しない（design/directory/README.md）。
+	// ふつうの repository と、先頭のコミットのスナップショットがまだないときは null。
 	OutsidePaths []string `json:"outside_paths"`
 }
 

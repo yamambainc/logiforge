@@ -1759,7 +1759,6 @@ components:
           items: { type: string }
           description: >-
             ディレクトリの repository で、先頭のコミットが、ディレクトリの外で変えたパス（repository の根からのパス）。変えていなければ空。
-            外も変える apply request は反映しない（../../design/directory/README.md）。
             ふつうの repository と、先頭のコミットを worker がまだ取り込んでいないときは null
     ReviewKind:
       type: string

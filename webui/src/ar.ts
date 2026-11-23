@@ -38,5 +38,5 @@ export const filterBySubjects = (all: ApplyRequest[], ids: Set<string>) => all.f
 export function outsideSummary(a: ApplyRequest): string | null {
   const ps = a.outside_paths;
   if (ps == null) return null;
-  return ps.length === 0 ? 'ディレクトリの外の変更：なし' : `ディレクトリの外の変更：${ps.length} 件（反映しません）`;
+  return ps.length === 0 ? 'ディレクトリの外の変更：なし' : `ディレクトリの外の変更：${ps.length} 件`;
 }

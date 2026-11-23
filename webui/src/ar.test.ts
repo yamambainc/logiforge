@@ -24,7 +24,7 @@ describe('ディレクトリの外の変更', () => {
   });
   it('ディレクトリの repository では、あるかないかと件数', () => {
     expect(outsideSummary(a([]))).toBe('ディレクトリの外の変更：なし');
-    expect(outsideSummary(a(['README.md', 'other/x.md']))).toBe('ディレクトリの外の変更：2 件（反映しません）');
+    expect(outsideSummary(a(['README.md', 'other/x.md']))).toBe('ディレクトリの外の変更：2 件');
   });
 });
 

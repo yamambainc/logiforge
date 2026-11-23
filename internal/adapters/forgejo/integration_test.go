@@ -512,5 +512,5 @@ func TestForgejoAPIDirectoryRef(t *testing.T) {
 	e.commitPush(dir, "m", "paper/tree/a.md", "a\n")
 	e.commitPush(dir, "c", "paper/tree/b.md", "b\n")
 	gf, _ := New(Config{URL: e.url, Org: e.org, MergeWait: 5 * time.Second})
-	apitest.Run(t, gf.API, apitest.Env{Ref: ref + ":paper", Merge: "m", Close: "c", Ctx: ports.WithToken(context.Background(), e.tokens["agent"])})
+	apitest.Run(t, gf.API, apitest.Env{Ref: ref + ":paper", Merge: "m", Close: "c", Pulls: "pulls", Ctx: ports.WithToken(context.Background(), e.tokens["agent"])})
 }
