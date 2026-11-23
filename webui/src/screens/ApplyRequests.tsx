@@ -2,7 +2,7 @@
 // apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）。過去の時点は、ビュワーの「時点」の欄で選ぶ。
 // 右側は「木」（既定）と「レビュー」のタブ。approve と merge は、木を見たまま押せるよう、タブの外に置く。
 // 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
 import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
@@ -28,6 +28,16 @@ export function ApplyRequests({ repo }: { repo: string }) {
   const id = loc.searchParams.get('id');
   const tab = loc.searchParams.get('tab') === 'review' ? 'review' : 'tree';
   const mobile = useMobile();
+  // 読み直しの回数。一覧は merge とレビューのあとにも、詳細と一覧はタブに戻ったときにも読み直す
+  // （GitForge で直接 merge して戻ったときにも、今の状態を示すため）
+  const [listRev, setListRev] = useState(0);
+  const [detailRev, setDetailRev] = useState(0);
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === 'visible') { setListRev((n) => n + 1); setDetailRev((n) => n + 1); } };
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => { window.removeEventListener('focus', again); document.removeEventListener('visibilitychange', again); };
+  }, []);
 
   const go = (p: Record<string, string | null>, push = false) => {
     const q = new URLSearchParams(loc.search);
@@ -36,15 +46,15 @@ export function ApplyRequests({ repo }: { repo: string }) {
     navigate(`/r/${repo}/apply-requests${s ? '?' + s : ''}`, !push);
   };
 
-  const list = <ArList repo={repo} state={state} work={work} id={id} go={go} />;
+  const list = <ArList repo={repo} state={state} work={work} id={id} go={go} rev={listRev} />;
   const detail = id
-    ? <ArDetail key={id} repo={repo} id={id} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
+    ? <ArDetail key={id} repo={repo} id={id} rev={detailRev} onChanged={() => setListRev((n) => n + 1)} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
     : !mobile ? <section className="item-pane empty"><p className="dim">apply request を選んでください。</p></section> : null;
   if (mobile) return <main className="split one">{detail ?? list}</main>;
   return <main className="split">{list}{detail}</main>;
 }
 
-function ArList({ repo, state, work, id, go }: { repo: string; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void }) {
+function ArList({ repo, state, work, id, go, rev }: { repo: string; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void; rev: number }) {
   const [items, setItems] = useState<ApplyRequest[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,10 +63,14 @@ function ArList({ repo, state, work, id, go }: { repo: string; state: string; wo
   const more = (cursor: string | null, live = () => true) => listApplyRequestsPage(repo, state === 'all' ? '' : state, cursor)
     .then((p) => { if (!live()) return; setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
     .catch((e) => live() && fail(e));
+  // 読み直しでは、読み終えるまで今の一覧を示したままにする（絞り込みを変えたときだけ空にする）
+  const shown = useRef('');
   useEffect(() => {
     let alive = true;
     const live = () => alive;
-    setItems(null); setNext(null); setError(null);
+    const key = `${repo}\n${state}\n${work}`;
+    if (shown.current !== key) { shown.current = key; setItems(null); setNext(null); }
+    setError(null);
     if (work) {
       // 作業としての絞り込み：作業の一覧と、open の apply request の一覧を 1 回ずつ読み、識別子で絞る。
       // 1 つずつは読まない（design/backend/list-reads.md）
@@ -66,7 +80,7 @@ function ArList({ repo, state, work, id, go }: { repo: string; state: string; wo
     } else void more(null, live);
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, state, work]);
+  }, [repo, state, work, rev]);
   return (
     <section className="list-pane" aria-label="apply request の一覧">
       <div className="list-filters">
@@ -101,7 +115,7 @@ function ArList({ repo, state, work, id, go }: { repo: string; state: string; wo
 
 type Tab = 'tree' | 'review';
 
-function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: string; tab: Tab; onTab: (t: Tab) => void; mobile: boolean; onBack: () => void }) {
+function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { repo: string; id: string; rev: number; onChanged: () => void; tab: Tab; onTab: (t: Tab) => void; mobile: boolean; onBack: () => void }) {
   const [a, setA] = useState<ApplyRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   // レビューを送ったあとの言葉（反映したか、反映できなかった理由など）。反映して open でなくなっても示す
@@ -119,7 +133,7 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
       if (live && !(e instanceof Problem && e.status === 401)) setError(e instanceof Problem && e.code === 'not_found' ? 'この apply request はありません' : String(e));
     });
     return () => { live = false; };
-  }, [repo, id]);
+  }, [repo, id, rev]);
   // main 向きでなければ、Logiforge は検査しないので、材料はない（overlay_unsupported）
   const wantMaterial = !!a && a.state === 'open' && a.target === 'main';
   useEffect(() => {
@@ -137,7 +151,8 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
   const back = mobile && <button className="link back" onClick={onBack}>← 一覧</button>;
   if (error) return <section className="item-pane">{back}<p className="dim">{error}</p></section>;
   if (!a) return <section className="item-pane">{back}<div className="loading">読み込み中…</div></section>;
-  const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); };
+  // merge とレビューで状態とラベルが変わるので、一覧も読み直す
+  const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); onChanged(); };
   // 示す木：open なら反映したあと、反映済みなら反映したコミット。閉じたものには木はない
   const outside = outsideSummary(a);
   const source: Source | null = a.state === 'open' ? { kind: 'ar', id: a.id } : a.state === 'merged' && a.merged_commit ? { kind: 'commit', commit: a.merged_commit } : null;

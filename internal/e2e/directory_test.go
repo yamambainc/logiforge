@@ -70,15 +70,25 @@ func TestE2EDirectory(t *testing.T) {
 	// 外を変えていない apply request の outside_paths は空。url は、GitForge の pull request の画面。
 	w.outsidePaths("cache", ar.ID, "")
 	w.outsideBrowser("cache", ar.ID, "ディレクトリの外の変更：なし", "")
-	if got, code, out := reviewer.approveMerge(ar.ID, 1); code != 0 || got.State != "merged" {
+	// approve し、WebUI の merge ボタンで merge する。merge のあと、open の一覧から消える。
+	if got, code, out := reviewer.review(ar.ID, "approve", 1); code != 0 || got.ReviewDecision != "approved" {
 		t.Fatalf("approve：%d %s", code, out)
 	}
+	if !w.mergeBrowser("cache", ar.ID, "ui", ref) {
+		if code, out := reviewer.cli("", "ar", "merge", ar.ID, "--repo", "cache", "--json"); code != 0 {
+			t.Fatalf("merge：%d %s", code, out)
+		}
+	}
+	w.arState("cache", ar.ID, "merged")
 	var node struct {
 		Node struct {
 			Background string `json:"background"`
 		} `json:"node"`
 	}
-	agent.must(&node, "node", "view", info.Root)
+	w.eventually("反映が木に出る", 60*time.Second, func() bool {
+		agent.must(&node, "node", "view", info.Root)
+		return strings.Contains(node.Node.Background, "ディレクトリの背景")
+	})
 	if !strings.Contains(node.Node.Background, "ディレクトリの背景") {
 		t.Fatalf("反映が木にない：%+v", node)
 	}
@@ -110,7 +120,11 @@ func TestE2EDirectory(t *testing.T) {
 	w.forgejoCall(w.tokens["agent"], "POST", "/repos/"+ref+"/pulls", map[string]string{"head": "both", "base": "main", "title": "外も"}, &pull, 201)
 	w.outsidePaths("cache", fmt.Sprint(pull.Number), "README.md")
 	w.outsideBrowser("cache", fmt.Sprint(pull.Number), "ディレクトリの外の変更：1 件", "README.md")
-	w.forgejoCall(w.tokens["agent"], "PATCH", fmt.Sprintf("/repos/%s/pulls/%d", ref, pull.Number), map[string]string{"state": "closed"}, nil, 201)
+	// 画面を開いたまま GitForge で直接 merge しても、タブに戻れば、一覧が変わる（GitForge では、外も変える pull request も merge できる）。
+	if !w.mergeBrowser("cache", fmt.Sprint(pull.Number), "forge", ref) {
+		w.forgejoCall(w.admin, "POST", fmt.Sprintf("/repos/%s/pulls/%d/merge", ref, pull.Number), map[string]string{"Do": "merge"}, nil, 200)
+	}
+	w.arState("cache", fmt.Sprint(pull.Number), "merged")
 
 	// ---- 人が、apply request でない PR で index の木を不変条件に反する形にすると、index だけが valid でなくなる ----
 	type validity struct {
@@ -177,6 +191,37 @@ func (w *world) outsideBrowser(repo, id, line, paths string) {
 	login := w.login("alice")
 	runBrowser(w.t, "e2e/outside.mjs", "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out,
 		"REPO="+repo, "AR="+id, "EXPECT="+line, "PATHS="+paths)
+}
+
+// mergeBrowser は、WebUI で、merge したあとに apply request の一覧が変わるかを確かめる（webui/e2e/merge.mjs）。
+// mode が ui なら merge ボタンで、forge なら Forgejo で直接（管理者のトークンで）merge する。
+// Chrome と webui/dist がなく、merge しなかったら false を返す。
+func (w *world) mergeBrowser(repo, id, mode, gitForgeRef string) bool {
+	w.t.Helper()
+	chrome := os.Getenv("LOGIFORGE_E2E_CHROME")
+	if _, err := os.Stat("../../webui/dist/index.html"); chrome == "" || err != nil {
+		return false
+	}
+	out := os.Getenv("LOGIFORGE_E2E_OUT")
+	if out == "" {
+		out = w.t.TempDir()
+	}
+	login := w.login("alice")
+	runBrowser(w.t, "e2e/merge.mjs", "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out,
+		"REPO="+repo, "AR="+id, "MODE="+mode, "FORGEJO_API="+w.forgejo+"/api/v1", "FORGEJO_TOKEN="+w.admin, "FORGEJO_REPO="+gitForgeRef)
+	return true
+}
+
+// arState は、apply request の状態が want であることを、API で確かめる。
+func (w *world) arState(repo, id, want string) {
+	w.t.Helper()
+	var got struct {
+		State string `json:"state"`
+	}
+	st, b := w.call("alice", "GET", "/repositories/"+repo+"/apply-requests/"+id, nil)
+	if st != 200 || json.Unmarshal(b, &got) != nil || got.State != want {
+		w.t.Fatalf("apply request %s の状態は %s のはず：%d %s", id, want, st, b)
+	}
 }
 
 // humanPull は、管理者として、main からブランチを作ってファイルを置き（中身が空なら消し）、pull request を作って merge する

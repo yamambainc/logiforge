@@ -63,6 +63,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - merge：`mergeApplyRequest`。`review_decision` が `approved` のときだけ、merge の欄を示す。一覧と詳細では、`review_decision` があれば、承認の状態を示す。断られたら、エラーの `code` と `detail` で理由を示し、`getApplyRequest` で読み直す。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
+- 一覧は、レビューと merge のあとに読み直す。一覧と選んだ apply request は、タブに戻ったときにも読み直す（GitForge で直接 merge したときにも、今の状態を示すため）。
 - 反映したあとの姿：選んだ apply request の右側に、ビュワーを埋め込んで示す（[差分の重ね表示](overlay.md#差分の重ね表示)）。右側は「木」（はじめ）と「レビュー」のタブで切り替える。approve と merge の欄は、タブの外に置く。
   - 「レビュー」のタブには、差分、先頭のコミット、レビュー、コメント、レビューの材料、comment と request_changes を書く欄を示す。
   - 「レビュー」のタブでノードを押すと、「木」のタブに移り、そのノードを選ぶ。
