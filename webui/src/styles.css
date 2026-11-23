@@ -617,7 +617,9 @@ a.btn { display: inline-block; text-decoration: none; }
 .ar-head .note { margin: 0; }
 .ar-head .confirm p { margin: 0 0 6px; }
 .ar-action .form-actions { margin: 0; }
-.ar-tabs { align-self: flex-start; }
+.ar-bar { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.ar-bar .spacer { flex: 1; }
+.ar-head .back { align-self: flex-start; }
 .ar-pane > .item-pane { flex: 1; }
 @media (max-width: 767px) { .ar-head { padding: 8px 12px; } }
 .ar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }

@@ -161,15 +161,18 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
         </div>
         {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
         {notice && <p className="note" role="status">{notice}</p>}
-        {a.state === 'open' && (
-          <div className="ar-actions">
-            <ApproveBar repo={repo} a={a} material={material} mError={mError} onChanged={changed} />
-            {canMerge(a) && <MergeBar repo={repo} a={a} onChanged={changed} />}
+        <div className="ar-bar">
+          <div className="seg ar-tabs" role="tablist" aria-label="右側">
+            <button role="tab" aria-selected={tab === 'tree'} className={tab === 'tree' ? 'on' : ''} onClick={() => onTab('tree')}>木</button>
+            <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => onTab('review')}>レビュー</button>
           </div>
-        )}
-        <div className="seg ar-tabs" role="tablist" aria-label="右側">
-          <button role="tab" aria-selected={tab === 'tree'} className={tab === 'tree' ? 'on' : ''} onClick={() => onTab('tree')}>木</button>
-          <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'on' : ''} onClick={() => onTab('review')}>レビュー</button>
+          <span className="spacer" />
+          {a.state === 'open' && (
+            <div className="ar-actions">
+              <ApproveBar repo={repo} a={a} material={material} mError={mError} onChanged={changed} />
+              {canMerge(a) && <MergeBar repo={repo} a={a} onChanged={changed} />}
+            </div>
+          )}
         </div>
       </div>
       {tab === 'tree' ? (

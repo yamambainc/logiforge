@@ -264,6 +264,7 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === '木').click());
   await page.waitForSelector('.ar-pane .banner.overlay', { timeout: 30000 });
   await page.waitForSelector('.row.chg-changed', { timeout: 10000 });
+  await detailLoaded(page);
   await page.screenshot({ path: OUT + '/ar-open.png' });
   await page.goto(BASE + `/r/${REPO}/tree?node=${NODE_A}`, { waitUntil: 'networkidle0' });
   await signedIn(page);
