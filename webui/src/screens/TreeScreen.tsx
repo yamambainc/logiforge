@@ -1,8 +1,8 @@
 // スナップショットツリーのビュワー（design/webui/snapshot-tree-viewer.md）。アウトラインと図（横と縦）を切り替える。
 // 状態（選んだノード、開いたノード、検索、絞り込み）は 2 つの表示で共通にする。表示と選んだノードと検索の語は URL に持つ。
-// 示す時点（今の main、過去の時点、apply request を重ねた姿）も URL に持つ（design/webui/overlay.md）。
+// 示す時点（今の main、過去の時点）も URL に持つ。apply request を反映したあとの姿は、apply request の画面に埋め込んで示す（design/webui/overlay.md）。
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listCommits, listOpenApplyRequests, Problem, workNodes, type ApplyRequest, type At, type MainCommit } from '../api';
+import { listCommits, Problem, workNodes, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
 import { GraphView } from '../GraphView';
@@ -55,16 +55,16 @@ class LoadGuard extends Component<{ onFallback: () => void; children: React.Reac
   }
 }
 
-// repository が変わったら、作り直す（App で key={repo} にする）
-export function TreeScreen({ repo }: { repo: string }) {
-  const params = useRef(new URLSearchParams(location.search)).current;
-  const [source, setSourceRaw] = useState<Source>(() => sourceFromURL(params));
+// repository が変わったら、作り直す（App で key={repo} にする）。
+// fixed を渡すと、示す時点をそれに固めて埋め込む（apply request の画面の右側）。時点を選ぶ欄を出さず、URL も読み書きしない
+export function TreeScreen({ repo, fixed }: { repo: string; fixed?: Source }) {
+  const params = useRef(new URLSearchParams(fixed ? '' : location.search)).current;
+  const [source, setSourceRaw] = useState<Source>(() => fixed ?? sourceFromURL(params));
   const [data, setData] = useState<Loaded | null>(null);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
   // 図で最初に収めるノード（まわり）。null なら全体
   const [around, setAround] = useState<Set<string> | null>(null);
-  // 選べる apply request と、main のコミット（過去の時点）
-  const [ars, setArs] = useState<ApplyRequest[]>([]);
+  // 選べる main のコミット（過去の時点）
   const [commits, setCommits] = useState<MainCommit[]>([]);
   // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
   const [root, setRoot] = useState<string | null>(null);
@@ -131,15 +131,15 @@ export function TreeScreen({ repo }: { repo: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, key]);
 
-  // 選べる apply request（open のもの）と、main のコミット（新しい 50 個）。読めなくても、ビュワーは使える
+  // 選べる main のコミット（新しい 50 個）。読めなくても、ビュワーは使える
   useEffect(() => {
-    listOpenApplyRequests(repo).then(setArs).catch(() => {});
+    if (fixed) return;
     listCommits(repo).then((p) => setCommits(p.items)).catch(() => {});
-  }, [repo]);
+  }, [repo, fixed]);
 
   // URL に、表示、向き、選んだノード、検索の語を持つ（design/webui/screens.md の「URL」）
   useEffect(() => {
-    if (!data) return;
+    if (!data || fixed) return;
     const q = new URLSearchParams();
     sourceToURL(source, q);
     if (view !== 'outline') q.set('view', view);
@@ -154,11 +154,12 @@ export function TreeScreen({ repo }: { repo: string }) {
     if (pushNext.current) history.pushState(null, '', next);
     else history.replaceState(null, '', next);
     pushNext.current = false;
-  }, [data, source, root, view, vertical, selected, settledQuery, filters]);
+  }, [data, fixed, source, root, view, vertical, selected, settledQuery, filters]);
   // 戻る・進むで、表示と向きと時点と表示の根を URL に合わせる（根は、読み込んだデータで確かめてから）
   const popRoot = useRef<string | null>(null);
   const [popTick, setPopTick] = useState(0);
   useEffect(() => {
+    if (fixed) return;
     const onPop = () => {
       const q = new URLSearchParams(location.search);
       setViewRaw(viewOf(q.get('view')));
@@ -169,7 +170,7 @@ export function TreeScreen({ repo }: { repo: string }) {
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [fixed]);
 
   const ix = data?.ix;
 
@@ -278,7 +279,7 @@ export function TreeScreen({ repo }: { repo: string }) {
   if (error) return <Empty title="スナップショットツリーを読めませんでした" body={error} retry />;
   // 引用元の変化の作業を読み終えるまでは、一致の数が決まらないので示さない（0 と見誤らないように）
   if (wantCited && !citedWork) return <div className="loading">作業の一覧を読み込み中…</div>;
-  if (blocked) return <BlockedView b={blocked} onBack={() => setSource({ kind: 'main' })} />;
+  if (blocked) return <BlockedView b={blocked} />;
   if (!data || !ix) return <div className="loading">{pending ? 'スナップショットツリーを取り込み中です。出しだい表示します…' : '読み込み中…'}</div>;
 
   const userSetExpanded = (e: Set<string>) => { touched.current = true; setExpanded(e); };
@@ -334,30 +335,22 @@ export function TreeScreen({ repo }: { repo: string }) {
           </button>
           <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}>3D</button>
         </div>
-        <div className="view sources">
-          <select
-            className="pick"
-            aria-label="時点"
-            value={source.kind === 'commit' ? source.commit : ''}
-            onChange={(e) => setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' })}
-          >
-            <option value="">今の main{source.kind === 'main' ? ` ${data.commit.slice(0, 7)}` : ''}</option>
-            {source.kind === 'commit' && !commits.some((c) => c.commit === source.commit) && <option value={source.commit}>{source.commit.slice(0, 7)}</option>}
-            {commits.map((c) => (
-              <option key={c.commit} value={c.commit}>#{c.number} {fmtTime(c.committed_at)}{c.apply_request_id ? ` ${c.apply_request_id.slice(0, 12)}…` : ''}</option>
-            ))}
-          </select>
-          <select
-            className={`pick ${source.kind === 'ar' ? 'on' : ''}`}
-            aria-label="AR を重ねる"
-            value={source.kind === 'ar' ? source.id : ''}
-            onChange={(e) => setSource(e.target.value ? { kind: 'ar', id: e.target.value } : { kind: 'main' })}
-          >
-            <option value="">AR を重ねる…</option>
-            {source.kind === 'ar' && !ars.some((a) => a.id === source.id) && <option value={source.id}>{source.id}</option>}
-            {ars.map((a) => <option key={a.id} value={a.id}>{a.branch} → {a.target}{a.description ? `：${a.description.split('\n')[0].slice(0, 30)}` : ''}</option>)}
-          </select>
-        </div>
+        {!fixed && (
+          <div className="view sources">
+            <select
+              className="pick"
+              aria-label="時点"
+              value={source.kind === 'commit' ? source.commit : ''}
+              onChange={(e) => setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' })}
+            >
+              <option value="">今の main{source.kind === 'main' ? ` ${data.commit.slice(0, 7)}` : ''}</option>
+              {source.kind === 'commit' && !commits.some((c) => c.commit === source.commit) && <option value={source.commit}>{source.commit.slice(0, 7)}</option>}
+              {commits.map((c) => (
+                <option key={c.commit} value={c.commit}>#{c.number} {fmtTime(c.committed_at)}{c.apply_request_id ? ` ${c.apply_request_id.slice(0, 12)}…` : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="search">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           <input
@@ -424,7 +417,6 @@ export function TreeScreen({ repo }: { repo: string }) {
               <button className="link" onClick={() => stepChange(1)} title="次の変更（n）">次の変更 →</button>
             </span>
           )}
-          <button className="link" onClick={() => setSource({ kind: 'main' })}>重ねるのをやめる</button>
         </div>
       )}
       {data.past && (
@@ -434,7 +426,7 @@ export function TreeScreen({ repo }: { repo: string }) {
           <span className="mono dim">{data.past.commit.slice(0, 7)}</span>
           <span className="dim">審査中の AR と依頼の札は示しません</span>
           <span className="spacer" />
-          <button className="link" onClick={() => setSource({ kind: 'main' })}>今の main に戻る</button>
+          {!fixed && <button className="link" onClick={() => setSource({ kind: 'main' })}>今の main に戻る</button>}
         </div>
       )}
       {root && root !== ix.rootId && (
@@ -539,7 +531,7 @@ function Empty({ title, body, retry }: { title: string; body?: string; retry?: b
   );
 }
 
-function BlockedView({ b, onBack }: { b: Blocked; onBack: () => void }) {
+function BlockedView({ b }: { b: Blocked }) {
   const title = b.reason === 'conflict' ? '今の main に重ねられません（衝突）'
     : b.reason === 'not-open' ? 'この AR は open ではありません'
     : '向き先のブランチか AR がありません';
@@ -548,9 +540,8 @@ function BlockedView({ b, onBack }: { b: Blocked; onBack: () => void }) {
       <div className="empty-title">{title}</div>
       <p className="dim mono">{b.id}{b.ar ? ` · ${b.ar.branch} → ${b.ar.target}` : ''}</p>
       {b.reason === 'conflict' && <><p>この AR の差分は、今の main と次のパスで衝突しています。</p><p className="mono paths">{b.detail}</p></>}
-      {b.reason === 'not-open' && <p>反映されたか、閉じられました。apply request と履歴の画面で確かめてください。</p>}
+      {b.reason === 'not-open' && <p>反映されたか、閉じられました。</p>}
       {b.reason === 'gone' && <p>向き先のブランチが消えたか、AR がなくなりました。</p>}
-      <button className="btn" onClick={onBack}>今の main に戻る</button>
     </div>
   );
 }

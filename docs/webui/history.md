@@ -7,26 +7,24 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 
 ```
 +-----------------------------------------------------------------+
-| apply request と履歴    状態: [open ▼]     時点: [最新 ▼]       |
+| apply request と履歴    状態: [open ▼]                          |
 +------------------------------+----------------------------------+
-| S2 の作成            open    | 差分                             |
-| H2 の検証            merged  |  + story.create   S2 ストーリー2 |
-| S0 の inactive 化    merged  |  + verdict.submit H3 true        |
-|                              | 先頭のコミット                   |
-|                              |  a1b2c3d  11-13 10:42            |
-|                              |  e4f5a6b  11-13 11:05            |
-|                              | レビュー                         |
-|                              |  reviewer: request_changes ...   |
-|                              |  opener:   修正しました ...      |
-|                              | [approve] [request_changes]      |
-|                              | [comment]  本文 [            ]   |
+| S2 の作成            open    | open  S2 の作成  ar/s2 → main    |
+| H2 の検証            merged  | [approve する] [merge する]      |
+| S0 の inactive 化    merged  | [木] [レビュー]                  |
+|                              | +------------------------------+ |
+|                              | | 反映したあとの木             | |
+|                              | | （木のビューアと同じ表示）   | |
+|                              | +------------------------------+ |
 +------------------------------+----------------------------------+
 ```
 
 ## apply request の閲覧
 
 - apply request を、状態（open、merged、closed）で絞り込める。
-- 選んだ apply request について、次のものを示す。
+- 選んだ apply request は、右側に、反映したあとの木を示す（[反映したあとの木](#反映したあとの木)）。
+  - なぜ：Logiforge でのレビューは、実のところ、反映したら木がどうなるかを確かめることだから。
+- 右側は、「木」と「レビュー」のタブで切り替える。はじめは「木」を示す。「レビュー」のタブには、次のものを示す。
   - 差分
   - push された先頭のコミットの一覧。各項目は、SHA と、Logiforge がそのコミットを見た時刻を持つ
   - レビュー。だれが、いつ書いたかも示す。
@@ -36,7 +34,8 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
   - レビューは、approve、request_changes、comment のどれかと、本文である。
   - レビューの欄には、CLI の reviewer と同じレビューの材料を示す（[レビューの材料](../apply-request/review.md#レビューの材料)）。
     - apply request の説明欄は、レビューの欄に示さない。なぜ：材料に含めないものを、判断の横に置かないため。
-  - approve の前に、レビューする先頭のコミットと、反映したあとの木を示す。押したら、確かめてから送る。
+  - approve と merge は、タブの外に置き、木を見たまま押せるようにする。approve、request_changes、comment のうち、request_changes と comment は「レビュー」のタブで書く。
+  - approve の前に、レビューする先頭のコミットを示す。押したら、確かめてから送る。
   - 自分が作った apply request なら、approve の前に「あなたが作った apply request です」と示す。
   - approve は、今の `main` での確かめに通ったときだけ出す。通らなかったら、その理由を示す（[approve](../apply-request/review.md#approve)）。
 - approve された apply request は、その repository に書ける利用者が、この画面で merge できる（[merge](../apply-request/review.md#merge)）。
@@ -47,6 +46,7 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 ## 反映したあとの木
 
 - open の apply request を選ぶと、それを向き先の今の先頭に反映したあとの木を、[木のビューア](tree-viewer.md) と同じ形で示す。
+  - 反映済みの apply request なら、反映したコミットの木を示す。閉じた apply request には、木はない。
   - 値と、葉・要再検討・inactive の状態も、反映したあとのものを示す。
   - 差分で加わるノードと変わるノードを、ほかのノードと見分けられるように示す。
   - なぜ：利用者が、差分だけでなく、反映したら木がどうなるかを、反映の前に確かめられるようにするため。
