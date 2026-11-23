@@ -2,6 +2,7 @@
 // 状態（選んだノード、開いたノード、検索、絞り込み）は 2 つの表示で共通にする。表示と選んだノードと検索の語は URL に持つ。
 // 示す時点（今の main、過去の時点）も URL に持つ。apply request を反映したあとの姿は、apply request の画面に埋め込んで示す（design/webui/overlay.md）。
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { commitPager } from '../commits';
 import { listCommits, Problem, workNodes, type At, type MainCommit } from '../api';
 import { DetailPane } from '../DetailPane';
 import { initialFocus, inSubtree, openLevels, overlayFocus } from '../focus';
@@ -72,6 +73,7 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   const [commits, setCommits] = useState<MainCommit[]>([]);
   // 続きのコミットを読むカーソル。null なら、もうない
   const [commitsNext, setCommitsNext] = useState<string | null>(null);
+  const pager = useMemo(() => commitPager((cur) => listCommits(repo, cur), (s) => { setCommits(s.items); setCommitsNext(s.next); }), [repo]);
   // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
   const [root, setRoot] = useState<string | null>(null);
   const rootRef = useRef<string | null>(null);
@@ -140,13 +142,10 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   // 選べる main のコミット（新しい 50 個）。読めなくても、ビュワーは使える
   useEffect(() => {
     if (fixed) return;
-    listCommits(repo).then((p) => { setCommits(p.items); setCommitsNext(p.next_cursor); }).catch(() => {});
-  }, [repo, fixed]);
-  // 「さらに古いコミット…」：続きの 50 個を読み、選択肢に足す
-  const moreCommits = () => {
-    if (!commitsNext) return;
-    listCommits(repo, commitsNext).then((p) => { setCommits((x) => [...x, ...p.items]); setCommitsNext(p.next_cursor); }).catch(() => {});
-  };
+    pager.first().catch(() => {});
+  }, [pager, fixed]);
+  // 「さらに古いコミット…」：続きの 50 個を読み、選択肢に足す（読み込み中は読まない）
+  const moreCommits = () => { pager.more().catch(() => {}); };
 
   // URL に、表示、向き、選んだノード、検索の語を持つ（design/webui/screens.md の「URL」）
   useEffect(() => {
