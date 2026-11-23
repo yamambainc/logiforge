@@ -127,7 +127,7 @@ export function Setup({ initial }: { initial: SetupState }) {
 
         {gitforge === 'github' ? <>
           <Step n={2} title="GitHub App" on={enabled('github_app')} done={done('github_app')} error={errors.github_app}>
-            {s.github_app && <p className="dim small">App「{s.github_app.slug}」を作りました。</p>}
+            {s.github_app && <p className="dim small">App「{s.github_app.slug}」を作りました。もう一度押すと、App をもう 1 つ作ります。</p>}
             <GitHubAppStep disabled={!enabled('github_app') || busy === 'github_app'} onSubmit={(req) =>
               void run('github_app', async () => { submitManifest(await createSetupGitHubManifest(req)); })} />
           </Step>

@@ -464,7 +464,6 @@ form.create .over { color: var(--f-fg); font-weight: 700; }
 .bottom-nav a { text-decoration: none; }
 ul.counts li a { display: flex; justify-content: space-between; align-items: baseline; width: 100%; color: var(--accent); text-decoration: none; }
 ul.counts li a:hover { text-decoration: underline; }
-table.judge td.note-cell { font-weight: 400; font-size: 13px; }
 /* 一覧と本文の 2 列（人への依頼、apply request の画面） */
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 400px) 1fr; }
 .split.one { grid-template-columns: 1fr; }

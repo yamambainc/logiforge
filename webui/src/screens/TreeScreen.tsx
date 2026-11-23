@@ -28,6 +28,9 @@ const short = (t: string, k = 16) => (t.length > k ? t.slice(0, k) + '…' : t);
 const sourceKey = (s: Source) => (s.kind === 'ar' ? 'ar:' + s.id : s.kind === 'commit' ? 'commit:' + s.commit : 'main');
 const fmtTime = (iso?: string) => { if (!iso) return ''; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' }); };
 
+// 時点の選択肢で、続きのコミットを読む項目の値（コミットの SHA とぶつからない）
+const MORE = 'more';
+
 type View = 'outline' | 'graph' | '3d';
 const viewOf = (v: string | null): View => (v === 'graph' || v === '3d' ? v : 'outline');
 
@@ -67,6 +70,8 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   const [around, setAround] = useState<Set<string> | null>(null);
   // 選べる main のコミット（過去の時点）
   const [commits, setCommits] = useState<MainCommit[]>([]);
+  // 続きのコミットを読むカーソル。null なら、もうない
+  const [commitsNext, setCommitsNext] = useState<string | null>(null);
   // 表示の根。読み込んだデータとは別に持つ（「ここから見る」で差し替えるため）
   const [root, setRoot] = useState<string | null>(null);
   const rootRef = useRef<string | null>(null);
@@ -135,8 +140,13 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   // 選べる main のコミット（新しい 50 個）。読めなくても、ビュワーは使える
   useEffect(() => {
     if (fixed) return;
-    listCommits(repo).then((p) => setCommits(p.items)).catch(() => {});
+    listCommits(repo).then((p) => { setCommits(p.items); setCommitsNext(p.next_cursor); }).catch(() => {});
   }, [repo, fixed]);
+  // 「さらに古いコミット…」：続きの 50 個を読み、選択肢に足す
+  const moreCommits = () => {
+    if (!commitsNext) return;
+    listCommits(repo, commitsNext).then((p) => { setCommits((x) => [...x, ...p.items]); setCommitsNext(p.next_cursor); }).catch(() => {});
+  };
 
   // URL に、表示、向き、選んだノード、検索の語を持つ（design/webui/screens.md の「URL」）
   useEffect(() => {
@@ -344,13 +354,17 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
               className="pick"
               aria-label="時点"
               value={source.kind === 'commit' ? source.commit : ''}
-              onChange={(e) => setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' })}
+              onChange={(e) => {
+                if (e.target.value === MORE) { moreCommits(); return; }
+                setSource(e.target.value ? { kind: 'commit', commit: e.target.value } : { kind: 'main' });
+              }}
             >
               <option value="">今の main{source.kind === 'main' ? ` ${data.commit.slice(0, 7)}` : ''}</option>
               {source.kind === 'commit' && !commits.some((c) => c.commit === source.commit) && <option value={source.commit}>{source.commit.slice(0, 7)}</option>}
               {commits.map((c) => (
                 <option key={c.commit} value={c.commit}>#{c.number} {fmtTime(c.committed_at)}{c.apply_request_id ? ` ${c.apply_request_id.slice(0, 12)}…` : ''}</option>
               ))}
+              {commitsNext && <option value={MORE}>さらに古いコミット…</option>}
             </select>
           </div>
         )}

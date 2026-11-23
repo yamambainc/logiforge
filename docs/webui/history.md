@@ -60,5 +60,5 @@ apply request の決まりは、[apply request](../apply-request/README.md) に�
 
 ## 過去の時点の木
 
-- [木のビューア](tree-viewer.md) の「時点」で選ぶと、その時点の木を示す。この画面には、`main` のコミットの一覧を置かない。
+- この画面には、`main` のコミットの一覧を置かない。過去の時点の木は、[木のビューア](tree-viewer.md#過去の時点の木) で選ぶ。
   - なぜ：過去の時点を選ぶところを 1 つにするため。この画面は、apply request のレビューに使う。

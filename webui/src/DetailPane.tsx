@@ -96,7 +96,8 @@ export function DetailPane({ repo, ix, id, onReveal, mobile, onClose, at, change
         {n.open_human_request_ids.map((h) => <ItemLink key={h} to={`${screenPath(repo, 'human-requests')}?id=${encodeURIComponent(h)}`}>依頼 {h}</ItemLink>)}
       </div>
 
-      {change && (
+      {/* 札と帯で分かること（追加、消える、main 向きでない）は、ここで繰り返さない。中身があるときだけ出す */}
+      {change && (change.kind === 'changed' || (change.kind === 'removed' && kids.length > 0)) && (
         <Section title="この AR での変化">
           {change.kind === 'removed' && kids.length > 0 && <p><span className="tag t-removed">消える</span> 子孫も消えます。</p>}
           {change.kind === 'changed' && (
