@@ -166,13 +166,13 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 	}
 }
 
-// want は、err がなく、ok なら nil を返す。
 // page は、URL が、その repository（:パス を除く）の、その番号の pull request の画面（/owner/name/<e.Pulls>/1）かである。
 func page(e Env, p pullreq.Pull) bool {
 	repo, _, _ := strings.Cut(e.Ref, ":")
 	return strings.HasPrefix(p.URL, "http") && strings.HasSuffix(p.URL, "/"+repo+"/"+e.Pulls+"/"+strconv.Itoa(p.Number))
 }
 
+// want は、err がなく、ok なら nil を返す。
 func want(err error, ok bool, msg string) error {
 	if err != nil {
 		return err
