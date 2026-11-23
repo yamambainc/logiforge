@@ -56,9 +56,10 @@ class LoadGuard extends Component<{ onFallback: () => void; children: React.Reac
 }
 
 // repository が変わったら、作り直す（App で key={repo} にする）。
-// fixed を渡すと、示す時点をそれに固めて埋め込む（apply request の画面の右側）。時点を選ぶ欄を出さず、URL も読み書きしない
-export function TreeScreen({ repo, fixed }: { repo: string; fixed?: Source }) {
-  const params = useRef(new URLSearchParams(fixed ? '' : location.search)).current;
+// fixed を渡すと、示す時点をそれに固めて埋め込む（apply request の画面の右側）。時点を選ぶ欄を出さず、URL も読み書きしない。
+// 埋め込みでは、URL の node のかわりに node で、はじめに選ぶノードを渡す
+export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source; node?: string | null }) {
+  const params = useRef(new URLSearchParams(fixed ? (node ? { node } : {}) : location.search)).current;
   const [source, setSourceRaw] = useState<Source>(() => fixed ?? sourceFromURL(params));
   const [data, setData] = useState<Loaded | null>(null);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
@@ -173,6 +174,8 @@ export function TreeScreen({ repo, fixed }: { repo: string; fixed?: Source }) {
   }, [fixed]);
 
   const ix = data?.ix;
+  // 埋め込みでは、外の画面の main の中に入るので、main を入れ子にしない
+  const Body = fixed ? 'div' : 'main';
 
   useEffect(() => {
     if (!ix || popTick === 0) return;
@@ -444,7 +447,7 @@ export function TreeScreen({ repo, fixed }: { repo: string; fixed?: Source }) {
           <button className="link" onClick={() => scopeTo(ix.rootId)}>全体を見る</button>
         </nav>
       )}
-      <main className="body">
+      <Body className="body">
         {view === '3d' ? (
           <LoadGuard onFallback={() => setView('graph')}>
             <Suspense fallback={<section className="graph-pane"><div className="loading">3D を読み込み中…</div></section>}>
@@ -516,7 +519,7 @@ export function TreeScreen({ repo, fixed }: { repo: string; fixed?: Source }) {
             onScope={selected && selected !== (root ?? ix.rootId) && ix.children.has(selected) ? () => scopeTo(selected) : undefined}
           />
         )}
-      </main>
+      </Body>
     </div>
   );
 }

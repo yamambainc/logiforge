@@ -97,7 +97,6 @@ function ArList({ repo, tabs, state, work, id, go }: { repo: string; tabs: React
               <a href={`?id=${a.id}`} className={a.id === id ? 'on' : ''} onClick={(e) => { e.preventDefault(); go({ id: a.id, tab: null }, true); }}>
                 <span className="item-text">{arTitle(a)}<span className="dim mono small-block">{a.branch} → {a.target}</span></span>
                 {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
-        {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
                 {a.review_decision && <span className="kind">{DECISION[a.review_decision]}</span>}
                 <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
               </a>
@@ -121,6 +120,9 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
   const [material, setMaterial] = useState<ReviewMaterial | null>(null);
   const [mError, setMError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // レビューのタブでノードを押したら、木のタブでそのノードを選ぶ
+  const [focus, setFocus] = useState<string | null>(null);
+  const showNode = (n: string) => { setFocus(n); onTab('tree'); };
   useEffect(() => {
     let live = true;
     getApplyRequest(repo, id).then((r) => live && setA(r)).catch((e) => {
@@ -176,10 +178,10 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
         </div>
       </div>
       {tab === 'tree' ? (
-        source ? <TreeScreen key={a.head_commit + (a.merged_commit ?? '')} repo={repo} fixed={source} /> : <div className="item-pane empty"><p className="dim">閉じた apply request なので、反映したあとの木はありません。</p></div>
+        source ? <TreeScreen key={a.head_commit + (a.merged_commit ?? '') + (focus ?? '')} repo={repo} fixed={source} node={focus} /> : <div className="item-pane empty"><p className="dim">閉じた apply request なので、反映したあとの木はありません。</p></div>
       ) : (
         <div className="item-pane">
-          <ReviewTab repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={changed} />
+          <ReviewTab repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={changed} onNode={showNode} />
         </div>
       )}
     </section>
@@ -285,9 +287,7 @@ function MergeBar({ repo, a, onChanged }: { repo: string; a: ApplyRequest; onCha
 }
 
 // レビューのタブ：差分、先頭のコミット、レビューとコメントの一覧、コメントを書く欄
-function ReviewTab({ repo, a, material, mError, pending, onChanged }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed }) {
-  const open = (to: string) => (e: React.MouseEvent) => { e.preventDefault(); navigate(to); };
-  const tree = (q: string) => `/r/${repo}/tree?${q}`;
+function ReviewTab({ repo, a, material, mError, pending, onChanged, onNode }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed; onNode: (id: string) => void }) {
   return (
     <>
       <h3 className="sec">差分</h3>
@@ -298,7 +298,7 @@ function ReviewTab({ repo, a, material, mError, pending, onChanged }: { repo: st
             return (
               <li key={op.position}>
                 <span>{l.what}</span>
-                <a className="mono" href={tree(`node=${l.target}`)} onClick={open(tree(`node=${l.target}`))}>{l.target}</a>
+                <NodeLink id={l.target} onNode={onNode} />
                 {/* 検証結果のレポートは、折りたたみで、Markdown として示す（design/webui/markdown.md） */}
                 {op.kind === 'verdict.submit' && <details className="op-report"><summary>レポート</summary><Markdown className="report" text={op.report_body} /></details>}
               </li>
@@ -342,14 +342,14 @@ function ReviewTab({ repo, a, material, mError, pending, onChanged }: { repo: st
         </>
       )}
 
-      {a.state === 'open' && <ReviewPane repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={onChanged} />}
+      {a.state === 'open' && <ReviewPane repo={repo} a={a} material={material} mError={mError} pending={pending} onChanged={onChanged} onNode={onNode} />}
     </>
   );
 }
 
 // コメントと request_changes を書く欄（docs/webui/history.md の「apply request の閲覧」）。
 // CLI の reviewer と同じレビューの材料（getReviewMaterial）を示す。説明欄は示さない（材料に含めないものを、判断の横に置かないため）。
-function ReviewPane({ repo, a, material, mError, pending, onChanged }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed }) {
+function ReviewPane({ repo, a, material, mError, pending, onChanged, onNode }: { repo: string; a: ApplyRequest; material: ReviewMaterial | null; mError: string | null; pending: boolean; onChanged: Changed; onNode: (id: string) => void }) {
   const [kind, setKind] = useState<ReviewKind>('comment');
   const [body, setBody] = useState(() => loadDraft(repo, a.id)?.body ?? '');
   const [busy, setBusy] = useState(false);
@@ -372,7 +372,7 @@ function ReviewPane({ repo, a, material, mError, pending, onChanged }: { repo: s
       {!main ? <p className="dim">main 向きではないので、レビューの材料はありません。</p>
         : mError ? <p className="dim">レビューの材料を読めませんでした：{mError}</p>
         : !material ? <div className="loading">{pending ? '先頭のコミットを取り込んでいます。読み直しています…' : '読み込み中…'}</div>
-        : <MaterialView repo={repo} m={material} />}
+        : <MaterialView m={material} onNode={onNode} />}
       <form className="answer-form" onSubmit={(e) => void submit(e)}>
         <div className="seg" role="radiogroup" aria-label="レビューの種類">
           {KINDS.map(({ k, label }) => <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{label}</button>)}
@@ -386,11 +386,8 @@ function ReviewPane({ repo, a, material, mError, pending, onChanged }: { repo: s
 }
 
 // レビューの材料（docs/apply-request/review.md の「レビューの材料」）。差分、対象ノードの今の値、根までの仮説、兄弟ストーリー、引用
-function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
-  const node = (id: string) => {
-    const to = `/r/${repo}/tree?node=${id}`;
-    return <a className="mono" href={to} onClick={(e) => { e.preventDefault(); navigate(to); }}>{id}</a>;
-  };
+function MaterialView({ m, onNode }: { m: ReviewMaterial; onNode: (id: string) => void }) {
+  const node = (id: string) => <NodeLink id={id} onNode={onNode} />;
   const line = (n: Node) => <li key={n.id}>{node(n.id)}<span>{textOf(n)}</span><span className="dim">{VALUE(n.value)}{n.inactive ? '・inactive' : ''}</span></li>;
   return (
     <div className="material">
@@ -421,6 +418,11 @@ function MaterialView({ repo, m }: { repo: string; m: ReviewMaterial }) {
       )}
     </div>
   );
+}
+
+// ノードへのリンク。押すと、右側の木のタブで、そのノードを選ぶ（加わるノードは今の main にないので、/tree には飛ばない）
+function NodeLink({ id, onNode }: { id: string; onNode: (id: string) => void }) {
+  return <button type="button" className="link mono" onClick={() => onNode(id)}>{id}</button>;
 }
 
 // main のコミットの一覧（listCommits）。押すと、その時点のビュワーを開く

@@ -64,10 +64,10 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
 - 反映したあとの姿：選んだ apply request の右側に、ビュワーを埋め込んで示す（[差分の重ね表示](overlay.md#差分の重ね表示)）。右側は「木」（はじめ）と「レビュー」のタブで切り替える。approve と merge の欄は、タブの外に置く。
   - 「レビュー」のタブには、差分、先頭のコミット、レビュー、コメント、レビューの材料、comment と request_changes を書く欄を示す。
+  - 「レビュー」のタブでノードを押すと、「木」のタブに移り、そのノードを選ぶ。
 - 過去の時点の姿：`listCommits` で `main` のコミットを選び、ビュワーを `?commit=` で開く（[WebUI のための API](#webui-のための-api)）。
   - 画面の「main の履歴」で、新しい 50 個ずつ示し、「もっと読む」で続きを読む。
 - 反映済みの apply request は、右側に、`merged_commit` の木を示す。閉じた apply request には、木を示さない。
-- 差分の操作の対象は、ビュワーへのリンク（`?node=`）で示す。
 - 作業としての絞り込み（`work=review_waiting`、`work=fix_waiting`）は、`listWork` のその種類の `subject_id` に入る apply request だけを示す。ダッシュボードの件数から、この絞り込みで開く。
 - URL は `/r/{repository}/apply-requests?view=&state=&id=&work=&tab=`（`view` は、apply request か `commits`。`tab` は右側のタブ）。
 

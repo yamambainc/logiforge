@@ -261,6 +261,11 @@ try {
   if ((await page.$$('ol.commits li')).length < 1) throw new Error('先頭のコミットが出ない');
   if (!(await page.$$eval('.ar-head button', (bs) => bs.map((b) => b.textContent))).includes('approve する')) throw new Error('レビューのタブで approve が出ない');
   await page.screenshot({ path: OUT + '/ar-review.png' });
+  // 差分の対象のノードを押すと、木のタブで、そのノードを選ぶ
+  await page.evaluate(() => document.querySelector('ul.ops button.link').click());
+  await page.waitForFunction(() => !new URL(location.href).searchParams.get('tab') && document.querySelector('.ar-pane .row.sel .text')?.textContent.includes('継続率も'), { timeout: 30000 });
+  await page.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === 'レビュー').click());
+  await page.waitForSelector('ul.ops', { timeout: 20000 });
   await page.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === '木').click());
   await page.waitForSelector('.ar-pane .banner.overlay', { timeout: 30000 });
   await page.waitForSelector('.row.chg-changed', { timeout: 10000 });
@@ -677,6 +682,10 @@ try {
   await mobile.waitForSelector('.row.chg-changed', { timeout: 10000 });
   if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('反映したあとの木が幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/ar-mobile.png' });
+  await mobile.evaluate(() => [...document.querySelectorAll('.ar-tabs button')].find((b) => b.textContent === 'レビュー').click());
+  await mobile.waitForSelector('ul.ops', { timeout: 20000 });
+  if (await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('レビューのタブが幅 375 px で横にはみ出す');
+  await mobile.screenshot({ path: OUT + '/ar-mobile-review.png' });
   await mobile.evaluate(() => document.querySelector('.ar-head .back').click());
   await mobile.waitForSelector('ul.items a', { timeout: 10000 });
   await mobile.goto(BASE + '/', { waitUntil: 'networkidle0' });
