@@ -667,7 +667,7 @@ try {
   await pwa.setOfflineMode(true);
   await pwa.reload({ waitUntil: 'domcontentloaded' });
   await pwa.waitForFunction(() => document.querySelector('.offline-banner')?.textContent.includes('つながっていません')
-    && document.querySelector('.signin-msg')?.textContent.includes('つながっていません'), { timeout: 20000 });
+    && document.querySelector('.signin-msg')?.textContent.includes('自動でサインインし直します'), { timeout: 20000 });
   await pwa.screenshot({ path: OUT + '/pwa-offline.png' });
   await pwa.setOfflineMode(false);
   await pwa.waitForSelector('.repo-list', { timeout: 20000 });

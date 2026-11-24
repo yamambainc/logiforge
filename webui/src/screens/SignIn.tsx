@@ -6,7 +6,8 @@ const messages = (g: string): Record<SignedOutReason, string> => ({
   'state-mismatch': 'サインインの確かめに失敗しました。もう一度サインインしてください。',
   'exchange-failed': 'サインインのコードを交換できませんでした。もう一度サインインしてください。',
   unavailable: `${g} につながりませんでした。しばらくしてから、もう一度サインインしてください。`,
-  offline: 'つながっていません。つながると、自動でサインインし直します。',
+  // 「つながっていません」は、画面の上の帯で示す（OfflineBanner）。ここでは繰り返さない
+  offline: 'つながると、自動でサインインし直します。',
   'not-member': g === 'GitHub'
     ? 'このアカウントでは、Logiforge を使えません。GitHub で、Logiforge の GitHub App と、登録したリポジトリへの権限を確かめてください。'
     : 'Logiforge の organization に入っていません。organization の owner に、organization の team に入れてもらってください。',
