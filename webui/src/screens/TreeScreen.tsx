@@ -245,11 +245,11 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
     setExpanded((e) => { const s = new Set(e); let p = ix.byId.get(id); while (p) { const par = p.node_type === 'hypothesis' ? p.parent_story_id : p.parent_hypothesis_id; if (!par) break; s.add(par); p = ix.byId.get(par); } return s; });
     setSelected(id);
   }, [ix]);
-  // inactive を隠しているときに、隠れるノードを選んだ・表示の根にした（URL の node、apply request の変わるノード、詳細の子の一覧）なら、示すに切り替える（保存もする）
+  // inactive を隠しているときに、隠れるノードを選んだ・表示の根にした（URL の node、apply request の変わるノード、詳細の子の一覧）なら、その場だけ示す（保存しない）
   useEffect(() => {
     if (!ix || showInactiveRef.current) return;
-    if ((selected && hiddenWhenInactiveHidden(ix, selected)) || (root && hiddenWhenInactiveHidden(ix, root))) setShowInactive(true);
-  }, [ix, selected, root, setShowInactive]);
+    if ((selected && hiddenWhenInactiveHidden(ix, selected)) || (root && hiddenWhenInactiveHidden(ix, root))) setShowInactiveRaw(true);
+  }, [ix, selected, root]);
   // 「inactive」を外したら、隠れるノードを選んでいたとき・表示の根にしていたときは、見えている祖先に移す
   const changeShowInactive = (v: boolean) => {
     if (!v && ix) {

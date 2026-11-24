@@ -7,7 +7,7 @@ import { hiddenWhenInactiveHidden, parentOf } from './model';
 export { hiddenWhenInactiveHidden };
 
 /** 置いたものがないときに示すか。初めて開いたときの見え方は、ここだけで決める */
-export const SHOW_INACTIVE_DEFAULT = true;
+export const SHOW_INACTIVE_DEFAULT = false;
 const KEY = 'lf-show-inactive';
 
 export function loadShowInactive(): boolean {
