@@ -394,6 +394,8 @@ try {
   const flaky = await browser.newPage();
   logErrors(flaky);
   await flaky.setViewport({ width: 1280, height: 800 });
+  // 前の段で読んだ 3D の部分は、Service Worker の控えにある。読み込みの失敗を作るため、Service Worker を通さない
+  await flaky.setBypassServiceWorker(true);
   await flaky.setRequestInterception(true);
   let failedOnce = false;
   flaky.on('request', (r) => {
