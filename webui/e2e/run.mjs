@@ -670,7 +670,9 @@ try {
     && document.querySelector('.signin-msg')?.textContent.includes('自動でサインインし直します'), { timeout: 20000 });
   await pwa.screenshot({ path: OUT + '/pwa-offline.png' });
   await pwa.setOfflineMode(false);
-  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  // つながった直後に通らなければ、WebUI は 1+2+4+8 秒までやり直す
+  await pwa.waitForSelector('.repo-list', { timeout: 30000 })
+    .catch(async (e) => { await pwa.screenshot({ path: OUT + '/pwa-online-failure.png' }).catch(() => {}); throw e; });
   if (await pwa.$('.offline-banner')) throw new Error('つながったのに「つながっていません」が残る');
   if (pw.states.size !== 0) throw new Error('つながったあと、authorize に ' + pw.states.size + ' 回行った（0 回のはず）');
   await pwa.close();

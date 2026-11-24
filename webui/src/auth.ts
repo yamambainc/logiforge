@@ -106,7 +106,22 @@ export async function start(): Promise<void> {
   else if (r === 'offline') {
     // ホーム画面から、つながらないところで開いたとき。つながったら、もう一度始める（design/webui/pwa.md）
     set({ kind: 'signed-out', reason: 'offline' });
-    onceOnline(() => { if (state.kind === 'signed-out' && state.reason === 'offline') { set({ kind: 'starting' }); void start(); } });
+    onceOnline(() => { void resumeOnline(0); });
+  }
+}
+
+// つながった直後は、まだ要求が通らないことがある（Wi-Fi のつなぎ直しなど）。そのときは、少しずつ間をあけてやり直す
+export const ONLINE_RETRY_MS = [1_000, 2_000, 4_000, 8_000];
+
+async function resumeOnline(n: number): Promise<void> {
+  if (state.kind !== 'signed-out' || state.reason !== 'offline') return;
+  verified = false;
+  const r = await renew();
+  if (r === 'none') { set({ kind: 'starting' }); await signIn(); return; }
+  if (r === 'offline') { onceOnline(() => { void resumeOnline(0); }); return; }
+  if (r === 'unavailable') {
+    if (n < ONLINE_RETRY_MS.length) { setTimeout(() => { void resumeOnline(n + 1); }, ONLINE_RETRY_MS[n]); return; }
+    set({ kind: 'signed-out', reason: 'unavailable' });
   }
 }
 
