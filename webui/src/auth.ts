@@ -5,6 +5,7 @@
 //   セッションがないか切れていたときだけ、authorize に行く。
 
 import { clearAllDrafts } from './files';
+import { isOffline, onceOnline } from './online';
 
 export interface OAuthConfig {
   authorize_url: string;
@@ -19,7 +20,7 @@ export type AuthState =
   | { kind: 'signed-in'; token: string; expiresAt: number }
   | { kind: 'signed-out'; reason: SignedOutReason };
 
-export type SignedOutReason = 'signed-out' | 'denied' | 'state-mismatch' | 'exchange-failed' | 'unavailable' | 'not-member' | 'not-configured';
+export type SignedOutReason = 'signed-out' | 'denied' | 'state-mismatch' | 'exchange-failed' | 'unavailable' | 'offline' | 'not-member' | 'not-configured';
 
 const PENDING = 'lf-oauth:'; // + state → { verifier, returnTo }
 const SIGNED_OUT = 'lf-signed-out';
@@ -102,17 +103,22 @@ export async function start(): Promise<void> {
   const r = await renew();
   if (r === 'none') await signIn();
   else if (r === 'unavailable') set({ kind: 'signed-out', reason: 'unavailable' });
+  else if (r === 'offline') {
+    // ホーム画面から、つながらないところで開いたとき。つながったら、もう一度始める（design/webui/pwa.md）
+    set({ kind: 'signed-out', reason: 'offline' });
+    onceOnline(() => { if (state.kind === 'signed-out' && state.reason === 'offline') { set({ kind: 'starting' }); void start(); } });
+  }
 }
 
 const postJSON = (path: string) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' });
 
 /**
  * セッション（HttpOnly の cookie）から、アクセストークンをもらう（design/webui/session.md）。
- * none：セッションがないか切れた（authorize に行く）。unavailable：BE が答えない。
+ * none：セッションがないか切れた（authorize に行く）。unavailable：BE が答えない。offline：端末がつながっていない。
  */
-async function renew(): Promise<'ok' | 'none' | 'unavailable'> {
+async function renew(): Promise<'ok' | 'none' | 'unavailable' | 'offline'> {
   let r: Response;
-  try { r = await postJSON('/v1/oauth/session'); } catch { return 'unavailable'; }
+  try { r = await postJSON('/v1/oauth/session'); } catch { return isOffline() ? 'offline' : 'unavailable'; }
   // 403 は、設定の WebUI の URL と違うホストで開いたとき（Origin が合わない）。authorize に行けば、設定のホストに戻る
   if (r.status === 401 || r.status === 403) return 'none';
   if (!r.ok) return 'unavailable';
@@ -158,7 +164,7 @@ async function renewOrRetry() {
   const r = await renew();
   if (r === 'none') { await goAuthorize(); return; }
   // BE が答えなければ、しばらくして、もう 1 度
-  if (r === 'unavailable') { clearTimeout(expiryTimer); expiryTimer = setTimeout(() => { void renewOrRetry(); }, RENEW_RETRY_MS); }
+  if (r === 'unavailable' || r === 'offline') { clearTimeout(expiryTimer); expiryTimer = setTimeout(() => { void renewOrRetry(); }, RENEW_RETRY_MS); }
 }
 
 async function goAuthorize() {

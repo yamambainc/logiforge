@@ -101,7 +101,7 @@ func webUI(root fs.FS, setupFormAction string) http.Handler {
 		}
 		if name != "" && name != "index.html" && !strings.HasPrefix(path.Base(name), ".") {
 			if data, err := fs.ReadFile(root, name); err == nil {
-				if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+				if ct := contentType(name); ct != "" {
 					h.Set("Content-Type", ct)
 				}
 				if strings.HasPrefix(name, "assets/") {
@@ -133,11 +133,20 @@ func webUI(root fs.FS, setupFormAction string) http.Handler {
 	})
 }
 
+// contentType は、WebUI のファイルの Content-Type である。
+// manifest（.webmanifest）は、Go の mime が知らない。sw.js と manifest は、ほかの静的ファイルと同じく no-cache で返す（design/webui/pwa.md）。
+func contentType(name string) string {
+	if path.Ext(name) == ".webmanifest" {
+		return "application/manifest+json"
+	}
+	return mime.TypeByExtension(path.Ext(name))
+}
+
 // gzip で返す Content-Type。artifact と添付（octet-stream）は、もとのまま返す。
 func compressible(ct string) bool {
 	mt, _, _ := mime.ParseMediaType(ct)
 	switch {
-	case mt == "application/json", mt == "application/problem+json", mt == "text/markdown",
+	case mt == "application/json", mt == "application/problem+json", mt == "application/manifest+json", mt == "text/markdown",
 		mt == "text/html", mt == "text/css", mt == "text/javascript", mt == "application/javascript", mt == "image/svg+xml":
 		return true
 	}

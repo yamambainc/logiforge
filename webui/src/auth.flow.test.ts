@@ -63,6 +63,32 @@ describe('起動', () => {
     expect(assigned).toHaveLength(0);
   });
 
+  it('端末がつながっていなければ、つながっていないと示し、つながったら、もう一度始める', async () => {
+    env('/r/q/tree');
+    const on: (() => void)[] = [];
+    vi.stubGlobal('window', { addEventListener: (t: string, f: () => void) => { if (t === 'online') on.push(f); } });
+    const nav = { onLine: false };
+    vi.stubGlobal('navigator', nav);
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'offline' });
+    expect(assigned).toHaveLength(0);
+    nav.onLine = true;
+    session = tokenResp('at-on');
+    on.forEach((f) => f());
+    await vi.waitFor(() => expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-on' }));
+  });
+
+  it('つながっているのに BE が答えなければ（fetch が失敗）、unavailable', async () => {
+    env('/');
+    vi.stubGlobal('navigator', { onLine: true });
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'unavailable' });
+  });
+
   it('サインアウトしたタブでは、セッションを見ずにサインインの画面', async () => {
     env('/');
     sessionStorage.setItem('lf-signed-out', '1');

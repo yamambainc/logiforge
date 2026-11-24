@@ -629,6 +629,50 @@ try {
   if (overflow) throw new Error('幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/signin-mobile.png' });
 
+  step('PWA：manifest とアイコンがあり、Service Worker が外枠だけを控える。API とサインインの中継は Service Worker を通らない');
+  const pwa = await browser.newPage();
+  await pwa.setViewport({ width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  logErrors(pwa);
+  await pwa.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  const man = await pwa.evaluate(async () => {
+    const href = document.querySelector('link[rel="manifest"]')?.getAttribute('href');
+    const m = await (await fetch(href)).json();
+    const icons = await Promise.all(m.icons.map(async (i) => (await fetch(i.src)).status));
+    const apple = (await fetch(document.querySelector('link[rel="apple-touch-icon"]').getAttribute('href'))).status;
+    return { display: m.display, start: m.start_url, scope: m.scope, icons, apple };
+  });
+  if (man.display !== 'standalone' || man.start !== '/' || man.scope !== '/' || man.icons.some((s) => s !== 200) || man.apple !== 200) throw new Error('manifest：' + JSON.stringify(man));
+  const shell = await pwa.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    const keys = await caches.keys();
+    const c = await caches.open(keys.find((k) => k.startsWith('logiforge-shell-')));
+    const urls = (await c.keys()).map((r) => new URL(r.url).pathname);
+    return { keys, urls };
+  });
+  if (shell.keys.length !== 1 || !shell.urls.includes('/index.html') || !shell.urls.some((u) => u.startsWith('/assets/main-'))) throw new Error('外枠の控え：' + JSON.stringify(shell));
+  // 控えの中に、API の応答がない（3D と Mermaid などを読んだあとでも、/assets/ のほかは外枠だけ）
+  if (shell.urls.some((u) => u.startsWith('/v1/') || u.startsWith('/oauth/'))) throw new Error('API かサインインの応答を控えた：' + shell.urls.join(','));
+  const viaSW = [];
+  pwa.on('response', (r) => { if (new URL(r.url()).pathname.startsWith('/v1/') && r.fromServiceWorker()) viaSW.push(r.url()); });
+  await pwa.reload({ waitUntil: 'networkidle0' });
+  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  if (!(await pwa.evaluate(() => !!navigator.serviceWorker.controller))) throw new Error('リロードしても、Service Worker が画面を受け持たない');
+  if (viaSW.length) throw new Error('API が Service Worker を通った：' + viaSW.join(','));
+
+  step('PWA：つながっていないときに開くと、控えの外枠で「つながっていません」と示す。つながると、自動でサインインし直す（authorize に行かない）');
+  const pw = watch(pwa);
+  await pwa.setOfflineMode(true);
+  await pwa.reload({ waitUntil: 'domcontentloaded' });
+  await pwa.waitForFunction(() => document.querySelector('.offline-banner')?.textContent.includes('つながっていません')
+    && document.querySelector('.signin-msg')?.textContent.includes('つながっていません'), { timeout: 20000 });
+  await pwa.screenshot({ path: OUT + '/pwa-offline.png' });
+  await pwa.setOfflineMode(false);
+  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  if (await pwa.$('.offline-banner')) throw new Error('つながったのに「つながっていません」が残る');
+  if (pw.states.size !== 0) throw new Error('つながったあと、authorize に ' + pw.states.size + ' 回行った（0 回のはず）');
+  await pwa.close();
+
   step('モバイルのビュワー：アウトラインで仮説を押すと、詳細がボトムシートで出る');
   await mobile.goto(BASE + `/r/${REPO}/tree?node=${NODE_A}`, { waitUntil: 'networkidle0' });
   await mobile.waitForSelector('.row.sel', { timeout: 20000 });

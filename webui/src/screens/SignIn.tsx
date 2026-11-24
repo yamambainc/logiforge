@@ -6,6 +6,7 @@ const messages = (g: string): Record<SignedOutReason, string> => ({
   'state-mismatch': 'サインインの確かめに失敗しました。もう一度サインインしてください。',
   'exchange-failed': 'サインインのコードを交換できませんでした。もう一度サインインしてください。',
   unavailable: `${g} につながりませんでした。しばらくしてから、もう一度サインインしてください。`,
+  offline: 'つながっていません。つながると、自動でサインインし直します。',
   'not-member': g === 'GitHub'
     ? 'このアカウントでは、Logiforge を使えません。GitHub で、Logiforge の GitHub App と、登録したリポジトリへの権限を確かめてください。'
     : 'Logiforge の organization に入っていません。organization の owner に、organization の team に入れてもらってください。',
@@ -21,7 +22,7 @@ export function SignIn({ reason }: { reason: SignedOutReason }) {
       <div className="signin-box">
         <div className="brand big">Logiforge</div>
         <p className="signin-msg">{messages(g)[reason]}</p>
-        {reason !== 'not-configured' && (
+        {reason !== 'not-configured' && reason !== 'offline' && (
           <button className="btn primary" onClick={() => void signIn(retryTarget())}>{g} でサインイン</button>
         )}
         {reason === 'signed-out' && forgejo && (
