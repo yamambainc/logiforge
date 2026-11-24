@@ -253,7 +253,7 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   // 「inactive」を外したら、隠れるノードを選んでいたとき・表示の根にしていたときは、見えている祖先に移す
   const changeShowInactive = (v: boolean) => {
     if (!v && ix) {
-      if (root) { const r = nearestShown(ix, root); if (r !== root) setRoot(r ?? ix.rootId); }
+      if (root) { const r = nearestShown(ix, root) ?? ix.rootId; if (r !== root) { setRoot(r); setExpanded((e) => new Set(e).add(r)); } }
       if (selected) { const s = nearestShown(ix, selected); if (s !== selected) setSelected(s); }
     }
     setShowInactive(v);

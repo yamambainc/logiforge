@@ -2,7 +2,9 @@
 // - 利用者が切り替えたら localStorage に置き、次に開いたときも同じにする。repository と、/tree・apply request の木とで共通。
 // - 置いたものがないときは SHOW_INACTIVE_DEFAULT にする。
 import type { Index } from './model';
-import { parentOf } from './model';
+import { hiddenWhenInactiveHidden, parentOf } from './model';
+
+export { hiddenWhenInactiveHidden };
 
 /** 置いたものがないときに示すか。初めて開いたときの見え方は、ここだけで決める */
 export const SHOW_INACTIVE_DEFAULT = true;
@@ -19,16 +21,6 @@ export function loadShowInactive(): boolean {
 
 export function saveShowInactive(v: boolean) {
   try { localStorage.setItem(KEY, v ? '1' : '0'); } catch { /* 置けなくても、いまの画面では切り替わる */ }
-}
-
-/** inactive を隠すと見えなくなるか（自分か祖先が inactive）。visibleRows は inactive のところで下をたどらない */
-export function hiddenWhenInactiveHidden(ix: Index, id: string): boolean {
-  for (let n = ix.byId.get(id); n; ) {
-    if (n.inactive) return true;
-    const p = parentOf(n);
-    n = p === null ? undefined : ix.byId.get(p);
-  }
-  return false;
 }
 
 /** inactive を隠しても見えている、いちばん近い祖先（自分が見えていれば自分）。根まで見えなければ null */

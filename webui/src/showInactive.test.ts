@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildIndex, type Node } from './model';
+import { buildIndex, filterNodes, type Node } from './model';
 import { hiddenWhenInactiveHidden, loadShowInactive, nearestShown, saveShowInactive, SHOW_INACTIVE_DEFAULT } from './showInactive';
 
 class MemStorage {
@@ -47,5 +47,12 @@ describe('隠すと見えなくなるノード', () => {
     expect(nearestShown(ix, 'h3')).toBe('h0');
     expect(nearestShown(ix, 's2')).toBe('h0');
     expect(nearestShown(ix, 'h1')).toBe('h1');
+  });
+});
+
+describe('隠しているときの検索', () => {
+  it('inactive の下にも一致しない', () => {
+    expect(filterNodes(ix, 'h3', new Set(), false).matches).toEqual([]);
+    expect(filterNodes(ix, 'h3', new Set(), true).matches).toEqual(['h3']);
   });
 });
