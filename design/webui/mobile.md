@@ -1,7 +1,7 @@
 # モバイルの表示
 
 WebUI を、スマートフォンの幅で使えるように実装するときに読む。
-画面ごとの中身は [画面と API](screens.md)、ビュワーの決まりは [スナップショットツリーのビュワー](snapshot-tree-viewer.md) と [図](graph.md) に書く。
+ホーム画面に追加して開くことは [PWA](pwa.md)、画面ごとの中身は [画面と API](screens.md)、ビュワーの決まりは [スナップショットツリーのビュワー](snapshot-tree-viewer.md) と [図](graph.md) に書く。
 
 ## レイアウトの切り替え
 

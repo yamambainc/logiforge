@@ -19,7 +19,7 @@ WebUI を作り始めるときと、イメージのビルドを変えるとき�
 
 ## ビルド
 
-- ビルドには Vite を使う。出力は、`index.html` と、ハッシュ付きの JS と CSS だけである。
+- ビルドには Vite を使う。出力は、`index.html` と、ハッシュ付きの JS と CSS と、PWA のファイル（`sw.js`、`manifest.webmanifest`、アイコン）である（[PWA](pwa.md)）。
 - ソースは、リポジトリの `webui/` に置く。Node.js の LTS 版でビルドする。
 - 型の検査（`tsc --noEmit`）とビルドを、CI で動かす。
 
@@ -34,7 +34,9 @@ WebUI を作り始めるときと、イメージのビルドを変えるとき�
 - キャッシュの決まりは、次のとおり。
   - ハッシュ付きの JS と CSS は、`Cache-Control: public, max-age=31536000, immutable` を返す。
   - `index.html` は、`Cache-Control: no-cache` を返す。
-  - なぜ：新しいイメージに替えたとき、利用者が古い画面を使い続けないようにするため。
+  - ハッシュの付かないほかのファイル（`sw.js`、`manifest.webmanifest`、アイコン、`mermaid.html`）も、`Cache-Control: no-cache` を返す。
+  - なぜ：新しいイメージに替えたとき、利用者が古い画面を使い続けないようにするため。Service Worker の控えとの関係は、[PWA の更新](pwa.md#更新) に書く。
+  - `ETag` は付けない。`no-cache` のファイルは、毎回すべてを返す。なぜ：どれも小さく、開くときに 1 回読むだけだから。
 - API の JSON の応答は、要求が `Accept-Encoding: gzip` を持てば、gzip で返す。
   - なぜ：ビュワーは、`listNodes` でスナップショットツリーのすべてのノードを読むから（[ノードの読み方](snapshot-tree-viewer.md#ノードの読み方)）。
   - ノード 4,000 個の応答は約 1.5 MB で、gzip で約 0.1 MB になる。

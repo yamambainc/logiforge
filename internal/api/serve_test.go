@@ -143,13 +143,24 @@ func TestOAuthTokenRejects(t *testing.T) {
 
 func TestWebUIServing(t *testing.T) {
 	ui := fstest.MapFS{
-		"index.html":      {Data: []byte("<!doctype html><title>x</title>")},
-		"assets/app-1.js": {Data: []byte(strings.Repeat("console.log(1);", 100))},
-		"favicon.svg":     {Data: []byte("<svg/>")},
-		"mermaid.html":    {Data: []byte("<!doctype html><title>m</title>")},
-		".gitkeep":        {Data: nil},
+		"index.html":           {Data: []byte("<!doctype html><title>x</title>")},
+		"assets/app-1.js":      {Data: []byte(strings.Repeat("console.log(1);", 100))},
+		"favicon.svg":          {Data: []byte("<svg/>")},
+		"mermaid.html":         {Data: []byte("<!doctype html><title>m</title>")},
+		".gitkeep":             {Data: nil},
+		"sw.js":                {Data: []byte("self.addEventListener('fetch', () => {});")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Logiforge"}`)},
 	}
 	h := serverWith(nil, ui)
+	// Service Worker と manifest は、ハッシュが付かないので no-cache。スコープを / にするため、根に置く（design/webui/pwa.md）
+	rec0 := do(h, "GET", "/sw.js", "", "")
+	if rec0.Code != 200 || rec0.Header().Get("Cache-Control") != "no-cache" || !strings.HasPrefix(rec0.Header().Get("Content-Type"), "text/javascript") || rec0.Header().Get("Content-Security-Policy") != WebUICSP {
+		t.Fatalf("sw.js: %d %v", rec0.Code, rec0.Header())
+	}
+	rec0 = do(h, "GET", "/manifest.webmanifest", "", "")
+	if rec0.Code != 200 || rec0.Header().Get("Cache-Control") != "no-cache" || rec0.Header().Get("Content-Type") != "application/manifest+json" {
+		t.Fatalf("manifest: %d %v", rec0.Code, rec0.Header())
+	}
 	// 画面のパスは index.html
 	rec := do(h, "GET", "/r/q/tree?node=h-1", "", "")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<title>x</title>") || rec.Header().Get("Cache-Control") != "no-cache" {
