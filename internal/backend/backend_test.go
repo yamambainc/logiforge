@@ -523,6 +523,19 @@ func TestReads(t *testing.T) {
 	if len(ar.Operations) != 1 || ar.Operations[0].Kind != "story.create" || ar.Operations[0].ParentHypothesisID != H2 || ar.Operations[0].Hypotheses[0].ID != H3 {
 		t.Fatalf("ops: %+v", ar.Operations)
 	}
+	// 設定の webui_url がなければ、webui_url は null。あれば、WebUI の apply request の画面の URL（末尾の / は除く）。
+	if ar.WebUIURL != nil || ars.Items[0].WebUIURL != nil {
+		t.Fatalf("webui_url なしの設定で: %v %v", ar.WebUIURL, ars.Items[0].WebUIURL)
+	}
+	b.WebUIURL = "https://w.example:2029/"
+	want := "https://w.example:2029/r/q/apply-requests?id=apr_2"
+	if got, err := b.GetApplyRequest(ctx, c, "q", "apr_2"); err != nil || got.WebUIURL == nil || *got.WebUIURL != want {
+		t.Fatalf("webui_url: %v %v", got.WebUIURL, err)
+	}
+	if got, _ := b.ListApplyRequests(ctx, c, "q", "open", "", 0); len(got.Items) != 1 || got.Items[0].WebUIURL == nil || *got.Items[0].WebUIURL != want {
+		t.Fatalf("一覧の webui_url: %+v", got)
+	}
+	b.WebUIURL = ""
 
 	mat, err := b.GetReviewMaterial(ctx, c, "q", "apr_2")
 	if err != nil || len(mat.Targets) != 1 || mat.Targets[0].(*Hypothesis).ID != H2 || len(mat.Ancestors) != 1 || mat.Ancestors[0].ID != H0 {
@@ -752,5 +765,23 @@ func TestAsErrorGitForge(t *testing.T) {
 	}
 	if AsError(errors.New("github: 422")) != nil {
 		t.Error("ポートの誤りで包んでいない誤りは、内部の誤り")
+	}
+}
+
+func TestARWebUIURL(t *testing.T) {
+	if u := (&Backend{}).arWebUIURL("q", "16"); u != nil {
+		t.Fatalf("設定なし: %v", *u)
+	}
+	for base, want := range map[string]string{
+		"https://w.example":         "https://w.example/r/my-repo/apply-requests?id=16",
+		"https://w.example/":        "https://w.example/r/my-repo/apply-requests?id=16",
+		"https://w.example/base///": "https://w.example/base/r/my-repo/apply-requests?id=16",
+	} {
+		if u := (&Backend{WebUIURL: base}).arWebUIURL("my-repo", "16"); u == nil || *u != want {
+			t.Fatalf("%s: %v", base, u)
+		}
+	}
+	if u := (&Backend{WebUIURL: "https://w.example"}).arWebUIURL("q", "a&b c"); *u != "https://w.example/r/q/apply-requests?id=a%26b+c" {
+		t.Fatalf("エスケープ: %s", *u)
 	}
 }

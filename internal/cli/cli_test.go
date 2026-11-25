@@ -156,11 +156,11 @@ func TestApplyRequestCommands(t *testing.T) {
 		case r.Method == "POST" && r.URL.Path == "/v1/repositories/q/apply-requests/apr_2/merge":
 			return 409, "application/problem+json", `{"type":"about:blank","title":"Conflict","status":409,"code":"stale_target","detail":"ブランチを今の main に合わせる"}`
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/merge"):
-			return 200, "application/json", `{"id":"apr_1","state":"merged","branch":"work","head_commit":"` + head + `"}`
+			return 200, "application/json", `{"id":"apr_1","state":"merged","branch":"work","head_commit":"` + head + `","webui_url":null}`
 		case r.URL.Path == "/v1/repositories/q/apply-requests/apr_9":
 			return 404, "application/problem+json", `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found","detail":"ない"}`
 		}
-		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + head + `"}`
+		return 201, "application/json", `{"id":"apr_1","state":"open","branch":"work","head_commit":"` + head + `","webui_url":"https://w.example/r/q/apply-requests?id=apr_1"}`
 	})
 	e := env{"LOGIFORGE_HOST": host, "LOGIFORGE_TOKEN": "tok"}
 	posts := func() []*http.Request {
@@ -185,10 +185,15 @@ func TestApplyRequestCommands(t *testing.T) {
 		req.Header.Get("Authorization") != "Bearer tok" || !strings.Contains(st.body[len(st.body)-1], `"commit":"`+head+`"`) {
 		t.Fatalf("ar create: %d %s %v", code, out, req.Header)
 	}
+	if created["webui_url"] != "https://w.example/r/q/apply-requests?id=apr_1" {
+		t.Fatalf("ar create --json の webui_url: %s", out)
+	}
 	// 呼び出しの中の送り直し（503）は、同じ要求を送る。送り直しは、バックエンドがブランチで見分ける。
 	fail503 = true
-	if code, _, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != 0 {
-		t.Fatalf("送り直し：%s", errs)
+	// 識別子と一緒に、WebUI で開く URL を出す。
+	if code, out, errs := run(t, dir, e, "", "ar", "create", "--branch", "work"); code != 0 ||
+		!strings.Contains(out, "apr_1（open）") || !strings.Contains(out, "WebUI：https://w.example/r/q/apply-requests?id=apr_1\n") {
+		t.Fatalf("送り直し：%s %s", out, errs)
 	}
 	if p := posts(); len(p) != 3 {
 		t.Fatalf("送り直しの数：%d", len(p))
@@ -206,7 +211,8 @@ func TestApplyRequestCommands(t *testing.T) {
 	}
 
 	// merge は、approve とは別の操作である。
-	if code, out, errs := run(t, dir, e, "", "ar", "merge", "apr_1"); code != 0 || !strings.Contains(out, "merged") ||
+	// webui_url が null（設定なし）なら、その行を出さない。
+	if code, out, errs := run(t, dir, e, "", "ar", "merge", "apr_1"); code != 0 || !strings.Contains(out, "merged") || strings.Contains(out, "WebUI") ||
 		st.reqs[len(st.reqs)-1].URL.Path != "/v1/repositories/q/apply-requests/apr_1/merge" {
 		t.Fatalf("ar merge: %d %s %s", code, out, errs)
 	}

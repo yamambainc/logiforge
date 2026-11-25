@@ -379,6 +379,10 @@ func (a *App) arCreate(ctx context.Context, args []string) error {
 
 func (a *App) printAR(v map[string]any) {
 	fmt.Fprintf(a.Stdout, "%s（%s）ブランチ %s、先頭のコミット %s\n", str(v, "id"), str(v, "state"), str(v, "branch"), str(v, "head_commit"))
+	// WebUI の URL は、サーバの設定に webui_url がなければ null で、そのときは出さない。
+	if u := str(v, "webui_url"); u != "" {
+		fmt.Fprintf(a.Stdout, "WebUI：%s\n", u)
+	}
 	if hs, _ := v["head_commits"].([]any); len(hs) > 0 {
 		fmt.Fprintln(a.Stdout, "push された先頭のコミット（古い順）：")
 		for _, h := range hs {

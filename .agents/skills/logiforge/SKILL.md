@@ -133,6 +133,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 5. `git commit -m <メッセージ>` でコミットする。
 6. `git push -u origin <ブランチ>`
 7. `logiforge ar create --branch <ブランチ> [--description <説明>]`
+   - 出力の 1 行目は識別子（例：`16（open）ブランチ …`）、次の行は WebUI で開く URL（例：`WebUI：https://<WebUI のホスト>/r/<repository>/apply-requests?id=16`）。人に知らせるときは、この URL を渡す。サーバに WebUI の URL の設定がなければ、URL の行は出ない。`--json` なら `webui_url`。
 
 - 各操作の決まりは、[apply request](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/README.md#操作) からたどる。
 - 審査で何を見られるかは、[論理レビューの審査観点](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review-criteria.md) に書いてある。出す前に、自分で確かめる。

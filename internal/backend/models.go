@@ -238,6 +238,8 @@ type ApplyRequest struct {
 	ReviewDecision *string  `json:"review_decision"`
 	Warnings       []string `json:"warnings"`
 	MergedCommit   *string  `json:"merged_commit"`
+	// WebUIURL は、この apply request を WebUI で開く URL である。設定の webui_url がなければ null。
+	WebUIURL *string `json:"webui_url"`
 }
 
 // ReviewMaterial は、レビューの材料である。
