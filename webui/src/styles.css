@@ -331,6 +331,8 @@ mark { background: #ffe58a; color: inherit; border-radius: 2px; padding: 0 1px; 
 .outside ul { margin: 6px 0 0; padding-left: 20px; }
 .banner { flex-wrap: wrap; row-gap: 6px; }
 .banner .pill, .banner .link, .banner-title, .warn { white-space: nowrap; }
+/* 反映したあとの姿の帯：説明の 1 行目は 1 行で省略する（全文は title と、apply request の見出し） */
+.banner-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .banner.unchecked .warn { margin-right: 4px; }
 .seg.mini { border-radius: 6px; }
 .seg.mini > * { padding: 2px 10px; font-size: 12px; }
@@ -620,7 +622,15 @@ a.btn { display: inline-block; text-decoration: none; }
 .ar-bar .spacer { flex: 1; }
 .ar-head .back { align-self: flex-start; }
 .ar-pane > .item-pane { flex: 1; }
-@media (max-width: 767px) { .ar-head { padding: 8px 12px; } }
+/* スマホの幅：右側全体を 1 枚のページとしてスクロールする。見出し（長いタイトル）は上へ流れ、木のビュワーはペイン 1 枚分の高さを持つ。
+   木は仮想スクロールなので、.tree-scroll のスクロールは残す（スクロールしきると外側へ続く） */
+@media (max-width: 767px) {
+  .ar-head { padding: 8px 12px; }
+  .ar-pane { overflow-y: auto; }
+  .ar-pane > .viewer { flex: none; height: 100%; }
+  .ar-pane > .item-pane { flex: none; overflow: visible; }
+  .banner-desc { flex-basis: 100%; }
+}
 .ar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
 
 /* つながっていないときの知らせ（design/webui/pwa.md）。画面の骨組みを動かさないよう、上に重ねる */
