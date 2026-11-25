@@ -222,7 +222,7 @@ func (l *liveServer) build(ctx context.Context) (http.Handler, readSource, error
 	if err != nil {
 		return nil, nil, err
 	}
-	b := &backend.Backend{Forge: fs.forge, Auth: fs.auth, Snap: &snapstore.Adapter{Store: l.store}, Git: l.git}
+	b := &backend.Backend{Forge: fs.forge, Auth: fs.auth, Snap: &snapstore.Adapter{Store: l.store}, Git: l.git, WebUIURL: c.WebUIURL}
 	if c.Intervals.WaitTimeout != "" {
 		b.WaitTimeout = settings.Duration(c.Intervals.WaitTimeout, b.WaitTimeout)
 	}

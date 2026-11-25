@@ -38,7 +38,7 @@
 | worker のユーザーとトークン（[Forgejo アダプタ](../adapters/forgejo.md)） | Forgejo | 両方 | トークン |
 | GitHub リポジトリの repository の一覧（名前と `owner/name`）（[repository の登録](../adapters/README.md#repository-の登録)） | GitHub | 両方 | |
 | ディレクトリの repository の一覧（名前、`owner/name`、パス） | 両方 | 両方 | |
-| WebUI の URL（サインインの `redirect_uri` に使う） | 両方 | バックエンド | |
+| WebUI の URL（サインインの `redirect_uri` と、apply request の `webui_url` に使う） | 両方 | バックエンド | |
 | 見回りの間隔、repository の一覧を読み直す間隔、git の操作の時間の上限（[見回り](../backend/worker/patrol.md)） | 両方 | worker | |
 | 書いたものが読む側に出るまで待つ上限（[書いた直後の読み](../api/writes.md)） | 両方 | バックエンド | |
 
