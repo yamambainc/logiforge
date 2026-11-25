@@ -623,12 +623,15 @@ a.btn { display: inline-block; text-decoration: none; }
 .ar-head .back { align-self: flex-start; }
 .ar-pane > .item-pane { flex: 1; }
 /* スマホの幅：右側全体を 1 枚のページとしてスクロールする。見出し（長いタイトル）は上へ流れ、木のビュワーはペイン 1 枚分の高さを持つ。
-   木は仮想スクロールなので、.tree-scroll のスクロールは残す（スクロールしきると外側へ続く） */
+   木は仮想スクロールなので .tree-scroll のスクロールは残すが、右側を下まで送る（.docked）までは止める。
+   止めないと、木をなぞったとき、見出しが残ったまま、狭い窓の中で木だけが動くから */
 @media (max-width: 767px) {
   .ar-head { padding: 8px 12px; }
   .ar-pane { overflow-y: auto; }
   .ar-pane > .viewer { flex: none; height: 100%; }
+  .ar-pane:not(.docked) .tree-scroll { overflow-y: hidden; }
   .ar-pane > .item-pane { flex: none; overflow: visible; }
+  .ar-pane > .item-pane.empty { flex: 1; }
   .banner-desc { flex-basis: 100%; }
 }
 .ar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }

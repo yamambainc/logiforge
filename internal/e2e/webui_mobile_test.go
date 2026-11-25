@@ -29,10 +29,10 @@ func TestWebUIMobileApplyRequest(t *testing.T) {
 	agent := w.user("agent", "s-agent-m")
 	agent.loginAndClone("q")
 
-	// 画面に収まらないだけの行（仮説 24 個）を足す apply request。説明の 1 行目は長い
+	// 画面に収まらないだけの行（仮説 60 個）を足す apply request。説明の 1 行目は長い
 	agent.branch("m1")
 	args := []string{"story", "new", "--parent", repo.Root, "--title", "スマホで見る道筋", "--summary", "s"}
-	for i := 1; i <= 24; i++ {
+	for i := 1; i <= 60; i++ {
 		args = append(args, "--hypothesis", fmt.Sprintf("仮説 %d：スマホの幅でも、この行まで読める", i))
 	}
 	agent.must(nil, args...)

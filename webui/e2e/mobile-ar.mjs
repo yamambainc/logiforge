@@ -1,5 +1,5 @@
 // スマホの幅で apply request の画面を開く（internal/e2e/webui_mobile_test.go から動かす）。
-// タイトルが長くても、画面をスクロールすると、反映したあとの木が見えて、最後の行まで読めるかを確かめる。
+// タイトルが長くても、木の上をなぞると見出しが流れて、反映したあとの木が画面いっぱいに見え、最後の行まで読めるかを確かめる。
 // 環境変数：BASE、LOGIN、PASSWORD、CHROME、OUT、REPO、AR
 import { mkdirSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
@@ -36,18 +36,24 @@ try {
     const last = el.scrollTop + el.clientHeight >= el.scrollHeight - 1 && t.bottom <= nav + 0.5;
     return { tree: Math.round(Math.max(0, Math.min(t.bottom, nav) - Math.max(t.top, 0))), last };
   });
-  // 画面の真ん中を、指でなぞるように（ホイールで）下へ送る。見出しが上へ流れ、木に入ったら、木の最後の行まで進む
+  // 木の行の上（開いたときに見えている木のところ）を、指でなぞるように（ホイールで）下へ送る。
+  // 内側の木が先に動くと、見出しが残ったまま狭い窓で木だけが動く。2 回で見出しが流れ、木が画面いっぱいになるはず
   let s = await look();
-  for (let i = 0; i < 60 && !s.last; i++) {
-    await page.mouse.move(195, 420);
-    await page.mouse.wheel({ deltaY: 200 });
-    await new Promise((r) => setTimeout(r, 50));
-    s = await look();
-  }
+  const y = await page.evaluate(() => {
+    const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect().top ?? innerHeight;
+    const t = document.querySelector('.ar-pane .tree-scroll').getBoundingClientRect();
+    return Math.round((Math.max(t.top, 0) + Math.min(t.bottom, nav)) / 2);
+  });
+  console.log('… 開いたとき：', JSON.stringify(s), '木をなぞる高さ', y);
+  if (s.tree < 20) throw new Error('開いたとき、木が少しも見えない');
+  const swipe = async () => { await page.mouse.move(195, y); await page.mouse.wheel({ deltaY: 300 }); await new Promise((r) => setTimeout(r, 80)); s = await look(); };
+  for (let i = 0; i < 2; i++) await swipe();
+  console.log('… 木の上を 2 回送ったあと：', JSON.stringify(s));
+  if (s.tree < 400) throw new Error(`木の上を 2 回送っても、木の見える高さが ${s.tree}px しかない（見出しが流れない）`);
+  for (let i = 0; i < 100 && !s.last; i++) await swipe();
   await page.screenshot({ path: `${OUT}/mobile-ar-scrolled.png` });
   console.log('… スクロールしたあと：', JSON.stringify(s));
   if (!s.last) throw new Error('木の最後の行までスクロールできない');
-  if (s.tree < 400) throw new Error(`スクロールしても、木の見える高さが ${s.tree}px しかない`);
   console.log('… 最後の行まで見える');
 
   // レビューのタブも、見出しといっしょに 1 枚のページとして流れ、回答の欄の最後まで送れる

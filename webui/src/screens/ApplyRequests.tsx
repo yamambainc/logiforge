@@ -132,6 +132,8 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
   // レビューのタブでノードを押したら、木のタブでそのノードを選ぶ
   const [focus, setFocus] = useState<string | null>(null);
   const [reloadNote, setReloadNote] = useState<string | null>(null);
+  // スマホの幅：右側を下まで送り、ビュワーが画面いっぱいになったか。なるまでは、木をなぞっても右側全体が流れる（styles.css の .ar-pane.docked）
+  const [docked, setDocked] = useState(false);
   const loaded = useRef(false);
   loaded.current = a !== null;
   const showNode = (n: string) => { setFocus(n); onTab('tree'); };
@@ -168,7 +170,8 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
   const outside = outsideSummary(a);
   const source: Source | null = a.state === 'open' ? { kind: 'ar', id: a.id } : a.state === 'merged' && a.merged_commit ? { kind: 'commit', commit: a.merged_commit } : null;
   return (
-    <section className="ar-pane" aria-label="apply request">
+    <section className={`ar-pane ${docked ? 'docked' : ''}`} aria-label="apply request"
+      onScroll={(e) => { const p = e.currentTarget; setDocked(p.scrollTop + p.clientHeight >= p.scrollHeight - 1); }}>
       <div className="ar-head">
         {back}
         <div className="d-head">
