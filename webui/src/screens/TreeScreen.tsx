@@ -10,6 +10,7 @@ import { GraphView } from '../GraphView';
 import { isMobileNow, useMobile } from '../hooks';
 import { ancestors, changeOrder, FILTER_KEYS, filterNodes, textOf, visibleRows, type Filter } from '../model';
 import { isBlocked, loadSource, sourceFromURL, sourceToURL, type Blocked, type Loaded, type Source } from '../source';
+import { hiddenWhenInactiveHidden, loadShowInactive, nearestShown, saveShowInactive } from '../showInactive';
 import { TreePane } from '../TreePane';
 
 const FILTERS: { key: Filter; label: string }[] = [
@@ -87,7 +88,11 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
   const [query, setQuery] = useState(params.get('q') ?? '');
   // 絞り込みも URL（f）に持つ。ダッシュボードの件数から、絞り込んだビュワーを開くため
   const [filters, setFilters] = useState<Set<Filter>>(() => new Set((params.get('f') ?? '').split(',').filter((k): k is Filter => (FILTER_KEYS as string[]).includes(k))));
-  const [showInactive, setShowInactive] = useState(true);
+  // 切り替えたら保存する（showInactive.ts）
+  const [showInactive, setShowInactiveRaw] = useState(loadShowInactive);
+  const setShowInactive = useCallback((v: boolean) => { setShowInactiveRaw(v); saveShowInactive(v); }, []);
+  const showInactiveRef = useRef(showInactive);
+  showInactiveRef.current = showInactive;
   const [view, setViewRaw] = useState<View>(viewOf(params.get('view')));
   // 「3D を作り直す」で、3D の部分を作り直す
   const [retry3d, setRetry3d] = useState(0);
@@ -240,6 +245,19 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
     setExpanded((e) => { const s = new Set(e); let p = ix.byId.get(id); while (p) { const par = p.node_type === 'hypothesis' ? p.parent_story_id : p.parent_hypothesis_id; if (!par) break; s.add(par); p = ix.byId.get(par); } return s; });
     setSelected(id);
   }, [ix]);
+  // inactive を隠しているときに、隠れるノードを選んだ・表示の根にした（URL の node、apply request の変わるノード、詳細の子の一覧）なら、その場だけ示す（保存しない）
+  useEffect(() => {
+    if (!ix || showInactiveRef.current) return;
+    if ((selected && hiddenWhenInactiveHidden(ix, selected)) || (root && hiddenWhenInactiveHidden(ix, root))) setShowInactiveRaw(true);
+  }, [ix, selected, root]);
+  // 「inactive」を外したら、隠れるノードを選んでいたとき・表示の根にしていたときは、見えている祖先に移す
+  const changeShowInactive = (v: boolean) => {
+    if (!v && ix) {
+      if (root) { const r = nearestShown(ix, root) ?? ix.rootId; if (r !== root) { setRoot(r); setExpanded((e) => new Set(e).add(r)); } }
+      if (selected) { const s = nearestShown(ix, selected); if (s !== selected) setSelected(s); }
+    }
+    setShowInactive(v);
+  };
   // 「次の変更」「前の変更」（n、p）。変わるノードを行の並びでたどる（design/webui/graph-navigation.md）
   // 絞り込み・検索・inactive を隠しているあいだは、今の行にある変化だけをたどる。「ここから見る」では、表示の根の部分木の中だけ
   const order = useMemo(() => {
@@ -399,7 +417,7 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
               <button key={f.key} className={`chip chip-${f.key} ${filters.has(f.key) ? 'on' : ''}`} onClick={() => toggleFilter(f.key)}>{f.label}</button>
             ))}
             <label className="check">
-              <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> inactive
+              <input type="checkbox" checked={showInactive} onChange={(e) => changeShowInactive(e.target.checked)} /> inactive
             </label>
           </div>
         )}

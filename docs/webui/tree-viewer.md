@@ -29,7 +29,8 @@
 - 木は、折りたためる形で表示する。
 - 最新のコミットが valid でなければ、いちばん新しい valid なコミットの木を示し、画面の上に「最新のコミットは valid でない。コミット X の木を示している」と示す（[main への直接の変更](../apply-request/README.md#main-への直接の変更)）。
 - 値は、色で示す（true、false、null）。
-- inactive な部分木は、灰色で示す。
+- inactive な部分木は、灰色で示す。はじめは隠していて、絞り込みの「inactive」で示せる。切り替えはブラウザに覚えさせ、次に開いたときも同じにする。
+- 隠しているときに inactive なノードを名指しで開くと（リンクや apply request から）、その場だけ示す。
 - 次のものを、バッジで示す。
   - 要再検討（[真偽値の伝播](../tree/propagation.md)）
   - 審査中の apply request

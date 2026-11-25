@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR, HR2 } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR, HR2, INACTIVE_STORY } = process.env;
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -172,11 +172,35 @@ try {
   if ((await rowTexts(page)).some((t) => t.includes('成果物までの時間が半分'))) throw new Error('未決で絞り込んでも、真の仮説が出る');
   await chip('未決');
 
-  step('inactive のストーリーは、印つきで出る。隠すこともできる');
+  step('inactive のストーリーは、はじめは隠す。示すと印つきで出て、示したことは次に開いても続く');
+  const hasInactiveRow = () => page.evaluate(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'));
+  const inactiveChecked = () => page.$eval('.chips .check input', (e) => e.checked);
+  const openTree = async (q = '') => {
+    await page.goto(BASE + `/r/${REPO}/tree${q}`, { waitUntil: 'networkidle0' });
+    await signedIn(page);
+    await page.waitForSelector(q ? '.row.sel' : '.row', { timeout: 20000 });
+  };
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('はじめから inactive が出る');
+  // 隠しているときに inactive のノードを名指しで開くと、その場だけ示す（置かないので、開き直すと隠れる）
+  await openTree(`?node=${INACTIVE_STORY}`);
+  if ((await selText(page)) !== '広告の導線' || !(await inactiveChecked())) throw new Error('隠しているときに ?node= で inactive を開くと、示さない：' + (await selText(page)));
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('名指しで開いただけで、示すことを覚えている');
+  // 手で示すと、次に開いても示す
+  await page.click('.chips .check input');
   await page.waitForFunction(() => [...document.querySelectorAll('.row.inactive .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
+  await openTree();
+  if (!(await inactiveChecked()) || !(await hasInactiveRow())) throw new Error('示したのに、開き直すと inactive が出ない');
+  // 選んだまま隠すと、見えている祖先を選ぶ。隠したことも続く
+  await openTree(`?node=${INACTIVE_STORY}`);
   await page.click('.chips .check input');
-  await page.waitForFunction(() => ![...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelector('.row.sel .text')?.textContent.includes('新しい導線'), { timeout: 5000 });
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('隠したのに、開き直すと inactive が出る');
+  // あとの段のために、示すに戻す
   await page.click('.chips .check input');
+  await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
 
   step('デスクトップで ?node= を開くと、そのノードを選ぶ。ないノードなら、そう示す');
   await page.goto(BASE + `/r/${REPO}/tree?node=${NODE_B}`, { waitUntil: 'networkidle0' });
