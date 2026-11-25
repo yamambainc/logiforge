@@ -1683,6 +1683,10 @@ components:
       required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings, webui_url]
       properties:
         id: { type: string, pattern: '^[1-9][0-9]*$' }
+        url:
+          type: string
+          format: uri
+          description: GitForge の pull request の画面の URL
         branch:
           $ref: '#/components/schemas/BranchName'
           description: apply request を作ったときのブランチ
@@ -1750,6 +1754,12 @@ components:
         merged_commit:
           type: [string, 'null']
           description: 反映した main のコミット。反映されていなければ null
+        outside_paths:
+          type: [array, 'null']
+          items: { type: string }
+          description: >-
+            ディレクトリの repository で、先頭のコミットが、ディレクトリの外で変えたパス（repository の根からのパス）。変えていなければ空。
+            ふつうの repository と、先頭のコミットを worker がまだ取り込んでいないときは null
         webui_url:
           type: [string, 'null']
           format: uri

@@ -574,7 +574,7 @@ func TestCanReadCallCount(t *testing.T) {
 func TestAPIDirectoryRef(t *testing.T) {
 	f, a, _ := newTestAdapter(t)
 	f.branchHead["m"], f.branchHead["c"] = "hm", "hc"
-	apitest.Run(t, a.API, apitest.Env{Ref: fakeRepo + ":paper", Merge: "m", Close: "c", Ctx: agentCtx()})
+	apitest.Run(t, a.API, apitest.Env{Ref: fakeRepo + ":paper", Merge: "m", Close: "c", Pulls: "pull", Ctx: agentCtx()})
 }
 
 // GitHub の誤りの応答は、ポートの誤りに当たる（design/adapters/github.md の「GitHub の誤りの応答」）。

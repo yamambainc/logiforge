@@ -11,6 +11,8 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yamambainc/logiforge/internal/adapters/pullreq"
@@ -23,6 +25,8 @@ type Env struct {
 	Ref string
 	// Merge と Close は、main から分かれた、まだ pull request のないブランチである。Merge は衝突せずに merge できるもの。
 	Merge, Close string
+	// Pulls は、pull request の画面の URL の、番号の前の部分である（GitHub は pull、Forgejo は pulls）。
+	Pulls string
 	// Ctx は、repository に書く権限のある主体のトークンを持つ。pull request を作り、コメントの review を出し、merge する。
 	Ctx context.Context
 }
@@ -50,16 +54,18 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			if p, err = api.CreatePull(ctx, ref, e.Merge, "表のテスト", "本文"); err != nil {
 				return err
 			}
-			closing, err = api.CreatePull(ctx, ref, e.Close, "閉じる", "本文")
-			return err
+			if closing, err = api.CreatePull(ctx, ref, e.Close, "閉じる", "本文"); err != nil {
+				return err
+			}
+			return want(nil, page(e, p), "CreatePull の URL が、pull request の画面でない："+p.URL)
 		}},
 		{"GetPull", func() error {
 			got, err := api.GetPull(ctx, ref, p.Number)
-			return want(err, got.Number == p.Number && got.Head == e.Merge, "GetPull が、作った pull request を返さない")
+			return want(err, got.Number == p.Number && got.Head == e.Merge && page(e, got), "GetPull が、作った pull request を、画面の URL と一緒に返さない")
 		}},
 		{"ListPulls", func() error {
 			ps, err := api.ListPulls(ctx, ref, "open")
-			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number }), "ListPulls に、作った pull request がない")
+			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && page(e, x) }), "ListPulls に、作った pull request が、画面の URL と一緒にない")
 		}},
 		{"EditPullBody", func() error {
 			if err := api.EditPullBody(ctx, ref, p.Number, "新しい本文"); err != nil {
@@ -139,7 +145,7 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 		}},
 		{"ClosedPullsPage", func() error {
 			ps, _, err := api.ClosedPullsPage(ctx, ref, 1)
-			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && x.Merged }), "ClosedPullsPage に、merge した pull request がない")
+			return want(err, slices.ContainsFunc(ps, func(x pullreq.Pull) bool { return x.Number == p.Number && x.Merged && page(e, x) }), "ClosedPullsPage に、merge した pull request が、画面の URL と一緒にない")
 		}},
 	}
 
@@ -158,6 +164,12 @@ func Run(t *testing.T, api pullreq.API, e Env) {
 			t.Fatalf("%s（%s）：%v", s.name, ref, err)
 		}
 	}
+}
+
+// page は、URL が、その repository（:パス を除く）の、その番号の pull request の画面（/owner/name/<e.Pulls>/1）かである。
+func page(e Env, p pullreq.Pull) bool {
+	repo, _, _ := strings.Cut(e.Ref, ":")
+	return strings.HasPrefix(p.URL, "http") && strings.HasSuffix(p.URL, "/"+repo+"/"+e.Pulls+"/"+strconv.Itoa(p.Number))
 }
 
 // want は、err がなく、ok なら nil を返す。

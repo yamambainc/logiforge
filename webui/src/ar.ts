@@ -1,5 +1,5 @@
 // apply request の差分とレビューの言葉（docs/webui/history.md）
-import type { ApplyRequest, Operation, Review } from './api';
+import { Problem, type ApplyRequest, type Operation, type Review } from './api';
 
 /** レビュー（議論を含む）を、書いた時刻の順に並べる。時刻が読めないものは、もとの順のまま最後に置く */
 export function byTime(rs: Review[]): Review[] {
@@ -33,3 +33,29 @@ export const arTitle = (a: ApplyRequest) => (a.description ?? '').split('\n').fi
 
 /** 作業としての絞り込み：apply request の一覧から、作業の対象（識別子の集まり）だけを、一覧の順のまま残す */
 export const filterBySubjects = (all: ApplyRequest[], ids: Set<string>) => all.filter((a) => ids.has(a.id));
+
+// ディレクトリの外の変更の 1 行（design/webui/screens.md の「apply request の画面」）。ふつうの repository と、まだ取り込んでいないときは null
+export function outsideSummary(a: ApplyRequest): string | null {
+  const ps = a.outside_paths;
+  if (ps == null) return null;
+  return ps.length === 0 ? 'ディレクトリの外の変更：なし' : `ディレクトリの外の変更：${ps.length} 件`;
+}
+
+// 読み込みの失敗の示し方。もう示しているもの（loaded）があれば、それを残して note で伝える（タブに戻ったときの読み直しの、一時的な失敗で、
+// 画面を誤りの表示にしないため）。notFound は、ないときに置き換える文（なくなったものは、残さない）。401 はサインインに任せて、何も示さない
+export function loadFailure(e: unknown, loaded: boolean, notFound?: string): { error: string | null; note: string | null } {
+  if (e instanceof Problem && e.status === 401) return { error: null, note: null };
+  if (notFound && e instanceof Problem && e.code === 'not_found') return { error: notFound, note: null };
+  return loaded ? { error: null, note: `読み直せませんでした：${String(e)}` } : { error: String(e), note: null };
+}
+
+// fn を、gapMs のあいだに 1 度だけ呼ぶ関数を返す。タブに戻ると focus と visibilitychange が続けて起きるので、読み直しを 1 回にまとめる
+export function oncePer(gapMs: number, fn: () => void, now: () => number = Date.now): () => void {
+  let last = -Infinity;
+  return () => {
+    const t = now();
+    if (t - last < gapMs) return;
+    last = t;
+    fn();
+  };
+}

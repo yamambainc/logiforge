@@ -234,7 +234,7 @@ func page[T any](w http.ResponseWriter, r *http.Request, all []T) {
 }
 
 func (f *fakeGitHub) pullJSON(p *fakePull) map[string]any {
-	m := map[string]any{"number": p.Number, "title": p.Title, "body": p.Body, "state": p.State, "user": map[string]string{"login": p.Author},
+	m := map[string]any{"html_url": "https://github.com/" + fakeRepo + "/pull/" + strconv.Itoa(p.Number), "number": p.Number, "title": p.Title, "body": p.Body, "state": p.State, "user": map[string]string{"login": p.Author},
 		"head": map[string]string{"ref": p.Head, "sha": p.HeadSHA}, "base": map[string]string{"ref": cmp.Or(p.base, "main")}, "created_at": p.createdAt,
 		"merged": p.Merged, "merge_commit_sha": p.MergeSHA, "merged_at": nil, "labels": labelObjs(p.labels), "updated_at": p.updatedAt}
 	if p.Merged {

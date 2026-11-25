@@ -69,6 +69,8 @@ type ApplyRequest struct {
 	// ID は、pull request の番号を 10 進の文字列にしたものである。
 	ID     string
 	Number int
+	// URL は、GitForge の pull request の画面の URL である。
+	URL    string
 	Branch string
 	// Target は、向き先のブランチ（pull request の base）である。
 	Target       string

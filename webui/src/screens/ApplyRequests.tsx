@@ -2,9 +2,9 @@
 // apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）。過去の時点は、ビュワーの「時点」の欄で選ぶ。
 // 右側は「木」（既定）と「レビュー」のタブ。approve と merge は、木を見たまま押せるよう、タブの外に置く。
 // 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
-import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, opLabel, REVIEW, STATE } from '../ar';
+import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, loadFailure, oncePer, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
 import { clearDraft, loadDraft, saveDraft } from '../files';
 import { useMobile } from '../hooks';
@@ -28,6 +28,17 @@ export function ApplyRequests({ repo }: { repo: string }) {
   const id = loc.searchParams.get('id');
   const tab = loc.searchParams.get('tab') === 'review' ? 'review' : 'tree';
   const mobile = useMobile();
+  // 読み直しの回数。一覧は merge とレビューのあとにも、詳細と一覧はタブに戻ったときにも読み直す
+  // （GitForge で直接 merge して戻ったときにも、今の状態を示すため）
+  const [listRev, setListRev] = useState(0);
+  const [detailRev, setDetailRev] = useState(0);
+  useEffect(() => {
+    const reload = oncePer(1000, () => { setListRev((n) => n + 1); setDetailRev((n) => n + 1); });
+    const again = () => { if (document.visibilityState === 'visible') reload(); };
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => { window.removeEventListener('focus', again); document.removeEventListener('visibilitychange', again); };
+  }, []);
 
   const go = (p: Record<string, string | null>, push = false) => {
     const q = new URLSearchParams(loc.search);
@@ -36,37 +47,44 @@ export function ApplyRequests({ repo }: { repo: string }) {
     navigate(`/r/${repo}/apply-requests${s ? '?' + s : ''}`, !push);
   };
 
-  const list = <ArList repo={repo} state={state} work={work} id={id} go={go} />;
+  const list = <ArList repo={repo} state={state} work={work} id={id} go={go} rev={listRev} />;
   const detail = id
-    ? <ArDetail key={id} repo={repo} id={id} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
+    ? <ArDetail key={id} repo={repo} id={id} rev={detailRev} onChanged={() => setListRev((n) => n + 1)} tab={tab} onTab={(t) => go({ tab: t === 'tree' ? null : t }, true)} mobile={mobile} onBack={() => go({ id: null, tab: null }, true)} />
     : !mobile ? <section className="item-pane empty"><p className="dim">apply request を選んでください。</p></section> : null;
   if (mobile) return <main className="split one">{detail ?? list}</main>;
   return <main className="split">{list}{detail}</main>;
 }
 
-function ArList({ repo, state, work, id, go }: { repo: string; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void }) {
+function ArList({ repo, state, work, id, go, rev }: { repo: string; state: string; work: string; id: string | null; go: (p: Record<string, string | null>, push?: boolean) => void; rev: number }) {
   const [items, setItems] = useState<ApplyRequest[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fail = (e: unknown) => { if (!(e instanceof Problem && e.status === 401)) setError(String(e)); };
+  const [note, setNote] = useState<string | null>(null);
+  // 読み直しに失敗したら、今の一覧を残す
+  const loaded = useRef(false);
+  const fail = (e: unknown) => { const f = loadFailure(e, loaded.current); setError(f.error); setNote(f.note); };
   // 50 個ずつ読み、「もっと読む」で続きを読む
   const more = (cursor: string | null, live = () => true) => listApplyRequestsPage(repo, state === 'all' ? '' : state, cursor)
-    .then((p) => { if (!live()) return; setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
+    .then((p) => { if (!live()) return; loaded.current = true; setNote(null); setItems((x) => [...(cursor ? x ?? [] : []), ...p.items]); setNext(p.next_cursor); })
     .catch((e) => live() && fail(e));
+  // 読み直しでは、読み終えるまで今の一覧を示したままにする（絞り込みを変えたときだけ空にする）
+  const shown = useRef('');
   useEffect(() => {
     let alive = true;
     const live = () => alive;
-    setItems(null); setNext(null); setError(null);
+    const key = `${repo}\n${state}\n${work}`;
+    if (shown.current !== key) { shown.current = key; loaded.current = false; setItems(null); setNext(null); setNote(null); }
+    setError(null);
     if (work) {
       // 作業としての絞り込み：作業の一覧と、open の apply request の一覧を 1 回ずつ読み、識別子で絞る。
       // 1 つずつは読まない（design/backend/list-reads.md）
       Promise.all([workSubjects(repo, work), listOpenApplyRequests(repo)])
-        .then(([ids, all]) => live() && setItems(filterBySubjects(all, ids)))
+        .then(([ids, all]) => { if (!live()) return; loaded.current = true; setNote(null); setItems(filterBySubjects(all, ids)); })
         .catch((e) => live() && fail(e));
     } else void more(null, live);
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, state, work]);
+  }, [repo, state, work, rev]);
   return (
     <section className="list-pane" aria-label="apply request の一覧">
       <div className="list-filters">
@@ -80,6 +98,7 @@ function ArList({ repo, state, work, id, go }: { repo: string; state: string; wo
           </label>
         )}
       </div>
+      {note && <p className="note">{note}</p>}
       {error ? <p className="dim pad">一覧を読めませんでした：{error}</p> : !items ? <div className="loading">読み込み中…</div> : items.length === 0 ? <p className="dim pad">apply request はありません。</p> : (
         <ul className="items">
           {items.map((a) => (
@@ -101,7 +120,7 @@ function ArList({ repo, state, work, id, go }: { repo: string; state: string; wo
 
 type Tab = 'tree' | 'review';
 
-function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: string; tab: Tab; onTab: (t: Tab) => void; mobile: boolean; onBack: () => void }) {
+function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { repo: string; id: string; rev: number; onChanged: () => void; tab: Tab; onTab: (t: Tab) => void; mobile: boolean; onBack: () => void }) {
   const [a, setA] = useState<ApplyRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   // レビューを送ったあとの言葉（反映したか、反映できなかった理由など）。反映して open でなくなっても示す
@@ -112,14 +131,20 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
   const [pending, setPending] = useState(false);
   // レビューのタブでノードを押したら、木のタブでそのノードを選ぶ
   const [focus, setFocus] = useState<string | null>(null);
+  const [reloadNote, setReloadNote] = useState<string | null>(null);
+  const loaded = useRef(false);
+  loaded.current = a !== null;
   const showNode = (n: string) => { setFocus(n); onTab('tree'); };
   useEffect(() => {
     let live = true;
-    getApplyRequest(repo, id).then((r) => live && setA(r)).catch((e) => {
-      if (live && !(e instanceof Problem && e.status === 401)) setError(e instanceof Problem && e.code === 'not_found' ? 'この apply request はありません' : String(e));
+    getApplyRequest(repo, id).then((r) => { if (live) { setA(r); setError(null); setReloadNote(null); } }).catch((e) => {
+      if (!live) return;
+      // 読み直し（もう示している）の失敗は、示しているものを残す
+      const f = loadFailure(e, loaded.current, 'この apply request はありません');
+      setError(f.error); setReloadNote(f.note);
     });
     return () => { live = false; };
-  }, [repo, id]);
+  }, [repo, id, rev]);
   // main 向きでなければ、Logiforge は検査しないので、材料はない（overlay_unsupported）
   const wantMaterial = !!a && a.state === 'open' && a.target === 'main';
   useEffect(() => {
@@ -137,8 +162,10 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
   const back = mobile && <button className="link back" onClick={onBack}>← 一覧</button>;
   if (error) return <section className="item-pane">{back}<p className="dim">{error}</p></section>;
   if (!a) return <section className="item-pane">{back}<div className="loading">読み込み中…</div></section>;
-  const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); };
+  // merge とレビューで状態とラベルが変わるので、一覧も読み直す
+  const changed = (r: ApplyRequest | null, m: string | null) => { if (r) setA(r); setNotice(m); onChanged(); };
   // 示す木：open なら反映したあと、反映済みなら反映したコミット。閉じたものには木はない
+  const outside = outsideSummary(a);
   const source: Source | null = a.state === 'open' ? { kind: 'ar', id: a.id } : a.state === 'merged' && a.merged_commit ? { kind: 'commit', commit: a.merged_commit } : null;
   return (
     <section className="ar-pane" aria-label="apply request">
@@ -147,12 +174,16 @@ function ArDetail({ repo, id, tab, onTab, mobile, onBack }: { repo: string; id: 
         <div className="d-head">
           <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
           {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
-          <span className="mono dim">{a.id}</span>
+          {a.url ? <a className="mono" href={a.url} target="_blank" rel="noopener noreferrer">pull request #{a.id}</a> : <span className="mono dim">{a.id}</span>}
           <span className="d-title">{arTitle(a)}</span>
           <span className="dim mono">{a.branch} → {a.target} · 先頭 {a.head_commit.slice(0, 7)}</span>
         </div>
         {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
+        {outside && (a.outside_paths!.length === 0 ? <p className="dim outside">{outside}</p> : (
+          <details open className="note warn-note outside"><summary>{outside}</summary><ul className="mono">{a.outside_paths!.map((p) => <li key={p}>{p}</li>)}</ul></details>
+        ))}
         {notice && <p className="note" role="status">{notice}</p>}
+        {reloadNote && <p className="note">{reloadNote}</p>}
         <div className="ar-bar">
           <div className="seg ar-tabs" role="tablist" aria-label="右側">
             <button role="tab" aria-selected={tab === 'tree'} className={tab === 'tree' ? 'on' : ''} onClick={() => onTab('tree')}>木</button>

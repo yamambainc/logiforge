@@ -148,6 +148,10 @@ export interface ApplyRequest {
   warnings?: string[]; merged_commit?: string | null;
   /** 要求を送った主体が、この apply request を作った主体と同じか。approve の前に示す（design/settings/users.md の「WebUI からのレビュー」） */
   opened_by_caller?: boolean;
+  /** GitForge の pull request の画面の URL */
+  url?: string;
+  /** ディレクトリの repository で、ディレクトリの外で変えたパス。ふつうの repository と、worker がまだ取り込んでいないときは null */
+  outside_paths?: string[] | null;
 }
 export const listOpenApplyRequests = (repo: string) => listAll<ApplyRequest>(`/repositories/${enc(repo)}/apply-requests?state=open`);
 /** apply request の一覧の 1 ページ（50 個）。「もっと読む」で、next_cursor から続きを読む */

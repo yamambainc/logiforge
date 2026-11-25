@@ -53,6 +53,8 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
 - 一覧：`listApplyRequests`（`state` で絞り込む）。
 - 詳細：`getApplyRequest`。差分は `operations`、先頭のコミットは `head_commits`、レビューは `reviews`、pull request のコメントは `comments` で示す。
   - コメントは、書いた人と時刻を添えて、本文をそのまま Markdown として示す。反映の失敗と close の理由も、ここに入る。
+- GitForge の pull request の画面へのリンク：`url`。
+- ディレクトリの外の変更：`outside_paths`。`null` でなければ（ディレクトリの repository）、外の変更があるかを示し、あればパスを並べる。
 - レビューの材料：`getReviewMaterial`。レビューの欄に示す。説明欄は示さない。
 - 自分が作ったか：`getApplyRequest` の `opened_by_caller`。`true` なら、approve の前に示す。
 - レビュー：`reviewApplyRequest`。`commit` には、画面で示した先頭のコミットを送る。`commit_conflict` なら、新しい先頭のコミットを読み直して示し、もう一度確かめさせる。
@@ -61,6 +63,7 @@ WebUI の各画面が、BE のどの API を使うかを確かめるときと、
   - 差分の `verdict.submit` は、レポートを折りたたみで、Markdown として示す（[Markdown と Mermaid の表示](markdown.md)）。
 - merge：`mergeApplyRequest`。`review_decision` が `approved` のときだけ、merge の欄を示す。一覧と詳細では、`review_decision` があれば、承認の状態を示す。断られたら、エラーの `code` と `detail` で理由を示し、`getApplyRequest` で読み直す。
 - 一覧は、50 個ずつ読み、「もっと読む」で続きを読む。作業としての絞り込みでは、対象の apply request だけを読む。
+- 一覧は、レビューと merge のあとに読み直す。一覧と選んだ apply request は、タブに戻ったときにも読み直す（GitForge で直接 merge したときにも、今の状態を示すため）。
 - 反映したあとの姿：選んだ apply request の右側に、ビュワーを埋め込んで示す（[差分の重ね表示](overlay.md#差分の重ね表示)）。右側は「木」（はじめ）と「レビュー」のタブで切り替える。approve と merge の欄は、タブの外に置く。
   - 「レビュー」のタブには、差分、先頭のコミット、レビュー、コメント、レビューの材料、comment と request_changes を書く欄を示す。
   - 「レビュー」のタブでノードを押すと、「木」のタブに移り、そのノードを選ぶ。

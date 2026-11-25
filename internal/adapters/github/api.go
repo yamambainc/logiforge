@@ -35,6 +35,8 @@ func labelNames(ls []labelJSON) []string {
 }
 
 type pullJSON struct {
+	// HTMLURL は、pull request の画面の URL である。
+	HTMLURL   string      `json:"html_url"`
 	Number    int         `json:"number"`
 	Title     string      `json:"title"`
 	Body      string      `json:"body"`
@@ -60,7 +62,7 @@ type pullJSON struct {
 func (p pullJSON) merged() bool { return p.Merged || p.MergedAt != nil }
 
 func (p pullJSON) pull() pullreq.Pull {
-	pr := pullreq.Pull{Number: p.Number, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
+	pr := pullreq.Pull{Number: p.Number, URL: p.HTMLURL, Title: p.Title, Body: p.Body, Head: p.Head.Ref, HeadSHA: p.Head.SHA,
 		State: p.State, Merged: p.merged(), Base: p.Base.Ref, Author: p.User.Login, Labels: labelNames(p.Labels),
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 	if pr.Merged {

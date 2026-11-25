@@ -118,7 +118,7 @@ func waitingOf(labels []string) ports.Waiting {
 
 // toApplyRequest は、pull request の一覧に入っているものだけから apply request を作る。
 func toApplyRequest(p Pull) ports.ApplyRequest {
-	ar := ports.ApplyRequest{ID: strconv.Itoa(p.Number), Number: p.Number, Branch: p.Head, Target: p.Base, Description: p.Body,
+	ar := ports.ApplyRequest{ID: strconv.Itoa(p.Number), Number: p.Number, URL: p.URL, Branch: p.Head, Target: p.Base, Description: p.Body,
 		HeadRevision: p.HeadSHA, Opener: p.Author, Waiting: waitingOf(p.Labels), CreatedAt: p.CreatedAt}
 	switch {
 	case p.Merged:
