@@ -258,6 +258,8 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
     }
     setShowInactive(v);
   };
+  // 反映したあとの姿の帯に出す、apply request の説明の 1 行目
+  const arLine = (data?.ar?.description ?? '').split('\n')[0];
   // 「次の変更」「前の変更」（n、p）。変わるノードを行の並びでたどる（design/webui/graph-navigation.md）
   // 絞り込み・検索・inactive を隠しているあいだは、今の行にある変化だけをたどる。「ここから見る」では、表示の根の部分木の中だけ
   const order = useMemo(() => {
@@ -438,7 +440,7 @@ export function TreeScreen({ repo, fixed, node }: { repo: string; fixed?: Source
         <div className={`banner overlay ${data.ar.target !== 'main' ? 'unchecked' : ''}`} role="status">
           {data.ar.target !== 'main' && <span className="warn">main 向きではないので、検査していません</span>}
           <span className="banner-title">反映したあとの姿</span>
-          <span>{(data.ar.description ?? '').split('\n')[0]}</span>
+          <span className="banner-desc" title={arLine}>{arLine}</span>
           <span className="mono dim">{data.ar.id} · {data.ar.branch} → {data.ar.target} · 比べた向き先 {data.commit.slice(0, 7)}</span>
           <span className="spacer" />
           <span className="pill added">追加 {[...data.changes.values()].filter((c) => c.kind === 'added').length}</span>
