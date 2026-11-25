@@ -1680,7 +1680,7 @@ components:
       enum: [open, merged, closed]
     ApplyRequest:
       type: object
-      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings]
+      required: [id, state, branch, target, head_commit, head_commits, operations, reviews, comments, awaiting, warnings, webui_url]
       properties:
         id: { type: string, pattern: '^[1-9][0-9]*$' }
         url:
@@ -1760,6 +1760,12 @@ components:
           description: >-
             ディレクトリの repository で、先頭のコミットが、ディレクトリの外で変えたパス（repository の根からのパス）。変えていなければ空。
             ふつうの repository と、先頭のコミットを worker がまだ取り込んでいないときは null
+        webui_url:
+          type: [string, 'null']
+          format: uri
+          description: >-
+            この apply request を WebUI で開く URL（`<webui_url>/r/{repository}/apply-requests?id={id}`。../../design/webui/screens.md の「URL」）。
+            設定の webui_url から組み立てる。設定になければ null
     ReviewKind:
       type: string
       enum: [approve, request_changes, comment]

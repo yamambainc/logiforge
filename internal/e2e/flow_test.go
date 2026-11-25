@@ -27,6 +27,8 @@ type applyRequest struct {
 	// URL は、GitForge の pull request の画面である。OutsidePaths は、ディレクトリの repository でだけ null でない。
 	URL          string    `json:"url"`
 	OutsidePaths *[]string `json:"outside_paths"`
+	// WebUIURL は、WebUI で開く URL である。
+	WebUIURL string `json:"webui_url"`
 }
 
 type checkOut struct {
@@ -73,6 +75,9 @@ func (u *user) create(branch string) applyRequest {
 	start := time.Now()
 	u.must(&ar, "ar", "create", "--branch", branch)
 	u.w.t.Logf("ar create %s：%v", branch, time.Since(start).Round(time.Millisecond))
+	if want := u.w.api + "/r/" + u.repoName() + "/apply-requests?id=" + ar.ID; ar.WebUIURL != want {
+		u.w.t.Fatalf("ar create の webui_url：%q、want %q", ar.WebUIURL, want)
+	}
 	if !c.OK || len(c.Operations) != len(ar.Operations) {
 		u.w.t.Fatalf("check と ar create の操作が違う：%+v %+v", c, ar)
 	}
@@ -201,6 +206,11 @@ func TestE2E(t *testing.T) {
 	ar1 := agent.create("b1")
 	if ar1.OutsidePaths != nil {
 		t.Fatalf("ふつうの repository の outside_paths は null のはず：%v", *ar1.OutsidePaths)
+	}
+	// --json でなければ、識別子と一緒に、WebUI で開く URL を 1 行で出す。送り直しなので、同じ apply request が返る。
+	if code, out := agent.cli("", "ar", "create", "--branch", "b1"); code != 0 || !strings.HasPrefix(out, ar1.ID+"（open）") ||
+		!strings.Contains(out, "\nWebUI："+ar1.WebUIURL+"\n") {
+		t.Fatalf("ar create の出力：%d %s", code, out)
 	}
 	var mat struct {
 		Targets []map[string]any `json:"targets"`

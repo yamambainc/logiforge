@@ -63,6 +63,70 @@ describe('起動', () => {
     expect(assigned).toHaveLength(0);
   });
 
+  it('端末がつながっていなければ、つながっていないと示し、つながったら、もう一度始める', async () => {
+    env('/r/q/tree');
+    const on: (() => void)[] = [];
+    vi.stubGlobal('window', { addEventListener: (t: string, f: () => void) => { if (t === 'online') on.push(f); } });
+    const nav = { onLine: false };
+    vi.stubGlobal('navigator', nav);
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'offline' });
+    expect(assigned).toHaveLength(0);
+    nav.onLine = true;
+    session = tokenResp('at-on');
+    on.forEach((f) => f());
+    await vi.waitFor(() => expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-on' }));
+  });
+
+  it('つながった直後に要求が通らなくても、間をあけてやり直す。ずっと通らなければ unavailable', async () => {
+    env('/');
+    const on: (() => void)[] = [];
+    vi.stubGlobal('window', { addEventListener: (t: string, f: () => void) => { if (t === 'online') on.push(f); } });
+    const nav = { onLine: false };
+    vi.stubGlobal('navigator', nav);
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'offline' });
+    // つながったが、まだ通らない（onLine は true）
+    nav.onLine = true;
+    on.forEach((f) => f());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'offline' });
+    await vi.advanceTimersByTimeAsync(1_000);
+    session = tokenResp('at-late');
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(a.getAuth()).toMatchObject({ kind: 'signed-in', token: 'at-late' });
+    expect(assigned).toHaveLength(0);
+
+    // ずっと通らなければ、1+2+4+8 秒のあとに unavailable（ボタンで押し直せる）
+    env('/');
+    on.length = 0;
+    vi.stubGlobal('window', { addEventListener: (t: string, f: () => void) => { if (t === 'online') on.push(f); } });
+    nav.onLine = false;
+    vi.stubGlobal('navigator', nav);
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const b = await load();
+    await b.start();
+    nav.onLine = true;
+    on.forEach((f) => f());
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(b.getAuth()).toEqual({ kind: 'signed-out', reason: 'offline' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(b.getAuth()).toEqual({ kind: 'signed-out', reason: 'unavailable' });
+  });
+
+  it('つながっているのに BE が答えなければ（fetch が失敗）、unavailable', async () => {
+    env('/');
+    vi.stubGlobal('navigator', { onLine: true });
+    session = () => { throw new TypeError('Failed to fetch'); };
+    const a = await load();
+    await a.start();
+    expect(a.getAuth()).toEqual({ kind: 'signed-out', reason: 'unavailable' });
+  });
+
   it('サインアウトしたタブでは、セッションを見ずにサインインの画面', async () => {
     env('/');
     sessionStorage.setItem('lf-signed-out', '1');

@@ -50,6 +50,7 @@ API の詳細は、[openapi.yaml](../api/openapi.yaml) が正本である。
 - `ar create` は、ブランチが push 済みで、手元の先頭と remote の先頭が同じかを確かめてから API を呼ぶ。
   - `commit` に、手元の先頭のコミットを入れて送る。
   - なぜ：push し忘れた変更を、知らないまま取り込まないため。
+- `ar create` と `ar view` は、識別子と一緒に、WebUI で開く URL（応答の `webui_url`）を出す。`webui_url` が null（サーバの設定に WebUI の URL がない）なら、その行を出さない。
 - ブランチの名前に、`main` は使えない。
   - なぜ：GitForge が push を拒むから。
 - apply request を更新するには、同じブランチに `git push` するだけである。更新のコマンドはない。

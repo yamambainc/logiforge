@@ -243,6 +243,8 @@ type ApplyRequest struct {
 	// OutsidePaths は、ディレクトリの repository で、先頭のコミットが base からディレクトリの外で変えたパスである（変えていなければ空）。
 	// ふつうの repository と、先頭のコミットのスナップショットがまだないときは null。
 	OutsidePaths []string `json:"outside_paths"`
+	// WebUIURL は、この apply request を WebUI で開く URL である。設定の webui_url がなければ null。
+	WebUIURL *string `json:"webui_url"`
 }
 
 // ReviewMaterial は、レビューの材料である。

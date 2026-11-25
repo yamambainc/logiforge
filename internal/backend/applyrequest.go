@@ -3,8 +3,10 @@ package backend
 import (
 	"context"
 	"errors"
+	"net/url"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yamambainc/logiforge/internal/ports"
@@ -118,7 +120,7 @@ func (b *Backend) applyRequest(ctx context.Context, repo, gfRef string, ar ports
 		target = mainTarget
 	}
 	*m = ApplyRequest{ID: ar.ID, URL: ar.URL, Branch: ar.Branch, Target: target, State: string(arState(ar, h)), HeadCommits: vs, Description: ar.Description,
-		Operations: []Operation{}, Reviews: []Review{}, Comments: []Comment{}, Warnings: append([]string{}, ar.Warnings...)}
+		Operations: []Operation{}, Reviews: []Review{}, Comments: []Comment{}, Warnings: append([]string{}, ar.Warnings...), WebUIURL: b.arWebUIURL(repo, ar.ID)}
 	if len(vs) > 0 {
 		d.current = vs[len(vs)-1]
 		m.HeadCommit = d.current.Commit
@@ -415,4 +417,14 @@ func (b *Backend) readOpen(ctx context.Context, repo, gfRef string, v *view) (*o
 		}
 	}
 	return st, nil
+}
+
+// arWebUIURL は、apply request を WebUI で開く URL である（design/webui/screens.md の apply request の画面）。
+// 設定の webui_url がなければ nil。
+func (b *Backend) arWebUIURL(repo, id string) *string {
+	if b.WebUIURL == "" {
+		return nil
+	}
+	u := strings.TrimRight(b.WebUIURL, "/") + "/r/" + url.PathEscape(repo) + "/apply-requests?id=" + url.QueryEscape(id)
+	return &u
 }

@@ -169,7 +169,7 @@ func TestWebUISignIn(t *testing.T) {
 	}
 	login := w.login("alice")
 	runBrowser(t, "e2e/run.mjs", "BASE="+w.api, "LOGIN="+login, "PASSWORD=pw-"+login+"-12345", "CHROME="+chrome, "OUT="+out, "REPO=q",
-		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "HR2="+hr2.ID, "AR_DEV="+arDev.ID, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
+		"OUTSIDER_LOGIN="+outsider, "NODE_A="+hA, "NODE_B="+hB, "AR_MAIN="+arMain.ID, "HR="+hr.ID, "HR2="+hr2.ID, "AR_DEV="+arDev.ID, "INACTIVE_STORY="+inactiveStory, "OUTSIDER_PASSWORD=pw-"+outsider+"-12345")
 	// ブラウザでの回答が、API で読める（添付のファイルとリンク）
 	var got struct {
 		State  string `json:"state"`

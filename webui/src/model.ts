@@ -122,6 +122,16 @@ export function rowsToDraw(start: number, end: number, selIndex: number): number
   return out;
 }
 
+/** inactive を隠すと見えなくなるか（自分か祖先が inactive）。visibleRows は inactive のところで下をたどらない */
+export function hiddenWhenInactiveHidden(ix: Index, id: string): boolean {
+  for (let n = ix.byId.get(id); n; ) {
+    if (n.inactive) return true;
+    const p = parentOf(n);
+    n = p === null ? undefined : ix.byId.get(p);
+  }
+  return false;
+}
+
 // 表示する行。include があれば、その集合のノードだけを（祖先を開いて）出す。
 export function visibleRows(ix: Index, expanded: Set<string>, include: Set<string> | null, showInactive: boolean, root = ix.rootId): Row[] {
   const rows: Row[] = [];
@@ -253,7 +263,8 @@ export function filterNodes(ix: Index, query: string, filters: Set<Filter>, show
   const valueF = (['true', 'false', 'null'] as const).filter((k) => filters.has(k));
   const m: string[] = [];
   for (const n of ix.nodes) {
-    if (!showInactive && n.inactive) continue;
+    // 隠すときは、inactive の下も除く（行に出ないノードを選ばないように）
+    if (!showInactive && hiddenWhenInactiveHidden(ix, n.id)) continue;
     if (q && !(textOf(n).toLowerCase().includes(q) || n.id.toLowerCase().includes(q))) continue;
     if (valueF.length && !valueF.some((k) => String(n.value) === k)) continue;
     // 作業としての絞り込み（ダッシュボードの件数と同じ数になる）。未決の葉：葉の仮説で、値が未決。要再検討（作業）：要再検討の仮説。

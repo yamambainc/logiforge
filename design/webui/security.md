@@ -9,6 +9,7 @@ WebUI の応答のヘッダーと、利用者やエージェントが書いた�
 - `logiforge serve` は、WebUI の応答に次のヘッダーを付ける。
   - `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self'; frame-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'`
   - `Referrer-Policy: no-referrer`
+- PWA の manifest（`manifest-src`）と Service Worker（`worker-src`）は、`default-src 'self'` で許される。CSP を変えずに済む（[PWA](pwa.md)）。
 - CSP の例外は、Mermaid の図を描く `/mermaid.html` だけである。この文書には、インラインの style を許し、`sandbox allow-scripts` を付けた、別の CSP を付ける（[Markdown と Mermaid の表示](markdown.md#csp)）。
 - `assets/` の応答には、`Access-Control-Allow-Origin: *` を付ける。
   - なぜ：sandbox の iframe の中の文書はオパークなオリジンなので、同じサーバのモジュールのスクリプトでも、別のオリジンへの要求（CORS）として読むから。

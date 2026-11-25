@@ -622,3 +622,6 @@ a.btn { display: inline-block; text-decoration: none; }
 .ar-pane > .item-pane { flex: 1; }
 @media (max-width: 767px) { .ar-head { padding: 8px 12px; } }
 .ar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+
+/* つながっていないときの知らせ（design/webui/pwa.md）。画面の骨組みを動かさないよう、上に重ねる */
+.offline-banner { position: fixed; top: env(safe-area-inset-top); left: 50%; transform: translateX(-50%); z-index: 1000; margin-top: 8px; padding: 6px 14px; border-radius: 999px; background: #1b2230; color: #fff; font-size: 12.5px; font-weight: 600; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); white-space: nowrap; pointer-events: none; }

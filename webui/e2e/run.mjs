@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR, HR2 } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, OUTSIDER_LOGIN, OUTSIDER_PASSWORD, NODE_A, NODE_B, AR_MAIN, AR_DEV, HR, HR2, INACTIVE_STORY } = process.env;
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -172,11 +172,35 @@ try {
   if ((await rowTexts(page)).some((t) => t.includes('成果物までの時間が半分'))) throw new Error('未決で絞り込んでも、真の仮説が出る');
   await chip('未決');
 
-  step('inactive のストーリーは、印つきで出る。隠すこともできる');
+  step('inactive のストーリーは、はじめは隠す。示すと印つきで出て、示したことは次に開いても続く');
+  const hasInactiveRow = () => page.evaluate(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'));
+  const inactiveChecked = () => page.$eval('.chips .check input', (e) => e.checked);
+  const openTree = async (q = '') => {
+    await page.goto(BASE + `/r/${REPO}/tree${q}`, { waitUntil: 'networkidle0' });
+    await signedIn(page);
+    await page.waitForSelector(q ? '.row.sel' : '.row', { timeout: 20000 });
+  };
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('はじめから inactive が出る');
+  // 隠しているときに inactive のノードを名指しで開くと、その場だけ示す（置かないので、開き直すと隠れる）
+  await openTree(`?node=${INACTIVE_STORY}`);
+  if ((await selText(page)) !== '広告の導線' || !(await inactiveChecked())) throw new Error('隠しているときに ?node= で inactive を開くと、示さない：' + (await selText(page)));
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('名指しで開いただけで、示すことを覚えている');
+  // 手で示すと、次に開いても示す
+  await page.click('.chips .check input');
   await page.waitForFunction(() => [...document.querySelectorAll('.row.inactive .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
+  await openTree();
+  if (!(await inactiveChecked()) || !(await hasInactiveRow())) throw new Error('示したのに、開き直すと inactive が出ない');
+  // 選んだまま隠すと、見えている祖先を選ぶ。隠したことも続く
+  await openTree(`?node=${INACTIVE_STORY}`);
   await page.click('.chips .check input');
-  await page.waitForFunction(() => ![...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelector('.row.sel .text')?.textContent.includes('新しい導線'), { timeout: 5000 });
+  await openTree();
+  if ((await inactiveChecked()) || (await hasInactiveRow())) throw new Error('隠したのに、開き直すと inactive が出る');
+  // あとの段のために、示すに戻す
   await page.click('.chips .check input');
+  await page.waitForFunction(() => [...document.querySelectorAll('.row .text')].some((e) => e.textContent === '広告の導線'), { timeout: 5000 });
 
   step('デスクトップで ?node= を開くと、そのノードを選ぶ。ないノードなら、そう示す');
   await page.goto(BASE + `/r/${REPO}/tree?node=${NODE_B}`, { waitUntil: 'networkidle0' });
@@ -398,6 +422,8 @@ try {
   const flaky = await browser.newPage();
   logErrors(flaky);
   await flaky.setViewport({ width: 1280, height: 800 });
+  // 前の段で読んだ 3D の部分は、Service Worker の控えにある。読み込みの失敗を作るため、Service Worker を通さない
+  await flaky.setBypassServiceWorker(true);
   await flaky.setRequestInterception(true);
   let failedOnce = false;
   flaky.on('request', (r) => {
@@ -632,6 +658,52 @@ try {
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   if (overflow) throw new Error('幅 375 px で横にはみ出す');
   await mobile.screenshot({ path: OUT + '/signin-mobile.png' });
+
+  step('PWA：manifest とアイコンがあり、Service Worker が外枠だけを控える。API とサインインの中継は Service Worker を通らない');
+  const pwa = await browser.newPage();
+  await pwa.setViewport({ width: 375, height: 812, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  logErrors(pwa);
+  await pwa.goto(BASE + '/', { waitUntil: 'networkidle0' });
+  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  const man = await pwa.evaluate(async () => {
+    const href = document.querySelector('link[rel="manifest"]')?.getAttribute('href');
+    const m = await (await fetch(href)).json();
+    const icons = await Promise.all(m.icons.map(async (i) => (await fetch(i.src)).status));
+    const apple = (await fetch(document.querySelector('link[rel="apple-touch-icon"]').getAttribute('href'))).status;
+    return { display: m.display, start: m.start_url, scope: m.scope, icons, apple };
+  });
+  if (man.display !== 'standalone' || man.start !== '/' || man.scope !== '/' || man.icons.some((s) => s !== 200) || man.apple !== 200) throw new Error('manifest：' + JSON.stringify(man));
+  const shell = await pwa.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    const keys = await caches.keys();
+    const c = await caches.open(keys.find((k) => k.startsWith('logiforge-shell-')));
+    const urls = (await c.keys()).map((r) => new URL(r.url).pathname);
+    return { keys, urls };
+  });
+  if (shell.keys.length !== 1 || !shell.urls.includes('/index.html') || !shell.urls.some((u) => u.startsWith('/assets/main-'))) throw new Error('外枠の控え：' + JSON.stringify(shell));
+  // 控えの中に、API の応答がない（3D と Mermaid などを読んだあとでも、/assets/ のほかは外枠だけ）
+  if (shell.urls.some((u) => u.startsWith('/v1/') || u.startsWith('/oauth/'))) throw new Error('API かサインインの応答を控えた：' + shell.urls.join(','));
+  const viaSW = [];
+  pwa.on('response', (r) => { if (new URL(r.url()).pathname.startsWith('/v1/') && r.fromServiceWorker()) viaSW.push(r.url()); });
+  await pwa.reload({ waitUntil: 'networkidle0' });
+  await pwa.waitForSelector('.repo-list', { timeout: 20000 });
+  if (!(await pwa.evaluate(() => !!navigator.serviceWorker.controller))) throw new Error('リロードしても、Service Worker が画面を受け持たない');
+  if (viaSW.length) throw new Error('API が Service Worker を通った：' + viaSW.join(','));
+
+  step('PWA：つながっていないときに開くと、控えの外枠で「つながっていません」と示す。つながると、自動でサインインし直す（authorize に行かない）');
+  const pw = watch(pwa);
+  await pwa.setOfflineMode(true);
+  await pwa.reload({ waitUntil: 'domcontentloaded' });
+  await pwa.waitForFunction(() => document.querySelector('.offline-banner')?.textContent.includes('つながっていません')
+    && document.querySelector('.signin-msg')?.textContent.includes('自動でサインインし直します'), { timeout: 20000 });
+  await pwa.screenshot({ path: OUT + '/pwa-offline.png' });
+  await pwa.setOfflineMode(false);
+  // つながった直後に通らなければ、WebUI は 1+2+4+8 秒までやり直す
+  await pwa.waitForSelector('.repo-list', { timeout: 30000 })
+    .catch(async (e) => { await pwa.screenshot({ path: OUT + '/pwa-online-failure.png' }).catch(() => {}); throw e; });
+  if (await pwa.$('.offline-banner')) throw new Error('つながったのに「つながっていません」が残る');
+  if (pw.states.size !== 0) throw new Error('つながったあと、authorize に ' + pw.states.size + ' 回行った（0 回のはず）');
+  await pwa.close();
 
   step('モバイルのビュワー：アウトラインで仮説を押すと、詳細がボトムシートで出る');
   await mobile.goto(BASE + `/r/${REPO}/tree?node=${NODE_A}`, { waitUntil: 'networkidle0' });
