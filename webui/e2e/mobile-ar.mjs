@@ -1,10 +1,47 @@
 // スマホの幅で apply request の画面を開く（internal/e2e/webui_mobile_test.go から動かす）。
 // タイトルが長くても、木の上をなぞると見出しが流れて、反映したあとの木が画面いっぱいに見え、最後の行まで読めるかを確かめる。
-// 環境変数：BASE、LOGIN、PASSWORD、CHROME、OUT、REPO、AR
+// 長いタイトルは 1 行で「…」で省き、▸ とタイトルを押して全文を開く・閉じる。1 行に収まるタイトル（AR_SHORT）には ▸ を出さない（スマホと PC の幅で）。
+// 環境変数：BASE、LOGIN、PASSWORD、CHROME、OUT、REPO、AR、AR_SHORT
 import { mkdirSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
-const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, AR } = process.env;
+const { BASE, LOGIN, PASSWORD, CHROME, OUT, REPO, AR, AR_SHORT } = process.env;
+
+// 見出しのタイトルの高さ（行数）と、▸ があるか・開いているか
+const titleState = (page) => page.evaluate(() => {
+  const t = document.querySelector('.ar-head .d-title');
+  const b = document.querySelector('.ar-head .title-toggle');
+  const lh = parseFloat(getComputedStyle(t).lineHeight);
+  return { lines: Math.round(t.getBoundingClientRect().height / lh), ellipsis: t.scrollWidth > t.clientWidth + 1, toggle: !!b, expanded: b?.getAttribute('aria-expanded') ?? null };
+});
+// 長いタイトル：閉じて 1 行 → ▸ で開いて何行にも → タイトルを押して閉じる。width は画面の名前（スクショ）
+async function longTitle(page, width) {
+  let t = await titleState(page);
+  console.log(`… ${width} 長いタイトル（閉じ）：`, JSON.stringify(t));
+  if (t.lines !== 1 || !t.ellipsis || !t.toggle || t.expanded !== 'false') throw new Error(`${width}：長いタイトルが 1 行で省かれていない、または ▸ がない`);
+  await page.screenshot({ path: `${OUT}/${width}-title-closed.png` });
+  await page.click('.ar-head .title-toggle');
+  t = await titleState(page);
+  console.log(`… ${width} 長いタイトル（開き）：`, JSON.stringify(t));
+  if (t.lines < 2 || t.ellipsis || t.expanded !== 'true') throw new Error(`${width}：▸ を押しても全文が開かない`);
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error(`${width}：タイトルを開くと横にはみ出す`);
+  await page.screenshot({ path: `${OUT}/${width}-title-open.png` });
+  await page.click('.ar-head .d-title');
+  t = await titleState(page);
+  if (t.lines !== 1 || t.expanded !== 'false') throw new Error(`${width}：タイトルを押しても閉じない`);
+  // 開いてから、ほかの apply request に移って戻ると、閉じに戻る
+  await page.click('.ar-head .title-toggle');
+}
+async function shortTitle(page, width) {
+  const t = await titleState(page);
+  console.log(`… ${width} 短いタイトル：`, JSON.stringify(t));
+  if (t.lines !== 1 || t.ellipsis || t.toggle) throw new Error(`${width}：1 行に収まるタイトルに ▸ が出る`);
+}
+const openAr = async (page, id) => {
+  await page.goto(BASE + `/r/${REPO}/apply-requests?id=${id}`, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('.ar-head .d-title', { timeout: 30000 });
+};
+
 mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 const page = await browser.newPage();
@@ -26,6 +63,12 @@ try {
   await page.waitForSelector('.ar-pane .tree-scroll .row', { timeout: 30000 });
   await page.screenshot({ path: `${OUT}/mobile-ar.png` });
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('幅 390 px で横にはみ出す');
+  // タイトルの省略と開閉（スマホの幅）。1 行に収まるタイトルには ▸ を出さない。そのあと、閉じた画面で木を確かめる
+  await longTitle(page, 'mobile');
+  await openAr(page, AR_SHORT);
+  await shortTitle(page, 'mobile');
+  await openAr(page, AR);
+  await page.waitForSelector('.ar-pane .tree-scroll .row', { timeout: 30000 });
 
   // 木の見える高さ（.tree-scroll のうち、画面の中で、下のナビに隠れないところ）と、最後の行まで見えているか
   const look = () => page.evaluate(() => {
@@ -79,6 +122,25 @@ try {
   await page.goto(BASE + `/r/${REPO}/apply-requests?id=${AR}`, { waitUntil: 'networkidle0' });
   await page.waitForSelector('.ar-pane .tree-scroll .row', { timeout: 30000 });
   await page.screenshot({ path: `${OUT}/desktop-ar.png` });
+
+  // タイトルの省略と開閉（PC の幅）。ほかの apply request（短いタイトル）を一覧から選んで戻ると、閉じに戻る
+  await longTitle(page, 'desktop');
+  await page.click(`.list-pane a[href="?id=${AR_SHORT}"]`);
+  await page.waitForFunction((id) => document.querySelector('.ar-head .mono')?.textContent?.includes(`#${id}`), { timeout: 30000 }, AR_SHORT);
+  await shortTitle(page, 'desktop');
+  await page.click(`.list-pane a[href="?id=${AR}"]`);
+  await page.waitForFunction((id) => document.querySelector('.ar-head .mono')?.textContent?.includes(`#${id}`), { timeout: 30000 }, AR);
+  await page.waitForSelector('.ar-head .title-toggle', { timeout: 30000 });
+  const back = await titleState(page);
+  if (back.expanded !== 'false' || back.lines !== 1) throw new Error('apply request を切り替えて戻っても、タイトルが閉じに戻らない');
+  // 一覧の長いタイトルも 1 行で省く
+  const row = await page.evaluate((id) => {
+    const a = document.querySelector(`.list-pane a[href="?id=${id}"]`);
+    const t = a.querySelector('.item-text');
+    return { h: Math.round(a.getBoundingClientRect().height), ellipsis: t.scrollWidth > t.clientWidth + 1 };
+  }, AR);
+  console.log('… 一覧の長いタイトル：', JSON.stringify(row));
+  if (!row.ellipsis || row.h > 90) throw new Error('一覧の長いタイトルが 1 行で省かれていない');
 } finally {
   await browser.close();
 }
