@@ -14,7 +14,7 @@ const titleState = (page) => page.evaluate(() => {
   const lh = parseFloat(getComputedStyle(t).lineHeight);
   return { lines: Math.round(t.getBoundingClientRect().height / lh), ellipsis: t.scrollWidth > t.clientWidth + 1, toggle: !!b, expanded: b?.getAttribute('aria-expanded') ?? null };
 });
-// 長いタイトル：閉じて 1 行 → ▸ で開いて何行にも → タイトルを押して閉じる。width は画面の名前（スクショ）
+// 長いタイトル：閉じて 1 行 → ▸ で開いて何行にも → タイトルを押しても閉じない → ▾ で閉じる → タイトルを押して開く（開いたまま終える）。width は画面の名前（スクショ）
 async function longTitle(page, width) {
   let t = await titleState(page);
   console.log(`… ${width} 長いタイトル（閉じ）：`, JSON.stringify(t));
@@ -26,11 +26,17 @@ async function longTitle(page, width) {
   if (t.lines < 2 || t.ellipsis || t.expanded !== 'true') throw new Error(`${width}：▸ を押しても全文が開かない`);
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error(`${width}：タイトルを開くと横にはみ出す`);
   await page.screenshot({ path: `${OUT}/${width}-title-open.png` });
+  // 開いている間は、タイトルを押しても閉じない（文字を選べるように）
   await page.click('.ar-head .d-title');
   t = await titleState(page);
-  if (t.lines !== 1 || t.expanded !== 'false') throw new Error(`${width}：タイトルを押しても閉じない`);
-  // 開いてから、ほかの apply request に移って戻ると、閉じに戻る
+  if (t.lines < 2 || t.expanded !== 'true') throw new Error(`${width}：開いているタイトルを押すと閉じる`);
   await page.click('.ar-head .title-toggle');
+  t = await titleState(page);
+  if (t.lines !== 1 || t.expanded !== 'false') throw new Error(`${width}：▾ を押しても閉じない`);
+  // タイトルを押しても開く
+  await page.click('.ar-head .d-title');
+  t = await titleState(page);
+  if (t.lines < 2 || t.expanded !== 'true') throw new Error(`${width}：タイトルを押しても開かない`);
 }
 async function shortTitle(page, width) {
   const t = await titleState(page);
@@ -63,7 +69,8 @@ try {
   await page.waitForSelector('.ar-pane .tree-scroll .row', { timeout: 30000 });
   await page.screenshot({ path: `${OUT}/mobile-ar.png` });
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('幅 390 px で横にはみ出す');
-  // タイトルの省略と開閉（スマホの幅）。1 行に収まるタイトルには ▸ を出さない。そのあと、閉じた画面で木を確かめる
+  // タイトルの省略と開閉（スマホの幅）。1 行に収まるタイトルには ▸ を出さない。そのあと、読み込み直した（閉じた）画面で木を確かめる。
+  // 切り替えて閉じに戻るかは、一覧から選べる PC の幅で確かめる
   await longTitle(page, 'mobile');
   await openAr(page, AR_SHORT);
   await shortTitle(page, 'mobile');
@@ -123,7 +130,7 @@ try {
   await page.waitForSelector('.ar-pane .tree-scroll .row', { timeout: 30000 });
   await page.screenshot({ path: `${OUT}/desktop-ar.png` });
 
-  // タイトルの省略と開閉（PC の幅）。ほかの apply request（短いタイトル）を一覧から選んで戻ると、閉じに戻る
+  // タイトルの省略と開閉（PC の幅）。開いたまま、ほかの apply request（短いタイトル）を一覧から選んで戻ると、閉じに戻る
   await longTitle(page, 'desktop');
   await page.click(`.list-pane a[href="?id=${AR_SHORT}"]`);
   await page.waitForFunction((id) => document.querySelector('.ar-head .mono')?.textContent?.includes(`#${id}`), { timeout: 30000 }, AR_SHORT);

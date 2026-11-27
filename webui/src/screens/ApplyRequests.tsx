@@ -212,7 +212,8 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
   );
 }
 
-// apply request のタイトル。既定は 1 行で、はみ出すところは「…」で省く。はみ出したときだけ、タイトルか ▸ を押して全文を開く・閉じる。
+// apply request のタイトル。既定は 1 行で、はみ出すところは「…」で省く。はみ出したときだけ、タイトルか ▸ を押して全文を開き、▾ で閉じる。
+// 開いている間はタイトルを押しても閉じない（全文を選んでコピーできるように）。
 // 開いたかは持たない（ArDetail は apply request ごとに作り直すので、切り替えると閉じに戻る）
 function ArTitle({ text }: { text: string }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -232,7 +233,7 @@ function ArTitle({ text }: { text: string }) {
   return (
     <div className="ar-title">
       {over && <button type="button" className="title-toggle" aria-expanded={open} aria-label={open ? 'タイトルを閉じる' : 'タイトルを全部見る'} onClick={toggle}>{open ? '▾' : '▸'}</button>}
-      <span ref={ref} className={`d-title ${open ? 'open' : ''} ${over ? 'can-toggle' : ''}`} title={over && !open ? text : undefined} onClick={over ? toggle : undefined}>{text}</span>
+      <span ref={ref} className={`d-title ${open ? 'open' : ''} ${over && !open ? 'can-toggle' : ''}`} title={over && !open ? text : undefined} onClick={over && !open ? () => setOpen(true) : undefined}>{text}</span>
     </div>
   );
 }
