@@ -615,6 +615,13 @@ a.btn { display: inline-block; text-decoration: none; }
 .ar-head { padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .ar-head .d-head { flex-wrap: wrap; }
 .ar-head .d-title { font-size: 16px; margin: 0; }
+/* タイトルは 1 行の段。既定は「…」で省き、はみ出したときだけ ▸ かタイトルを押して開き、▾ で閉じる */
+.ar-title { flex: 1 1 100%; min-width: 0; display: flex; align-items: baseline; gap: 4px; }
+.ar-title .d-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-title .d-title.open { white-space: normal; overflow-wrap: anywhere; }
+.ar-title .d-title.can-toggle { cursor: pointer; }
+.title-toggle { flex: none; border: 0; background: none; padding: 0 4px; color: var(--sub); cursor: pointer; font-size: 14px; line-height: 1; align-self: flex-start; min-width: 28px; min-height: 28px; }
+.title-toggle:hover { color: var(--text); }
 .ar-head .note { margin: 0; }
 .ar-head .confirm p { margin: 0 0 6px; }
 .ar-action .form-actions { margin: 0; }

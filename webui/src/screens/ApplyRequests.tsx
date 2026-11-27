@@ -2,7 +2,7 @@
 // apply request の一覧と、選んだ apply request を反映したあとの木（ビュワーをそのまま使う）。過去の時点は、ビュワーの「時点」の欄で選ぶ。
 // 右側は「木」（既定）と「レビュー」のタブ。approve と merge は、木を見たまま押せるよう、タブの外に置く。
 // 状態（状態、選んだ apply request、作業の絞り込み、右側のタブ）は URL に持つ。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getApplyRequest, getReviewMaterial, listApplyRequestsPage, listOpenApplyRequests, Problem, withPendingRetry, workSubjects, type ApplyRequest, type ReviewKind, type ReviewMaterial } from '../api';
 import { arTitle, AWAITING, byTime, DECISION, filterBySubjects, loadFailure, oncePer, opLabel, outsideSummary, REVIEW, STATE } from '../ar';
 import { reauthorize, remainingMs } from '../auth';
@@ -178,7 +178,7 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
           <span className={`state s-${a.state}`}>{STATE[a.state]}</span>
           {a.awaiting && <span className="kind">{AWAITING[a.awaiting]}</span>}
           {a.url ? <a className="mono" href={a.url} target="_blank" rel="noopener noreferrer">pull request #{a.id}</a> : <span className="mono dim">{a.id}</span>}
-          <span className="d-title">{arTitle(a)}</span>
+          <ArTitle text={arTitle(a)} />
           <span className="dim mono">{a.branch} → {a.target} · 先頭 {a.head_commit.slice(0, 7)}</span>
         </div>
         {(a.warnings ?? []).map((w) => <p key={w} className="note">{w}</p>)}
@@ -209,6 +209,32 @@ function ArDetail({ repo, id, rev, onChanged, tab, onTab, mobile, onBack }: { re
         </div>
       )}
     </section>
+  );
+}
+
+// apply request のタイトル。既定は 1 行で、はみ出すところは「…」で省く。はみ出したときだけ、タイトルか ▸ を押して全文を開き、▾ で閉じる。
+// 開いている間はタイトルを押しても閉じない（全文を選んでコピーできるように）。
+// 開いたかは持たない（ArDetail は apply request ごとに作り直すので、切り替えると閉じに戻る）
+function ArTitle({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  // はみ出すかは閉じているときに測る（開くと折り返してはみ出さないので、開いているあいだは前に測ったものを使う）
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+  const toggle = () => setOpen((o) => !o);
+  return (
+    <div className="ar-title">
+      {over && <button type="button" className="title-toggle" aria-expanded={open} aria-label={open ? 'タイトルを閉じる' : 'タイトルを全部見る'} onClick={toggle}>{open ? '▾' : '▸'}</button>}
+      <span ref={ref} className={`d-title ${open ? 'open' : ''} ${over && !open ? 'can-toggle' : ''}`} title={over && !open ? text : undefined} onClick={over && !open ? () => setOpen(true) : undefined}>{text}</span>
+    </div>
   );
 }
 
