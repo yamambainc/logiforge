@@ -139,7 +139,7 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 - 審査で何を見られるかは、[論理レビューの審査観点](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review-criteria.md) に書いてある。出す前に、自分で確かめる。
 - 説明欄は、レビューの材料に入らない。審査に要ることは、レポートや背景情報に書く。
 - 検証結果のレポートには、値を支える根拠と、その根拠から値を決めた理由を書く。プログラムで検証したなら、再現できるように、プログラムと実行結果を artifact に付ける。
-- 探索の対象の成果物（Logiforge で探索しているプロジェクトが最終的に作るもの）は、根拠にしない（[探索の対象の成果物](https://github.com/yamambainc/logiforge/blob/main/docs/tree/verdict.md#探索の対象の成果物)）。
+- 探索の対象の成果物（Logiforge で問いを探索しているプロジェクトが、最終的に作るもの）は、根拠にしない（[探索の対象の成果物](https://github.com/yamambainc/logiforge/blob/main/docs/tree/verdict.md#探索の対象の成果物)）。
   - ソフトウェア開発なら、そのソフトウェアのソースコードとテストコード。
     - 例：開発中のソフトウェアのテストが通ったことを、根拠にしない。
   - 論文なら、tex プロジェクトの中のファイル。
