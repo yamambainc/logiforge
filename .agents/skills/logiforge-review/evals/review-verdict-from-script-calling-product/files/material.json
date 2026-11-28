@@ -1,0 +1,28 @@
+{
+  "apply_request_id": "apr_d419",
+  "commit": "5c1e8a3f7b2d9e4a0c6f1b8d3e5a7c9f2b4d6e8a",
+  "operations": [
+    {
+      "kind": "verdict.submit",
+      "verdict_id": "v_r57",
+      "hypothesis_id": "h_7b1",
+      "value": true,
+      "report_body": "検証のために、スクリプト concurrent_check.py を新しく書いた。stockd のテストは使っていない。スクリプトは、開発中の在庫管理サービス stockd の stockd.inventory.reserve() を import して、在庫 10 の商品に 200 のスレッドから 1 個ずつ引き当てる。reserve() は、在庫の行を SELECT … FOR UPDATE で読んでから引き当てる。これを 1000 回くり返した。どの回でも成功は 10 件ちょうどで、在庫が負になった回は無かった。したがって、SELECT … FOR UPDATE で読んでから引き当てれば、並行に引き当てても在庫を超えない。",
+      "artifacts": [
+        {"kind": "file", "name": "concurrent_check.py", "sha256": "7d2b9f4e1a6c3085e2d7b4f9a1c6e3d8b5f0a7c2e9d4b1f6a3c8e5d0b7f2a9c4"},
+        {"kind": "file", "name": "concurrent_check-output.txt", "sha256": "0f5a2d8c4e1b7369a5f2c8e4b1d7a3f9c6e0b5d2a8f4c1e7b3d9a6f0c5e2b8d4"},
+        {"kind": "file", "name": "environment.txt", "sha256": "b3e7a1d5f9c2084e6b0d4a8f2c6e1b5d9a3f7c0e4b8d2a6f1c5e9b3d7a0f4c8e"}
+      ],
+      "citations": []
+    }
+  ],
+  "targets": [
+    {"node_type": "hypothesis", "id": "h_7b1", "statement": "在庫の行を SELECT … FOR UPDATE で読んでから引き当てれば、並行に引き当てても在庫を超えない", "value": null, "leaf": true}
+  ],
+  "ancestors": [
+    {"id": "h_7b1", "statement": "在庫の行を SELECT … FOR UPDATE で読んでから引き当てれば、並行に引き当てても在庫を超えない"},
+    {"id": "h_root", "statement": "stockd は、セールの同時アクセスでも売り越さずに注文を受けられる"}
+  ],
+  "siblings": [],
+  "citations": []
+}
