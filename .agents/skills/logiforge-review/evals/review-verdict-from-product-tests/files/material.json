@@ -1,0 +1,27 @@
+{
+  "apply_request_id": "apr_d417",
+  "commit": "9e3a7c1f5b2d8e4a6c0f1b3d5e7a9c2b4d6f8e0a",
+  "operations": [
+    {
+      "kind": "verdict.submit",
+      "verdict_id": "v_r55",
+      "hypothesis_id": "h_7b1",
+      "value": true,
+      "report_body": "開発中の在庫管理サービス（stockd）のリポジトリにある tests/test_reserve.py を実行した。同じ商品に 100 件の引き当てを並行で送るテスト test_concurrent_reserve_never_oversells が通った。全 48 件のテストが通り、在庫が負になる場合は 1 つもなかった。したがって、引き当ては在庫を超えない。",
+      "artifacts": [
+        {"kind": "file", "name": "stockd-pytest-output.txt", "sha256": "3b8f0c2e6a1d4f7b9e5c8a2d0f6b3e9c1a7d4f2b8e6c0a3d9f5b1e7c4a2d8f6b"},
+        {"kind": "link", "name": "stockd の tests/test_reserve.py", "uri": "https://git.example.com/acme/stockd/src/commit/5d2c9a1/tests/test_reserve.py"}
+      ],
+      "citations": []
+    }
+  ],
+  "targets": [
+    {"node_type": "hypothesis", "id": "h_7b1", "statement": "stockd の引き当ては、並行に送っても在庫を超えない", "value": null, "leaf": true}
+  ],
+  "ancestors": [
+    {"id": "h_7b1", "statement": "stockd の引き当ては、並行に送っても在庫を超えない"},
+    {"id": "h_root", "statement": "stockd は、セールの同時アクセスでも売り越さずに注文を受けられる"}
+  ],
+  "siblings": [],
+  "citations": []
+}

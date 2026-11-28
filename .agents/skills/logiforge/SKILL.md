@@ -139,6 +139,15 @@ apply request のレビューは、[logiforge-review](https://github.com/yamamba
 - 審査で何を見られるかは、[論理レビューの審査観点](https://github.com/yamambainc/logiforge/blob/main/docs/apply-request/review-criteria.md) に書いてある。出す前に、自分で確かめる。
 - 説明欄は、レビューの材料に入らない。審査に要ることは、レポートや背景情報に書く。
 - 検証結果のレポートには、値を支える根拠と、その根拠から値を決めた理由を書く。プログラムで検証したなら、再現できるように、プログラムと実行結果を artifact に付ける。
+- 探索の対象の成果物（Logiforge で探索しているプロジェクトが最終的に作るもの）は、根拠にしない（[探索の対象の成果物](https://github.com/yamambainc/logiforge/blob/main/docs/tree/verdict.md#探索の対象の成果物)）。
+  - ソフトウェア開発なら、そのソフトウェアのソースコードとテストコード。
+    - 例：開発中のソフトウェアのテストが通ったことを、根拠にしない。
+  - 論文なら、tex プロジェクトの中のファイル。
+    - 例：書いている論文の本文に書いてあることを、根拠にしない。
+  - なぜ：Logiforge は、広い空間の探索結果を残して次へ進むためのツールで、成果物はその探索結果を整理したものにすぎないから。
+  - 検証のために別に書いたプログラムと実行結果は、根拠にできる。
+    - 成果物とは別に、artifact に入れる。
+  - 成果物のテストをそのまま実行した結果は、根拠にできない。
 - 偽と結論するときは、次の 2 つを 1 つの apply request にまとめる（[偽と結論する](https://github.com/yamambainc/logiforge/blob/main/docs/tree/falsification.md#偽と結論する)）。
   - その仮説の active な子ストーリーを、すべて `story.inactivate` する。
   - その仮説に、`false` の `verdict.submit` を出す。
