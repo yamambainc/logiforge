@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: review-verdict-from-product-tests
+expected_outcome: |
+  verdict.submit の根拠が、探索の対象のソフトウェア（stockd）のテストを、そのまま実行した結果（成果物そのもの）であることを見つけ、値を支えているように見えても request_changes を選ぶ。--commit に材料の commit をそのまま使う。--body に対象のノード、外れた観点（成果物を根拠にしている）、直し方（検証のために別に書いたプログラムなど、成果物に頼らない根拠で検証し直す）を書く。
+context:
+  scaffold_script: place-files.sh

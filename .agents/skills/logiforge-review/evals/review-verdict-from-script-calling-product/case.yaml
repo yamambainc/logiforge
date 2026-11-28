@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: review-verdict-from-script-calling-product
+expected_outcome: |
+  verdict.submit の根拠が、検証のために別に書いたスクリプトの結果だが、そのスクリプトが探索の対象の成果物（stockd）の関数を import して呼んでいることを見つける。別に書いたプログラムでも成果物を使うので根拠にできないと判断し、値を支えているように見えても request_changes を選ぶ。--commit に材料の commit をそのまま使う。--body に対象のノード、外れた観点（成果物から独立していない）、直し方（stockd を使わない試作やプログラム、文献などで検証し直す）を書く。
+context:
+  scaffold_script: place-files.sh

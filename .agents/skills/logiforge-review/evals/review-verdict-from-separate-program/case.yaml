@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: review-verdict-from-separate-program
+expected_outcome: |
+  verdict.submit の根拠が、探索の対象の成果物（stockd）とは別に、検証のために書いた小さなプログラムとその実行結果、および PostgreSQL の文書であることを見て、成果物を根拠にしていないと判断し、approve を選ぶ。プログラムの artifact があることだけを理由に request_changes にしない。--commit に材料の commit をそのまま使い、--prompt-revision を付ける。--body に確かめた観点と、問題が無いと判断した理由を書く。
+context:
+  scaffold_script: place-files.sh
